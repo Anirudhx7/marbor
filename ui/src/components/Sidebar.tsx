@@ -73,10 +73,6 @@ export const Sidebar = memo(function Sidebar({ onLogout, session, pendingCount =
   }, [isOpen]);
 
   const isAdmin = session?.role === 'admin';
-  // Both the Activity and Audit Trail nav entries route to the same /activity
-  // pathname (view is a query param), so NavLink's default pathname-only
-  // isActive would mark both active simultaneously - compute it explicitly.
-  const isAuditView = new URLSearchParams(location.search).get('view') === 'audit';
 
   // Label: desktop-only collapse (md:), mobile always shows full label to avoid bugged icon-only drawer
   const labelClass = `whitespace-nowrap overflow-hidden transition-[width,opacity,transform,margin] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] w-[140px] opacity-100 ml-3 translate-x-0 ${collapsed ? 'md:w-0 md:opacity-0 md:ml-0 md:translate-x-1' : ''}`;
@@ -114,20 +110,18 @@ export const Sidebar = memo(function Sidebar({ onLogout, session, pendingCount =
       <nav className="sidebar-nav flex-1 py-3 px-2 space-y-1 overflow-y-auto overflow-x-visible">
         {navItems.map((item) => {
           const Icon = item.icon;
-          const isActivityItem = item.path === '/activity';
           return (
             <div key={item.path} className="relative group/nav">
               <NavLink
                 to={item.path}
                 title={collapsed ? item.label : undefined}
-                className={({ isActive }) => {
-                  const active = isActivityItem ? isActive && !isAuditView : isActive;
-                  return `${linkBase} ${
-                    active
+                className={({ isActive }) =>
+                  `${linkBase} ${
+                    isActive
                       ? 'bg-primary/10 text-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.12)]'
                       : 'text-muted-foreground hover:text-foreground hover:bg-secondary/70'
-                  }`;
-                }}
+                  }`
+                }
               >
                 <Icon className="w-[18px] h-[18px] shrink-0 transition-transform duration-300 group-hover/nav:scale-[1.04]" strokeWidth={1.75} />
                 <span className={labelClass}>{item.label}</span>
@@ -172,25 +166,7 @@ export const Sidebar = memo(function Sidebar({ onLogout, session, pendingCount =
                 <span className="absolute -top-1 -right-1 z-10 w-2 h-2 bg-amber-500 rounded-full ring-2 ring-card pointer-events-none" />
               )}
             </div>
-            <div className="relative group/nav">
-              <NavLink
-                to="/activity?view=audit"
-                title={collapsed ? 'Audit Trail' : undefined}
-                className={() =>
-                  `${linkBase} ${
-                    isAuditView ? 'bg-primary/10 text-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.12)]' : 'text-muted-foreground hover:text-foreground hover:bg-secondary/70'
-                  }`
-                }
-              >
-                <Shield className="w-[18px] h-[18px] shrink-0" strokeWidth={1.75} />
-                <span className={labelClass}>Audit Trail</span>
-              </NavLink>
-              {collapsed && (
-                <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs font-medium text-popover-foreground shadow-lg opacity-0 group-hover/nav:opacity-100 group-focus-within/nav:opacity-100 transition-opacity duration-150 hidden md:block">
-                  Audit Trail
-                </span>
-              )}
-            </div>
+
           </>
         )}
         <div className="relative group/nav">

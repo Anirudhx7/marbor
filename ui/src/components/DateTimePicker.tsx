@@ -16,17 +16,6 @@ function clampLeft(left: number, panelWidth: number): number {
   return Math.max(POPUP_VIEWPORT_MARGIN, Math.min(left, maxLeft));
 }
 
-// parseValidDate returns null for both an empty value and an unparseable
-// one, so callers have a single check instead of separately guarding
-// !value and isNaN(d.getTime()) - an unparseable value must not silently
-// become NaN-poisoned view state (a garbage next-month grid, "NaN:NaN"
-// time display) the way `new Date(value).getX()` would.
-function parseValidDate(value: string): Date | null {
-  if (!value) return null;
-  const d = new Date(value);
-  return isNaN(d.getTime()) ? null : d;
-}
-
 interface CustomDateTimePickerProps {
   value: string; // YYYY-MM-DDTHH:MM
   onChange: (value: string) => void;
@@ -49,11 +38,10 @@ export function CustomDateTimePicker({
   const containerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  // Wall parsing: value is "YYYY-MM-DDTHH:MM" wall time in `tz`, not browser local.
-  function parseWall(v: string): { y: number; m: number; d: number; h: number; mi: number } | null {
+  function parseWall(v: string): { y:number; m:number; d:number; h:number; mi:number } | null {
     const mm = v.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
     if (!mm) return null;
-    const y = Number(mm[1]); const mo = Number(mm[2]); const day = Number(mm[3]); const hh = Number(mm[4]); const mi = Number(mm[5]);
+    const y = Number(mm[1]), mo = Number(mm[2]), day = Number(mm[3]), hh = Number(mm[4]), mi = Number(mm[5]);
     if (!isFinite(y) || !isFinite(mo) || !isFinite(day) || !isFinite(hh) || !isFinite(mi)) return null;
     return { y, m: mo, d: day, h: hh, mi };
   }
@@ -65,20 +53,13 @@ export function CustomDateTimePicker({
   const [minutes, setMinutes] = useState(parsed ? parsed.mi : 0);
   const [selectedDay, setSelectedDay] = useState<number | null>(parsed ? parsed.d : null);
 
-  // Sync state with incoming value or tz changes
   useEffect(() => {
     const p = parseWall(value);
     if (p) {
-      setViewYear(p.y);
-      setViewMonth(p.m - 1);
-      setSelectedDay(p.d);
-      setHours(p.h);
-      setMinutes(p.mi);
+      setViewYear(p.y); setViewMonth(p.m - 1); setSelectedDay(p.d); setHours(p.h); setMinutes(p.mi);
     } else {
       const nw = nowWallInZone(tz);
-      setViewYear(nw.y);
-      setViewMonth(nw.m - 1);
-      setSelectedDay(null);
+      setViewYear(nw.y); setViewMonth(nw.m - 1); setSelectedDay(null);
     }
   }, [value, tz]);
 
@@ -102,18 +83,14 @@ export function CustomDateTimePicker({
     updateCoords();
     window.addEventListener('scroll', updateCoords, true);
     window.addEventListener('resize', updateCoords);
-    window.visualViewport?.addEventListener('resize', updateCoords);
-    window.visualViewport?.addEventListener('scroll', updateCoords);
     return () => {
       window.removeEventListener('scroll', updateCoords, true);
       window.removeEventListener('resize', updateCoords);
-      window.visualViewport?.removeEventListener('resize', updateCoords);
-      window.visualViewport?.removeEventListener('scroll', updateCoords);
     };
   }, [isOpen]);
 
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent | TouchEvent) {
+    function handleClickOutside(event: MouseEvent) {
       const target = event.target as Node;
       if (
         containerRef.current && !containerRef.current.contains(target) &&
@@ -123,11 +100,7 @@ export function CustomDateTimePicker({
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('touchstart', handleClickOutside as unknown as EventListener, { passive: true } as AddEventListenerOptions);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('touchstart', handleClickOutside as unknown as EventListener);
-    };
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const months = [
@@ -159,8 +132,6 @@ export function CustomDateTimePicker({
     }
   };
 
-  // min is a wall string in the same `tz` (e.g. "2026-08-28T10:00"); compare
-  // wall dates lexicographically via wall components, not browser Date.
   const minWall = min ? parseWall(min) : null;
   const isDayDisabled = (y: number, m: number, day: number) => {
     if (!minWall) return false;
@@ -253,25 +224,10 @@ export function CustomDateTimePicker({
     });
   }
 
-  // Display the wall string in `tz` wall time (e.g. "Aug 28, 2026, 14:30")
   const formatDisplay = () => {
     if (!value) return '';
     const disp = formatWallInZone(value, tz);
-    return disp !== value ? disp : (() => {
-      // Fallback for an unparseable stored value — show raw rather than blank.
-      try {
-        const d = new Date(value);
-        if (isNaN(d.getTime())) return value;
-        return d.toLocaleString(undefined, {
-          year: 'numeric',
-          month: 'short',
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: false,
-        });
-      } catch { return value; }
-    })();
+    return disp !== value ? disp : (()=>{ try { const d=new Date(value); if(isNaN(d.getTime())) return value; return d.toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',hour12:false}); } catch {return value;}})();
   };
 
   return (
@@ -364,13 +320,9 @@ export function CustomDateTimePicker({
                     if (cell.isCurrentMonth) {
                       selectDay(cell.day);
                     } else {
-                      // Switch month — wall math, not browser Date (handles year wrap without zone offset)
                       let y = viewYear; let m = viewMonth + cell.monthOffset;
-                      while (m < 0) { m += 12; y--; }
-                      while (m > 11) { m -= 12; y++; }
-                      setViewYear(y);
-                      setViewMonth(m);
-                      setSelectedDay(cell.day);
+                      while (m < 0) { m += 12; y--; } while (m > 11) { m -= 12; y++; }
+                      setViewYear(y); setViewMonth(m); setSelectedDay(cell.day);
                       const yyyy = String(y).padStart(4, '0');
                       const mm = String(m + 1).padStart(2, '0');
                       const dd = String(cell.day).padStart(2, '0');
@@ -506,7 +458,6 @@ export function CustomDatePicker({
   const [viewMonth, setViewMonth] = useState(parsedDate ? parsedDate.m - 1 : fallbackDate.m - 1);
   const [selectedDay, setSelectedDay] = useState<number | null>(parsedDate ? parsedDate.d : null);
 
-  // Sync state with incoming value or tz changes
   useEffect(() => {
     const p = value ? parseWallDate(value) : null;
     if (p) {
@@ -538,18 +489,14 @@ export function CustomDatePicker({
     updateCoords();
     window.addEventListener('scroll', updateCoords, true);
     window.addEventListener('resize', updateCoords);
-    window.visualViewport?.addEventListener('resize', updateCoords);
-    window.visualViewport?.addEventListener('scroll', updateCoords);
     return () => {
       window.removeEventListener('scroll', updateCoords, true);
       window.removeEventListener('resize', updateCoords);
-      window.visualViewport?.removeEventListener('resize', updateCoords);
-      window.visualViewport?.removeEventListener('scroll', updateCoords);
     };
   }, [isOpen]);
 
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent | TouchEvent) {
+    function handleClickOutside(event: MouseEvent) {
       const target = event.target as Node;
       if (
         containerRef.current && !containerRef.current.contains(target) &&
@@ -559,11 +506,7 @@ export function CustomDatePicker({
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('touchstart', handleClickOutside as unknown as EventListener, { passive: true } as AddEventListenerOptions);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('touchstart', handleClickOutside as unknown as EventListener);
-    };
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const months = [
@@ -653,7 +596,7 @@ export function CustomDatePicker({
     });
   }
 
-  // Display wall date "YYYY-MM-DD" in `tz` wall (Aug 28, 2026)
+  // Format display text
   const formatDisplay = () => {
     if (!value) return '';
     const p = parseWallDate(value);
@@ -750,12 +693,9 @@ export function CustomDatePicker({
                     if (cell.isCurrentMonth) {
                       selectDay(cell.day);
                     } else {
-                      // Switch month — wall math
                       let y = viewYear; let m = viewMonth + cell.monthOffset;
                       while (m < 0) { m += 12; y--; } while (m > 11) { m -= 12; y++; }
-                      setViewYear(y);
-                      setViewMonth(m);
-                      setSelectedDay(cell.day);
+                      setViewYear(y); setViewMonth(m); setSelectedDay(cell.day);
                       const yyyy = String(y).padStart(4, '0');
                       const mm = String(m + 1).padStart(2, '0');
                       const dd = String(cell.day).padStart(2, '0');
@@ -850,18 +790,14 @@ export function CustomTimePicker({
     updateCoords();
     window.addEventListener('scroll', updateCoords, true);
     window.addEventListener('resize', updateCoords);
-    window.visualViewport?.addEventListener('resize', updateCoords);
-    window.visualViewport?.addEventListener('scroll', updateCoords);
     return () => {
       window.removeEventListener('scroll', updateCoords, true);
       window.removeEventListener('resize', updateCoords);
-      window.visualViewport?.removeEventListener('resize', updateCoords);
-      window.visualViewport?.removeEventListener('scroll', updateCoords);
     };
   }, [isOpen]);
 
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent | TouchEvent) {
+    function handleClickOutside(event: MouseEvent) {
       const target = event.target as Node;
       if (
         containerRef.current && !containerRef.current.contains(target) &&
@@ -871,11 +807,7 @@ export function CustomTimePicker({
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('touchstart', handleClickOutside as unknown as EventListener, { passive: true } as AddEventListenerOptions);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('touchstart', handleClickOutside as unknown as EventListener);
-    };
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const handleHourChange = (h: number) => {
@@ -923,17 +855,7 @@ export function CustomTimePicker({
         {!!value && !disabled && (
           <button
             type="button"
-            onClick={() => {
-              onChange('');
-              // The sync effect above is guarded to skip on an empty string
-              // (so a cleared field doesn't get immediately re-populated by
-              // its own stale value prop), so hours/minutes must be reset
-              // here explicitly - otherwise reopening the picker shows the
-              // previous time still highlighted despite the field looking
-              // empty.
-              setHours(0);
-              setMinutes(0);
-            }}
+            onClick={() => onChange('')}
             className="absolute right-8 top-1/2 -translate-y-1/2 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
           >
             <X className="w-3.5 h-3.5" />
@@ -1078,7 +1000,7 @@ function ScrollWheel({ options, value, onChange, label }: ScrollWheelProps) {
   // notch can report a large deltaY and skip several values at once. Convert
   // wheel input into fixed one-step-per-notch increments instead of letting
   // the browser translate raw deltaY into scroll distance.
-  const handleWheel = (e: WheelEvent) => {
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault();
     wheelAccumRef.current += e.deltaY;
     const itemHeight = getItemHeight();
@@ -1099,29 +1021,12 @@ function ScrollWheel({ options, value, onChange, label }: ScrollWheelProps) {
     wheelResetTimeoutRef.current = setTimeout(() => { wheelAccumRef.current = 0; }, 200);
   };
 
-  // React attaches wheel listeners passively at the root since React 17, so
-  // a synthetic onWheel handler's e.preventDefault() is a silent no-op -
-  // native scrolling of the snap container then combines with the step-
-  // accumulation logic above to commit a value several steps past what the
-  // user intended. Attach natively with { passive: false } instead. The ref
-  // indirection keeps the listener attached once (no options/onChange
-  // dependency churn) while always calling the current closure.
-  const handleWheelRef = useRef(handleWheel);
-  handleWheelRef.current = handleWheel;
-
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const listener = (e: WheelEvent) => handleWheelRef.current(e);
-    el.addEventListener('wheel', listener, { passive: false });
-    return () => el.removeEventListener('wheel', listener);
-  }, []);
-
   return (
     <div className="flex-1 flex flex-col h-full relative">
       <div
         ref={containerRef}
         onScroll={handleScroll}
+        onWheel={handleWheel}
         aria-label={label}
         className="h-full overflow-y-auto no-scrollbar py-[66px] snap-y snap-mandatory scroll-smooth z-10 relative"
       >

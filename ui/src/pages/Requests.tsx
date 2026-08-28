@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo, useRef, Fragment, type InputHTMLAttributes, type ReactNode } from 'react';
+import { useState, useEffect, useMemo, Fragment } from 'react';
 import { useLocation } from 'react-router-dom';
-import { X, ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { CustomSelect, CustomCombobox } from '../components/Select';
 import { CustomDateTimePicker } from '../components/DateTimePicker';
+import { ClearableInput, FilterField } from '../components/FilterField';
 import { RequestEntry, RoutingDecision } from '../types';
 import { fetchAuditLog, fetchNodes, fetchKeys, fetchRequestExplain } from '../lib/api';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
@@ -127,44 +128,6 @@ function SkeletonRow() {
   );
 }
 
-// ClearableInput wraps a text/datetime filter input with an inline "x"
-// button once it has a value, so undoing a filter (including one picked
-// from a datalist) doesn't require manually backspacing the whole thing.
-function ClearableInput(props: InputHTMLAttributes<HTMLInputElement> & { onClear: () => void }) {
-  const { onClear, className, value, ...rest } = props;
-  return (
-    <div className="relative w-full">
-      <input
-        {...rest}
-        value={value}
-        className={`${className ?? ''} w-full ${value ? 'pr-7' : ''}`}
-      />
-      {!!value && (
-        <button
-          type="button"
-          onClick={onClear}
-          title="Clear"
-          className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-        >
-          <X className="w-3.5 h-3.5" />
-        </button>
-      )}
-    </div>
-  );
-}
-
-// FilterField adds a small label above a filter control - the bare inputs
-// (esp. the two datetime pickers and the tri-state selects) were impossible
-// to tell apart at a glance without one.
-function FilterField({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="min-w-0">
-      <label className="block text-xs font-medium text-muted-foreground mb-1">{label}</label>
-      {children}
-    </div>
-  );
-}
-
 // Cloud filter tri-state: 'all' | 'local' | 'cloud'.
 type CloudFilter = 'all' | 'local' | 'cloud';
 
@@ -172,10 +135,14 @@ type CloudFilter = 'all' | 'local' | 'cloud';
 type StatusFilter = 'all' | 'success' | 'client_error' | 'server_error';
 
 // Since filter presets map to a lookback window; 'all' sends no since param.
-type SincePreset = 'all' | '15m' | '1h' | '24h';
+// 'custom' is not a selectable option - it's an internal marker meaning "a
+// hand-picked From value is active", so the Quick range select's displayed
+// label falls back to its placeholder (no matching option) instead of
+// showing a stale preset name while a custom range is actually in effect.
+type SincePreset = 'all' | '15m' | '1h' | '24h' | 'custom';
 
 function sinceIso(preset: SincePreset): string | undefined {
-  if (preset === 'all') return undefined;
+  if (preset === 'all' || preset === 'custom') return undefined;
   const ms = { '15m': 15 * 60_000, '1h': 60 * 60_000, '24h': 24 * 60 * 60_000 }[preset];
   return new Date(Date.now() - ms).toISOString();
 }
@@ -194,28 +161,13 @@ export function Requests() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [explainData, setExplainData] = useState<Record<string, RoutingDecision | 'loading' | 'error'>>({});
 
-  // Guards fetchRequestExplain's promise chain against a resolution after
-  // this component unmounts, since toggleExplain is a click handler with no
-  // effect cleanup of its own to thread a local flag through.
-  const mountedRef = useRef(true);
-  useEffect(() => {
-    // Reset to true on every mount - StrictMode's dev-only
-    // mount->cleanup->remount cycle would otherwise leave this permanently
-    // false after the first (discarded) mount's cleanup runs.
-    mountedRef.current = true;
-    return () => { mountedRef.current = false; };
-  }, []);
-
   function toggleExplain(id: string) {
     if (expandedId === id) {
       setExpandedId(null);
       return;
     }
     setExpandedId(id);
-    const cached = explainData[id];
-    // A previous 'error' is not a valid cached result - only a real decision
-    // object (or an in-flight 'loading') should short-circuit a refetch.
-    if (cached && cached !== 'error') return;
+    if (explainData[id]) return;
     setExplainData((prev) => ({ ...prev, [id]: 'loading' }));
     if (isDemoMode) {
       const decision = mockExplainForRequest(id);
@@ -223,8 +175,8 @@ export function Requests() {
       return;
     }
     fetchRequestExplain(id)
-      .then((decision) => { if (mountedRef.current) setExplainData((prev) => ({ ...prev, [id]: decision })); })
-      .catch(() => { if (mountedRef.current) setExplainData((prev) => ({ ...prev, [id]: 'error' })); });
+      .then((decision) => setExplainData((prev) => ({ ...prev, [id]: decision })))
+      .catch(() => setExplainData((prev) => ({ ...prev, [id]: 'error' })));
   }
 
   // Raw text inputs (debounced before becoming active filters).
@@ -360,6 +312,17 @@ export function Requests() {
   const hasActiveFilter =
     !!modelFilter || !!keyFilter || !!nodeFilter || statusFilter !== 'all' || cloudFilter !== 'all' || sincePreset !== 'all' || !!sinceInput || !!untilInput;
 
+  const clearAllFilters = () => {
+    setModelInput('');
+    setKeyInput('');
+    setNodeInput('');
+    setCloudFilter('all');
+    setStatusFilter('all');
+    setSincePreset('all');
+    setSinceInput('');
+    setUntilInput('');
+  };
+
   const localCount = filtered.filter((e) => !e.cloud).length;
   const cloudCount = filtered.filter((e) => e.cloud).length;
   const avgLatency =
@@ -451,8 +414,8 @@ export function Requests() {
                 setSincePreset(val as SincePreset);
                 setSinceInput(''); // a quick preset always wins over a stale custom "From" value
               }}
-              disabled={!!sinceInput}
-              placeholder={sinceInput ? 'Clear custom date to use preset' : 'Any time'}
+              disabled={sincePreset === 'custom'}
+              placeholder="Clear custom date to use preset"
               options={[
                 { value: 'all', label: 'Any time' },
                 { value: '15m', label: 'Last 15 min' },
@@ -466,7 +429,7 @@ export function Requests() {
               value={sinceInput}
               onChange={(val) => {
                 setSinceInput(val);
-                if (val) setSincePreset('all'); // custom "From" wins over a stale preset
+                setSincePreset(val ? 'custom' : 'all'); // custom "From" wins over a stale preset, clearing it falls back to "Any time"
               }}
               placeholder="Any start time"
             />
@@ -482,16 +445,7 @@ export function Requests() {
         {hasActiveFilter && (
           <div className="flex justify-end">
             <button
-              onClick={() => {
-                setModelInput('');
-                setKeyInput('');
-                setNodeInput('');
-                setCloudFilter('all');
-                setStatusFilter('all');
-                setSincePreset('all');
-                setSinceInput('');
-                setUntilInput('');
-              }}
+              onClick={clearAllFilters}
               className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1"
             >
               Clear all filters
@@ -580,6 +534,14 @@ export function Requests() {
                       {hasActiveFilter
                         ? 'No requests match your filter.'
                         : 'No requests yet. Send a request through the proxy to see it here.'}
+                      {hasActiveFilter && (
+                        <button
+                          onClick={clearAllFilters}
+                          className="block mx-auto text-primary hover:underline text-xs mt-1"
+                        >
+                          Clear filters
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ) : (
@@ -615,9 +577,9 @@ export function Requests() {
                         {entry.cloud ? (
                           <span
                             className="inline-block max-w-full truncate align-middle text-xs font-medium px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400"
-                            title={`cloud:${(entry.node || '').replace('cloud:', '')}`}
+                            title={`cloud:${entry.node.replace('cloud:', '')}`}
                           >
-                            cloud:{(entry.node || '').replace('cloud:', '')}
+                            cloud:{entry.node.replace('cloud:', '')}
                           </span>
                         ) : (
                           <span className="block truncate text-foreground" title={entry.node || '-'}>
@@ -680,6 +642,14 @@ export function Requests() {
             {hasActiveFilter
               ? 'No requests match your filter.'
               : 'No requests yet. Send a request through the proxy to see it here.'}
+            {hasActiveFilter && (
+              <button
+                onClick={clearAllFilters}
+                className="block mx-auto text-primary hover:underline text-xs mt-1"
+              >
+                Clear filters
+              </button>
+            )}
           </div>
         ) : (
           filtered.map((entry) => (
@@ -711,7 +681,7 @@ export function Requests() {
                   <div className="text-sm text-foreground">
                     {entry.cloud ? (
                       <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
-                        cloud:{(entry.node || '').replace('cloud:', '')}
+                        cloud:{entry.node.replace('cloud:', '')}
                       </span>
                     ) : (
                       entry.node || '-'
