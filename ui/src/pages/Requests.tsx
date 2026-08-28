@@ -577,9 +577,9 @@ export function Requests() {
                         {entry.cloud ? (
                           <span
                             className="inline-block max-w-full truncate align-middle text-xs font-medium px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400"
-                            title={`cloud:${entry.node.replace('cloud:', '')}`}
+                            title={`cloud:${(entry.node || '').replace('cloud:', '')}`}
                           >
-                            cloud:{entry.node.replace('cloud:', '')}
+                            cloud:{(entry.node || '').replace('cloud:', '')}
                           </span>
                         ) : (
                           <span className="block truncate text-foreground" title={entry.node || '-'}>
@@ -681,7 +681,7 @@ export function Requests() {
                   <div className="text-sm text-foreground">
                     {entry.cloud ? (
                       <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
-                        cloud:{entry.node.replace('cloud:', '')}
+                        cloud:{(entry.node || '').replace('cloud:', '')}
                       </span>
                     ) : (
                       entry.node || '-'
