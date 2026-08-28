@@ -2203,7 +2203,7 @@ export function GPUNodes() {
                         setEditGPUIndices((editNode.detectedGPUGroup ?? []).join(', '));
                         setEditError('');
                       }}
-                      className="shrink-0 px-3 py-1.5 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-md text-xs transition-colors shadow-sm"
+                      className="shrink-0 px-3 py-2 min-h-[40px] bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-md text-xs transition-colors shadow-sm"
                     >
                       Adopt
                     </button>

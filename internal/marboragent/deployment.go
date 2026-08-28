@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -491,15 +492,9 @@ func collectFromDockerSocket(detected []DetectedRuntime, gpuCount int) []Deploym
 			}
 			continue
 		}
-		var body []byte
-		// Read limited
-		buf := make([]byte, 64*1024)
-		n, _ := rs.Body.Read(buf)
+		body, err := io.ReadAll(io.LimitReader(rs.Body, 256*1024))
 		rs.Body.Close()
-		body = buf[:n]
-		// Complete read if truncated
-		if n == len(buf) {
-			// Too large - re-read fully (rare)
+		if err != nil {
 			continue
 		}
 		rep := parseDockerInspect(string(body), gpuCount, os.Getenv)

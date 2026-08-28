@@ -410,13 +410,13 @@ func matchDeployment(deployments []marboragent.DeploymentReport, pinnedID string
 			}
 		}
 	}
-	// Fallback: single deployment on host with single runtime -> attribute to sole node
-	if len(deployments) == 1 && nodePort == 0 {
-		return &deployments[0]
-	}
-	if len(deployments) == 1 {
-		// If only one deployment and one runtime, allow it even if ports mismatch
-		// but only when host has single deployment (common case: single vLLM).
+	// Fallback: single deployment with unknown port on single-node host
+	// -> attribute to sole node. Do NOT fallback when deployment has a
+	// known port that does not match this node's port - that would
+	// misattribute a vLLM TP=8 on :8000 to an Ollama node on :11434 on the
+	// same host (e.g. host with Ollama :11434 + vLLM :8000 but ps only saw
+	// vLLM). Port-specific reports must stay port-specific (R1).
+	if len(deployments) == 1 && deployments[0].Port == 0 {
 		return &deployments[0]
 	}
 	return nil
