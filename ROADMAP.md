@@ -29,15 +29,15 @@ production-hardened and free for any use under Apache-2.0.
 **Routing & scheduling**
 - Warm-aware routing - route to the node already holding the model warm in VRAM
 - VRAM-aware cold placement - cold requests go to the node with the most free VRAM (v0.8.0)
-- Weighted placement scoring - warm / free-VRAM / queue-depth / health / success factors, with model pinning and post-failure node cooldown (v0.11–v0.14)
+- Weighted placement scoring - warm / free-VRAM / queue-depth / health / success factors, with model pinning and post-failure node cooldown (v0.11-v0.14)
 - Request queue with backpressure - configurable depth + timeout (v0.8.2)
-- Persistent warm state - the warm map survives restarts and is reconciled against live `/api/ps` on boot, so routing intelligence is not lost on restart (v0.11–v0.14)
+- Persistent warm state - the warm map survives restarts and is reconciled against live `/api/ps` on boot, so routing intelligence is not lost on restart (v0.11-v0.14)
 
 **KV / session preservation**
 - Session affinity - `X-Session-ID` sticky routing with TTL and graceful fallback, keeping backend KV cache warm across multi-turn conversations (v0.6.0)
 
 **Prediction**
-- Predictive prewarming - an in-memory transition ring buffer plus time-of-day patterns warm the next likely model *before* the request arrives (v0.11–v0.14)
+- Predictive prewarming - an in-memory transition ring buffer plus time-of-day patterns warm the next likely model *before* the request arrives (v0.11-v0.14)
 
 **Multi-runtime**
 - `RuntimeProbe` abstraction - Ollama, vLLM, TGI, and llama.cpp behind one OpenAI-compatible endpoint; path-aware routing (`/api/*` → Ollama, `/v1/*` → any) (v0.10.0)
@@ -45,12 +45,12 @@ production-hardened and free for any use under Apache-2.0.
 **Reliability & operations**
 - Pre-stream failover - dead node → retry alternate → cloud → 502 (v0.3.x)
 - Active/active HA - run two independent instances behind any TCP/L4 load balancer; peer `/health` awareness eliminates the single-proxy SPOF (v0.7.0)
-- Cost-aware cloud overflow - OpenAI/Anthropic fallback only when local capacity is saturated, with real per-token cost tracking and savings math (v0.2.x–v0.3.x)
+- Cost-aware cloud overflow - OpenAI/Anthropic fallback only when local capacity is saturated, with real per-token cost tracking and savings math (v0.2.x-v0.3.x)
 - Auth, per-key model allow-lists, rate limits, and daily/monthly quotas persisted across restarts (v0.3.x)
-- Observability - embedded admin dashboard, 14 Prometheus metrics, append-only audit log, analytics (v0.2.x–v0.9.x)
+- Observability - embedded admin dashboard, 14 Prometheus metrics, append-only audit log, analytics (v0.2.x-v0.9.x)
 - Day-2 ops - node drain, runtime key/node mutation, SIGHUP + HTTP config reload, structured JSON logging (v0.9.0)
-- `marbor bench` - reproducible cold-vs-warm TTFT measured through the marbor proxy (v0.11–v0.14)
-- Router decomposition - `placement` / `health` / `queue` split behind interfaces, so the next stages extend safely without touching the hot path (v0.11–v0.14)
+- `marbor bench` - reproducible cold-vs-warm TTFT measured through the marbor proxy (v0.11-v0.14)
+- Router decomposition - `placement` / `health` / `queue` split behind interfaces, so the next stages extend safely without touching the hot path (v0.11-v0.14)
 
 Full, dated release history lives in [CHANGELOG.md](CHANGELOG.md).
 

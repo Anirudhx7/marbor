@@ -1184,6 +1184,7 @@ export interface SystemAuditFilter {
   from?: string; // RFC3339
   to?: string;
   before?: string;
+  before_id?: number;
   limit?: number;
   kind?: string;
   action?: string;
@@ -1204,10 +1205,21 @@ function demoFilterSystemAudit(all: SystemAuditEntry[], f: SystemAuditFilter): S
   }
   if (f.before) {
     const beforeMs = new Date(f.before).getTime();
-    if (!isNaN(beforeMs)) filtered = filtered.filter((e) => new Date(e.time).getTime() < beforeMs);
+    if (!isNaN(beforeMs)) {
+      if (f.before_id != null) {
+        filtered = filtered.filter((e) => {
+          const t = new Date(e.time).getTime();
+          if (t < beforeMs) return true;
+          if (t > beforeMs) return false;
+          return (e.id ?? 0) < f.before_id!;
+        });
+      } else {
+        filtered = filtered.filter((e) => new Date(e.time).getTime() < beforeMs);
+      }
+    }
   }
   if (f.action) filtered = filtered.filter((e) => e.action === f.action);
-  if (f.user) filtered = filtered.filter((e) => e.username.toLowerCase().startsWith(f.user!.toLowerCase()));
+  if (f.user) filtered = filtered.filter((e) => e.username.toLowerCase().includes(f.user!.toLowerCase()));
   if (f.target) filtered = filtered.filter((e) => e.target.toLowerCase().includes(f.target!.toLowerCase()));
   if (f.source_ip) filtered = filtered.filter((e) => (e.source_ip || '').toLowerCase().includes(f.source_ip!.toLowerCase()));
   if (f.kind && f.kind !== 'all') {
@@ -1229,7 +1241,11 @@ function demoFilterSystemAudit(all: SystemAuditEntry[], f: SystemAuditFilter): S
     };
     filtered = filtered.filter((e) => toKind(e.action) === f.kind);
   }
-  filtered.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+  filtered.sort((a, b) => {
+    const d = new Date(b.time).getTime() - new Date(a.time).getTime();
+    if (d !== 0) return d;
+    return (b.id ?? 0) - (a.id ?? 0);
+  });
   const lim = f.limit && f.limit > 0 && f.limit <= 200 ? f.limit : 100;
   return filtered.slice(0, lim);
 }
@@ -1274,12 +1290,15 @@ export async function fetchSystemAuditFiltered(f: SystemAuditFilter = {}): Promi
       { time: isoDays(7), username: 'admin', action: 'delete_schedule', target: 'sched-1724170000000000001', details: '', source_ip: '192.168.1.5' },
       { time: isoDays(10), username: 'admin', action: 'add_key', target: 'ci-bot', details: 'RateLimit: 1000', source_ip: '10.0.0.1' },
     ];
+    // Assign stable ids for pagination tiebreaker demo - newest first gets highest id, matching autoincrement order.
+    all.forEach((e, idx) => { if (e.id == null) (e as any).id = 10000 - idx; });
     return demoFilterSystemAudit(all, { ...f, limit });
   }
   const params = new URLSearchParams();
   if (f.from) params.set('from', f.from);
   if (f.to) params.set('to', f.to);
   if (f.before) params.set('before', f.before);
+  if (f.before_id != null) params.set('before_id', String(f.before_id));
   if (f.limit) params.set('limit', String(limit));
   else params.set('limit', '100');
   if (f.kind) params.set('kind', f.kind);
@@ -1289,7 +1308,10 @@ export async function fetchSystemAuditFiltered(f: SystemAuditFilter = {}): Promi
   if (f.source_ip) params.set('source_ip', f.source_ip);
   const qs = params.toString();
   const res = await apiFetch(`${BASE}/system-audit${qs ? `?${qs}` : ''}`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch system audit logs');
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    throw new Error((j as any).error || 'Failed to fetch system audit logs');
+  }
   return res.json();
 }
 

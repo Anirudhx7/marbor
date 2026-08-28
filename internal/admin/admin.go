@@ -5128,7 +5128,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		cfg.HideBudgetBanner = false
 	}
 
-	// Per-user display timezone — so one user's Settings change doesn't affect
+	// Per-user display timezone - so one user's Settings change doesn't affect
 	// another user's wall-clock rendering. The global scheduler timezone is
 	// stored under "timezone" and drives s.router.localNow for fleet-wide
 	// scheduling, but the UI's TimezoneProvider prefers the per-user value
@@ -7681,6 +7681,19 @@ func (s *Server) handleSystemAudit(w http.ResponseWriter, r *http.Request) {
 		utc := t.UTC()
 		beforePtr = &utc
 	}
+	var beforeIDPtr *int64
+	if v := q.Get("before_id"); v != "" {
+		id, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			writeJSONError(w, http.StatusBadRequest, "invalid before_id")
+			return
+		}
+		beforeIDPtr = &id
+		if beforePtr == nil {
+			writeJSONError(w, http.StatusBadRequest, "before_id requires before")
+			return
+		}
+	}
 	kind := q.Get("kind")
 	if kind != "" && kind != "all" {
 		switch kind {
@@ -7705,7 +7718,7 @@ func (s *Server) handleSystemAudit(w http.ResponseWriter, r *http.Request) {
 	// If any enterprise filter is present, use filtered query for correct
 	// pagination and index use. Otherwise keep old simple path for backward
 	// compat and to avoid extra query planning overhead.
-	hasFilter := fromPtr != nil || toPtr != nil || beforePtr != nil || kind != "" || action != "" || username != "" || target != "" || sourceIP != ""
+	hasFilter := fromPtr != nil || toPtr != nil || beforePtr != nil || beforeIDPtr != nil || kind != "" || action != "" || username != "" || target != "" || sourceIP != ""
 	var entries []store.SystemAuditEntry
 	var err error
 	if hasFilter {
@@ -7713,6 +7726,7 @@ func (s *Server) handleSystemAudit(w http.ResponseWriter, r *http.Request) {
 			From:     fromPtr,
 			To:       toPtr,
 			Before:   beforePtr,
+			BeforeID: beforeIDPtr,
 			Limit:    limit,
 			Kind:     kind,
 			Action:   action,
@@ -8041,7 +8055,7 @@ func (s *Server) handleAnalyticsExport(w http.ResponseWriter, r *http.Request) {
 			cw := csv.NewWriter(w)
 			_ = cw.Write([]string{"hour", "local_requests", "cloud_requests", "saved_usd", "spent_usd"})
 			for _, b := range s.analytics.last24hBuckets() {
-				// b.Hour is UTC hour key "2006-01-02T15" — export as full RFC3339 Z
+				// b.Hour is UTC hour key "2006-01-02T15" - export as full RFC3339 Z
 				// so downstream consumers have an unambiguous instant, not a bare wall hour.
 				hourRFC3339 := b.Hour + ":00:00Z"
 				_ = cw.Write([]string{

@@ -671,7 +671,7 @@ func main() {
 					hour = h.Timestamp.In(loc).Hour()
 				}
 			} else {
-				// "Local" means server OS zone — In(Local) honors that host's zone.
+				// "Local" means server OS zone - In(Local) honors that host's zone.
 				hour = h.Timestamp.In(time.Local).Hour()
 			}
 			entries[i] = router.TransitionEntry{

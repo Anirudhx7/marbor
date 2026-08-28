@@ -85,7 +85,7 @@ const LOAD_TIME_FIELDS: FieldDef[] = [
 ];
 
 const INFERENCE_FIELDS: FieldDef[] = [
-  { key: 'temperature', label: 'Temperature', help: 'Sampling randomness. 0 = deterministic/focused, 2 = max chaos. Most chat use cases: 0.6–0.9.', type: 'slider', min: 0, max: 2, step: 0.05, sliderDefault: 0.8 },
+  { key: 'temperature', label: 'Temperature', help: 'Sampling randomness. 0 = deterministic/focused, 2 = max chaos. Most chat use cases: 0.6-0.9.', type: 'slider', min: 0, max: 2, step: 0.05, sliderDefault: 0.8 },
   { key: 'top_p', label: 'Top P (nucleus sampling)', help: 'Only sample from the smallest set of tokens whose cumulative probability reaches this. Lower = more focused.', type: 'slider', min: 0, max: 1, step: 0.05, sliderDefault: 0.9 },
   { key: 'top_k', label: 'Top K', help: 'Only sample from the top K candidate tokens. Lower = more focused, higher = more variety.', type: 'slider', min: 0, max: 100, step: 1, sliderDefault: 40 },
   { key: 'min_p', label: 'Min P', help: 'Minimum token probability relative to the top token’s probability.', type: 'slider', min: 0, max: 1, step: 0.01, sliderDefault: 0 },

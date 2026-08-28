@@ -380,6 +380,7 @@ export interface BackupFileInfo {
 }
 
 export interface SystemAuditEntry {
+  id?: number;
   time: string;
   username: string;
   action: string;

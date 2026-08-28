@@ -716,7 +716,7 @@ export function Warmup() {
       const sys = await fetchSystemInfo().catch(() => null);
       if (!active || requestId !== loadRequestId.current || currentAppPath() !== '/warmup') return;
       if (sys && sys.server_time && sys.timezone) {
-        // server_time is wall "YYYY-MM-DD HH:MM:SS" in sys.timezone — convert to
+        // server_time is wall "YYYY-MM-DD HH:MM:SS" in sys.timezone - convert to
         // a true UTC instant via wall->UTC so Intl with that zone re-emits same wall.
         const wallIso = sys.server_time.replace(' ', 'T');
         const utcIso = wallDateTimeToUtcIso(wallIso, sys.timezone) ?? new Date(sys.server_time.replace(' ', 'T')).toISOString();
@@ -789,7 +789,7 @@ export function Warmup() {
   }, [serverTime, location.pathname]);
 
   // Formats the serverTime UTC instant as wall time in `serverTimezone`
-  // (configured zone). No browser-local Date getters — Intl with zone.
+  // (configured zone). No browser-local Date getters - Intl with zone.
   const formatServerTime = (d: Date | null) => {
     if (!d) return 'Loading clock...';
     try {

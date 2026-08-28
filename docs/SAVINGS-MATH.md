@@ -8,11 +8,11 @@ Every figure in the marbor dashboard is derived from the formulas below. When to
 
 ## Executive Summary
 
-An engineering organization running multi-agent LLM workflows at scale - coding copilots, RAG pipelines, automated code review, internal search - consumes millions of tokens per day. At cloud API rates, this translates to $5,000–$50,000/month in direct API spend, depending on model tier and volume.
+An engineering organization running multi-agent LLM workflows at scale - coding copilots, RAG pipelines, automated code review, internal search - consumes millions of tokens per day. At cloud API rates, this translates to $5,000-$50,000/month in direct API spend, depending on model tier and volume.
 
 marbor enables organizations to route this traffic to owned GPU hardware first, falling back to cloud APIs only when local capacity is exhausted. The savings dashboard tracks every token served locally and values it against the cloud rate the organization would otherwise pay.
 
-**Typical result:** Platform teams running 2–4 GPU nodes with marbor report 60–85% reduction in cloud API spend within the first billing cycle, with the reduction visible in the dashboard from day one.
+**Typical result:** Platform teams running 2-4 GPU nodes with marbor report 60-85% reduction in cloud API spend within the first billing cycle, with the reduction visible in the dashboard from day one.
 
 ---
 
@@ -167,12 +167,12 @@ The reference rate (`reference_cost_per_1k`) is configured via the dashboard's *
 
 | Cloud Model | Rate (per 1K tokens) | Blended (70% in / 30% out) | Notes |
 |-------------|---------------------|---------------------------|-------|
-| GPT-4o mini | $0.00015–$0.0006 | ~$0.00028/1K | Cheapest quality tier |
-| GPT-4o | $0.0025–$0.01 | ~$0.005/1K | Most common enterprise default |
-| GPT-4.1 | $0.002–$0.008 | ~$0.0038/1K | Input vs output pricing |
-| Claude Haiku 4.5 | $0.0008–$0.004 | ~$0.0018/1K | Fast, cheap Anthropic tier |
-| Claude Sonnet 4 | $0.003–$0.015 | ~$0.0066/1K | Mid-tier; blended ≈ $0.006/1K |
-| Claude Opus 4 | $0.015–$0.075 | ~$0.033/1K | Premium; output-heavy = $0.075 |
+| GPT-4o mini | $0.00015-$0.0006 | ~$0.00028/1K | Cheapest quality tier |
+| GPT-4o | $0.0025-$0.01 | ~$0.005/1K | Most common enterprise default |
+| GPT-4.1 | $0.002-$0.008 | ~$0.0038/1K | Input vs output pricing |
+| Claude Haiku 4.5 | $0.0008-$0.004 | ~$0.0018/1K | Fast, cheap Anthropic tier |
+| Claude Sonnet 4 | $0.003-$0.015 | ~$0.0066/1K | Mid-tier; blended ≈ $0.006/1K |
+| Claude Opus 4 | $0.015-$0.075 | ~$0.033/1K | Premium; output-heavy = $0.075 |
 
 When the field is missing or zero, the default `$0.002/1K` applies. Changing the rate only affects requests recorded after the change; it does not retroactively revalue earlier requests.
 

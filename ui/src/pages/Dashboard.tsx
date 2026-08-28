@@ -326,7 +326,7 @@ export function Dashboard() {
   const [version, setVersion] = useState<string>('');
   const [setupKeys, setSetupKeys] = useState<APIKey[]>([]);
   const [setupRequests, setSetupRequests] = useState<RequestEntry[]>([]);
-  // isDismissed is session-only — checklist is only gone for good when completed
+  // isDismissed is session-only - checklist is only gone for good when completed
   // (enterprise-grade: dismiss is a hurry hide, not a permanent delete; reload
   // brings it back). Only isCompleted persists via localStorage.
   const [isDismissed, setIsDismissed] = useState<boolean>(false);
@@ -338,7 +338,7 @@ export function Dashboard() {
     }
   });
 
-  // One-time cleanup of legacy dismissed persistence from earlier builds — those
+  // One-time cleanup of legacy dismissed persistence from earlier builds - those
   // builds treated dismiss as gone-for-good via localStorage, which violates the
   // current enterprise rule (only completed is gone for good). Clear it so a
   // reload after this build correctly restores the checklist for operators who
@@ -440,7 +440,7 @@ export function Dashboard() {
     };
   }, [demoMode, location.pathname, isDismissed, isCompleted]);
 
-  // Mark setup completed once all 5 steps are done — persists forever (conservative)
+  // Mark setup completed once all 5 steps are done - persists forever (conservative)
   useEffect(() => {
     if (demoMode) return;
     if (isCompleted) return;
@@ -459,7 +459,7 @@ export function Dashboard() {
   }, [nodes, setupKeys, setupRequests, requests, demoMode, isCompleted]);
 
   const handleDismissSetup = () => {
-    // Immediate hide, no confirm — per R10 only destructive fleet actions need confirm.
+    // Immediate hide, no confirm - per R10 only destructive fleet actions need confirm.
     // Dismiss is session-only (not persisted): checklist is only gone for good when
     // completed (enterprise-grade). Hurry-dismiss can be undone via "Show again"
     // or simply reload; completed persists via STORAGE_COMPLETED and never reappears.
@@ -514,7 +514,7 @@ export function Dashboard() {
   const displayQueue = (isLive || demoMode) ? summary.queueDepth : 0;
   const displayWarmHitRatio = (isLive || demoMode) ? summary.warmHitRatio : 0;
 
-  // Setup checklist derived state — 5-step activation (Law 6: no new API)
+  // Setup checklist derived state - 5-step activation (Law 6: no new API)
   const hasNode = demoMode ? true : nodes.length > 0;
   const hasAgent = demoMode ? true : nodes.some((n) => !!n.agentPresent);
   const hasKey = demoMode ? true : setupKeys.some((k) => k.status === 'active');
@@ -525,7 +525,7 @@ export function Dashboard() {
     : nodes.find((n) => (n.loadedModels?.length ?? 0) > 0)?.loadedModels?.[0]?.name;
   const checklistDoneCount = [hasNode, hasAgent, hasKey, hasModel, hasRequest].filter(Boolean).length;
   const checklistAllDone = checklistDoneCount === 5;
-  // Demo 4/5 must be visible by default but still dismissible — so demo respects
+  // Demo 4/5 must be visible by default but still dismissible - so demo respects
   // isDismissed (session hide) but ignores isCompleted/persistence. Prod hides
   // when dismissed OR completed OR naturally 5/5.
   const showChecklist = !isDismissed && !checklistAllDone && (demoMode ? true : !isCompleted);
@@ -624,7 +624,7 @@ export function Dashboard() {
         />
       </div>
 
-      {/* Setup Checklist — first-run activation (5 steps, inline, dismissible, localStorage only) */}
+      {/* Setup Checklist - first-run activation (5 steps, inline, dismissible, localStorage only) */}
       {showChecklist ? (
         <SetupChecklist
           hasNode={hasNode}
@@ -636,7 +636,7 @@ export function Dashboard() {
           onDismiss={handleDismissSetup}
         />
       ) : (
-        // Dismissed but not completed — show subtle restore so an accidental/hasty X
+        // Dismissed but not completed - show subtle restore so an accidental/hasty X
         // does not require manual localStorage clear. No confirm on X (R10: only
         // destructive fleet actions need confirm), immediate hide + one-click restore.
         // Hidden when naturally 5/5 or when marbor-setup-completed is set.
@@ -645,7 +645,7 @@ export function Dashboard() {
         !checklistAllDone && (
           <div className="bg-card/50 border border-dashed border-border rounded-xl px-4 py-3 flex flex-wrap items-center justify-between gap-3">
             <span className="text-sm text-muted-foreground">
-              Setup checklist dismissed — {checklistDoneCount}/5 steps complete.
+              Setup checklist dismissed - {checklistDoneCount}/5 steps complete.
             </span>
             <button
               onClick={handleRestoreSetup}
