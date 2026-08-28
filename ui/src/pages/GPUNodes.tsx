@@ -143,7 +143,7 @@ function RuntimeBadge({ runtime }: { runtime: string }) {
     mlx:      'MLX (Apple Silicon)',
   };
   const key = (runtime || '').toLowerCase();
-  const style = runtimeStyles[key] ?? 'bg-gray-500/20 text-gray-600 dark:text-gray-400 border border-gray-500/30';
+  const style = runtimeStyles[key] ?? 'bg-secondary text-muted-foreground border border-border';
   const label = runtimeLabels[key] ?? (runtime || 'unknown');
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${style}`}>
