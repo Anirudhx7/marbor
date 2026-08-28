@@ -208,9 +208,63 @@ Flags:
 
 ### `key`
 
-per-API-key local/cloud routing overrides
+per-API-key local/cloud routing overrides (masked list, plaintext-once on create)
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+#### `list`
+
+list keys (masked)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+#### `create`
+
+create a key (prints plaintext once)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--name string` - key name (required) (required)
+- `--rate-limit int` - max requests per hour (0 = unlimited)
+- `--daily-limit int` - max requests per day (0 = unlimited)
+- `--monthly-limit int` - max requests per month (0 = unlimited)
+- `--daily-usd-cap string` - daily cloud spend cap in USD (0 = unlimited)
+- `--monthly-usd-cap string` - monthly cloud spend cap in USD (0 = unlimited)
+- `--models string` - comma-separated allowed models (empty = all)
+- `--expires-at string` - expiry date (2006-01-02 or RFC3339)
+- `--key string` - explicit secret (default: server-generated)
+- `--local-only string` - block cloud fallback: true or false
+- `--allow-local-degradation string` - allow local alternate model: true or false
+
+#### `revoke <name>`
+
+revoke (delete) a key
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--yes` - confirm revocation without prompting
+
+#### `patch <name>`
+
+update key settings
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--rate-limit string` - max requests per hour (0 = unlimited)
+- `--daily-limit string` - max requests per day (0 = unlimited)
+- `--monthly-limit string` - max requests per month (0 = unlimited)
+- `--daily-usd-cap string` - daily cloud spend cap in USD
+- `--monthly-usd-cap string` - monthly cloud spend cap in USD
+- `--models string` - comma-separated allowed models (empty = clear)
+- `--expires-at string` - expiry date (2006-01-02 or RFC3339, empty = clear)
+- `--local-only string` - block cloud fallback: true or false
+- `--allow-local-degradation string` - allow local alternate model: true or false
 
 #### `set-local-only <name> <true|false>`
 
@@ -265,6 +319,82 @@ Requires authentication - see the root README's CLI auth section, or run `marbor
 show why the router picked the node it did for one request
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+### `users`
+
+manage dashboard users
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+#### `list`
+
+list users
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+#### `create`
+
+create a user (password printed once)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--user string` - username for the new user (required) (required)
+- `--email string` - email for the new user
+- `--role string` - role: admin or user
+
+#### `approve <id>`
+
+approve a pending user
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--api-key-name string` - API key name to assign
+- `--create-key` - create an API key for the user
+- `--key-rate-limit int` - rate limit for the new key (per hour)
+- `--key-daily-limit int` - daily limit for the new key
+- `--key-monthly-limit int` - monthly limit for the new key
+- `--key-models string` - comma-separated allowed models for the new key
+
+#### `suspend <id>`
+
+suspend a user and revoke sessions
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--yes` - confirm suspension without prompting
+
+#### `reset-password <id>`
+
+reset a user's password (printed once)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+#### `patch <id>`
+
+update a user's email or role
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--email string` - new email
+- `--role string` - new role: admin or user
+
+#### `delete <id>`
+
+delete a user
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--yes` - confirm deletion without prompting
 
 ### `completion <shell>`
 

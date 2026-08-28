@@ -286,9 +286,70 @@ func buildRoot() *Command {
 				// so writeHelp's group-help shape prints authFlagsRows -
 				// matching printKeyUsage's old output.
 				Name:      "key",
-				Short:     "per-API-key local/cloud routing overrides",
+				Short:     "per-API-key local/cloud routing overrides (masked list, plaintext-once on create)",
 				NeedsAuth: true,
 				Sub: []*Command{
+					{
+						Name:      "list",
+						Short:     "list keys (masked)",
+						NeedsAuth: true,
+						Run: func(ctx *RunCtx) int {
+							return runKeyList(ctx.Flags, ctx.Stdout, ctx.Stderr)
+						},
+					},
+					{
+						Name:      "create",
+						Short:     "create a key (prints plaintext once)",
+						NeedsAuth: true,
+						Flags: []FlagSpec{
+							{Name: "name", Kind: FlagString, Usage: "key name (required)", Required: true, RequiredMsg: "error: --name is required"},
+							{Name: "rate-limit", Kind: FlagInt, Usage: "max requests per hour (0 = unlimited)"},
+							{Name: "daily-limit", Kind: FlagInt, Usage: "max requests per day (0 = unlimited)"},
+							{Name: "monthly-limit", Kind: FlagInt, Usage: "max requests per month (0 = unlimited)"},
+							{Name: "daily-usd-cap", Kind: FlagString, Usage: "daily cloud spend cap in USD (0 = unlimited)"},
+							{Name: "monthly-usd-cap", Kind: FlagString, Usage: "monthly cloud spend cap in USD (0 = unlimited)"},
+							{Name: "models", Kind: FlagString, Usage: "comma-separated allowed models (empty = all)"},
+							{Name: "expires-at", Kind: FlagString, Usage: "expiry date (2006-01-02 or RFC3339)"},
+							{Name: "key", Kind: FlagString, Usage: "explicit secret (default: server-generated)"},
+							{Name: "local-only", Kind: FlagString, Usage: "block cloud fallback: true or false"},
+							{Name: "allow-local-degradation", Kind: FlagString, Usage: "allow local alternate model: true or false"},
+						},
+						Run: func(ctx *RunCtx) int {
+							return runKeyCreate(ctx.Flags, ctx.Stdout, ctx.Stderr, ctx)
+						},
+					},
+					{
+						Name:      "revoke",
+						Short:     "revoke (delete) a key",
+						NeedsAuth: true,
+						Args:      []ArgSpec{{Name: "name"}},
+						Flags: []FlagSpec{
+							{Name: "yes", Kind: FlagBool, Usage: "confirm revocation without prompting"},
+						},
+						Run: func(ctx *RunCtx) int {
+							return runKeyRevoke(ctx.Flags, ctx.Args[0], ctx.Stdout, ctx.Stderr, ctx)
+						},
+					},
+					{
+						Name:      "patch",
+						Short:     "update key settings",
+						NeedsAuth: true,
+						Args:      []ArgSpec{{Name: "name"}},
+						Flags: []FlagSpec{
+							{Name: "rate-limit", Kind: FlagString, Usage: "max requests per hour (0 = unlimited)"},
+							{Name: "daily-limit", Kind: FlagString, Usage: "max requests per day (0 = unlimited)"},
+							{Name: "monthly-limit", Kind: FlagString, Usage: "max requests per month (0 = unlimited)"},
+							{Name: "daily-usd-cap", Kind: FlagString, Usage: "daily cloud spend cap in USD"},
+							{Name: "monthly-usd-cap", Kind: FlagString, Usage: "monthly cloud spend cap in USD"},
+							{Name: "models", Kind: FlagString, Usage: "comma-separated allowed models (empty = clear)"},
+							{Name: "expires-at", Kind: FlagString, Usage: "expiry date (2006-01-02 or RFC3339, empty = clear)"},
+							{Name: "local-only", Kind: FlagString, Usage: "block cloud fallback: true or false"},
+							{Name: "allow-local-degradation", Kind: FlagString, Usage: "allow local alternate model: true or false"},
+						},
+						Run: func(ctx *RunCtx) int {
+							return runKeyPatch(ctx.Flags, ctx.Args[0], ctx.Stdout, ctx.Stderr, ctx)
+						},
+					},
 					{
 						Name:      "set-local-only",
 						Short:     "block (or re-allow) cloud fallback for one API key",
@@ -351,6 +412,97 @@ func buildRoot() *Command {
 						NeedsAuth: true,
 						Args:      []ArgSpec{{Name: "request-id"}},
 						Run:       func(ctx *RunCtx) int { return runRequestsExplain(ctx.Flags, ctx.Args[0], ctx.Stdout, ctx.Stderr) },
+					},
+				},
+			},
+			{
+				Name:      "users",
+				Short:     "manage dashboard users",
+				NeedsAuth: true,
+				Sub: []*Command{
+					{
+						Name:      "list",
+						Short:     "list users",
+						NeedsAuth: true,
+						Run: func(ctx *RunCtx) int {
+							return runUsersList(ctx.Flags, ctx.Stdout, ctx.Stderr)
+						},
+					},
+					{
+						Name:      "create",
+						Short:     "create a user (password printed once)",
+						NeedsAuth: true,
+						Flags: []FlagSpec{
+							{Name: "user", Kind: FlagString, Usage: "username for the new user (required)", Required: true, RequiredMsg: "error: --user is required"},
+							{Name: "email", Kind: FlagString, Usage: "email for the new user"},
+							{Name: "role", Kind: FlagString, Usage: "role: admin or user"},
+						},
+						Run: func(ctx *RunCtx) int {
+							return runUsersCreate(ctx.Flags, ctx.Stdout, ctx.Stderr, ctx)
+						},
+					},
+					{
+						Name:      "approve",
+						Short:     "approve a pending user",
+						NeedsAuth: true,
+						Args:      []ArgSpec{{Name: "id"}},
+						Flags: []FlagSpec{
+							{Name: "api-key-name", Kind: FlagString, Usage: "API key name to assign"},
+							{Name: "create-key", Kind: FlagBool, Usage: "create an API key for the user"},
+							{Name: "key-rate-limit", Kind: FlagInt, Usage: "rate limit for the new key (per hour)"},
+							{Name: "key-daily-limit", Kind: FlagInt, Usage: "daily limit for the new key"},
+							{Name: "key-monthly-limit", Kind: FlagInt, Usage: "monthly limit for the new key"},
+							{Name: "key-models", Kind: FlagString, Usage: "comma-separated allowed models for the new key"},
+						},
+						Run: func(ctx *RunCtx) int {
+							return runUsersApprove(ctx.Flags, ctx.Args[0], ctx.Stdout, ctx.Stderr, ctx)
+						},
+					},
+					{
+						Name:      "suspend",
+						Short:     "suspend a user and revoke sessions",
+						NeedsAuth: true,
+						Args:      []ArgSpec{{Name: "id"}},
+						Flags: []FlagSpec{
+							{Name: "yes", Kind: FlagBool, Usage: "confirm suspension without prompting"},
+						},
+						Run: func(ctx *RunCtx) int {
+							return runUsersSuspend(ctx.Flags, ctx.Args[0], ctx.Stdout, ctx.Stderr, ctx)
+						},
+					},
+					{
+						Name:      "reset-password",
+						Short:     "reset a user's password (printed once)",
+						NeedsAuth: true,
+						Args:      []ArgSpec{{Name: "id"}},
+						Run: func(ctx *RunCtx) int {
+							return runUsersResetPassword(ctx.Flags, ctx.Args[0], ctx.Stdout, ctx.Stderr)
+						},
+					},
+					{
+						Name:      "patch",
+						Short:     "update a user's email or role",
+						NeedsAuth: true,
+						Args:      []ArgSpec{{Name: "id"}},
+						Flags: []FlagSpec{
+							{Name: "email", Kind: FlagString, Usage: "new email"},
+							{Name: "role", Kind: FlagString, Usage: "new role: admin or user"},
+						},
+						Run: func(ctx *RunCtx) int {
+							return runUsersPatch(ctx.Flags, ctx.Args[0], ctx.Stdout, ctx.Stderr, ctx)
+						},
+					},
+					{
+						Name:      "delete",
+						Short:     "delete a user",
+						NeedsAuth: true,
+						Args:      []ArgSpec{{Name: "id"}},
+						Flags: []FlagSpec{
+							{Name: "yes", Kind: FlagBool, Usage: "confirm deletion without prompting"},
+						},
+						Run: func(ctx *RunCtx) int {
+							return runUsersDelete(ctx.Flags, ctx.Args[0], ctx.Stdout, ctx.Stderr, ctx)
+						},
 					},
 				},
 			},

@@ -1,6 +1,10 @@
 Usage: marbor key [action] [args] [flags]
 
 Actions:
+  list                                             list keys (masked)
+  create                                           create a key (prints plaintext once)
+  revoke <name>                                    revoke (delete) a key
+  patch <name>                                     update key settings
   set-local-only <name> <true|false>               block (or re-allow) cloud fallback for one API key
   set-allow-local-degradation <name> <true|false>  let (or forbid) one API key receive a local alternate model
 

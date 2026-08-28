@@ -5,3 +5,4 @@ marbor-runtime.1
 marbor-node.1
 marbor-key.1
 marbor-requests.1
+marbor-users.1
