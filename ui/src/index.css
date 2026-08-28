@@ -39,47 +39,47 @@
 
 @layer base {
   :root {
-    /* Brand amber accent */
-    --brand: #664e14;
-    --brand-dim: #54400f;
-    --brand-bg: rgba(102,78,20,0.07);
+    /* Brand amber accent - richer antique bronze for healthy contrast on warm paper */
+    --brand: #6c5613;
+    --brand-dim: #57450f;
+    --brand-bg: rgba(108,86,19,0.09);
 
-    /* Warm Paper Light Theme (matches Dark Theme's warm hue-30 base) */
-    --background: 45 23% 92%; /* Low-strain warm paper base */
+    /* Warm Paper Light Theme - healthy element contrast redesign P400 */
+    --background: 45 20% 90%; /* Deeper warm paper lets card breathe 1.16 vs bg, reduces glare */
     --foreground: 45 9% 15%; /* Soft warm charcoal (prevents halation) */
-    --card: 42 43% 96%; /* Softer ivory for cards */
+    --card: 42 35% 97%; /* Cleaner ivory, less saturated for lift */
     --card-foreground: 45 9% 15%;
-    --popover: 42 43% 96%;
+    --popover: 42 35% 97%;
     --popover-foreground: 45 9% 15%;
 
-    --primary: 45 67% 24%; /* Soft antique bronze (matches #664e14) */
+    --primary: 45 70% 25%; /* Richer antique bronze 5.76 on bg, s70 vs 67 */
     --primary-foreground: 45 23% 92%;
 
-    --secondary: 45 15% 88%; /* Soft sand */
+    --secondary: 45 12% 86%; /* Deeper sand 1.11 vs bg, 1.28 vs card - visible field */
     --secondary-foreground: 45 9% 15%;
 
-    --muted: 45 15% 88%;
-    --muted-foreground: 45 8% 30%; /* Softer text for secondary labels to avoid strain */
+    --muted: 45 12% 86%;
+    --muted-foreground: 45 7% 36%; /* Softer receded 5.22 on bg, 6.03 on card vs heavy 6.88 */
 
-    --accent: 45 15% 88%;
+    --accent: 45 12% 86%;
     --accent-foreground: 45 9% 15%;
 
-    --destructive: 346.8 60% 40%; /* Softer red */
+    --destructive: 346.8 60% 40%; /* Softer red 6.70 on card */
     --destructive-foreground: 45 23% 92%;
 
-    --success: 142.1 45% 30%; /* AA 5.66 on card, 4.60 on tinted 15% bg */
+    --success: 142.1 55% 28%; /* More chromatic forest 5.82 on card, 4.68 on tint */
     --success-foreground: 45 23% 92%;
 
-    --warning: 24 80% 34%; /* AA 5.80 on card, 4.67 on tinted 15% bg */
+    --warning: 24 90% 32%; /* Safety orange 6.19 on card, 4.95 on tint vs burnt sienna */
     --warning-foreground: 45 23% 92%;
 
-    --info: 221.2 55% 40%; /* Softer blue */
+    --info: 221.2 60% 38%; /* Richer blue 7.72 on card */
     --info-foreground: 45 23% 92%;
 
-    --border: 45 18% 78%; /* Visible card separation on warm paper (1.37 vs bg, 1.49 vs card) */
-    --input: 45 18% 78%;
-    --ring: 45 67% 24%;
-    --grid: rgba(102, 78, 20, 0.018);
+    --border: 45 16% 73%; /* Healthy card separation 1.49 vs bg, 1.72 vs card */
+    --input: 45 16% 73%;
+    --ring: 45 70% 25%;
+    --grid: rgba(108, 86, 19, 0.022);
   }
 
   .dark {
@@ -195,9 +195,13 @@ html {
   animation: fade-in 0.3s ease-out forwards;
 }
 
-/* Base Shadow styles to prevent 'flatness' in light mode */
+/* Base Shadow styles to prevent 'flatness' in light mode - warm ink shadow */
 .glass-panel {
-  @apply bg-card border border-border shadow-sm dark:shadow-none transition-all duration-200;
+  @apply bg-card border border-border dark:shadow-none transition-all duration-200;
+  box-shadow: 0 1px 3px rgba(28,24,12,0.06), 0 1px 2px rgba(28,24,12,0.04);
+}
+.dark .glass-panel {
+  box-shadow: none;
 }
 
 /* Premium custom styling for HTML5 Date, Time, and Datetime inputs */
