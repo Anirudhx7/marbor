@@ -7,6 +7,8 @@ import { Modal } from '../components/Modal';
 import { CustomSelect } from '../components/Select';
 import { currentAppPath } from '../hooks/useDemoMode';
 import { toActivityKind, getActivityKindLabel, getActivityKindColor, type ActivityKind } from '../lib/activityKind';
+import { useTimezone } from '../hooks/useTimezone';
+import { formatDateTimeInZone, formatInTimezone } from '../lib/time';
 
 const AUTO_REFRESH_INTERVAL_MS = 30_000;
 const AUDIT_LIMIT = 200;
@@ -23,20 +25,17 @@ function isOnActivityPage(): boolean {
   return (q === -1 ? p : p.slice(0, q)) === '/activity';
 }
 
-function formatDateTime(isoString: string): string {
+function formatUpdatedTime(d: Date, tz: string): string {
   try {
-    const d = new Date(isoString);
-    if (isNaN(d.getTime())) return isoString;
-    return d.toLocaleString(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
+    return formatInTimezone(d.toISOString(), tz, {
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
     });
   } catch {
-    return isoString;
+    // Should never throw (formatInTimezone already swallows), but keep a
+    // non-locale-dependent fallback so this header never renders blank.
+    return d.toISOString().slice(11, 19);
   }
 }
 
@@ -68,6 +67,7 @@ function getAuditActionColor(action: string) {
 type ActivityView = 'fleet' | 'audit';
 
 export function Activity() {
+  const tz = useTimezone();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const view: ActivityView = searchParams.get('view') === 'audit' ? 'audit' : 'fleet';
@@ -232,7 +232,7 @@ export function Activity() {
         <div className="flex items-center gap-3">
           {lastRefreshed && (
             <span className="text-[11px] text-muted-foreground/60 hidden sm:block">
-              Updated {lastRefreshed.toLocaleTimeString()}
+              Updated {formatUpdatedTime(lastRefreshed, tz)}
             </span>
           )}
           <button
@@ -407,7 +407,7 @@ export function Activity() {
                       triggered by {d.trigger_model} - seen {d.transition_count}x at hour {d.hour}
                     </p>
                   </div>
-                  <span className="font-mono text-xs text-muted-foreground whitespace-nowrap">{formatDateTime(d.timestamp)}</span>
+                  <span className="font-mono text-xs text-muted-foreground whitespace-nowrap">{formatDateTimeInZone(d.timestamp, tz)}</span>
                 </div>
               ))}
             </div>
@@ -512,7 +512,7 @@ export function Activity() {
                     onClick={() => setSelectedEntry(e)}
                   >
                     <td className="px-5 py-3.5 font-mono text-xs text-muted-foreground whitespace-nowrap">
-                      {formatDateTime(e.time)}
+                      {formatDateTimeInZone(e.time, tz)}
                     </td>
                     {view === 'fleet' && (
                       <td className="px-5 py-3.5 whitespace-nowrap">
@@ -603,7 +603,7 @@ export function Activity() {
                     <span className="truncate">{e.username}</span>
                   </div>
                   <span className="font-mono text-xs text-muted-foreground whitespace-nowrap">
-                    {formatDateTime(e.time)}
+                    {formatDateTimeInZone(e.time, tz)}
                   </span>
                 </div>
                 <div className="mt-2 font-mono text-xs text-foreground truncate" title={e.target}>
@@ -654,7 +654,7 @@ export function Activity() {
                 <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Timestamp</p>
                 <p className="text-sm font-mono text-foreground mt-1 flex items-center gap-1.5">
                   <Calendar className="w-4 h-4 text-primary" />
-                  {formatDateTime(selectedEntry.time)}
+                  {formatDateTimeInZone(selectedEntry.time, tz)}
                 </p>
               </div>
 

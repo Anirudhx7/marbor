@@ -7,6 +7,8 @@ import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
 import { CustomSelect } from '../components/Select';
 import { currentAppPath } from '../hooks/useDemoMode';
+import { useTimezone } from '../hooks/useTimezone';
+import { formatDateInZone } from '../lib/time';
 
 const STATUS_BADGE: Record<string, { variant: 'warning' | 'success' | 'destructive' | 'muted'; label: string }> = {
   pending:   { variant: 'warning',     label: 'Pending' },
@@ -333,6 +335,7 @@ function CreateUserModal({ onClose, onDone }: CreateUserModalProps) {
 // ── Main Users Page ───────────────────────────────────────────────────────────
 
 export function Users() {
+  const tz = useTimezone();
   const currentUsername = loadSession()?.username ?? '';
   const location = useLocation();
   const [users, setUsers] = useState<UserRecord[]>([]);
@@ -461,7 +464,7 @@ export function Users() {
                         {u.api_key_name || '-'}
                       </td>
                       <td className="px-4 py-3 text-xs text-muted-foreground">
-                        {new Date(u.created_at).toLocaleDateString()}
+                        {formatDateInZone(u.created_at, tz)}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1">
@@ -534,7 +537,7 @@ export function Users() {
                     </div>
                     <div>
                       <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Created</p>
-                      <p className="text-sm text-foreground">{new Date(u.created_at).toLocaleDateString()}</p>
+                      <p className="text-sm text-foreground">{formatDateInZone(u.created_at, tz)}</p>
                     </div>
                   </div>
 

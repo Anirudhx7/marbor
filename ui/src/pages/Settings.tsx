@@ -10,6 +10,9 @@ import type { Settings, CloudProvider, CloudProviderInput, BackupFileInfo } from
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import { useCurrency, CURRENCY_PRESETS } from '../hooks/useCurrency';
 import { CustomSelect, CustomCombobox, CustomTagCombobox } from '../components/Select';
+import { useTimezone } from '../hooks/useTimezone';
+import { formatDateTimeInZone } from '../lib/time';
+import { notifyTimezoneChanged } from '../hooks/useTimezone';
 
 // Known cloud fallback providers. All use plain `Authorization: Bearer <key>`
 // auth and an OpenAI-compatible /chat/completions schema, matching this
@@ -118,6 +121,7 @@ const getTimezoneLabel = (tz: string): string => {
 };
 
 export function SettingsPage() {
+  const tz = useTimezone();
   const { demoMode, setDemoMode } = useDemoMode();
   const location = useLocation();
   const navigate = useNavigate();
@@ -445,6 +449,9 @@ export function SettingsPage() {
 
       await updateSettings(payload);
       window.dispatchEvent(new Event('marbor-settings-change'));
+      // Wake TimezoneProvider instantly so Activity/etc re-render without waiting
+      // for the 15s poll (P393 instant re-render acceptance).
+      notifyTimezoneChanged();
       // The just-saved values are now the pristine baseline - clear the
       // dirty flag so a subsequent settings reload (e.g. a Demo Mode
       // toggle) is free to apply fresh server-side values again.
@@ -1772,7 +1779,7 @@ export function SettingsPage() {
               </p>
               {settings.backupLastAt && (
                 <p className="text-xs text-muted-foreground mt-1.5">
-                  Last scheduled backup: {new Date(settings.backupLastAt).toLocaleString()}
+                  Last scheduled backup: {formatDateTimeInZone(settings.backupLastAt, tz)}
                 </p>
               )}
               {settings.backupLastError && (
@@ -1895,7 +1902,7 @@ export function SettingsPage() {
                 </div>
                 {selectedBackup && (
                   <p className="text-[10px] text-muted-foreground mt-1.5">
-                    {new Date(selectedBackup.modified_at).toLocaleString()} - {formatBackupSize(selectedBackup.size_bytes)}
+                    {formatDateTimeInZone(selectedBackup.modified_at, tz)} - {formatBackupSize(selectedBackup.size_bytes)}
                   </p>
                 )}
               </div>

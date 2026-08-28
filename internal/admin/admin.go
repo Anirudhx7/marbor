@@ -5125,6 +5125,23 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		cfg.HideBudgetBanner = false
 	}
 
+	// Per-user display timezone — so one user's Settings change doesn't affect
+	// another user's wall-clock rendering. The global scheduler timezone is
+	// stored under "timezone" and drives s.router.localNow for fleet-wide
+	// scheduling, but the UI's TimezoneProvider prefers the per-user value
+	// returned here. If the user has never set a personal timezone, seed from
+	// the global scheduler value (if any) so an existing fleet's prior global
+	// choice becomes each user's initial per-user display value; after seeding,
+	// later global changes won't affect that user's display (per-user isolation).
+	if val, err := s.st.GetSetting("pref:" + username + ":timezone"); err == nil && val != "" {
+		cfg.Timezone = val
+	} else if gv, err := s.st.GetSetting("timezone"); err == nil && gv != "" && gv != "Local" {
+		cfg.Timezone = gv
+		_ = s.st.SetSetting("pref:"+username+":timezone", gv)
+	} else {
+		cfg.Timezone = "Local"
+	}
+
 	// Backup.LastBackupAt/LastBackupError are read-only status, never stored
 	// on cfg itself - overlay the live in-memory state (seeded from the
 	// backup_last_at/backup_last_error settings on LoadFromStore, updated by
@@ -5233,6 +5250,17 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	s.router.SetTimezone(incoming.Timezone)
 	s.router.SetLiteLLM(incoming.LiteLLM)
+	// Per-user display timezone (so one user's change doesn't affect others'
+	// wall-clock rendering via handleSettings's per-user override above).
+	// We still persist the global "timezone" for the fleet-wide scheduler
+	// (router.localNow) so scheduling follows the last admin's choice.
+	tzUsername, _ := r.Context().Value(ctxKeyUsername).(string)
+	if tzUsername == "" {
+		tzUsername = "admin"
+	}
+	if err := s.st.SetSetting("pref:"+tzUsername+":timezone", incoming.Timezone); err != nil {
+		log.Printf("admin: failed to persist per-user timezone setting: %v", err)
+	}
 	if err := s.st.SetSetting("timezone", incoming.Timezone); err != nil {
 		log.Printf("admin: failed to persist timezone setting: %v", err)
 	}
@@ -7929,8 +7957,11 @@ func (s *Server) handleAnalyticsExport(w http.ResponseWriter, r *http.Request) {
 			cw := csv.NewWriter(w)
 			_ = cw.Write([]string{"hour", "local_requests", "cloud_requests", "saved_usd", "spent_usd"})
 			for _, b := range s.analytics.last24hBuckets() {
+				// b.Hour is UTC hour key "2006-01-02T15" — export as full RFC3339 Z
+				// so downstream consumers have an unambiguous instant, not a bare wall hour.
+				hourRFC3339 := b.Hour + ":00:00Z"
 				_ = cw.Write([]string{
-					b.Hour,
+					hourRFC3339,
 					strconv.FormatInt(b.Local, 10),
 					strconv.FormatInt(b.Cloud, 10),
 					strconv.FormatFloat(b.SavedUSD, 'f', 6, 64),
@@ -7950,8 +7981,28 @@ func (s *Server) handleAnalyticsExport(w http.ResponseWriter, r *http.Request) {
 			"by_model": s.analytics.topModels(),
 		})
 	default: // hourly
+		buckets := s.analytics.last24hBuckets()
+		// Transform bare hour keys to RFC3339 Z for an unambiguous wire (P393 U12)
+		type exportBucket struct {
+			Hour          string  `json:"hour"`
+			Local         int64   `json:"local"`
+			Cloud         int64   `json:"cloud"`
+			SavedUSD      float64 `json:"saved_usd"`
+			SpentUSD      float64 `json:"spent_usd"`
+			Tokens        int64   `json:"tokens"`
+			GenDurationMs int64   `json:"gen_duration_ms"`
+			TokensPerSec  float64 `json:"tokens_per_sec"`
+		}
+		out := make([]exportBucket, len(buckets))
+		for i, b := range buckets {
+			out[i] = exportBucket{
+				Hour: b.Hour + ":00:00Z", Local: b.Local, Cloud: b.Cloud,
+				SavedUSD: b.SavedUSD, SpentUSD: b.SpentUSD, Tokens: b.Tokens,
+				GenDurationMs: b.GenDurationMs, TokensPerSec: b.TokensPerSec,
+			}
+		}
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"hourly": s.analytics.last24hBuckets(),
+			"hourly": out,
 		})
 	}
 }
