@@ -6,7 +6,7 @@ import type { SystemAuditEntry, PredictiveDecision } from '../types';
 import { Modal } from '../components/Modal';
 import { CustomSelect } from '../components/Select';
 import { CustomDateTimePicker } from '../components/DateTimePicker';
-import { ClearableInput, FilterField } from '../components/FilterField';
+import { ClearableInput, FilterField, FilterBar, FilterBarGrid, FilterBarClear } from '../components/FilterField';
 import { currentAppPath } from '../hooks/useDemoMode';
 import { toActivityKind, getActivityKindLabel, getActivityKindColor, type ActivityKind } from '../lib/activityKind';
 import { useTimezone } from '../hooks/useTimezone';
@@ -356,12 +356,12 @@ export function Activity() {
       </div>
 
       {/* Predictive decisions - distinct section, not interleaved */}
-      <div className="bg-card border border-border/60 rounded-xl overflow-hidden shadow-sm">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-border/60 bg-secondary/30">
+      <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-secondary/30">
           <div className="flex items-center gap-2">
             <BrainCircuit className="w-4 h-4 text-primary" />
             <h2 className="text-sm font-semibold text-foreground">Predictive Warmup Decisions</h2>
-            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${getActivityKindColor('predictive')}`}>
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border ${getActivityKindColor('predictive')}`}>
               {filteredDecisions.length} recent
             </span>
           </div>
@@ -372,7 +372,7 @@ export function Activity() {
             No predictive decisions recorded yet.
           </div>
         ) : (
-          <div className="divide-y divide-border/40">
+          <div className="divide-y divide-border">
             {filteredDecisions.slice(0, 10).map((d, i) => (
               <div key={`${d.timestamp}-${d.predicted_model}-${i}`} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4 px-5 py-3 text-sm">
                 <div className="min-w-0">
@@ -394,8 +394,8 @@ export function Activity() {
         )}
       </div>
 
-      {/* Enterprise Filter Bar */}
-      <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-4 shadow-sm space-y-4">
+      {/* Filter bar - FilterBar shared primitive (parity with Requests) */}
+      <FilterBar>
         {/* Row 1: Quick range select + always-visible From/To - mirrors
             Requests.tsx's Quick range / From / Until layout instead of a
             pill toggle that only reveals the date pickers behind a "Custom"
@@ -426,8 +426,7 @@ export function Activity() {
 
         {/* Row 2: Kind, Action, Operator */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div>
-            <label className="block text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1">Kind</label>
+          <FilterField label="Kind">
             <CustomSelect
               value={kindFilter}
               onChange={(v) => setKindFilter(v as ActivityKind | 'all')}
@@ -436,9 +435,8 @@ export function Activity() {
                 label: k === 'all' ? 'All Kinds' : getActivityKindLabel(k as ActivityKind),
               }))}
             />
-          </div>
-          <div>
-            <label className="block text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1">Action</label>
+          </FilterField>
+          <FilterField label="Action">
             <CustomSelect
               value={actionFilter}
               onChange={setActionFilter}
@@ -447,9 +445,8 @@ export function Activity() {
                 label: a === 'all' ? 'All Actions' : getActionLabel(a),
               }))}
             />
-          </div>
-          <div>
-            <label className="block text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1">Operator</label>
+          </FilterField>
+          <FilterField label="Operator">
             <CustomSelect
               value={userFilter}
               onChange={setUserFilter}
@@ -458,7 +455,7 @@ export function Activity() {
                 label: u === 'all' ? 'All Operators' : u,
               }))}
             />
-          </div>
+          </FilterField>
         </div>
 
         {/* Row 3: Target, Source IP, Search - ClearableInput brings the same
@@ -473,7 +470,6 @@ export function Activity() {
               onChange={(e) => setTargetInput(e.target.value)}
               onClear={() => setTargetInput('')}
               icon={<Search className="w-3.5 h-3.5" />}
-              className="py-2 bg-secondary/80 text-foreground border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/60"
             />
           </FilterField>
           <FilterField label="Source IP contains">
@@ -484,7 +480,7 @@ export function Activity() {
               onChange={(e) => setSourceIpInput(e.target.value)}
               onClear={() => setSourceIpInput('')}
               icon={<Globe className="w-3.5 h-3.5" />}
-              className="py-2 bg-secondary/80 text-foreground border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/60 font-mono"
+              className="font-mono"
             />
           </FilterField>
           <FilterField label="Search details">
@@ -495,33 +491,24 @@ export function Activity() {
               onChange={(e) => setSearchQuery(e.target.value)}
               onClear={() => setSearchQuery('')}
               icon={<Search className="w-3.5 h-3.5" />}
-              className="py-2 bg-secondary/80 text-foreground border border-border rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/60"
             />
           </FilterField>
         </div>
 
         {hasActiveFilters && (
-          <div className="flex items-center justify-between pt-2 border-t border-border/40">
-            <span className="text-xs text-muted-foreground">Server-filtered to {totalFetched} events, {filteredEntries.length} after local detail search</span>
-            <button
-              onClick={clearAllFilters}
-              className="px-3 py-1.5 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg text-xs font-medium"
-            >
-              Clear all filters
-            </button>
-          </div>
+          <FilterBarClear countText={`Server-filtered to ${totalFetched} events, ${filteredEntries.length} after local search`} onClear={clearAllFilters} />
         )}
-      </div>
+      </FilterBar>
 
-      {/* Main Timeline Table */}
-      <div className="bg-card border border-border/60 rounded-xl overflow-hidden shadow-sm">
+      {/* Main Timeline Table - parity: same header/row/border as Requests */}
+      <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
         {loading ? (
           <div className="p-12 text-center text-muted-foreground text-sm flex flex-col items-center justify-center gap-2">
             <RefreshCw className="w-6 h-6 animate-spin text-primary" />
             Loading fleet activity...
           </div>
         ) : error ? (
-          <div className="p-8 text-center text-rose-600 dark:text-rose-400 text-sm flex flex-col items-center justify-center gap-2">
+          <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-sm font-medium flex flex-col items-center justify-center gap-2">
             <AlertCircle className="w-6 h-6 text-rose-600 dark:text-rose-400" />
             {error}
           </div>
@@ -543,43 +530,43 @@ export function Activity() {
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-left text-sm">
               <thead>
-                <tr className="border-b border-border/60 bg-secondary/40 text-muted-foreground font-medium">
-                  <th className="px-5 py-3.5">Time</th>
-                  <th className="px-5 py-3.5">Kind</th>
-                  <th className="px-5 py-3.5">Action</th>
-                  <th className="px-5 py-3.5">Target</th>
-                  <th className="px-5 py-3.5">Who</th>
-                  <th className="px-5 py-3.5">Source IP</th>
-                  <th className="px-5 py-3.5">Details</th>
-                  <th className="px-5 py-3.5 text-right">View</th>
+                <tr className="border-b border-border bg-secondary/30 text-muted-foreground font-medium text-xs uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left">Time</th>
+                  <th className="px-4 py-3 text-left">Kind</th>
+                  <th className="px-4 py-3 text-left">Action</th>
+                  <th className="px-4 py-3 text-left">Target</th>
+                  <th className="px-4 py-3 text-left">Who</th>
+                  <th className="px-4 py-3 text-left">Source IP</th>
+                  <th className="px-4 py-3 text-left">Details</th>
+                  <th className="px-4 py-3 text-right">View</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border/40">
+              <tbody className="divide-y divide-border">
                 {filteredEntries.map((e, index) => {
                   const kind = toActivityKind(e.action);
                   return (
                   <tr
                     key={`${e.time}-${e.action}-${e.username}-${index}`}
-                    className="hover:bg-secondary/20 transition-all duration-150 group cursor-pointer"
+                    className="hover:bg-secondary/30 transition-colors group cursor-pointer"
                     onClick={() => setSelectedEntry(e)}
                   >
-                    <td className="px-5 py-3.5 font-mono text-xs text-muted-foreground whitespace-nowrap">
+                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground whitespace-nowrap">
                       {formatDateTime(e.time, tz)}
                     </td>
-                    <td className="px-5 py-3.5 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${getActivityKindColor(kind)}`}>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border ${getActivityKindColor(kind)}`}>
                         {getActivityKindLabel(kind)}
                       </span>
                     </td>
-                    <td className="px-5 py-3.5 whitespace-nowrap">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
                         {getActionLabel(e.action)}
                       </span>
                     </td>
-                    <td className="px-5 py-3.5 font-mono text-xs text-foreground max-w-[120px] truncate" title={e.target}>
+                    <td className="px-4 py-3 font-mono text-xs text-foreground max-w-[120px] truncate" title={e.target}>
                       {e.target}
                     </td>
-                    <td className="px-5 py-3.5 font-medium text-foreground">
+                    <td className="px-4 py-3 font-medium text-foreground">
                       <div className="flex items-center gap-1.5">
                         <div className="w-5 h-5 rounded bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold">
                           {e.username.slice(0, 2).toUpperCase()}
@@ -587,13 +574,13 @@ export function Activity() {
                         {e.username}
                       </div>
                     </td>
-                    <td className="px-5 py-3.5 font-mono text-xs text-muted-foreground whitespace-nowrap">
+                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground whitespace-nowrap">
                       {e.source_ip || '-'}
                     </td>
-                    <td className="px-5 py-3.5 text-muted-foreground max-w-[320px] truncate" title={e.details}>
+                    <td className="px-4 py-3 text-muted-foreground max-w-[320px] truncate" title={e.details}>
                       {e.details || '-'}
                     </td>
-                    <td className="px-5 py-3.5 text-right">
+                    <td className="px-4 py-3 text-right">
                       <button
                         onClick={(evt) => {
                           evt.stopPropagation();
@@ -620,14 +607,14 @@ export function Activity() {
               <div
                 key={`${e.time}-${e.action}-${e.username}-${index}-card`}
                 onClick={() => setSelectedEntry(e)}
-                className="bg-card border border-border/60 rounded-xl p-4 cursor-pointer hover:bg-secondary/20 transition-all duration-150"
+                className="bg-card border border-border rounded-xl p-4 cursor-pointer hover:bg-secondary/30 transition-all duration-150"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${getActivityKindColor(kind)}`}>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border ${getActivityKindColor(kind)}`}>
                       {getActivityKindLabel(kind)}
                     </span>
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
                       {getActionLabel(e.action)}
                     </span>
                   </div>
@@ -668,7 +655,7 @@ export function Activity() {
         )}
         {/* Pagination */}
         {!loading && !error && (
-          <div className="flex items-center justify-between px-5 py-3 border-t border-border/60 bg-secondary/20 text-xs text-muted-foreground">
+          <div className="flex items-center justify-between px-5 py-3 border-t border-border bg-secondary/20 text-xs text-muted-foreground">
             <span>Showing {filteredEntries.length} of {totalFetched} server-filtered events</span>
             {hasMore && (
               <button
@@ -693,7 +680,7 @@ export function Activity() {
         {selectedEntry && (
           <div className="space-y-5">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="p-3 bg-secondary/40 border border-border/60 rounded-lg">
+              <div className="p-3 bg-secondary/30 border border-border rounded-lg">
                 <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Operator</p>
                 <p className="text-sm font-semibold text-foreground mt-1 flex items-center gap-1.5">
                   <User className="w-4 h-4 text-primary" />
@@ -701,7 +688,7 @@ export function Activity() {
                 </p>
               </div>
 
-              <div className="p-3 bg-secondary/40 border border-border/60 rounded-lg">
+              <div className="p-3 bg-secondary/30 border border-border rounded-lg">
                 <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Source IP</p>
                 <p className="text-sm font-mono font-semibold text-foreground mt-1 flex items-center gap-1.5">
                   <Globe className="w-4 h-4 text-primary" />
@@ -709,7 +696,7 @@ export function Activity() {
                 </p>
               </div>
 
-              <div className="p-3 bg-secondary/40 border border-border/60 rounded-lg">
+              <div className="p-3 bg-secondary/30 border border-border rounded-lg">
                 <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Timestamp</p>
                 <p className="text-sm font-mono text-foreground mt-1 flex items-center gap-1.5">
                   <Calendar className="w-4 h-4 text-primary" />
@@ -717,13 +704,13 @@ export function Activity() {
                 </p>
               </div>
 
-              <div className="p-3 bg-secondary/40 border border-border/60 rounded-lg">
+              <div className="p-3 bg-secondary/30 border border-border rounded-lg">
                 <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Kind / Action</p>
                 <p className="mt-1 flex items-center gap-2 flex-wrap">
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${getActivityKindColor(toActivityKind(selectedEntry.action))}`}>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold border ${getActivityKindColor(toActivityKind(selectedEntry.action))}`}>
                     {getActivityKindLabel(toActivityKind(selectedEntry.action))}
                   </span>
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
                     {getActionLabel(selectedEntry.action)}
                   </span>
                 </p>

@@ -144,8 +144,8 @@ function NodeVramCard({ node }: { node: any }) {
         </>
       ) : (node.vram_used_bytes ?? 0) > 0 ? (
         <>
-          <div className="w-full bg-secondary rounded-full h-2 mt-1">
-            <div className="bg-amber-500 h-2 rounded-full w-full opacity-40" />
+          <div className="w-full bg-secondary rounded-md h-2 mt-1">
+            <div className="bg-amber-500 h-2 rounded-md w-full opacity-40" />
           </div>
           <p className="text-xs text-muted-foreground font-medium mt-2">
             {bytesToGB(node.vram_used_bytes!)} in use &middot; total unknown

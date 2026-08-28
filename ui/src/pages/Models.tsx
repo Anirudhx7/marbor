@@ -598,7 +598,7 @@ export function Models() {
                         const totalVRAM = totalVRAMFor(model);
                         const isDrifted = !!model.digest_mismatch;
                         return (
-                          <tr key={model.name} className="border-b border-border/60 last:border-0 hover:bg-secondary/20 transition-colors">
+                          <tr key={model.name} className="border-b border-border last:border-0 hover:bg-secondary/30 transition-colors">
                             <td className="px-4 py-3 align-top">
                               <div className="font-mono font-semibold text-foreground text-sm truncate max-w-[200px]" title={model.name}>{model.name}</div>
                               <div className="text-xs text-muted-foreground font-mono">{formatVRAM(model.size_vram)} per copy{model.size_disk ? ` · ${formatVRAM(model.size_disk)} disk` : ''}</div>

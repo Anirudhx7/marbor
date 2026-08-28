@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { CustomSelect, CustomCombobox } from '../components/Select';
 import { CustomDateTimePicker } from '../components/DateTimePicker';
-import { ClearableInput, FilterField } from '../components/FilterField';
+import { ClearableInput, FilterField, FilterBar, FilterBarGrid, FilterBarClear } from '../components/FilterField';
 import { RequestEntry, RoutingDecision } from '../types';
 import { fetchAuditLog, fetchNodes, fetchKeys, fetchRequestExplain } from '../lib/api';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
@@ -46,7 +46,7 @@ function ScrollableValue({ value, valueClassName }: { value: string; valueClassN
 function ReasonBadge({ reason }: { reason?: string }) {
   if (!reason) return <span className="text-muted-foreground/40 text-xs">-</span>;
   return (
-    <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-secondary text-foreground/80">
+    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border bg-secondary text-foreground/80 border-border">
       {REASON_LABELS[reason] ?? reason}
     </span>
   );
@@ -109,10 +109,10 @@ function ExplainPanel({ state }: { state: RoutingDecision | 'loading' | 'error' 
 }
 
 function StatusBadge({ status }: { status: number }) {
-  let cls = 'text-xs font-mono font-semibold px-1.5 py-0.5 rounded ';
-  if (status >= 200 && status < 300) cls += 'bg-green-500/15 text-green-600 dark:text-green-400';
-  else if (status >= 400 && status < 500) cls += 'bg-yellow-500/15 text-yellow-600 dark:text-yellow-400';
-  else cls += 'bg-red-500/15 text-red-600 dark:text-red-400';
+  let cls = 'text-xs font-mono font-semibold px-1.5 py-0.5 rounded-md border ';
+  if (status >= 200 && status < 300) cls += 'bg-green-500/15 text-green-600 dark:text-green-400 border-green-500/20';
+  else if (status >= 400 && status < 500) cls += 'bg-yellow-500/15 text-yellow-600 dark:text-yellow-400 border-yellow-500/20';
+  else cls += 'bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/20';
   return <span className={cls}>{status}</span>;
 }
 
@@ -355,9 +355,9 @@ export function Requests() {
         </div>
       </div>
 
-      {/* Filter bar */}
-      <div className="bg-card border border-border rounded-lg p-3 sm:p-4 space-y-3">
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+      {/* Filter bar - uses FilterBar/FilterField shared primitives (parity with Activity) */}
+      <FilterBar>
+        <FilterBarGrid>
           <FilterField label="Model">
             <ClearableInput
               type="text"
@@ -365,7 +365,6 @@ export function Requests() {
               value={modelInput}
               onChange={(e) => setModelInput(e.target.value)}
               onClear={() => setModelInput('')}
-              className="px-3 py-2 text-sm rounded-md border border-border bg-secondary/30 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
             />
           </FilterField>
           <FilterField label="Key name">
@@ -441,18 +440,11 @@ export function Requests() {
               placeholder="Any end time"
             />
           </FilterField>
-        </div>
+        </FilterBarGrid>
         {hasActiveFilter && (
-          <div className="flex justify-end">
-            <button
-              onClick={clearAllFilters}
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1"
-            >
-              Clear all filters
-            </button>
-          </div>
+          <FilterBarClear countText={`Showing ${filtered.length} requests`} onClear={clearAllFilters} />
         )}
-      </div>
+      </FilterBar>
 
       {/* Stats chips */}
       <div className="flex flex-wrap gap-3">
@@ -478,9 +470,9 @@ export function Requests() {
         </div>
       )}
 
-      {/* Table (md and up) */}
+      {/* Table (md and up) - parity: same card + header + row treatment as Activity */}
       <div className="hidden md:block">
-        <div className="bg-card border border-border rounded-lg overflow-hidden">
+        <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             {/*
               table-fixed with colgroup percentages, deliberately proportional
@@ -530,25 +522,25 @@ export function Requests() {
                   [...Array(5)].map((_, i) => <SkeletonRow key={i} />)
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-16 text-center text-muted-foreground text-sm">
-                      {hasActiveFilter
-                        ? 'No requests match your filter.'
-                        : 'No requests yet. Send a request through the proxy to see it here.'}
-                      {hasActiveFilter && (
-                        <button
-                          onClick={clearAllFilters}
-                          className="block mx-auto text-primary hover:underline text-xs mt-1"
-                        >
-                          Clear filters
-                        </button>
-                      )}
+                    <td colSpan={8} className="px-4 py-12 text-center text-muted-foreground text-sm">
+                      <div className="flex flex-col items-center gap-2">
+                        <span>{hasActiveFilter ? 'No requests match your filter.' : 'No requests yet. Send a request through the proxy to see it here.'}</span>
+                        {hasActiveFilter && (
+                          <button
+                            onClick={clearAllFilters}
+                            className="text-primary hover:underline text-xs"
+                          >
+                            Clear filters
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ) : (
                   filtered.map((entry) => (
                     <Fragment key={entry.id}>
                     <tr
-                      className="border-b border-border last:border-0 hover:bg-secondary/50 transition-colors"
+                      className="border-b border-border last:border-0 hover:bg-secondary/30 transition-colors"
                     >
                       <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
                         {formatRelativeTime(entry.time)}
@@ -576,7 +568,7 @@ export function Requests() {
                       <td className="px-4 py-3 max-w-0">
                         {entry.cloud ? (
                           <span
-                            className="inline-block max-w-full truncate align-middle text-xs font-medium px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                            className="inline-block max-w-full truncate align-middle text-xs font-medium px-2 py-0.5 rounded-md border bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20"
                             title={`cloud:${(entry.node || '').replace('cloud:', '')}`}
                           >
                             cloud:{(entry.node || '').replace('cloud:', '')}
@@ -680,7 +672,7 @@ export function Requests() {
                   <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Node</div>
                   <div className="text-sm text-foreground">
                     {entry.cloud ? (
-                      <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                      <span className="text-xs font-medium px-2 py-0.5 rounded-md border bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20">
                         cloud:{(entry.node || '').replace('cloud:', '')}
                       </span>
                     ) : (
@@ -692,7 +684,7 @@ export function Requests() {
                   <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Key</div>
                   <div className="text-sm text-foreground">
                     {entry.key_name ? (
-                      <span className="font-mono text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+                      <span className="font-mono text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded-md border border-primary/20">
                         {entry.key_name}
                       </span>
                     ) : entry.source_ip ? (

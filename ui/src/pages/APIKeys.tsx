@@ -431,7 +431,7 @@ export function APIKeys() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-secondary/50 border-b border-border text-muted-foreground">
+              <tr className="bg-secondary/30 border-b border-border text-muted-foreground">
                 <th className="px-6 py-3 text-left font-medium">Key Name</th>
                 <th className="px-6 py-3 text-left font-medium">Key Value</th>
                 <th className="px-6 py-3 text-left font-medium">Created</th>
@@ -801,9 +801,9 @@ export function APIKeys() {
               role="switch"
               aria-checked={editForm.localOnly}
               onClick={() => setEditForm({ ...editForm, localOnly: !editForm.localOnly })}
-              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${editForm.localOnly ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-md transition-colors ${editForm.localOnly ? 'bg-primary' : 'bg-muted-foreground/30'}`}
             >
-              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${editForm.localOnly ? 'translate-x-6' : 'translate-x-1'}`} />
+              <span className={`inline-block h-4 w-4 transform rounded-md bg-white transition-transform ${editForm.localOnly ? 'translate-x-6' : 'translate-x-1'}`} />
             </button>
           </div>
           <div className="flex items-center justify-between gap-3 py-1">
@@ -816,9 +816,9 @@ export function APIKeys() {
               role="switch"
               aria-checked={editForm.allowLocalDegradation}
               onClick={() => setEditForm({ ...editForm, allowLocalDegradation: !editForm.allowLocalDegradation })}
-              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${editForm.allowLocalDegradation ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-md transition-colors ${editForm.allowLocalDegradation ? 'bg-primary' : 'bg-muted-foreground/30'}`}
             >
-              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${editForm.allowLocalDegradation ? 'translate-x-6' : 'translate-x-1'}`} />
+              <span className={`inline-block h-4 w-4 transform rounded-md bg-white transition-transform ${editForm.allowLocalDegradation ? 'translate-x-6' : 'translate-x-1'}`} />
             </button>
           </div>
           <div>

@@ -312,7 +312,7 @@ export function Analytics() {
                     const total = m.local + m.cloud;
                     const pct = total > 0 ? Math.round((m.local / total) * 100) : 0;
                     return (
-                      <tr key={m.model} className="hover:bg-secondary/50 transition-colors">
+                      <tr key={m.model} className="hover:bg-secondary/30 transition-colors">
                         <td className="px-6 py-3 font-mono font-medium text-foreground">
                           {m.model}
                         </td>
@@ -428,7 +428,7 @@ export function Analytics() {
                 </thead>
                 <tbody className="divide-y divide-border">
                   {spillRows.map((row) => (
-                    <tr key={`${row.key_name}-${row.served_by}`} className="hover:bg-secondary/50 transition-colors">
+                    <tr key={`${row.key_name}-${row.served_by}`} className="hover:bg-secondary/30 transition-colors">
                       <td className="px-6 py-3 font-mono font-medium text-foreground">{row.key_name || '-'}</td>
                       <td className="px-6 py-3">
                         <span className={
