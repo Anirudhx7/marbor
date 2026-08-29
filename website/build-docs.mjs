@@ -230,6 +230,7 @@ function page({ slug, title, contentHtml, headings }) {
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script defer data-domain="anirudh.social" src="https://plausible.io/js/script.tagged-events.js"><\/script>
 <script>
   (function () { try { var s = localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
 </script>
@@ -336,6 +337,7 @@ function docsIndexPage() {
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script defer data-domain="anirudh.social" src="https://plausible.io/js/script.tagged-events.js"><\/script>
 <script>
   (function () { try { var s = localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
 </script>

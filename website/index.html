@@ -15,6 +15,7 @@
 <link rel="canonical" href="https://anirudh.social/marbor/" />
 <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
 <meta name="theme-color" content="#d4a853" />
+<script defer data-domain="anirudh.social" src="https://plausible.io/js/script.tagged-events.js"></script>
 <!-- Open Graph -->
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="Marbor" />
@@ -934,10 +935,11 @@ SPCS-FEATURE-END */
 
     <!-- Measured benchmark - real numbers from a deployed instance, not simulation -->
     <p style="margin:14px 2px 0;font-size:13px;color:var(--muted);line-height:1.6;">
-      Measured, not simulated: on a deployed v0.14.0 instance routing to a single consumer-GPU node
+      Measured, not simulated: on a deployed v0.13.1 instance routing to a single consumer-GPU node
       (8B Q4_K_M model, ~9.6&nbsp;GB), cold TTFT was <strong>11.5–18.1&nbsp;s</strong> (median 17.3&nbsp;s)
       vs a warm median of <strong>8.1&nbsp;s</strong> and a fastest warm response of
       <strong>0.4&nbsp;s</strong> - up to <strong>43×</strong> faster than the median cold start.
+      Honest context: only ~3.3 GB fit in VRAM so even warm was partly CPU-bound - full-VRAM hardware widens the gap.
       Reproduce it on your hardware with the
       <a href="https://github.com/Anirudhx7/marbor/tree/main/bench" style="color:var(--accent2);">open benchmark harness</a>.
     </p>
@@ -1530,6 +1532,25 @@ base_url = <span class="g">"http://marbor:11434/v1"</span>
     setInterval(cycleScenarios, 4500);
     cycleScenarios(); // Initial run
   }
+})();
+</script>
+<script>
+// Plausible custom events - per analytics-tracking-plan.md
+(function(){
+  function track(name, props){ try{ window.plausible && window.plausible(name, {props: props}); }catch(e){} }
+  document.addEventListener('click', function(e){
+    var a = e.target.closest('a'), btn = e.target.closest('button');
+    if(a){
+      var href = a.getAttribute('href')||'';
+      if(href.indexOf('github.com/Anirudhx7/marbor')>-1) track('star_clicked', {location: a.closest('.hero')?'hero':a.closest('nav')?'nav':'footer'});
+      if(href.indexOf('/demo')>-1) track('demo_requested', {source: a.closest('.hero')?'hero':a.closest('nav')?'nav':'badge_strip'});
+      if(href==='#install' || href.indexOf('#install')>-1) track('cta_clicked', {cta_text:(a.textContent||'').trim().slice(0,40), location:'hero'});
+      if(href.indexOf('/docs')>-1) track('docs_viewed', {doc_slug: href});
+    }
+    if(btn && btn.id==='copyBtn') track('install_initiated', {method:'copy_button'});
+    var primary = e.target.closest('.btn-primary');
+    if(primary) track('cta_clicked', {cta_text:(primary.textContent||'').trim().slice(0,40), location:'hero'});
+  });
 })();
 </script>
 </body>

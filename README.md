@@ -35,11 +35,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/dashboard.png" width="820" alt="Marbor dashboard" />
-</p>
-
-<p align="center">
-  <a href="docs/screenshots/demo.gif"><img src="docs/screenshots/demo.gif" width="820" alt="Marbor dashboard walkthrough" /></a>
+  <img src="website/screenshots/dashboard.png" width="820" alt="Marbor dashboard" />
 </p>
 
 <p align="center">
