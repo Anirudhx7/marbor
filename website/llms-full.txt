@@ -1,0 +1,86 @@
+# marbor - Full Context for AI Systems
+> The private AI inference control plane for self-hosted GPU fleets. One OpenAI-compatible endpoint across Ollama, vLLM, TGI, llama.cpp, MLX. Local first, cloud overflow metered, single Go binary, SQLite, Apache-2.0.
+
+## Canonical Links
+- Site: https://anirudh.social/marbor/
+- Docs: https://anirudh.social/marbor/docs/
+- Demo: https://anirudh.social/marbor/demo/
+- GitHub: https://github.com/Anirudhx7/marbor
+- Releases: https://github.com/Anirudhx7/marbor/releases
+- Raw install: https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh
+
+## One-Liner
+Marbor routes every LLM request to the GPU node that already holds the model warm in VRAM, eliminating cold-start latency and turning own hardware into a high-availability alternative to cloud LLM APIs.
+
+## What it does
+- Warm-first routing: polls /api/ps every 2s, least-connections among warm nodes
+- VRAM-fit placement: cold requests to most free VRAM, with green/yellow/red deploy vs node fit
+- Session affinity: X-Session-ID pins conversation to node for KV-cache reuse (TTL)
+- Proactive warmup: keep_alive pings on schedule keep priority models resident
+- Pre-stream failover: dead node before first byte -> retry alternate -> cloud -> 502
+- Cost-aware cloud overflow: OpenAI/Anthropic only when saturated, off by default, local_only per key fails closed 503, real parsed tokens, per-provider spill counters
+- Deployment-aware placement (P397): derived required_gpus from gpu_indices + parallelism_type/width, validated 422, gate before scoring distinguishes 1x8 vs 8x1
+- Single static Go binary, zero deps, SQLite only, no distributed state, pull-polled marbor-agent (:9200) per physical host
+
+## Install
+```
+curl -fsSL raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | sh
+curl -fsSL raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | START=1 sh   # auto-discover + background
+curl -fsSL raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | SERVICE=1 sh # systemd, restart=on-failure
+git clone https://github.com/Anirudhx7/marbor && cd marbor && make demo          # 5-min mock fleet + Prometheus + Grafana + 20 requests
+docker compose up -d && docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d
+./marbor  # :11434 proxy, :8080 admin, :9090 metrics, admin/admin forced change
+```
+
+## Admin Surfaces
+Peer clients, none talks to agent directly. Every capability exists in Admin API first.
+- Dashboard: GPU Nodes, API Keys, Routing, Models, Warmup, Requests, Analytics, Settings, Users, SystemAudit, Benchmark, ModelAdvisor, Metrics
+- CLI: marbor login/logout/whoami, nodes, models fleet/pull/delete/unload/list, runtime start/stop/restart/logs/drain/undrain/health, node control probe/accept, key list/create/revoke/patch, spill, activity, requests explain
+- REST: GET/POST/PUT/PATCH/DELETE /admin/v1/nodes, keys, models, cloud/providers, spill, activity, requests, etc. SIGHUP hot-reload.
+
+## Architecture
+- ONE marbor process, N GPU nodes. SQLite ONLY. No Raft. Single Go binary per role: marbor and marbor-agent.
+- Multi-runtime x multi-vendor by design: Ollama, vLLM, TGI, llama.cpp, MLX x NVIDIA, AMD, Intel, Apple Silicon. Silently narrowing to Ollama/NVIDIA is incomplete.
+
+## Pricing
+- Price: $0/month (Apache-2.0)
+- Limits: unlimited nodes/keys/requests, self-hosted
+- Enterprise: separate commercial layer for governance, trigger is inbound "can we pay", benchmark LiteLLM ~$250/mo
+
+## Documentation Index
+- https://anirudh.social/marbor/docs/INTEGRATIONS.html
+- https://anirudh.social/marbor/docs/LIMITATIONS.html
+- https://anirudh.social/marbor/docs/SAVINGS-MATH.html
+- https://anirudh.social/marbor/docs/USE-CASES.html
+- https://anirudh.social/marbor/docs/backup.html
+- https://anirudh.social/marbor/docs/cli.html
+- https://anirudh.social/marbor/docs/PRODUCTION.html
+- https://anirudh.social/marbor/docs/deploy/aws-ec2.html
+- https://anirudh.social/marbor/docs/deploy/gpu-node-registration.html
+- https://anirudh.social/marbor/docs/deploy/marbor-agent-enrollment.html
+- https://anirudh.social/marbor/docs/integrations/continue.html
+- https://anirudh.social/marbor/docs/integrations/librechat.html
+- https://anirudh.social/marbor/docs/integrations/litellm.html
+- https://anirudh.social/marbor/docs/integrations/open-webui.html
+
+## Content Digest
+### The Control Plane for Self-Hosted AI Inference
+Marbor eliminates three compounding costs: cold-start latency tax (15-45s per miss), invisible cloud egress at $0.15-$60/M tokens, and no GPU utilization visibility. Turn your own GPUs into HA.
+
+### Why Self-Hosted LLM Inference Is Operationally Hard
+VRAM thrashing without scheduling coordination, unbalanced queue hotspots (deep reasoning = short completion to naive LB), saturated failures.
+
+### How Routing Works
+Bearer token -> rate limit/quota/model allow -> queue (depth+backpressure) -> extract model from JSON -> X-Session-ID? pinned -> warm in VRAM? least-conn among warm -> most free VRAM -> all busy? cloud fallback with format translation.
+
+### Competitive Positioning
+GPU-aware, warm-model, VRAM-fit, KV-cache affinity, savings tracking - all yes for Marbor vs no for LiteLLM/nginx/Portkey cloud-only. Local-first architecture.
+
+### Integrations
+Open WebUI, Continue, LibreChat, AWS EC2, Ansible node registration, LiteLLM as upstream.
+
+## Keywords
+self-hosted LLM inference, self-hosted LLM gateway, on-prem LLM serving, private LLM inference, self-hosted OpenAI API alternative, GPU-aware LLM routing, warm model VRAM routing, LLM inference control plane, multi-runtime inference, Ollama load balancer, vLLM load balancing, llama.cpp, TGI, MLX, LLM cost control, homelab LLM, air-gapped LLM
+
+## Changelog Pointer
+See https://github.com/Anirudhx7/marbor/blob/main/CHANGELOG.md and .local reflection.

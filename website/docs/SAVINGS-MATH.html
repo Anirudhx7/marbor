@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script defer data-domain="anirudh.social" src="https://plausible.io/js/script.tagged-events.js"></script>
 <script>
   (function () { try { var s = localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
 </script>
@@ -342,9 +343,9 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <p>Every figure in the marbor dashboard is derived from the formulas below. When token data is unavailable, the dashboard displays "-" rather than an estimate. No number is ever fabricated.</p>
 <hr/>
 <h2 id="executive-summary">Executive Summary<a class="anchor" href="#executive-summary" aria-label="Link to section">#</a></h2>
-<p>An engineering organization running multi-agent LLM workflows at scale - coding copilots, RAG pipelines, automated code review, internal search - consumes millions of tokens per day. At cloud API rates, this translates to $5,000–$50,000/month in direct API spend, depending on model tier and volume.</p>
+<p>An engineering organization running multi-agent LLM workflows at scale - coding copilots, RAG pipelines, automated code review, internal search - consumes millions of tokens per day. At cloud API rates, this translates to $5,000-$50,000/month in direct API spend, depending on model tier and volume.</p>
 <p>marbor enables organizations to route this traffic to owned GPU hardware first, falling back to cloud APIs only when local capacity is exhausted. The savings dashboard tracks every token served locally and values it against the cloud rate the organization would otherwise pay.</p>
-<p><strong>Typical result:</strong> Platform teams running 2–4 GPU nodes with marbor report 60–85% reduction in cloud API spend within the first billing cycle, with the reduction visible in the dashboard from day one.</p>
+<p><strong>Typical result:</strong> Platform teams running 2-4 GPU nodes with marbor report 60-85% reduction in cloud API spend within the first billing cycle, with the reduction visible in the dashboard from day one.</p>
 <hr/>
 <h2 id="the-formulas">The Formulas<a class="anchor" href="#the-formulas" aria-label="Link to section">#</a></h2>
 <h3 id="local-request-savings">Local Request Savings<a class="anchor" href="#local-request-savings" aria-label="Link to section">#</a></h3>
@@ -443,12 +444,12 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <p>The reference rate (<code>reference_cost_per_1k</code>) is configured via the dashboard's <strong>Settings &gt; Global Warmup &amp; Audit</strong> page, or the admin API (<code>/admin/v1/settings</code>) - there is no config file. Set it to the blended rate of the cloud model your traffic would otherwise consume:</p>
 <div class="table-scroll"><table>
 <thead><tr><th>Cloud Model</th><th>Rate (per 1K tokens)</th><th>Blended (70% in / 30% out)</th><th>Notes</th></tr></thead>
-<tbody><tr><td>GPT-4o mini</td><td>$0.00015–$0.0006</td><td>~$0.00028/1K</td><td>Cheapest quality tier</td></tr>
-<tr><td>GPT-4o</td><td>$0.0025–$0.01</td><td>~$0.005/1K</td><td>Most common enterprise default</td></tr>
-<tr><td>GPT-4.1</td><td>$0.002–$0.008</td><td>~$0.0038/1K</td><td>Input vs output pricing</td></tr>
-<tr><td>Claude Haiku 4.5</td><td>$0.0008–$0.004</td><td>~$0.0018/1K</td><td>Fast, cheap Anthropic tier</td></tr>
-<tr><td>Claude Sonnet 4</td><td>$0.003–$0.015</td><td>~$0.0066/1K</td><td>Mid-tier; blended ≈ $0.006/1K</td></tr>
-<tr><td>Claude Opus 4</td><td>$0.015–$0.075</td><td>~$0.033/1K</td><td>Premium; output-heavy = $0.075</td></tr></tbody>
+<tbody><tr><td>GPT-4o mini</td><td>$0.00015-$0.0006</td><td>~$0.00028/1K</td><td>Cheapest quality tier</td></tr>
+<tr><td>GPT-4o</td><td>$0.0025-$0.01</td><td>~$0.005/1K</td><td>Most common enterprise default</td></tr>
+<tr><td>GPT-4.1</td><td>$0.002-$0.008</td><td>~$0.0038/1K</td><td>Input vs output pricing</td></tr>
+<tr><td>Claude Haiku 4.5</td><td>$0.0008-$0.004</td><td>~$0.0018/1K</td><td>Fast, cheap Anthropic tier</td></tr>
+<tr><td>Claude Sonnet 4</td><td>$0.003-$0.015</td><td>~$0.0066/1K</td><td>Mid-tier; blended ≈ $0.006/1K</td></tr>
+<tr><td>Claude Opus 4</td><td>$0.015-$0.075</td><td>~$0.033/1K</td><td>Premium; output-heavy = $0.075</td></tr></tbody>
 </table></div>
 <p>When the field is missing or zero, the default <code>$0.002/1K</code> applies. Changing the rate only affects requests recorded after the change; it does not retroactively revalue earlier requests.</p>
 <h3 id="per-provider-cloud-rates">Per-Provider Cloud Rates<a class="anchor" href="#per-provider-cloud-rates" aria-label="Link to section">#</a></h3>

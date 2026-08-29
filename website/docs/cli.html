@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<script defer data-domain="anirudh.social" src="https://plausible.io/js/script.tagged-events.js"></script>
 <script>
   (function () { try { var s = localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
 </script>
@@ -385,6 +386,11 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <h4 id="list-node"><code>list &lt;node&gt;</code><a class="anchor" href="#list-node" aria-label="Link to section">#</a></h4>
 <p>list models present on a node's local storage (per-node, not the fleet-wide aggregate above)</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<h4 id="fleet"><code>fleet</code><a class="anchor" href="#fleet" aria-label="Link to section">#</a></h4>
+<p>fleet residency with VRAM totals and drift (same live data as bare models, filterable)</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<p>Flags:</p>
+<ul><li><code>--drifted-only</code> - only show models where nodes disagree on digest</li></ul>
 <h3 id="runtime"><code>runtime</code><a class="anchor" href="#runtime" aria-label="Link to section">#</a></h3>
 <p>start/stop/restart/logs/drain/undrain/health on one node</p>
 <p>"start|stop|restart" requires the target node to have an operator-accepted control driver (see "node control accept") - a node with none configured returns an error rather than guessing one.</p>
@@ -430,8 +436,26 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <p>Flags:</p>
 <ul><li><code>--driver string</code> - control driver: systemd, docker, process, launchd, or windows_service (required)</li><li><code>--identifier string</code> - driver-specific identifier (unit name, container name, PID file path, plist label, service name) (required)</li><li><code>--start-command string</code> - launch command for the process driver's Start action (only meaningful when --driver=process)</li></ul>
 <h3 id="key"><code>key</code><a class="anchor" href="#key" aria-label="Link to section">#</a></h3>
-<p>per-API-key local/cloud routing overrides</p>
+<p>per-API-key local/cloud routing overrides (masked list, plaintext-once on create)</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<h4 id="list"><code>list</code><a class="anchor" href="#list" aria-label="Link to section">#</a></h4>
+<p>list keys (masked)</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<h4 id="create"><code>create</code><a class="anchor" href="#create" aria-label="Link to section">#</a></h4>
+<p>create a key (prints plaintext once)</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<p>Flags:</p>
+<ul><li><code>--name string</code> - key name (required) (required)</li><li><code>--rate-limit int</code> - max requests per hour (0 = unlimited)</li><li><code>--daily-limit int</code> - max requests per day (0 = unlimited)</li><li><code>--monthly-limit int</code> - max requests per month (0 = unlimited)</li><li><code>--daily-usd-cap string</code> - daily cloud spend cap in USD (0 = unlimited)</li><li><code>--monthly-usd-cap string</code> - monthly cloud spend cap in USD (0 = unlimited)</li><li><code>--models string</code> - comma-separated allowed models (empty = all)</li><li><code>--expires-at string</code> - expiry date (2006-01-02 or RFC3339)</li><li><code>--key string</code> - explicit secret (default: server-generated)</li><li><code>--local-only string</code> - block cloud fallback: true or false</li><li><code>--allow-local-degradation string</code> - allow local alternate model: true or false</li></ul>
+<h4 id="revoke-name"><code>revoke &lt;name&gt;</code><a class="anchor" href="#revoke-name" aria-label="Link to section">#</a></h4>
+<p>revoke (delete) a key</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<p>Flags:</p>
+<ul><li><code>--yes</code> - confirm revocation without prompting</li></ul>
+<h4 id="patch-name"><code>patch &lt;name&gt;</code><a class="anchor" href="#patch-name" aria-label="Link to section">#</a></h4>
+<p>update key settings</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<p>Flags:</p>
+<ul><li><code>--rate-limit string</code> - max requests per hour (0 = unlimited)</li><li><code>--daily-limit string</code> - max requests per day (0 = unlimited)</li><li><code>--monthly-limit string</code> - max requests per month (0 = unlimited)</li><li><code>--daily-usd-cap string</code> - daily cloud spend cap in USD</li><li><code>--monthly-usd-cap string</code> - monthly cloud spend cap in USD</li><li><code>--models string</code> - comma-separated allowed models (empty = clear)</li><li><code>--expires-at string</code> - expiry date (2006-01-02 or RFC3339, empty = clear)</li><li><code>--local-only string</code> - block cloud fallback: true or false</li><li><code>--allow-local-degradation string</code> - allow local alternate model: true or false</li></ul>
 <h4 id="set-local-only-name-truefalse"><code>set-local-only &lt;name&gt; &lt;true|false&gt;</code><a class="anchor" href="#set-local-only-name-truefalse" aria-label="Link to section">#</a></h4>
 <p>block (or re-allow) cloud fallback for one API key</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
@@ -442,12 +466,53 @@ footer.foot { border-top: 1px solid var(--border-subtle); padding: 26px 0; }
 <p>show per-key, per-provider local-vs-cloud request counts</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <p>requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).</p>
+<h3 id="activity"><code>activity</code><a class="anchor" href="#activity" aria-label="Link to section">#</a></h3>
+<p>show unified fleet activity feed (drain, agent, runtime, node, warmup, schedule, predictive, config)</p>
+<p>Times are shown in UTC (RFC3339 Z) - the Admin API stores every audit event in UTC. The dashboard renders the same instants in the operator's configured timezone; this CLI shows the raw UTC value.</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<p>Flags:</p>
+<ul><li><code>--limit int</code> - max events to show (1-200, default 100)</li><li><code>--kind string</code> - filter by kind: drain, agent, runtime, node, warmup, schedule, predictive, config, or all (default all)</li><li><code>--from string</code> - filter from time (RFC3339, e.g. 2026-08-26T00:00:00Z)</li><li><code>--to string</code> - filter to time (RFC3339, e.g. 2026-08-26T23:59:59Z)</li><li><code>--before string</code> - paginate before time (RFC3339, exclusive)</li><li><code>--action string</code> - filter by exact action (e.g. drain_node)</li><li><code>--user string</code> - filter by operator username (prefix match)</li><li><code>--target string</code> - filter by target (substring, e.g. gpu-node-02)</li><li><code>--source_ip string</code> - filter by source IP (substring)</li></ul>
+<p>requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).</p>
 <h3 id="requests"><code>requests</code><a class="anchor" href="#requests" aria-label="Link to section">#</a></h3>
 <p>inspect routing decisions for past requests</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <h4 id="explain-request-id"><code>explain &lt;request-id&gt;</code><a class="anchor" href="#explain-request-id" aria-label="Link to section">#</a></h4>
 <p>show why the router picked the node it did for one request</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<h3 id="users"><code>users</code><a class="anchor" href="#users" aria-label="Link to section">#</a></h3>
+<p>manage dashboard users</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<h4 id="list-1"><code>list</code><a class="anchor" href="#list-1" aria-label="Link to section">#</a></h4>
+<p>list users</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<h4 id="create-1"><code>create</code><a class="anchor" href="#create-1" aria-label="Link to section">#</a></h4>
+<p>create a user (password printed once)</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<p>Flags:</p>
+<ul><li><code>--user string</code> - username for the new user (required) (required)</li><li><code>--email string</code> - email for the new user</li><li><code>--role string</code> - role: admin or user</li></ul>
+<h4 id="approve-id"><code>approve &lt;id&gt;</code><a class="anchor" href="#approve-id" aria-label="Link to section">#</a></h4>
+<p>approve a pending user</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<p>Flags:</p>
+<ul><li><code>--api-key-name string</code> - API key name to assign</li><li><code>--create-key</code> - create an API key for the user</li><li><code>--key-rate-limit int</code> - rate limit for the new key (per hour)</li><li><code>--key-daily-limit int</code> - daily limit for the new key</li><li><code>--key-monthly-limit int</code> - monthly limit for the new key</li><li><code>--key-models string</code> - comma-separated allowed models for the new key</li></ul>
+<h4 id="suspend-id"><code>suspend &lt;id&gt;</code><a class="anchor" href="#suspend-id" aria-label="Link to section">#</a></h4>
+<p>suspend a user and revoke sessions</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<p>Flags:</p>
+<ul><li><code>--yes</code> - confirm suspension without prompting</li></ul>
+<h4 id="reset-password-id"><code>reset-password &lt;id&gt;</code><a class="anchor" href="#reset-password-id" aria-label="Link to section">#</a></h4>
+<p>reset a user's password (printed once)</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<h4 id="patch-id"><code>patch &lt;id&gt;</code><a class="anchor" href="#patch-id" aria-label="Link to section">#</a></h4>
+<p>update a user's email or role</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<p>Flags:</p>
+<ul><li><code>--email string</code> - new email</li><li><code>--role string</code> - new role: admin or user</li></ul>
+<h4 id="delete-id"><code>delete &lt;id&gt;</code><a class="anchor" href="#delete-id" aria-label="Link to section">#</a></h4>
+<p>delete a user</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<p>Flags:</p>
+<ul><li><code>--yes</code> - confirm deletion without prompting</li></ul>
 <h3 id="completion-shell"><code>completion &lt;shell&gt;</code><a class="anchor" href="#completion-shell" aria-label="Link to section">#</a></h3>
 <p>_Hidden from <code>--help</code> output, but fully reachable._</p>
 <p>generate a shell completion script (bash, zsh, or fish)</p>
@@ -467,7 +532,7 @@ marbor completion fish &gt; ~/.config/fish/completions/marbor.fish"><svg viewBox
 
   <aside class="doc-toc" aria-label="On this page">
     <div class="toc-title">On this page</div>
-    <ul class="toc"><li class="lvl-2"><a href="#global-flags">Global flags</a></li><li class="lvl-2"><a href="#exit-status">Exit status</a></li><li class="lvl-2"><a href="#environment">Environment</a></li><li class="lvl-2"><a href="#files">Files</a></li><li class="lvl-2"><a href="#commands">Commands</a></li><li class="lvl-3"><a href="#version">`version`</a></li><li class="lvl-3"><a href="#status">`status`</a></li><li class="lvl-3"><a href="#login">`login`</a></li><li class="lvl-3"><a href="#logout">`logout`</a></li><li class="lvl-3"><a href="#whoami">`whoami`</a></li><li class="lvl-3"><a href="#nodes">`nodes`</a></li><li class="lvl-3"><a href="#models">`models`</a></li><li class="lvl-3"><a href="#runtime">`runtime`</a></li><li class="lvl-3"><a href="#node">`node`</a></li><li class="lvl-3"><a href="#key">`key`</a></li><li class="lvl-3"><a href="#spill">`spill`</a></li><li class="lvl-3"><a href="#requests">`requests`</a></li><li class="lvl-3"><a href="#completion-shell">`completion &lt;shell&gt;`</a></li></ul>
+    <ul class="toc"><li class="lvl-2"><a href="#global-flags">Global flags</a></li><li class="lvl-2"><a href="#exit-status">Exit status</a></li><li class="lvl-2"><a href="#environment">Environment</a></li><li class="lvl-2"><a href="#files">Files</a></li><li class="lvl-2"><a href="#commands">Commands</a></li><li class="lvl-3"><a href="#version">`version`</a></li><li class="lvl-3"><a href="#status">`status`</a></li><li class="lvl-3"><a href="#login">`login`</a></li><li class="lvl-3"><a href="#logout">`logout`</a></li><li class="lvl-3"><a href="#whoami">`whoami`</a></li><li class="lvl-3"><a href="#nodes">`nodes`</a></li><li class="lvl-3"><a href="#models">`models`</a></li><li class="lvl-3"><a href="#runtime">`runtime`</a></li><li class="lvl-3"><a href="#node">`node`</a></li><li class="lvl-3"><a href="#key">`key`</a></li><li class="lvl-3"><a href="#spill">`spill`</a></li><li class="lvl-3"><a href="#activity">`activity`</a></li><li class="lvl-3"><a href="#requests">`requests`</a></li><li class="lvl-3"><a href="#users">`users`</a></li><li class="lvl-3"><a href="#completion-shell">`completion &lt;shell&gt;`</a></li></ul>
   </aside>
 </div>
 
