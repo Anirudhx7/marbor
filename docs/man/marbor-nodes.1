@@ -15,6 +15,17 @@ pin a marbor agent's TLS certificate fingerprint (headless enrollment)
 .B \-\-fingerprint string
 SHA-256 fingerprint the operator has independently confirmed matches the node's actual TLS certificate (see "agent service status" on the node), in the form SHA256:<64 hex characters> (required)
 .RE
+.TP
+.B patch <node>
+set deployment parallelism for a node (P397)
+.RS
+.TP
+.B \-\-parallelism-type string
+parallelism type: tp, pp, ep, dp (empty to clear)
+.TP
+.B \-\-parallelism-width int
+parallelism width 1..64 (0 to clear)
+.RE
 .SH FLAGS
 .TP
 .B \-\-server
