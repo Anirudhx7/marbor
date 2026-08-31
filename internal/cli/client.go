@@ -564,28 +564,6 @@ func (c *Client) PatchNodeTLSFingerprint(name, fingerprint string) error {
 	return nil
 }
 
-// PatchNodeParallelism calls PATCH /admin/v1/nodes/{name} with parallelism
-// fields (P397) - type tp|pp|ep|dp + width 1..64, derived required = max(len(gpu_indices), width).
-func (c *Client) PatchNodeParallelism(name, pType string, pWidth int) error {
-	body := map[string]interface{}{}
-	if pType == "" {
-		body["parallelism_type"] = nil
-	} else {
-		body["parallelism_type"] = pType
-	}
-	if pWidth == 0 {
-		body["parallelism_width"] = nil
-	} else {
-		body["parallelism_width"] = pWidth
-	}
-	resp, err := c.doRequestBody(http.MethodPatch, "/admin/v1/nodes/"+urlPathEscape(name), body)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	return nil
-}
-
 // PatchNodeParallelismWithPtr is the visited-aware variant for CLI patch.
 func (c *Client) PatchNodeParallelismWithPtr(name string, pType *string, pWidth *int) error {
 	body := map[string]interface{}{}

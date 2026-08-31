@@ -1152,11 +1152,11 @@ const (
 // Optional MoE/deployment hints (architecture, num_experts, etc.) are nullable
 // and never gate ok - missing -> nil -> estimated fallback, never fabricated.
 type hfConfigJSON struct {
-	NumHiddenLayers       int64  `json:"num_hidden_layers"`
-	NumAttentionHeads     int64  `json:"num_attention_heads"`
-	NumKeyValueHeads      int64  `json:"num_key_value_heads"`
-	HiddenSize            int64  `json:"hidden_size"`
-	MaxPositionEmbeddings int64  `json:"max_position_embeddings"`
+	NumHiddenLayers       int64 `json:"num_hidden_layers"`
+	NumAttentionHeads     int64 `json:"num_attention_heads"`
+	NumKeyValueHeads      int64 `json:"num_key_value_heads"`
+	HiddenSize            int64 `json:"hidden_size"`
+	MaxPositionEmbeddings int64 `json:"max_position_embeddings"`
 	// Optional generic metadata (P397) - nullable, never required for ok.
 	Architecture     *string `json:"model_type"`
 	NumExperts       *int64  `json:"num_experts"`
