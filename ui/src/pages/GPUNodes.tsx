@@ -2069,11 +2069,11 @@ export function GPUNodes() {
               type="text"
               value={editGPUIndices}
               onChange={(e) => setEditGPUIndices(e.target.value)}
-              placeholder="e.g., 0, 1 (leave blank if undeclared)"
+              placeholder="e.g., 0,1,2,3 (comma-separated, leave blank if undeclared)"
               className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
             />
             <p className="text-xs text-muted-foreground mt-1">
-              Only needed when this node shares a physical host with another node (e.g. two runtimes on one box, each pinned to a different GPU via CUDA_VISIBLE_DEVICES). Declares which physical GPU indices this node actually uses, so the Model Advisor doesn't size it against the whole host's combined VRAM. Leave blank to keep host-level sizing.
+              A comma-separated list of every physical GPU index this node actually uses - not a count. Needed when this node shares a physical host with another node (e.g. two runtimes on one box, each pinned to different GPUs via CUDA_VISIBLE_DEVICES), so the Model Advisor doesn't size it against the whole host's combined VRAM, and when declaring Parallelism below (a width-8 deployment needs all 8 indices listed, e.g. 0,1,2,3,4,5,6,7 - not just "8"). Leave blank to keep host-level sizing.
             </p>
           </div>
           <div>
