@@ -837,10 +837,19 @@ func (r *Router) LocalDegradationChainFor(model string) []string {
 
 // ModelFitsAnyHealthyNode reports whether model could fit in free VRAM on at
 // least one healthy, non-draining node, using the same real size/headroom
-// data (tags-cache size, live VRAM) as predictive prewarm and eviction. If no
-// healthy node has both a known VRAM total and a known size for model, there
-// is no real data to say it doesn't fit, so this fails open (true) - R1:
-// never guess a value that wasn't observed.
+// data (tags-cache size, live VRAM) as predictive prewarm and eviction.
+//
+// Two distinct "unknown" cases exist here and are handled differently (P403):
+//   - No healthy node has a known VRAM *capacity* (VRAMTotalMB, i.e. a
+//     marbor-agent report or a manual vram_total_mb override) at all - a
+//     remote fleet with no agent has no real capacity signal whatsoever, so
+//     there is nothing to fail open ON. Returns false: "not confirmed to
+//     fit," never "fits."
+//   - Capacity is known on at least one healthy node, but model's *size* is
+//     unknown everywhere (never seen, no tags-cache entry) - there is real
+//     capacity data, just nothing to compare it against. This still fails
+//     open (true), matching the existing R1-safe "never guess a value that
+//     wasn't observed" behavior for a genuinely novel model.
 func (r *Router) ModelFitsAnyHealthyNode(model string) bool {
 	r.mu.RLock()
 	nodes := make([]*NodeState, len(r.nodes))
@@ -848,6 +857,7 @@ func (r *Router) ModelFitsAnyHealthyNode(model string) bool {
 	r.mu.RUnlock()
 
 	sawKnownSize := false
+	anyCapacityKnown := false
 	for _, n := range nodes {
 		n.mu.RLock()
 		healthy := n.Healthy && !n.Draining
@@ -858,6 +868,7 @@ func (r *Router) ModelFitsAnyHealthyNode(model string) bool {
 		if !healthy || !vramKnown {
 			continue
 		}
+		anyCapacityKnown = true
 		size := r.estimateModelSizeBytes(nodeURL, model, true)
 		if size <= 0 {
 			continue
@@ -866,6 +877,9 @@ func (r *Router) ModelFitsAnyHealthyNode(model string) bool {
 		if freeBytes >= size {
 			return true
 		}
+	}
+	if !anyCapacityKnown {
+		return false
 	}
 	return !sawKnownSize
 }
