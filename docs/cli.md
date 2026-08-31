@@ -74,6 +74,17 @@ Flags:
 
 - `--fingerprint string` - SHA-256 fingerprint the operator has independently confirmed matches the node's actual TLS certificate (see "agent service status" on the node), in the form SHA256:<64 hex characters> (required)
 
+#### `patch <node>`
+
+set deployment parallelism for a node (P397)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--parallelism-type string` - parallelism type: tp, pp, ep, dp (empty to clear)
+- `--parallelism-width int` - parallelism width 1..64 (0 to clear)
+
 ### `models`
 
 fleet-wide list, or pull/delete/unload/list on one node
