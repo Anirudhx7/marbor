@@ -189,6 +189,8 @@ func applyPersistedSettings(cfg *config.Config, st store.Store) {
 	cfg.Routing.ThermalWatchdog.Enabled = store.GetBoolSetting(st, "routing_thermal_watchdog_enabled", cfg.Routing.ThermalWatchdog.Enabled)
 	cfg.Routing.ThermalWatchdog.MaxTempCelsius = store.GetFloatSetting(st, "routing_thermal_watchdog_max_temp_celsius", cfg.Routing.ThermalWatchdog.MaxTempCelsius)
 	cfg.Routing.ThermalWatchdog.ConsecutiveBreaches = store.GetIntSetting(st, "routing_thermal_watchdog_consecutive_breaches", cfg.Routing.ThermalWatchdog.ConsecutiveBreaches)
+	cfg.Routing.PrefixLocalityEnabled = store.GetBoolSetting(st, "routing_prefix_locality_enabled", cfg.Routing.PrefixLocalityEnabled)
+	cfg.Routing.PrefixLocalityWeight = store.GetIntSetting(st, "routing_prefix_locality_weight", cfg.Routing.PrefixLocalityWeight)
 	store.GetJSONSetting(st, "routing_fallback_chains", &cfg.Routing.FallbackChains)
 	store.GetJSONSetting(st, "routing_local_degradation_chains", &cfg.Routing.LocalDegradationChains)
 
@@ -683,6 +685,13 @@ func main() {
 		}
 		r.SeedPredictiveHistory(entries)
 		log.Printf("store: loaded %d predictive transition(s)", len(entries))
+	}
+
+	// Load persisted prefix-locality routing hints (Step 6) so restarts don't
+	// silently reset every hint to zero.
+	if hist, err := st.PrefixLocalityHistory(); err == nil && len(hist) > 0 {
+		r.SeedPrefixLocalityHistory(hist)
+		log.Printf("store: loaded %d prefix-locality hint(s)", len(hist))
 	}
 
 	// Restore the warm-state residency map so the router starts warm, not cold:

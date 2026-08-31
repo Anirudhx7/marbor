@@ -347,6 +347,8 @@ export interface Settings {
   thermalWatchdogEnabled: boolean;
   thermalWatchdogMaxTempCelsius: number;
   thermalWatchdogConsecutiveBreaches: number;
+  routingPrefixLocalityEnabled: boolean;
+  routingPrefixLocalityWeight: number;
 
   // Docker auto-discovery.
   dockerEnabled: boolean;

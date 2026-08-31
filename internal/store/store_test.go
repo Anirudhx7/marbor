@@ -353,6 +353,59 @@ func TestPredictiveHistory(t *testing.T) {
 	}
 }
 
+// TestPrefixLocalityHistory verifies AppendPrefixLocality + PrefixLocalityHistory
+// survive across a fresh Open() (restart simulation), mirroring
+// TestPredictiveHistory's shape for the same reasons (L3).
+func TestPrefixLocalityHistory(t *testing.T) {
+	s := openTestDB(t)
+
+	base := time.Now().UTC().Truncate(time.Second)
+	if err := s.AppendPrefixLocality("hash-a", "node1", base); err != nil {
+		t.Fatalf("AppendPrefixLocality: %v", err)
+	}
+	if err := s.AppendPrefixLocality("hash-b", "node2", base.Add(time.Minute)); err != nil {
+		t.Fatalf("AppendPrefixLocality: %v", err)
+	}
+
+	hist, err := s.PrefixLocalityHistory()
+	if err != nil {
+		t.Fatalf("PrefixLocalityHistory: %v", err)
+	}
+	if len(hist) != 2 {
+		t.Fatalf("len(hist) = %d, want 2", len(hist))
+	}
+	if hist[0].PrefixHash != "hash-a" || hist[0].NodeName != "node1" {
+		t.Errorf("hist[0] = %+v, want PrefixHash=hash-a NodeName=node1", hist[0])
+	}
+	if hist[1].PrefixHash != "hash-b" || hist[1].NodeName != "node2" {
+		t.Errorf("hist[1] = %+v, want PrefixHash=hash-b NodeName=node2", hist[1])
+	}
+	if !hist[0].Timestamp.Equal(base) {
+		t.Errorf("hist[0].Timestamp = %v, want %v", hist[0].Timestamp, base)
+	}
+}
+
+// TestPrefixLocalityHistoryTrim verifies the 500-row cap behaves identically
+// to predictive_history's trim (same DELETE...NOT IN pattern in sqlite.go).
+func TestPrefixLocalityHistoryTrim(t *testing.T) {
+	s := openTestDB(t)
+
+	base := time.Now().UTC().Truncate(time.Second)
+	for i := 0; i < 510; i++ {
+		if err := s.AppendPrefixLocality("hash", "node1", base.Add(time.Duration(i)*time.Second)); err != nil {
+			t.Fatalf("AppendPrefixLocality[%d]: %v", i, err)
+		}
+	}
+
+	hist, err := s.PrefixLocalityHistory()
+	if err != nil {
+		t.Fatalf("PrefixLocalityHistory: %v", err)
+	}
+	if len(hist) != 500 {
+		t.Fatalf("len(hist) = %d, want 500 (trim cap)", len(hist))
+	}
+}
+
 // TestNodeOverrides verifies UpsertNodeOverride + NodeOverrides.
 func TestNodeOverrides(t *testing.T) {
 	s := openTestDB(t)

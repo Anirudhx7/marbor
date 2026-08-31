@@ -5,8 +5,9 @@ import {
   fetchNodes, getNodeWarmup, setNodeWarmup,
   listSchedules, createSchedule, deleteSchedule, updateSchedule,
   fetchModels, getPinned, setPinned, fetchSystemInfo, fetchPredictiveDecisions,
-  fetchWarmupStatus, setPredictiveEngine, triggerWarmupPing,
+  fetchWarmupStatus, setPredictiveEngine, triggerWarmupPing, fetchPrefixLocalityStats,
 } from '../lib/api';
+import type { PrefixLocalityStats } from '../lib/api';
 import type { GPUNode, PredictiveDecision } from '../types';
 import type { Schedule, NodeWarmup } from '../lib/api';
 import { Badge } from '../components/Badge';
@@ -666,6 +667,7 @@ export function Warmup() {
   const [serverTime, setServerTime] = useState<Date | null>(null);
   const [serverTimezone, setServerTimezone] = useState<string>('');
   const [predictiveEnabled, setPredictiveEnabled] = useState(true);
+  const [prefixStats, setPrefixStats] = useState<PrefixLocalityStats | null>(null);
   const [togglingPredictive, setTogglingPredictive] = useState(false);
   const [predictiveConfirmOpen, setPredictiveConfirmOpen] = useState(false);
   const [scheduleToDelete, setScheduleToDelete] = useState<Schedule | null>(null);
@@ -712,6 +714,10 @@ export function Warmup() {
       const status = await fetchWarmupStatus().catch(() => ({ predictive_engine_enabled: true }));
       if (!active || requestId !== loadRequestId.current || currentAppPath() !== '/warmup') return;
       setPredictiveEnabled(status.predictive_engine_enabled);
+
+      const pStats = await fetchPrefixLocalityStats().catch(() => null);
+      if (!active || currentAppPath() !== '/warmup') return;
+      setPrefixStats(pStats);
 
       const sys = await fetchSystemInfo().catch(() => null);
       if (!active || requestId !== loadRequestId.current || currentAppPath() !== '/warmup') return;
@@ -1039,6 +1045,19 @@ export function Warmup() {
               />
             </button>
           </div>
+
+          {prefixStats && (
+            <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30 mb-4">
+              <div>
+                <p className="text-sm font-medium text-foreground">Prefix Locality Hit Rate</p>
+                <p className="text-xs text-muted-foreground">
+                  {prefixStats.enabled
+                    ? `${(prefixStats.hit_rate * 100).toFixed(1)}% (${prefixStats.hits} hits / ${prefixStats.misses} misses)`
+                    : 'Disabled - enable in Settings > Routing to activate this signal'}
+                </p>
+              </div>
+            </div>
+          )}
 
           <div className={`space-y-2 transition-opacity duration-200 ${!predictiveEnabled ? 'opacity-50 pointer-events-none' : ''}`}>
             <p className="text-xs text-muted-foreground">

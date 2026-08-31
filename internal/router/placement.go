@@ -442,14 +442,20 @@ func staticVRAMReservation(runtime string) bool {
 // score = (warm_model_resident * 50) + (free_vram_headroom * 20) +
 //
 //	(inverse_queue_depth * 15) + (node_health_score * 10) +
-//	(recent_success_rate * 5), then cooldown and stale-telemetry
-//	penalties applied in sequence, each floored at 0.
+//	(recent_success_rate * 5) + (prefix_match * prefixWeight), then cooldown
+//	and stale-telemetry penalties applied in sequence, each floored at 0.
+//
+// prefixWeight (Step 6, default 10) must always stay below warm_resident's 50
+// and inverse_queue_depth's 15 so a prefix-locality hint can never flip a
+// warm-vs-cold or real-load-vs-idle decision - see prefixlocality.go. Pass
+// preferredNode == "" to disable the term entirely (the caller didn't engage
+// the feature for this request).
 //
 // This is the single source of truth for the scoring arithmetic -
 // computeNodeScore sums the returned Values rather than recomputing the
 // score, so a caller building a RoutingDecision from this breakdown is
 // guaranteed to see the exact number the router used to pick the winner.
-func (r *Router) scoreComponents(n *NodeState, model string) []ScoreComponent {
+func (r *Router) scoreComponents(n *NodeState, model, preferredNode string, prefixWeight float64) []ScoreComponent {
 	n.mu.RLock()
 	defer n.mu.RUnlock()
 
@@ -522,12 +528,21 @@ func (r *Router) scoreComponents(n *NodeState, model string) []ScoreComponent {
 		success = sum / float64(len(n.SuccessHistory))
 	}
 
+	// 6. prefix_match (Step 6) - soft nudge toward the node that last served an
+	// identical prefix hash, for KV-cache reuse odds. Bounded well below the
+	// warm_resident and inverse_queue_depth terms above; see the doc comment.
+	prefixMatch := 0.0
+	if preferredNode != "" && n.Name == preferredNode {
+		prefixMatch = 1.0
+	}
+
 	components := []ScoreComponent{
 		{Name: "warm_model_resident", Raw: warm, Weight: 50.0, Value: warm * 50.0},
 		{Name: "free_vram_headroom", Raw: freeVRAM, Weight: 20.0, Value: freeVRAM * 20.0},
 		{Name: "inverse_queue_depth", Raw: invQueue, Weight: 15.0, Value: invQueue * 15.0},
 		{Name: "node_health", Raw: health, Weight: 10.0, Value: health * 10.0},
 		{Name: "success_rate", Raw: success, Weight: 5.0, Value: success * 5.0},
+		{Name: "prefix_match", Raw: prefixMatch, Weight: prefixWeight, Value: prefixMatch * prefixWeight},
 	}
 	running := sumComponents(components)
 
@@ -586,8 +601,8 @@ func boolToFloat(b bool) float64 {
 
 // computeNodeScore calculates a multi-factor score for a node. See
 // scoreComponents for the term-by-term breakdown this sums.
-func (r *Router) computeNodeScore(n *NodeState, model string) float64 {
-	return sumComponents(r.scoreComponents(n, model))
+func (r *Router) computeNodeScore(n *NodeState, model, preferredNode string, prefixWeight float64) float64 {
+	return sumComponents(r.scoreComponents(n, model, preferredNode, prefixWeight))
 }
 
 // findBestByScore finds the best node from the given slice based on weighted score,
@@ -603,14 +618,14 @@ func (r *Router) computeNodeScore(n *NodeState, model string) float64 {
 // so a concurrent call scoring the same node saw stale headroom for the
 // entire scoring pass, not just the time after this candidate became the
 // leader. See .local/audit-fixes-2026-08-03.md #2.
-func (r *Router) findBestByScore(nodes []*NodeState, modelName string) (*NodeState, []ScoreComponent) {
+func (r *Router) findBestByScore(nodes []*NodeState, modelName, preferredNode string, prefixWeight float64) (*NodeState, []ScoreComponent) {
 	var bestNode *NodeState
 	var bestScore float64 = -999.0
 	var bestComponents []ScoreComponent
 	var reservedFor *NodeState // node currently holding this loop's provisional reservation, if any
 
 	for _, n := range nodes {
-		components := r.scoreComponents(n, modelName)
+		components := r.scoreComponents(n, modelName, preferredNode, prefixWeight)
 		score := sumComponents(components)
 		isNewBest := bestNode == nil || score > bestScore || (score == bestScore && n.Name < bestNode.Name)
 		if !isNewBest {
@@ -634,7 +649,7 @@ func (r *Router) findBestByScore(nodes []*NodeState, modelName string) (*NodeSta
 
 // selectBestNode runs scoring and handles pinned models.
 // If the model is pinned and warm on any healthy candidate, it is selected immediately.
-func (r *Router) selectBestNode(candidates []*NodeState, modelName string) (*NodeState, bool, *RoutingDecision) {
+func (r *Router) selectBestNode(candidates []*NodeState, modelName, preferredNode string, prefixWeight float64) (*NodeState, bool, *RoutingDecision) {
 	if len(candidates) == 0 {
 		return nil, false, nil
 	}
@@ -648,7 +663,7 @@ func (r *Router) selectBestNode(candidates []*NodeState, modelName string) (*Nod
 			}
 		}
 		if len(pinnedAndWarm) > 0 {
-			bestNode, _ := r.findBestByScore(pinnedAndWarm, modelName)
+			bestNode, _ := r.findBestByScore(pinnedAndWarm, modelName, preferredNode, prefixWeight)
 			metrics.CacheHit()
 			decision := &RoutingDecision{Reason: ReasonPinnedWarm}
 			if bestNode != nil {
@@ -660,7 +675,7 @@ func (r *Router) selectBestNode(candidates []*NodeState, modelName string) (*Nod
 	}
 
 	// 2. Score all candidates
-	bestNode, components := r.findBestByScore(candidates, modelName)
+	bestNode, components := r.findBestByScore(candidates, modelName, preferredNode, prefixWeight)
 	if bestNode == nil {
 		return nil, false, nil
 	}
@@ -685,7 +700,7 @@ func (r *Router) selectBestNode(candidates []*NodeState, modelName string) (*Nod
 }
 
 // routeInternal is the core weighted selection logic that Route delegates to.
-func (r *Router) routeInternal(modelName, runtimeFilter string) (*NodeState, bool, *RoutingDecision) {
+func (r *Router) routeInternal(modelName, runtimeFilter, preferredNode string, prefixWeight float64) (*NodeState, bool, *RoutingDecision) {
 	r.mu.RLock()
 	nodes := make([]*NodeState, len(r.nodes))
 	copy(nodes, r.nodes)
@@ -704,7 +719,7 @@ func (r *Router) routeInternal(modelName, runtimeFilter string) (*NodeState, boo
 			healthy = append(healthy, n)
 		}
 	}
-	return r.selectBestNode(healthy, modelName)
+	return r.selectBestNode(healthy, modelName, preferredNode, prefixWeight)
 }
 
 // Route picks the best healthy node for modelName using weighted placement scoring.
@@ -716,6 +731,18 @@ func (r *Router) routeInternal(modelName, runtimeFilter string) (*NodeState, boo
 // score_based/pinned_warm decision doesn't silently look like a request that
 // never had affinity at all.
 func (r *Router) Route(modelName, sessionID, runtimeFilter string) (*NodeState, bool, *RoutingDecision) {
+	return r.RouteWithPrefix(modelName, sessionID, runtimeFilter, "")
+}
+
+// RouteWithPrefix is Route plus an optional prefix-locality hint (Step 6):
+// prefixHash, if non-empty and the feature is enabled, contributes a small
+// tier-5 score bonus (see computeNodeScore) toward the node that last served
+// an identical prefix hash. It is a strictly weaker signal than Session
+// Affinity (tier 2) and Warm Residency (tier 3) - the sticky-session fast
+// path below returns before the prefix hint is ever consulted, exactly like
+// Route's prior behavior. Pass prefixHash == "" for the same behavior as
+// Route (used by Route itself, and by every existing caller/test).
+func (r *Router) RouteWithPrefix(modelName, sessionID, runtimeFilter, prefixHash string) (*NodeState, bool, *RoutingDecision) {
 	if !r.sessionAffinity {
 		sessionID = ""
 	}
@@ -751,9 +778,27 @@ func (r *Router) Route(modelName, sessionID, runtimeFilter string) (*NodeState, 
 		}
 	}
 
-	node, warm, decision := r.routeInternal(modelName, runtimeFilter)
+	// Resolve the prefix-locality hint once per request (not once per
+	// candidate node) to bound lock contention and metrics cost.
+	preferredNode := ""
+	if r.prefixLocalityEnabled && prefixHash != "" {
+		preferredNode = r.lookupPrefixLocality(prefixHash)
+		if preferredNode != "" {
+			r.prefixHitsTotal.Add(1)
+			metrics.PrefixLocalityHit()
+		} else {
+			r.prefixMissesTotal.Add(1)
+			metrics.PrefixLocalityMiss()
+		}
+	}
+
+	node, warm, decision := r.routeInternal(modelName, runtimeFilter, preferredNode, r.prefixLocalityWeight)
 	if node != nil {
-		r.RecordTransition(modelName, time.Now())
+		now := time.Now()
+		r.RecordTransition(modelName, now)
+		if r.prefixLocalityEnabled && prefixHash != "" {
+			r.recordPrefixLocality(prefixHash, node.Name, now)
+		}
 		if sessionID != "" {
 			r.affinityMu.Lock()
 			if len(r.affinity) < maxAffinityEntries {
@@ -799,7 +844,7 @@ func (r *Router) RouteExcluding(modelName, runtimeFilter string, exclude map[str
 			healthy = append(healthy, n)
 		}
 	}
-	return r.selectBestNode(healthy, modelName)
+	return r.selectBestNode(healthy, modelName, "", 0)
 }
 
 // pickLeastConns returns the node with the fewest active connections.

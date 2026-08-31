@@ -100,6 +100,10 @@ type Store interface {
 	AppendPredictiveTransition(fromModel, toModel string, ts time.Time) error
 	PredictiveHistory() ([]PredictiveTransition, error)
 
+	// Prefix-locality routing hints (survives restart) - Step 6
+	AppendPrefixLocality(prefixHash, nodeName string, ts time.Time) error
+	PrefixLocalityHistory() ([]PrefixLocalityEntry, error)
+
 	// Runtime API keys (survive restart)
 	UpsertKey(k KeyRecord) error
 	RevokeKey(name string) error
@@ -420,6 +424,16 @@ type PredictiveTransition struct {
 	FromModel string
 	ToModel   string
 	Timestamp time.Time
+}
+
+// PrefixLocalityEntry is one persisted prefix-hash -> node routing hint, used
+// to reseed the in-memory prefix-locality map after a restart. NodeName is
+// the node that last served a request whose prompt hashed to PrefixHash;
+// PrefixHash is a one-way hash and never contains raw prompt content.
+type PrefixLocalityEntry struct {
+	PrefixHash string
+	NodeName   string
+	Timestamp  time.Time
 }
 
 // KeyRecord is a runtime API key that should survive a process restart.
@@ -749,6 +763,8 @@ func (NopStore) AllNodeControl() ([]NodeControlRecord, error)              { ret
 func (NopStore) DeleteNodeControl(_ string) error                          { return nil }
 func (NopStore) AppendPredictiveTransition(_, _ string, _ time.Time) error { return nil }
 func (NopStore) PredictiveHistory() ([]PredictiveTransition, error)        { return nil, nil }
+func (NopStore) AppendPrefixLocality(_, _ string, _ time.Time) error       { return nil }
+func (NopStore) PrefixLocalityHistory() ([]PrefixLocalityEntry, error)     { return nil, nil }
 func (NopStore) UpsertKey(_ KeyRecord) error                               { return nil }
 func (NopStore) RevokeKey(_ string) error                                  { return nil }
 func (NopStore) DeleteKey(_ string) error                                  { return nil }

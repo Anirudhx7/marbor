@@ -467,6 +467,8 @@ export const defaultSettings: Settings = {
   thermalWatchdogEnabled: false,
   thermalWatchdogMaxTempCelsius: 0,
   thermalWatchdogConsecutiveBreaches: 3,
+  routingPrefixLocalityEnabled: false,
+  routingPrefixLocalityWeight: 10,
 
   dockerEnabled: false,
   dockerSocket: '',

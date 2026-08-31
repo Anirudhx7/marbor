@@ -1213,6 +1213,7 @@ func (s *Server) Handler() http.Handler {
 	reg("GET /admin/model-config/capabilities", s.cors(s.adminAuth(s.handleModelConfigCapabilities)))
 
 	reg("GET /admin/predictive/decisions", s.cors(s.adminAuth(s.handlePredictiveDecisions)))
+	reg("GET /admin/prefix-locality/stats", s.cors(s.adminAuth(s.handlePrefixLocalityStats)))
 
 	reg("GET /admin/system-info", s.cors(s.adminAuth(s.handleSystemInfo)))
 	reg("GET /admin/cloud-budget-status", s.cors(s.adminAuth(s.handleCloudBudgetStatus)))
@@ -1916,6 +1917,26 @@ func (s *Server) handlePredictiveDecisions(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"decisions": decisions,
+	})
+}
+
+// handlePrefixLocalityStats returns real cumulative hit/miss counts and the
+// derived hit rate for the prefix-locality routing hint (Step 6). Read-only.
+// Counts are 0 (never a fabricated ratio) until the feature has actually
+// processed a request - R1.
+func (s *Server) handlePrefixLocalityStats(w http.ResponseWriter, r *http.Request) {
+	hits, misses := s.router.PrefixLocalityStats()
+	total := hits + misses
+	hitRate := 0.0
+	if total > 0 {
+		hitRate = float64(hits) / float64(total)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"enabled":  s.router.PrefixLocalityEnabled(),
+		"hits":     hits,
+		"misses":   misses,
+		"hit_rate": hitRate,
 	})
 }
 
@@ -5395,6 +5416,8 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		"routing_thermal_watchdog_enabled":              strconv.FormatBool(incoming.Routing.ThermalWatchdog.Enabled),
 		"routing_thermal_watchdog_max_temp_celsius":     strconv.FormatFloat(incoming.Routing.ThermalWatchdog.MaxTempCelsius, 'f', -1, 64),
 		"routing_thermal_watchdog_consecutive_breaches": strconv.Itoa(incoming.Routing.ThermalWatchdog.ConsecutiveBreaches),
+		"routing_prefix_locality_enabled":               strconv.FormatBool(incoming.Routing.PrefixLocalityEnabled),
+		"routing_prefix_locality_weight":                strconv.Itoa(incoming.Routing.PrefixLocalityWeight),
 
 		// Docker auto-discovery.
 		"docker_enabled":          strconv.FormatBool(incoming.Docker.Enabled),

@@ -138,6 +138,16 @@ var (
 		Name: "marbor_prediction_accuracy_ratio",
 		Help: "Ratio of successful prewarming predictions (0.0 to 1.0)",
 	})
+
+	prefixLocalityHitsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "marbor_prefix_locality_hits_total",
+		Help: "Requests whose prefix hash matched a recorded prefix-locality routing hint (Step 6)",
+	})
+
+	prefixLocalityMissesTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "marbor_prefix_locality_misses_total",
+		Help: "Requests with no matching prefix-locality routing hint (Step 6)",
+	})
 )
 
 func RequestsTotal(key, model, node, status string) {
@@ -243,4 +253,16 @@ func ModelEvicted(node string) {
 // PredictionAccuracyRatio records the rolling prewarming prediction accuracy.
 func PredictionAccuracyRatio(v float64) {
 	predictionAccuracyRatio.Set(v)
+}
+
+// PrefixLocalityHit records a request whose prefix hash matched a recorded
+// routing hint (Step 6). Does not imply that node was actually selected -
+// warm residency and other higher-tier signals can still win.
+func PrefixLocalityHit() {
+	prefixLocalityHitsTotal.Inc()
+}
+
+// PrefixLocalityMiss records a request with no matching prefix-locality hint.
+func PrefixLocalityMiss() {
+	prefixLocalityMissesTotal.Inc()
 }

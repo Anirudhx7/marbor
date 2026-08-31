@@ -589,6 +589,20 @@ type Router struct {
 	// pollAll (P115): a slow/unreachable agent host can otherwise let 2-3 poll
 	// cycles overlap, each incrementing NodeState.AgentFailures independently.
 	agentPollInFlight atomic.Bool
+
+	// Prefix-locality routing hints (Step 6). prefixLocality maps a
+	// prefix_hash to the node that last served it; own dedicated mutex per
+	// R3, separate from both r.mu and affinityMu since it is an unrelated
+	// subsystem. prefixLocalityEnabled/Weight are immutable after New()
+	// (same convention as sessionAffinity: settings-page changes persist to
+	// SQLite and apply on next restart via main.go's applyPersistedSettings,
+	// not live) so they are read without a lock.
+	prefixLocality        map[string]string
+	prefixMu              sync.RWMutex
+	prefixLocalityEnabled bool
+	prefixLocalityWeight  float64
+	prefixHitsTotal       atomic.Int64
+	prefixMissesTotal     atomic.Int64
 }
 
 // NodeWarmup is the per-node runtime warmup setting: whether proactive warmup is
@@ -740,6 +754,9 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 		maxInFlightPerNode:       cfg.MaxInFlightPerNode,
 		lastAccuracyLogAt:        time.Now(),
 		lastTimeOfDayPrewarmHour: -1,
+		prefixLocality:           make(map[string]string),
+		prefixLocalityEnabled:    cfg.PrefixLocalityEnabled,
+		prefixLocalityWeight:     float64(cfg.PrefixLocalityWeight),
 	}
 	rr = r
 	return r

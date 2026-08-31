@@ -80,8 +80,15 @@ func (r *Router) DecrModelInFlight(node *NodeState, model string) {
 // If the queue is already at queueMaxDepth, returns nil immediately without queuing
 // to prevent unbounded memory growth under sustained overload.
 func (r *Router) WaitForNode(ctx context.Context, modelName, sessionID, runtimeFilter string) (*NodeState, bool, *RoutingDecision) {
+	return r.WaitForNodeWithPrefix(ctx, modelName, sessionID, runtimeFilter, "")
+}
+
+// WaitForNodeWithPrefix is WaitForNode plus an optional prefix-locality hint
+// (Step 6) - see RouteWithPrefix. Pass prefixHash == "" for identical
+// behavior to WaitForNode.
+func (r *Router) WaitForNodeWithPrefix(ctx context.Context, modelName, sessionID, runtimeFilter, prefixHash string) (*NodeState, bool, *RoutingDecision) {
 	// Fast path: immediate route.
-	if node, warm, decision := r.Route(modelName, sessionID, runtimeFilter); node != nil {
+	if node, warm, decision := r.RouteWithPrefix(modelName, sessionID, runtimeFilter, prefixHash); node != nil {
 		return node, warm, decision
 	}
 
@@ -139,11 +146,11 @@ func (r *Router) WaitForNode(ctx context.Context, modelName, sessionID, runtimeF
 			metrics.QueueTimeout()
 			return nil, false, nil
 		case <-ch:
-			if node, warm, decision := r.Route(modelName, sessionID, runtimeFilter); node != nil {
+			if node, warm, decision := r.RouteWithPrefix(modelName, sessionID, runtimeFilter, prefixHash); node != nil {
 				return node, warm, decision
 			}
 		case <-retryTick.C:
-			if node, warm, decision := r.Route(modelName, sessionID, runtimeFilter); node != nil {
+			if node, warm, decision := r.RouteWithPrefix(modelName, sessionID, runtimeFilter, prefixHash); node != nil {
 				return node, warm, decision
 			}
 		}
