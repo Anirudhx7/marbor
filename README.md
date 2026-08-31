@@ -181,6 +181,7 @@ Client Application (Agent / RAG / Copilot)
 |----------|---------|--------|
 | **GPU-Aware Routing** | Warm-first model routing | Polls `/api/ps` on every node every 2s. Routes to the node where the model is already resident in VRAM. Eliminates cold-start latency. |
 | | VRAM-fit placement | Cold requests route to the node with the most free VRAM. Prevents OOM under concurrent multi-model traffic. |
+| | Deployment-aware GPU-count placement | Nodes declare tensor/pipeline/expert/data-parallel width (or one-click "Adopt" what the marbor agent auto-detects). A model needing 8 GPUs for tensor-parallel inference can no longer be routed to a 4-GPU node - the scheduler gates on GPU count, not just VRAM. |
 | | Session affinity (KV-cache) | `X-Session-ID` header pins a conversation to a node. KV-cache stays hot - subsequent turns skip re-prefill. TTL-based eviction. |
 | | Proactive model warmup | `keep_alive` pings on a configurable schedule keep priority models resident between requests. |
 | **Financial Controls** | Real-time savings tracking | Every locally-served token valued against your cloud reference rate. Dashboard shows exact dollar savings vs pure-cloud baseline. |
