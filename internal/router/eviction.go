@@ -798,17 +798,34 @@ func (r *Router) reserveWarmBytes(node, model string, estBytes int64) int64 {
 	return others
 }
 
+// unknownModelReserveBytes is a conservative placeholder reservation used by
+// reserveColdStartBytes when a cold-start model's real size cannot yet be
+// determined. It is deliberately NOT a size estimate or measurement (R1) - it
+// is a scheduling guard only, never surfaced as VRAM telemetry anywhere. Its
+// sole purpose is to make PendingPrewarmBytes/free_vram_headroom nonzero for
+// the node holding this reservation, so a burst of concurrent cold-start
+// requests for a never-seen model see each other's pick instead of all
+// reading the same stale "fully free" snapshot and colliding on one node
+// (P402). Once the poller confirms the model resident, clearWarmReservation
+// drops this placeholder like any other reservation - it never lingers past
+// warmReservationTTL either way.
+const unknownModelReserveBytes = 2 * 1024 * 1024 * 1024 // 2 GiB
+
 // reserveColdStartBytes records a best-effort VRAM reservation for a request
 // that just picked node for a not-yet-warm model. Used on the streaming
 // request-routing hot path (Route/selectBestNode/RouteExcluding), so it only
 // ever consults already-known, zero-I/O size data (estimateModelSizeBytes with
-// allowFetch=false) - never a blocking fetch (R2). A no-op when the size isn't
-// already known, matching estimateModelSizeBytes's existing "unknown ->
-// decline" convention (R1: never guess).
+// allowFetch=false) - never a blocking fetch (R2). When the real size isn't
+// already known, this falls back to unknownModelReserveBytes rather than
+// reserving nothing: a silent no-op here is what let concurrent cold starts
+// for the same never-seen model double-book a node, since neither request's
+// pick discounted the other's headroom (P402).
 func (r *Router) reserveColdStartBytes(nodeURL, nodeName, model string) {
-	if est := r.estimateModelSizeBytes(nodeURL, model, false); est > 0 {
-		r.reserveWarmBytes(nodeName, model, est)
+	est := r.estimateModelSizeBytes(nodeURL, model, false)
+	if est <= 0 {
+		est = unknownModelReserveBytes
 	}
+	r.reserveWarmBytes(nodeName, model, est)
 }
 
 // chainFor is the shared lookup behind FallbackChainFor and
