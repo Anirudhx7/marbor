@@ -255,6 +255,54 @@ func TestRoute_ColdStartReservationPreventsDoubleBooking(t *testing.T) {
 	}
 }
 
+// TestRoute_ColdStartReservationPreventsDoubleBooking_UnknownSize covers P402:
+// reserveColdStartBytes used to be a no-op when a model's size couldn't be
+// determined (no lastKnownVRAM, no override, no allowed fetch on this hot
+// path), so a burst of concurrent cold starts for a never-seen model all read
+// the same "fully free" snapshot and could all land on the same node. Unlike
+// TestRoute_ColdStartReservationPreventsDoubleBooking above, this test
+// deliberately records NO lastKnownVRAM for either node/model, so
+// estimateModelSizeBytes returns 0 and the fix must fall back to
+// unknownModelReserveBytes rather than reserving nothing.
+func TestRoute_ColdStartReservationPreventsDoubleBooking_UnknownSize(t *testing.T) {
+	r := New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
+		{Name: "node-a", URL: "http://node-a:11434"},
+		{Name: "node-b", URL: "http://node-b:11434"},
+	}, nil)
+
+	r.nodes[0].mu.Lock()
+	r.nodes[0].VRAMTotalMB = 5000
+	r.nodes[0].mu.Unlock()
+	r.nodes[1].mu.Lock()
+	r.nodes[1].VRAMTotalMB = 5000
+	r.nodes[1].mu.Unlock()
+
+	// First cold request for a never-seen model: node-a and node-b tie on
+	// every score term, so the deterministic alphabetical tiebreak picks
+	// node-a.
+	n1, warm1, _ := r.Route("model-unknown-a", "", "")
+	if n1 == nil || n1.Name != "node-a" {
+		t.Fatalf("first Route(model-unknown-a) = %v, want node-a (tiebreak)", n1)
+	}
+	if warm1 {
+		t.Fatal("first Route(model-unknown-a) reported warm=true, want false (cold)")
+	}
+
+	// Second, concurrent-in-spirit request for a DIFFERENT never-seen model:
+	// before the P402 fix, reserveColdStartBytes was a no-op for an
+	// unknown-size model, so node-a's headroom would look untouched and this
+	// second request would also tiebreak onto node-a, double-booking it. The
+	// fix's placeholder reservation must discount node-a's headroom so
+	// node-b - still fully free - wins instead.
+	n2, warm2, _ := r.Route("model-unknown-b", "", "")
+	if n2 == nil || n2.Name != "node-b" {
+		t.Fatalf("second Route(model-unknown-b) = %v, want node-b (node-a's headroom must be discounted by model-unknown-a's placeholder reservation)", n2)
+	}
+	if warm2 {
+		t.Fatal("second Route(model-unknown-b) reported warm=true, want false (cold)")
+	}
+}
+
 // TestIsModelWarm_DigestMismatchNotWarm covers audit finding #1/#9
 // (.local/audit-fixes-2026-08-03.md): two nodes serving the same model NAME
 // with different content digests (a stale re-pull, a mismatched
