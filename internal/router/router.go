@@ -171,10 +171,27 @@ type NodeState struct {
 	// unchanged. Set via PatchNode/NodePatch.GPUIndices, persisted in
 	// store.NodeOverride.GPUIndices.
 	DeclaredGPUIndices []int
-	autoDetect         bool                    // true if config said runtime: auto; cleared after first detection
-	probe              runtimepkg.RuntimeProbe // backend-specific health + runtime warm-model probe
-	LastErrorAt        time.Time
-	SuccessHistory     []bool
+	// ParallelismType is the deployment topology type (P397) - "" means
+	// unconstrained (existing fleet), otherwise "tp"|"pp"|"ep"|"dp".
+	// ParallelismWidth is the width for that type - 0 means unconstrained.
+	// Together they derive EffectiveRequiredGPUs via EffectiveRequiredGPUs().
+	// Guarded by mu like DeclaredGPUIndices.
+	ParallelismType  string
+	ParallelismWidth int
+	// P397b: auto-discovered deployment from agent (in-memory only, not
+	// persisted - derived from agent Deployments report each poll). Declared
+	// above always overrides detected: effectiveRequiredGPUsLocked prefers
+	// declared if non-nil else detected else 0 (fail-open). Guarded by mu.
+	DetectedParallelismType  string
+	DetectedParallelismWidth int
+	DetectedGPUGroup         []int
+	DetectedSource           string // ps|docker|env:KEY|fallback|unknown
+	DetectedCaps             *marboragent.RuntimeCaps
+	DetectedRuntime          string
+	autoDetect               bool                    // true if config said runtime: auto; cleared after first detection
+	probe                    runtimepkg.RuntimeProbe // backend-specific health + runtime warm-model probe
+	LastErrorAt              time.Time
+	SuccessHistory           []bool
 
 	// Marbor Agent-derived telemetry (see internal/marboragent, .local/specs/node-agent.md).
 	// AgentPresent is true only after a successful poll of this node's agent
@@ -1665,6 +1682,11 @@ type NodePatch struct {
 	// http:// URL) and the section 15 sibling-consistency guard both live in
 	// admin.go's handlePatchNode, not here - PatchNode itself only merges.
 	TLSFingerprint *string `json:"tls_fingerprint"`
+	// ParallelismType declares deployment topology type (P397) - nil means no
+	// change, pointer to "" clears. ParallelismWidth declares width - nil
+	// means no change, pointer to 0 clears.
+	ParallelismType  *string `json:"parallelism_type"`
+	ParallelismWidth *int    `json:"parallelism_width"`
 }
 
 // UpdateNodeURL rewrites a node's backend address. Unlike PatchNode's other
@@ -1715,6 +1737,8 @@ func (r *Router) UpdateNodeURL(name string, newURL string) error {
 	declaredGPUIndices := old.DeclaredGPUIndices
 	maxInFlight := old.MaxInFlight
 	tlsFingerprint := old.TLSFingerprint
+	parallelismType := old.ParallelismType
+	parallelismWidth := old.ParallelismWidth
 	old.mu.Unlock()
 
 	newHost := ResultingHost(oldHost, oldURL, newURL)
@@ -1730,6 +1754,8 @@ func (r *Router) UpdateNodeURL(name string, newURL string) error {
 		DeclaredGPUIndices: declaredGPUIndices,
 		MaxInFlight:        maxInFlight,
 		TLSFingerprint:     tlsFingerprint,
+		ParallelismType:    parallelismType,
+		ParallelismWidth:   parallelismWidth,
 		Healthy:            true,
 		FirstSeenAt:        time.Now(),
 		Runtime:            runtime,
@@ -1803,11 +1829,102 @@ func (r *Router) PatchNode(name string, patch NodePatch) bool {
 			if patch.TLSFingerprint != nil {
 				n.TLSFingerprint = *patch.TLSFingerprint
 			}
+			if patch.ParallelismType != nil {
+				n.ParallelismType = *patch.ParallelismType
+			}
+			if patch.ParallelismWidth != nil {
+				n.ParallelismWidth = *patch.ParallelismWidth
+			}
 			n.mu.Unlock()
 			return true
 		}
 	}
 	return false
+}
+
+// EffectiveRequiredGPUs returns the derived placement requirement for n.
+// 0 means unconstrained (existing fleet unaffected). For tp/pp/ep/dp the
+// required count is max(len(DeclaredGPUIndices), ParallelismWidth) when
+// both are declared, otherwise whichever is declared. Validated at API
+// layer: tp with len < width is rejected with 422 before it reaches here.
+// P397b extension: when nothing is declared, effective falls back to the
+// auto-detected deployment (per-port Deployments report) so a fresh host
+// with a running vLLM TP=8 is placement-aware without typing. Declared
+// always wins when present (operator override).
+func (n *NodeState) EffectiveRequiredGPUs() int {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	return effectiveRequiredGPUsLocked(n)
+}
+
+// deriveRequiredGPUs is the single source of truth for P397 required-GPU
+// derivation: required = max(width, len(indices)), with an explicit indices
+// list winning when it is longer than the declared width. width<=0 means
+// "use indices only".
+func deriveRequiredGPUs(width int, indices []int) int {
+	if width <= 0 {
+		return len(indices)
+	}
+	if len(indices) > width {
+		return len(indices)
+	}
+	return width
+}
+
+func effectiveRequiredGPUsLocked(n *NodeState) int {
+	// Declared wins when present (operator override) - preserve P397 behavior.
+	if n.ParallelismWidth > 0 || len(n.DeclaredGPUIndices) > 0 {
+		return deriveRequiredGPUs(n.ParallelismWidth, n.DeclaredGPUIndices)
+	}
+	// No declared constraint - fall back to auto-detected deployment (P397b).
+	if n.DetectedParallelismWidth > 0 || len(n.DetectedGPUGroup) > 0 {
+		return deriveRequiredGPUs(n.DetectedParallelismWidth, n.DetectedGPUGroup)
+	}
+	return 0
+}
+
+// EffectiveDeclaredRequiredGPUs is the P397 declared-only derived value
+// (ignores detected) - useful for mismatch warning UI.
+func (n *NodeState) EffectiveDeclaredRequiredGPUs() int {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	return deriveRequiredGPUs(n.ParallelismWidth, n.DeclaredGPUIndices)
+}
+
+// EffectiveDetectedRequiredGPUs is the P397b detected-only derived value.
+func (n *NodeState) EffectiveDetectedRequiredGPUs() int {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	return deriveRequiredGPUs(n.DetectedParallelismWidth, n.DetectedGPUGroup)
+}
+
+// MismatchWarning returns amber warning when declared and detected disagree
+// (e.g. declared 4 vs detected 8) - not a 422 block, just honest visibility
+// so Adopt can fix it in one click (P397b). Empty means no mismatch.
+func (n *NodeState) MismatchWarning() string {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	declared := effectiveRequiredGPUsDeclaredLocked(n)
+	detected := effectiveDetectedRequiredGPUsLocked(n)
+	if declared == 0 || detected == 0 {
+		return ""
+	}
+	if declared != detected {
+		return fmt.Sprintf("declared %d GPUs vs detected %d GPUs", declared, detected)
+	}
+	// Also warn on type mismatch even if width equal
+	if n.ParallelismType != "" && n.DetectedParallelismType != "" && n.ParallelismType != n.DetectedParallelismType {
+		return fmt.Sprintf("declared %s vs detected %s", n.ParallelismType, n.DetectedParallelismType)
+	}
+	return ""
+}
+
+func effectiveRequiredGPUsDeclaredLocked(n *NodeState) int {
+	return deriveRequiredGPUs(n.ParallelismWidth, n.DeclaredGPUIndices)
+}
+
+func effectiveDetectedRequiredGPUsLocked(n *NodeState) int {
+	return deriveRequiredGPUs(n.DetectedParallelismWidth, n.DetectedGPUGroup)
 }
 
 func (r *Router) Nodes() []*NodeState {

@@ -543,6 +543,11 @@ func (s *sqliteStore) migrate() error {
 		// Marbor Agent transport scheme, decoupled from the runtime URL's own
 		// scheme - see marbor_agent's table comment above.
 		`ALTER TABLE marbor_agent ADD COLUMN scheme TEXT NOT NULL DEFAULT 'http'`,
+		// P397: deployment-aware placement - structured parallelism metadata
+		// (type tp|pp|ep|dp + width) for atomic GPU group eligibility.
+		// Nullable: NULL/"" means unconstrained (existing fleet unaffected).
+		`ALTER TABLE node_overrides ADD COLUMN parallelism_type TEXT`,
+		`ALTER TABLE node_overrides ADD COLUMN parallelism_width INTEGER`,
 	} {
 		// Idempotent: a rerun against an already-migrated DB hits "duplicate
 		// column name" for every statement here, which is benign and must be
@@ -1182,14 +1187,14 @@ func (s *sqliteStore) AllNodes() ([]NodeRecord, error) {
 // names; a column outside that list keeps its current stored value
 // regardless of what the calling binary knows about, which is what makes
 // a downgrade-then-write safe by construction going forward.
-func (s *sqliteStore) UpsertNodeOverride(name string, vramTotalMB *int64, gpuModel *string, runtime *string, gpuIndices *[]int, maxInFlight *int, tlsFingerprint *string) error {
+func (s *sqliteStore) UpsertNodeOverride(name string, vramTotalMB *int64, gpuModel *string, runtime *string, gpuIndices *[]int, maxInFlight *int, tlsFingerprint *string, parallelismType *string, parallelismWidth *int) error {
 	var existingVRAM sql.NullInt64
-	var existingGPU, existingRuntime, existingFingerprint sql.NullString
+	var existingGPU, existingRuntime, existingFingerprint, existingParallelismType sql.NullString
 	var existingIndices string
-	var existingMaxInFlight sql.NullInt64
+	var existingMaxInFlight, existingParallelismWidth sql.NullInt64
 	if err := s.db.QueryRow(
-		`SELECT vram_total_mb, gpu_model, runtime, gpu_indices, max_in_flight, tls_fingerprint FROM node_overrides WHERE name = ?`, name,
-	).Scan(&existingVRAM, &existingGPU, &existingRuntime, &existingIndices, &existingMaxInFlight, &existingFingerprint); err != nil && err != sql.ErrNoRows {
+		`SELECT vram_total_mb, gpu_model, runtime, gpu_indices, max_in_flight, tls_fingerprint, parallelism_type, parallelism_width FROM node_overrides WHERE name = ?`, name,
+	).Scan(&existingVRAM, &existingGPU, &existingRuntime, &existingIndices, &existingMaxInFlight, &existingFingerprint, &existingParallelismType, &existingParallelismWidth); err != nil && err != sql.ErrNoRows {
 		return err
 	}
 
@@ -1225,18 +1230,36 @@ func (s *sqliteStore) UpsertNodeOverride(name string, vramTotalMB *int64, gpuMod
 			fingerprint = sql.NullString{String: *tlsFingerprint, Valid: true}
 		}
 	}
+	parallelismTypeVal := existingParallelismType
+	if parallelismType != nil {
+		if *parallelismType == "" {
+			parallelismTypeVal = sql.NullString{}
+		} else {
+			parallelismTypeVal = sql.NullString{String: *parallelismType, Valid: true}
+		}
+	}
+	parallelismWidthVal := existingParallelismWidth
+	if parallelismWidth != nil {
+		if *parallelismWidth == 0 {
+			parallelismWidthVal = sql.NullInt64{}
+		} else {
+			parallelismWidthVal = sql.NullInt64{Int64: int64(*parallelismWidth), Valid: true}
+		}
+	}
 
 	_, err := s.db.Exec(
-		`INSERT INTO node_overrides (name, vram_total_mb, gpu_model, runtime, gpu_indices, max_in_flight, tls_fingerprint)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO node_overrides (name, vram_total_mb, gpu_model, runtime, gpu_indices, max_in_flight, tls_fingerprint, parallelism_type, parallelism_width)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(name) DO UPDATE SET
 		   vram_total_mb = excluded.vram_total_mb,
 		   gpu_model = excluded.gpu_model,
 		   runtime = excluded.runtime,
 		   gpu_indices = excluded.gpu_indices,
 		   max_in_flight = excluded.max_in_flight,
-		   tls_fingerprint = excluded.tls_fingerprint`,
-		name, vram, gpu, rt, indices, maxInFlightVal, fingerprint,
+		   tls_fingerprint = excluded.tls_fingerprint,
+		   parallelism_type = excluded.parallelism_type,
+		   parallelism_width = excluded.parallelism_width`,
+		name, vram, gpu, rt, indices, maxInFlightVal, fingerprint, parallelismTypeVal, parallelismWidthVal,
 	)
 	if err != nil {
 		return fmt.Errorf("store: UpsertNodeOverride: %w", err)
@@ -1246,7 +1269,7 @@ func (s *sqliteStore) UpsertNodeOverride(name string, vramTotalMB *int64, gpuMod
 
 func (s *sqliteStore) NodeOverrides() (map[string]NodeOverride, error) {
 	rows, err := s.db.Query(
-		`SELECT name, vram_total_mb, gpu_model, runtime, gpu_indices, max_in_flight, tls_fingerprint FROM node_overrides`,
+		`SELECT name, vram_total_mb, gpu_model, runtime, gpu_indices, max_in_flight, tls_fingerprint, parallelism_type, parallelism_width FROM node_overrides`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("store: NodeOverrides: %w", err)
@@ -1257,10 +1280,10 @@ func (s *sqliteStore) NodeOverrides() (map[string]NodeOverride, error) {
 	for rows.Next() {
 		var name string
 		var vram sql.NullInt64
-		var gpu, rt, fingerprint sql.NullString
+		var gpu, rt, fingerprint, parallelismType sql.NullString
 		var indicesJSON string
-		var maxInFlight sql.NullInt64
-		if err := rows.Scan(&name, &vram, &gpu, &rt, &indicesJSON, &maxInFlight, &fingerprint); err != nil {
+		var maxInFlight, parallelismWidth sql.NullInt64
+		if err := rows.Scan(&name, &vram, &gpu, &rt, &indicesJSON, &maxInFlight, &fingerprint, &parallelismType, &parallelismWidth); err != nil {
 			return nil, fmt.Errorf("store: NodeOverrides scan: %w", err)
 		}
 		var ov NodeOverride
@@ -1279,6 +1302,13 @@ func (s *sqliteStore) NodeOverrides() (map[string]NodeOverride, error) {
 		}
 		if fingerprint.Valid {
 			ov.TLSFingerprint = &fingerprint.String
+		}
+		if parallelismType.Valid {
+			ov.ParallelismType = &parallelismType.String
+		}
+		if parallelismWidth.Valid {
+			v := int(parallelismWidth.Int64)
+			ov.ParallelismWidth = &v
 		}
 		if indicesJSON != "" {
 			var idx []int
