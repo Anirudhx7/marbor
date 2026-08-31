@@ -1927,52 +1927,6 @@ func effectiveDetectedRequiredGPUsLocked(n *NodeState) int {
 	return deriveRequiredGPUs(n.DetectedParallelismWidth, n.DetectedGPUGroup)
 }
 
-// ValidateParallelismPatch validates structured parallelism fields for P397.
-// Returns error with message suitable for 400/422 response.
-func ValidateParallelismPatch(parallelismType *string, parallelismWidth *int, resultingGPUIndices []int) error {
-	if parallelismType == nil && parallelismWidth == nil {
-		return nil
-	}
-	// Resolve resulting type/width where nil means "keep existing" - but this
-	// helper only validates the patch's own fields plus the resulting gpu_indices
-	// length, so a nil type with non-nil width etc. is validated as partial.
-	t := ""
-	if parallelismType != nil {
-		t = *parallelismType
-	}
-	w := 0
-	if parallelismWidth != nil {
-		w = *parallelismWidth
-	}
-	if t == "" && w != 0 {
-		return fmt.Errorf("parallelism_type is required when parallelism_width is set")
-	}
-	if t != "" && w == 0 {
-		return fmt.Errorf("parallelism_width is required when parallelism_type is set (got type %q with width 0)", t)
-	}
-	if t == "" && w == 0 {
-		// clearing both -> ok
-		return nil
-	}
-	switch t {
-	case "tp", "pp", "ep", "dp":
-		// valid
-	default:
-		return fmt.Errorf("parallelism_type must be one of tp, pp, ep, dp (got %q)", t)
-	}
-	if w < 0 || w > 64 {
-		return fmt.Errorf("parallelism_width must be between 1 and 64 (got %d)", w)
-	}
-	if t == "tp" && len(resultingGPUIndices) > 0 && len(resultingGPUIndices) < w {
-		return fmt.Errorf("parallelism_width %d requires gpu_indices len >=%d got %d", w, w, len(resultingGPUIndices))
-	}
-	// For pp/ep/dp same check in P1 - composite deferred.
-	if len(resultingGPUIndices) > 0 && len(resultingGPUIndices) < w {
-		return fmt.Errorf("parallelism_width %d requires gpu_indices len >=%d got %d", w, w, len(resultingGPUIndices))
-	}
-	return nil
-}
-
 func (r *Router) Nodes() []*NodeState {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

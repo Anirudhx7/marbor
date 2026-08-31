@@ -90,20 +90,7 @@ func runNodes(flags *globalFlags, stdout, stderr io.Writer) int {
 	return ExitOK
 }
 
-// runNodesPatch implements `marbor nodes patch <node> --parallelism-type tp --parallelism-width 8` (P397).
-func runNodesPatch(flags *globalFlags, name, pType string, pWidth int, stdout, stderr io.Writer) int {
-	if pType == "" && pWidth == 0 {
-		fmt.Fprintln(stderr, "error: at least one of --parallelism-type or --parallelism-width is required")
-		return ExitUserError
-	}
-	if (pType == "" ) != (pWidth == 0) {
-		fmt.Fprintln(stderr, "error: --parallelism-type and --parallelism-width must be set together or cleared together (use \"\"/0 to clear)")
-		return ExitUserError
-	}
-
-	return runNodesPatchInner(flags, name, pType, pWidth, stdout, stderr)
-}
-
+// runNodesPatchWithCtx implements `marbor nodes patch <node> --parallelism-type tp --parallelism-width 8` (P397).
 func runNodesPatchWithCtx(ctx *RunCtx, name string) int {
 	pTypeSet := ctx.IsSet("parallelism-type")
 	pWidthSet := ctx.IsSet("parallelism-width")
@@ -156,37 +143,6 @@ func runNodesPatchWithCtx(ctx *RunCtx, name string) int {
 		fmt.Fprintf(ctx.Stdout, "node %q parallelism cleared\n", name)
 	} else {
 		fmt.Fprintf(ctx.Stdout, "node %q parallelism set to %s=%d\n", name, pType, pWidth)
-	}
-	return ExitOK
-}
-
-func runNodesPatchInner(flags *globalFlags, name, pType string, pWidth int, stdout, stderr io.Writer) int {
-	if pType != "" {
-		switch pType {
-		case "tp", "pp", "ep", "dp":
-		default:
-			fmt.Fprintf(stderr, "error: --parallelism-type must be one of tp, pp, ep, dp (got %q)\n", pType)
-			return ExitUserError
-		}
-	}
-	if pWidth < 0 || pWidth > 64 {
-		fmt.Fprintf(stderr, "error: --parallelism-width must be between 0 and 64 (got %d)\n", pWidth)
-		return ExitUserError
-	}
-	client, err := authenticatedClient(flags)
-	if err != nil {
-		return reportError(err, stderr)
-	}
-	if err := client.PatchNodeParallelism(name, pType, pWidth); err != nil {
-		return reportError(err, stderr)
-	}
-	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, map[string]interface{}{"ok": true, "node": name, "parallelism_type": pType, "parallelism_width": pWidth}); handled {
-		return code
-	}
-	if pType == "" {
-		fmt.Fprintf(stdout, "node %q parallelism cleared\n", name)
-	} else {
-		fmt.Fprintf(stdout, "node %q parallelism set to %s=%d\n", name, pType, pWidth)
 	}
 	return ExitOK
 }
