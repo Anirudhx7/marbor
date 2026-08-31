@@ -38,9 +38,9 @@ function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   return (
     <button
       onClick={onToggle}
-      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-md transition-colors ${on ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${on ? 'bg-primary' : 'bg-muted-foreground/30'}`}
     >
-      <span className={`inline-block h-4 w-4 transform rounded-md bg-white transition-transform ${on ? 'translate-x-6' : 'translate-x-1'}`} />
+      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${on ? 'translate-x-6' : 'translate-x-1'}`} />
     </button>
   );
 }
@@ -673,12 +673,12 @@ export function SettingsPage() {
           </div>
           <button
             onClick={() => demoMode ? setDemoMode(false) : setDemoModeConfirmOpen(true)}
-            className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-md transition-colors ${
+            className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
               demoMode ? 'bg-amber-500' : 'bg-muted-foreground/30'
             }`}
           >
             <span
-              className={`inline-block h-4 w-4 transform rounded-md bg-white transition-transform ${
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
                 demoMode ? 'translate-x-6' : 'translate-x-1'
               }`}
             />
@@ -809,12 +809,12 @@ export function SettingsPage() {
               </div>
               <button
                 onClick={() => setSettings({ ...settings, hideDemoBanner: !settings.hideDemoBanner })}
-                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-md transition-colors ${
+                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
                   settings.hideDemoBanner ? 'bg-primary' : 'bg-muted-foreground/30'
                 }`}
               >
                 <span
-                  className={`inline-block h-4 w-4 transform rounded-md bg-white transition-transform ${
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
                     settings.hideDemoBanner ? 'translate-x-6' : 'translate-x-1'
                   }`}
                 />
@@ -828,12 +828,12 @@ export function SettingsPage() {
               </div>
               <button
                 onClick={() => setSettings({ ...settings, hideBudgetBanner: !settings.hideBudgetBanner })}
-                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-md transition-colors ${
+                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
                   settings.hideBudgetBanner ? 'bg-primary' : 'bg-muted-foreground/30'
                 }`}
               >
                 <span
-                  className={`inline-block h-4 w-4 transform rounded-md bg-white transition-transform ${
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
                     settings.hideBudgetBanner ? 'translate-x-6' : 'translate-x-1'
                   }`}
                 />
@@ -930,12 +930,12 @@ export function SettingsPage() {
               </div>
               <button
                 onClick={() => setSettings({ ...settings, allowManagementEndpoints: !settings.allowManagementEndpoints })}
-                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-md transition-colors ${
+                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
                   settings.allowManagementEndpoints ? 'bg-primary' : 'bg-muted-foreground/30'
                 }`}
               >
                 <span
-                  className={`inline-block h-4 w-4 transform rounded-md bg-white transition-transform ${
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
                     settings.allowManagementEndpoints ? 'translate-x-6' : 'translate-x-1'
                   }`}
                 />
@@ -1042,12 +1042,12 @@ export function SettingsPage() {
               </div>
               <button
                 onClick={() => setSettings({ ...settings, liteLLMEnabled: !settings.liteLLMEnabled })}
-                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-md transition-colors ${
+                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
                   settings.liteLLMEnabled ? 'bg-primary' : 'bg-muted-foreground/30'
                 }`}
               >
                 <span
-                  className={`inline-block h-4 w-4 transform rounded-md bg-white transition-transform ${
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
                     settings.liteLLMEnabled ? 'translate-x-6' : 'translate-x-1'
                   }`}
                 />
@@ -1488,12 +1488,12 @@ export function SettingsPage() {
               </div>
               <button
                 onClick={() => setSettings({ ...settings, prometheusEnabled: !settings.prometheusEnabled })}
-                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-md transition-colors ${
+                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
                   settings.prometheusEnabled ? 'bg-primary' : 'bg-muted-foreground/30'
                 }`}
               >
                 <span
-                  className={`inline-block h-4 w-4 transform rounded-md bg-white transition-transform ${
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
                     settings.prometheusEnabled ? 'translate-x-6' : 'translate-x-1'
                   }`}
                 />
