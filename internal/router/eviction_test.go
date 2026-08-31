@@ -967,15 +967,17 @@ func TestReserveColdStartBytes_NeverFetchesOverHTTP(t *testing.T) {
 
 	// No lastKnownVRAM, no VRAMOverrides recorded: size is genuinely unknown
 	// via any zero-I/O path, even though the on-disk size IS available over
-	// HTTP. Must be a silent no-op (R1: never guess), and must never call the
-	// server to find out.
+	// HTTP. Must never call the server to find out (R2), and per P402 must
+	// fall back to the unknownModelReserveBytes placeholder guard rather than
+	// reserving nothing - reserving 0 here is exactly the fail-open bug that
+	// let concurrent cold starts for a never-seen model double-book a node.
 	r.reserveColdStartBytes(srv.URL, "n1", "model-x")
 
 	if fetched {
 		t.Error("reserveColdStartBytes made an HTTP call - the hot request path must never block on I/O (R2)")
 	}
-	if got := r.PendingPrewarmBytes("n1"); got != 0 {
-		t.Errorf("PendingPrewarmBytes(n1) = %d, want 0 (unknown size must not reserve anything)", got)
+	if got := r.PendingPrewarmBytes("n1"); got != unknownModelReserveBytes {
+		t.Errorf("PendingPrewarmBytes(n1) = %d, want %d (unknown size must reserve the P402 placeholder guard, not nothing)", got, unknownModelReserveBytes)
 	}
 }
 
