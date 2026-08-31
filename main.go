@@ -589,7 +589,7 @@ func main() {
 	}
 	if overrides, err := st.NodeOverrides(); err == nil {
 		for name, ov := range overrides {
-			r.PatchNode(name, router.NodePatch{VRAMTotalMB: ov.VRAMTotalMB, GPUModel: ov.GPUModel, Runtime: ov.Runtime, GPUIndices: ov.GPUIndices, MaxInFlight: ov.MaxInFlight, TLSFingerprint: ov.TLSFingerprint})
+			r.PatchNode(name, router.NodePatch{VRAMTotalMB: ov.VRAMTotalMB, GPUModel: ov.GPUModel, Runtime: ov.Runtime, GPUIndices: ov.GPUIndices, MaxInFlight: ov.MaxInFlight, TLSFingerprint: ov.TLSFingerprint, ParallelismType: ov.ParallelismType, ParallelismWidth: ov.ParallelismWidth})
 		}
 	}
 	if drains, err := st.NodeDrainStates(); err == nil {

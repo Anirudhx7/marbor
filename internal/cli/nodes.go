@@ -89,3 +89,60 @@ func runNodes(flags *globalFlags, stdout, stderr io.Writer) int {
 	}
 	return ExitOK
 }
+
+// runNodesPatchWithCtx implements `marbor nodes patch <node> --parallelism-type tp --parallelism-width 8` (P397).
+func runNodesPatchWithCtx(ctx *RunCtx, name string) int {
+	pTypeSet := ctx.IsSet("parallelism-type")
+	pWidthSet := ctx.IsSet("parallelism-width")
+	pType := ctx.String("parallelism-type")
+	pWidth := ctx.Int("parallelism-width")
+	if !pTypeSet && !pWidthSet {
+		fmt.Fprintln(ctx.Stderr, "error: at least one of --parallelism-type or --parallelism-width is required")
+		return ExitUserError
+	}
+	// For clearing, both must be explicitly set to empty/0
+	if pTypeSet != pWidthSet {
+		fmt.Fprintln(ctx.Stderr, "error: --parallelism-type and --parallelism-width must be set together or cleared together")
+		return ExitUserError
+	}
+	if pType != "" {
+		switch pType {
+		case "tp", "pp", "ep", "dp":
+		default:
+			fmt.Fprintf(ctx.Stderr, "error: --parallelism-type must be one of tp, pp, ep, dp (got %q)\n", pType)
+			return ExitUserError
+		}
+	}
+	if pWidth < 0 || pWidth > 64 {
+		fmt.Fprintf(ctx.Stderr, "error: --parallelism-width must be between 0 and 64 (got %d)\n", pWidth)
+		return ExitUserError
+	}
+	client, err := authenticatedClient(ctx.Flags)
+	if err != nil {
+		return reportError(err, ctx.Stderr)
+	}
+	// Client needs to know if fields were visited to send nil vs omit.
+	// We use pointers: nil = not visited, pointer to value = visited (including empty/0 for clear).
+	var pTypePtr *string
+	var pWidthPtr *int
+	if pTypeSet {
+		v := pType
+		pTypePtr = &v
+	}
+	if pWidthSet {
+		v := pWidth
+		pWidthPtr = &v
+	}
+	if err := client.PatchNodeParallelismWithPtr(name, pTypePtr, pWidthPtr); err != nil {
+		return reportError(err, ctx.Stderr)
+	}
+	if handled, code := emitJSON(ctx.Stdout, ctx.Stderr, ctx.Flags.jsonOutput, map[string]interface{}{"ok": true, "node": name, "parallelism_type": pType, "parallelism_width": pWidth}); handled {
+		return code
+	}
+	if pType == "" {
+		fmt.Fprintf(ctx.Stdout, "node %q parallelism cleared\n", name)
+	} else {
+		fmt.Fprintf(ctx.Stdout, "node %q parallelism set to %s=%d\n", name, pType, pWidth)
+	}
+	return ExitOK
+}

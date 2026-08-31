@@ -119,6 +119,19 @@ func buildRoot() *Command {
 							return runNodesConfirmTLS(ctx.Flags, ctx.Args[0], ctx.String("fingerprint"), ctx.Stdout, ctx.Stderr)
 						},
 					},
+					{
+						Name:      "patch",
+						Short:     "set deployment parallelism for a node (P397)",
+						NeedsAuth: true,
+						Args:      []ArgSpec{{Name: "node"}},
+						Flags: []FlagSpec{
+							{Name: "parallelism-type", Kind: FlagString, Usage: "parallelism type: tp, pp, ep, dp (empty to clear)"},
+							{Name: "parallelism-width", Kind: FlagInt, Usage: "parallelism width 1..64 (0 to clear)"},
+						},
+						Run: func(ctx *RunCtx) int {
+							return runNodesPatchWithCtx(ctx, ctx.Args[0])
+						},
+					},
 				},
 			},
 			{
