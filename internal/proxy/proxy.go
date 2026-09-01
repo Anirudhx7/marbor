@@ -684,6 +684,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	metrics.RequestDuration(modelName, node.Name, duration)
 	if ttft := rec.ttft(); ttft > 0 {
 		metrics.RequestTTFT(modelName, node.Name, ttft.Seconds())
+		// Feed the real observed TTFT into placement scoring's load-shape
+		// weighting (P404) - see Router.RecordTTFT and effectiveLoad.
+		h.router.RecordTTFT(node.Name, ttft)
 	}
 
 	// Log to admin live requests
