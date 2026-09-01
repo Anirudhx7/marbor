@@ -353,6 +353,18 @@ func (r *Router) applyAgentTelemetry(n *NodeState, t marboragent.Telemetry) {
 		n.AgentControlDiscoveredIdentifier = ""
 		n.AgentControlDiscoveredEvidence = nil
 	}
+	// P406: an agent-reported GPU device VRAM reading is a real, non-Ollama
+	// signal for node-level VRAMUsedMB (set above) - attributeSoleModelVRAM
+	// (health.go) additionally attributes it to the node's sole loaded
+	// model's own SizeVRAM when that model's size is otherwise unknown,
+	// same single-model-per-host inference pollNode's local-nvidia-smi path
+	// already applies. Called here too (not just from pollNode) because
+	// this is the only place a *remote* non-Ollama node's VRAMUsedMB is
+	// ever set from a real reading - health.go's own default branch would
+	// otherwise overwrite VRAMUsedMB back from the runtime's own
+	// (non-Ollama: always-zero) API on its next poll cycle without ever
+	// re-deriving this attribution.
+	attributeSoleModelVRAM(n)
 	n.mu.Unlock()
 }
 

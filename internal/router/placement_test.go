@@ -335,6 +335,35 @@ func TestIsModelWarm_DigestMismatchNotWarm(t *testing.T) {
 	}
 }
 
+// TestIsModelWarm_NonOllamaQuantVariantsNotFungible (P406): a vLLM Q4 build
+// and a vLLM F16 build of "llama-3-70b" served under the identical name on
+// two different nodes must not be treated as interchangeable warm hits, now
+// that internal/runtime/vllm.go populates Digest from vLLM's own reported
+// "root" (local model path) field when it differs from the served name.
+// This reuses the exact same digestMismatch/isModelWarm machinery already
+// covered by TestIsModelWarm_DigestMismatchNotWarm - the fix is entirely in
+// how the Digest field gets populated upstream (internal/runtime probes),
+// not a change to this comparison logic itself.
+func TestIsModelWarm_NonOllamaQuantVariantsNotFungible(t *testing.T) {
+	r := New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
+		{Name: "node-a", URL: "http://node-a:8000", VRAMTotalMB: 81920},
+		{Name: "node-b", URL: "http://node-b:8000", VRAMTotalMB: 81920},
+	}, nil)
+
+	r.recordModelDigest("llama-3-70b", "/models/llama-3-70b-f16")
+	r.nodes[0].LoadedModels = []ModelInfo{{Name: "llama-3-70b", Digest: "/models/llama-3-70b-f16"}}
+	// node-b serves a Q4 quantization under the identical model name -
+	// vLLM's own "root" field is the only signal that distinguishes them.
+	r.nodes[1].LoadedModels = []ModelInfo{{Name: "llama-3-70b", Digest: "/models/llama-3-70b-q4_k_m"}}
+
+	if !r.isModelWarm(r.nodes[0], "llama-3-70b") {
+		t.Error("node-a (F16): isModelWarm = false, want true (matches recorded reference)")
+	}
+	if r.isModelWarm(r.nodes[1], "llama-3-70b") {
+		t.Error("node-b (Q4): isModelWarm = true, want false - a Q4 and an F16 build under the same name must never be treated as fungible warm")
+	}
+}
+
 // TestIsModelWarm_MissingDigestNeverFlagged covers R1 for the digest check:
 // a runtime that doesn't report a digest (anything but Ollama today) must
 // never be treated as mismatched just because it reported nothing.

@@ -70,8 +70,11 @@ func hostOrDefault(host, rawURL string) string {
 type ModelInfo struct {
 	Name     string `json:"name"`
 	SizeVRAM int64  `json:"sizeVram"`
-	// Digest is the runtime-reported content digest/checksum for this loaded model, when the
-	// runtime exposes one (currently only Ollama). Empty when unknown - never fabricated.
+	// Digest is the runtime-reported content-identity signal for this loaded model, when the
+	// runtime exposes one: Ollama's own digest, or (P406) vLLM/llama.cpp/MLX's OpenAI-compatible
+	// "root" field / TGI's "model_sha", whichever the probe in internal/runtime populated it
+	// from - not necessarily comparable in format across runtime types, only within one. Empty
+	// when unknown - never fabricated.
 	Digest string `json:"digest,omitempty"`
 }
 

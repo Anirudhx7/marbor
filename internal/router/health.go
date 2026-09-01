@@ -15,6 +15,33 @@ import (
 	runtimepkg "github.com/Anirudhx7/marbor/internal/runtime"
 )
 
+// attributeSoleModelVRAM fills in the resident VRAM size (ModelInfo.SizeVRAM)
+// for a node's sole loaded model when that model's own size is unknown (0)
+// but the node otherwise has a real, non-zero total VRAM-used reading
+// (n.VRAMUsedMB, from local nvidia-smi or an agent-reported GPU device -
+// see the two call sites, pollNode below and applyAgentTelemetry in
+// agent_poll.go). This targets P406 (non-Ollama runtimes never report a
+// per-model VRAM size): with exactly one model resident anywhere on the
+// node, the node's total used VRAM is genuinely attributable to it - not a
+// per-process measurement, but a legitimate single-model-per-host
+// inference, not a guess (R1). It intentionally never attempts to split
+// VRAM across more than one simultaneously-loaded model on the same node -
+// correlating a specific runtime process's VRAM share isn't observable from
+// any signal this router or agent collects today (no PID-to-model
+// correlation over these HTTP-based runtime probes) - that case is left at
+// 0/unknown rather than guessed. Never overrides an already-known size
+// (e.g. Ollama's own reported size_vram) - only fills in a genuine unknown.
+// Caller must already hold n.mu for writing.
+func attributeSoleModelVRAM(n *NodeState) {
+	if len(n.LoadedModels) != 1 || n.VRAMUsedMB <= 0 {
+		return
+	}
+	if n.LoadedModels[0].SizeVRAM > 0 {
+		return
+	}
+	n.LoadedModels[0].SizeVRAM = n.VRAMUsedMB * 1024 * 1024
+}
+
 // pollNvidiaAll refreshes nvidia-smi stats for all local nodes and stores
 // results in nvidiaCache. Called on a separate ticker (default 30s) so that
 // nvidia-smi is never forked on every /api/ps poll cycle.
@@ -238,23 +265,47 @@ func (r *Router) pollNode(n *NodeState) {
 			}
 		}
 	default:
-		// Remote node (or no local GPU): used-VRAM is real, summed from the node's
-		// own /api/ps. Total is operator-declared if present. Temp/power unknown.
-		n.VRAMUsedMB = psUsedMB
+		// Remote node (or no local GPU): used-VRAM is real, summed from the
+		// node's own /api/ps when the runtime reports one (Ollama today).
+		// Total is operator-declared if present. Temp/power unknown from
+		// this path.
+		//
+		// P406: for a non-Ollama runtime, psUsedMB is always 0 (see
+		// internal/runtime/{vllm,tgi,llamacpp,mlx}.go - none of those
+		// probes can observe VRAM). pollNode and pollAgentHosts run
+		// concurrently on the same poll tick (Router.Start runs them
+		// alongside each other, not one nested in the other), so if this
+		// branch unconditionally set VRAMUsedMB/VRAMSource from a
+		// permanently-zero psUsedMB, it would stomp a real agent-reported
+		// reading (applyAgentTelemetry, agent_poll.go) back to
+		// zero/unknown on every single cycle whenever this goroutine
+		// happens to finish after that one - a real reading would flicker
+		// rather than settle. A genuine psUsedMB>0 reading (Ollama) always
+		// wins regardless - it is this poll's own live, non-guessed
+		// measurement and must never be shadowed by a possibly-stale agent
+		// figure.
 		n.PowerDrawW = 0
 		n.Temperature = nil
-		if n.VRAMTotalMBConfig > 0 {
-			n.VRAMTotalMB = n.VRAMTotalMBConfig
-			n.VRAMSource = "declared"
-		} else {
-			n.VRAMTotalMB = 0
-			if psUsedMB > 0 {
-				n.VRAMSource = "api"
+		if psUsedMB > 0 {
+			n.VRAMUsedMB = psUsedMB
+		} else if n.VRAMSource != "agent" {
+			n.VRAMUsedMB = 0
+		}
+		if psUsedMB > 0 || n.VRAMSource != "agent" {
+			if n.VRAMTotalMBConfig > 0 {
+				n.VRAMTotalMB = n.VRAMTotalMBConfig
+				n.VRAMSource = "declared"
 			} else {
-				n.VRAMSource = "none"
+				n.VRAMTotalMB = 0
+				if psUsedMB > 0 {
+					n.VRAMSource = "api"
+				} else {
+					n.VRAMSource = "none"
+				}
 			}
 		}
 	}
+	attributeSoleModelVRAM(n)
 	n.HealthHistory = append(n.HealthHistory, 100.0)
 	if len(n.HealthHistory) > 60 {
 		n.HealthHistory = n.HealthHistory[len(n.HealthHistory)-60:]

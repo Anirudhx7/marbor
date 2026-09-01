@@ -125,6 +125,68 @@ func TestVLLMProbe_HappyPath(t *testing.T) {
 	}
 }
 
+// TestVLLMProbe_RootDigest_DistinguishesSameServedName (P406): two nodes
+// serving different underlying weights under the identical served model
+// name are only distinguishable once vLLM's own "root" field (the actual
+// local path/repo loaded) differs - this test locks in that Digest is
+// populated from Root when Root differs from ID, and stays empty when the
+// runtime doesn't report Root at all (today's behavior, must not regress).
+func TestVLLMProbe_RootDigest_DistinguishesSameServedName(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/health":
+			w.WriteHeader(http.StatusOK)
+		case "/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{
+					{"id": "llama-3-70b", "root": "/models/llama-3-70b-q4_k_m.gguf"},
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	probe := &VLLMProbe{client: testClient()}
+	result, err := probe.Probe(context.Background(), srv.URL)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if result.LoadedModels[0].Digest != "/models/llama-3-70b-q4_k_m.gguf" {
+		t.Errorf("expected Digest populated from root, got %q", result.LoadedModels[0].Digest)
+	}
+}
+
+func TestVLLMProbe_NoRoot_DigestEmpty(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/health":
+			w.WriteHeader(http.StatusOK)
+		case "/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{
+					{"id": "llama-3-70b"},
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	probe := &VLLMProbe{client: testClient()}
+	result, err := probe.Probe(context.Background(), srv.URL)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if result.LoadedModels[0].Digest != "" {
+		t.Errorf("expected empty Digest when root is absent, got %q", result.LoadedModels[0].Digest)
+	}
+}
+
 func TestVLLMProbe_HealthFails(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
@@ -169,6 +231,63 @@ func TestTGIProbe_HappyPath(t *testing.T) {
 	}
 	if result.VRAMUsedMB != 0 {
 		t.Errorf("expected VRAMUsedMB=0 for TGI, got %d", result.VRAMUsedMB)
+	}
+}
+
+// TestTGIProbe_ModelShaDigest (P406): TGI's /info model_sha is a real
+// content-identity signal (HF revision hash) distinct from model_id -
+// two revisions/quant builds served under the identical model_id must be
+// distinguished by it once present.
+func TestTGIProbe_ModelShaDigest(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/health":
+			w.WriteHeader(http.StatusOK)
+		case "/info":
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"model_id":  "mistralai/Mistral-7B-Instruct-v0.2",
+				"model_sha": "abc123def456",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	probe := &TGIProbe{client: testClient()}
+	result, err := probe.Probe(context.Background(), srv.URL)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if result.LoadedModels[0].Digest != "abc123def456" {
+		t.Errorf("expected Digest=abc123def456 from model_sha, got %q", result.LoadedModels[0].Digest)
+	}
+}
+
+func TestTGIProbe_NoModelSha_DigestEmpty(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/health":
+			w.WriteHeader(http.StatusOK)
+		case "/info":
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"model_id": "mistralai/Mistral-7B-Instruct-v0.2",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	probe := &TGIProbe{client: testClient()}
+	result, err := probe.Probe(context.Background(), srv.URL)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if result.LoadedModels[0].Digest != "" {
+		t.Errorf("expected empty Digest when model_sha is absent, got %q", result.LoadedModels[0].Digest)
 	}
 }
 
@@ -221,6 +340,38 @@ func TestLlamaCppProbe_HappyPath(t *testing.T) {
 	}
 }
 
+// TestLlamaCppProbe_RootDigest_WhenReported (P406): llama.cpp's OpenAI-
+// compatible /v1/models is hand-rolled and not guaranteed to include a
+// "root" field on every version - this test only locks in that it's parsed
+// opportunistically when present, not that it's universally available.
+func TestLlamaCppProbe_RootDigest_WhenReported(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/health":
+			w.WriteHeader(http.StatusOK)
+		case "/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{
+					{"id": "llama-3.1-8b-instruct", "root": "/gguf/llama-3.1-8b-instruct.Q4_K_M.gguf"},
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	probe := &LlamaCppProbe{client: testClient()}
+	result, err := probe.Probe(context.Background(), srv.URL)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if result.LoadedModels[0].Digest != "/gguf/llama-3.1-8b-instruct.Q4_K_M.gguf" {
+		t.Errorf("expected Digest populated from root, got %q", result.LoadedModels[0].Digest)
+	}
+}
+
 func TestLlamaCppProbe_HealthFails(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
@@ -265,6 +416,35 @@ func TestMLXProbe_HappyPath(t *testing.T) {
 	}
 	if result.VRAMUsedMB != 0 {
 		t.Errorf("expected VRAMUsedMB=0 for mlx, got %d", result.VRAMUsedMB)
+	}
+}
+
+// TestMLXProbe_RootDigest_WhenReported (P406): mlx_lm.server's minimal
+// OpenAI-compatible surface is not guaranteed to include a "root" field -
+// this only locks in opportunistic parsing when present.
+func TestMLXProbe_RootDigest_WhenReported(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"data": []map[string]any{
+					{"id": "llama-3-70b", "root": "mlx-community/Llama-3-70B-4bit"},
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	probe := &MLXProbe{client: testClient()}
+	result, err := probe.Probe(context.Background(), srv.URL)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if result.LoadedModels[0].Digest != "mlx-community/Llama-3-70B-4bit" {
+		t.Errorf("expected Digest populated from root, got %q", result.LoadedModels[0].Digest)
 	}
 }
 

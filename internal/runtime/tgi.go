@@ -41,6 +41,14 @@ func (p *TGIProbe) Probe(ctx context.Context, nodeURL string) (ProbeResult, erro
 
 	var info struct {
 		ModelID string `json:"model_id"`
+		// ModelSha is TGI's own reported HF revision/commit hash for the
+		// loaded model (real field on TGI's /info response, present since
+		// early releases) - a genuine content-identity signal distinct from
+		// ModelID: an operator can serve two different revisions/quantized
+		// builds of the same repo under the identical model_id, in which
+		// case ModelSha still differs. Empty when TGI's build doesn't
+		// report one - never fabricated (R1).
+		ModelSha string `json:"model_sha"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
 		return ProbeResult{}, fmt.Errorf("tgi probe decode info: %w", err)
@@ -48,7 +56,7 @@ func (p *TGIProbe) Probe(ctx context.Context, nodeURL string) (ProbeResult, erro
 
 	var models []LoadedModel
 	if info.ModelID != "" {
-		models = []LoadedModel{{Name: info.ModelID, SizeVRAMBytes: 0}}
+		models = []LoadedModel{{Name: info.ModelID, SizeVRAMBytes: 0, Digest: info.ModelSha}}
 	}
 
 	return ProbeResult{LoadedModels: models, VRAMUsedMB: 0}, nil
