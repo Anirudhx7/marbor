@@ -192,6 +192,17 @@ type NodeState struct {
 	probe                    runtimepkg.RuntimeProbe // backend-specific health + runtime warm-model probe
 	LastErrorAt              time.Time
 	SuccessHistory           []bool
+	// RecentTTFT holds this node's last few real observed time-to-first-byte
+	// values (seconds), oldest first, capped at recentTTFTCap (P404). Used by
+	// scoreComponents to weight the flat ActiveConns count by how loaded the
+	// node's connections have actually been recently: a node serving a few
+	// prefill-heavy requests keeps its connections busy far longer before the
+	// first byte than one serving many decode-light continuations, so an
+	// unweighted connection count treats them as equivalent load. A short cap
+	// keeps this a recency signal (current load shape), not a long-run
+	// average. Empty means no TTFT observed yet (new/idle node) - callers
+	// must fall back to the raw connection count, never fabricate a value.
+	RecentTTFT []float64
 
 	// Marbor Agent-derived telemetry (see internal/marboragent, .local/specs/node-agent.md).
 	// AgentPresent is true only after a successful poll of this node's agent
@@ -2228,5 +2239,30 @@ func (r *Router) RecordRequestOutcome(nodeName string, success bool) {
 	}
 	if !success {
 		n.LastErrorAt = time.Now()
+	}
+}
+
+// recentTTFTCap bounds NodeState.RecentTTFT to a short recency window rather
+// than a long-run average, so scoreComponents' load weighting (P404) reacts
+// to the node's current load shape, not history from minutes ago.
+const recentTTFTCap = 10
+
+// RecordTTFT stamps a real observed time-to-first-byte for a request served
+// by nodeName, feeding scoreComponents' load-shape weighting of ActiveConns
+// (P404). ttft must be a genuinely measured duration (proxy.go's
+// statusRecorder.ttft(), > 0) - never a synthetic or estimated value (R1).
+func (r *Router) RecordTTFT(nodeName string, ttft time.Duration) {
+	if ttft <= 0 {
+		return
+	}
+	n := r.FindNode(nodeName)
+	if n == nil {
+		return
+	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.RecentTTFT = append(n.RecentTTFT, ttft.Seconds())
+	if len(n.RecentTTFT) > recentTTFTCap {
+		n.RecentTTFT = n.RecentTTFT[len(n.RecentTTFT)-recentTTFTCap:]
 	}
 }
