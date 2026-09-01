@@ -750,13 +750,13 @@ func TestModelFitsAnyHealthyNode(t *testing.T) {
 		FetchedAt: time.Now(),
 	}
 
-	if !r.ModelFitsAnyHealthyNode("small-model") {
+	if !r.ModelFitsAnyHealthyNode("small-model", 0) {
 		t.Error("small-model should fit in 14GB free VRAM")
 	}
-	if r.ModelFitsAnyHealthyNode("big-model") {
+	if r.ModelFitsAnyHealthyNode("big-model", 0) {
 		t.Error("big-model (20GB) should not fit in 14GB free VRAM")
 	}
-	if !r.ModelFitsAnyHealthyNode("unknown-model") {
+	if !r.ModelFitsAnyHealthyNode("unknown-model", 0) {
 		t.Error("a model with no known size anywhere, but known capacity, should fail open (fit=true) - never guess")
 	}
 }
@@ -789,8 +789,36 @@ func TestModelFitsAnyHealthyNode_NoCapacityKnownFailsClosed(t *testing.T) {
 		FetchedAt: time.Now(),
 	}
 
-	if r.ModelFitsAnyHealthyNode("big-model-70b") {
+	if r.ModelFitsAnyHealthyNode("big-model-70b", 0) {
 		t.Error("a fleet with zero known VRAM capacity must not report fit=true (P403 fail-open bug) - even though the model's size is known, there is no real capacity signal to compare it against")
+	}
+}
+
+// TestModelFitsAnyHealthyNode_ContextLengthAware covers P405: a model close
+// to the free-VRAM edge fits at a small requested context but no longer fits
+// once the same request declares a much larger one, because the KV-cache
+// footprint at 32K tokens genuinely doesn't fit alongside the weights on this
+// node's remaining headroom.
+func TestModelFitsAnyHealthyNode_ContextLengthAware(t *testing.T) {
+	r := New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
+		{Name: "node-a", URL: "http://localhost:11434", VRAMTotalMB: 16384},
+	}, nil)
+	r.nodes[0].Healthy = true
+	r.nodes[0].VRAMTotalMB = 16384
+	r.nodes[0].VRAMUsedMB = 2000 // 14GB free
+	r.tagsCache["http://localhost:11434"] = &TagsCache{
+		// ~10.7GB weights (10000MB*1.10 overhead) - fits alone in ~14GB free,
+		// but adding 32K tokens of GGUF-fallback KV cache (0.15MB/token =
+		// ~4.7GB) pushes the estimate past the free headroom.
+		Models:    []TagModel{{Name: "edge-model", Size: 10000 * mib}},
+		FetchedAt: time.Now(),
+	}
+
+	if !r.ModelFitsAnyHealthyNode("edge-model", 1000) {
+		t.Error("edge-model at 1K context should fit in 14GB free VRAM")
+	}
+	if r.ModelFitsAnyHealthyNode("edge-model", 32000) {
+		t.Error("the same edge-model at 32K context should no longer fit - KV-cache overhead pushes it past 14GB free")
 	}
 }
 

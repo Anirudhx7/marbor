@@ -318,10 +318,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// and only substitutes an alternate that is already downloaded (never
 	// triggers a fresh multi-GB download on the hot path). Pre-scoring
 	// Hard-Constraint filter - does not touch weighted placement scoring.
+	// P405: same cheap char-count/4 heuristic as the context-window admission
+	// check further down (no tokenizer dependency) - gives the fit check a
+	// real per-request context-length signal instead of comparing disk size
+	// alone, so a large-context request against a tight-headroom node is no
+	// longer treated identically to a small one.
+	requestedCtxTokens := int64(len(body) / 4)
 	requestedModelName := modelName
-	if chain := h.router.FallbackChainFor(modelName); len(chain) > 0 && !h.router.ModelFitsAnyHealthyNode(modelName) {
+	if chain := h.router.FallbackChainFor(modelName); len(chain) > 0 && !h.router.ModelFitsAnyHealthyNode(modelName, requestedCtxTokens) {
 		for _, alt := range chain {
-			if h.router.ModelDownloadedAnyNode(alt) && h.router.ModelFitsAnyHealthyNode(alt) {
+			if h.router.ModelDownloadedAnyNode(alt) && h.router.ModelFitsAnyHealthyNode(alt, requestedCtxTokens) {
 				modelName = alt
 				break
 			}
