@@ -598,16 +598,68 @@ func TestEstimateModelSizeBytesPrefersLastKnownRealVRAM(t *testing.T) {
 
 	r := New(config.RoutingConfig{}, []config.NodeConfig{{Name: "pve", URL: srv.URL}}, nil)
 
-	// Never observed loaded yet: falls back to the on-disk size.
-	if got := r.estimateModelSizeBytes(srv.URL, "gemma4:latest", true); got != 9608350718 {
-		t.Fatalf("before any observation, estimate = %d, want on-disk size 9608350718", got)
+	// Never observed loaded yet: falls back to the on-disk size, run through
+	// the P410 quantization/format overhead multiplier (GGUFOverheadMult
+	// 1.10, since this node has no runtime set and defaults to Ollama/GGUF).
+	const wantDiskEstimate = 10568597504 // 9163 MiB (9608350718 truncated to MB) * 1.10
+	if got := r.estimateModelSizeBytes(srv.URL, "gemma4:latest", true, 0); got != wantDiskEstimate {
+		t.Fatalf("before any observation, estimate = %d, want overhead-adjusted disk size %d", got, wantDiskEstimate)
 	}
 
-	// A poll confirms the real, much smaller VRAM footprint.
+	// A poll confirms the real, much smaller VRAM footprint. This is a real
+	// measurement, not a disk-size proxy, so no overhead multiplier applies.
 	r.recordLastKnownVRAM("pve", "gemma4:latest", 3327739904)
 
-	if got := r.estimateModelSizeBytes(srv.URL, "gemma4:latest", true); got != 3327739904 {
+	if got := r.estimateModelSizeBytes(srv.URL, "gemma4:latest", true, 0); got != 3327739904 {
 		t.Fatalf("after observing real VRAM usage, estimate = %d, want real size 3327739904", got)
+	}
+}
+
+// TestEstimateModelSizeBytes_QuantOverheadByRuntime covers P410's core
+// acceptance criterion: two models tied on raw on-disk size (representing,
+// e.g., a llama3.1:8b Q4_K_M GGUF build vs an equivalently-sized safetensors
+// AWQ build) no longer produce the same VRAM estimate, because the disk-size
+// tier now runs through the same GGUFOverheadMult/SafetensorsOverheadMult
+// split the Model Advisor (catalog.go) already applies - a GGUF-family
+// runtime (Ollama/llama.cpp) gets the smaller 1.10x multiplier, a
+// safetensors-family runtime (vLLM/TGI/MLX) gets the larger 1.20x, matching
+// the higher real-world runtime overhead (PagedAttention KV cache, CUDA
+// graph buffers) those runtimes carry.
+func TestEstimateModelSizeBytes_QuantOverheadByRuntime(t *testing.T) {
+	const diskSize = 4000 * mib // identical on-disk size on both nodes
+	tagsHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"models":[{"name":"llama3.1:8b","size":%d}]}`, diskSize)
+	})
+	ollamaSrv := httptest.NewServer(tagsHandler)
+	defer ollamaSrv.Close()
+	vllmSrv := httptest.NewServer(tagsHandler)
+	defer vllmSrv.Close()
+
+	r := New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gguf-node", URL: ollamaSrv.URL, Runtime: "ollama"},
+		{Name: "safetensors-node", URL: vllmSrv.URL, Runtime: "vllm"},
+	}, nil)
+
+	gguf := r.estimateModelSizeBytes(ollamaSrv.URL, "llama3.1:8b", true, 0)
+	safetensors := r.estimateModelSizeBytes(vllmSrv.URL, "llama3.1:8b", true, 0)
+
+	if gguf == diskSize || safetensors == diskSize {
+		t.Fatalf("raw disk size (%d) used 1:1 with no overhead: gguf=%d safetensors=%d", diskSize, gguf, safetensors)
+	}
+	if gguf == safetensors {
+		t.Fatalf("same disk size (%d) tied across runtime families: gguf=%d safetensors=%d, want distinct overhead multipliers", diskSize, gguf, safetensors)
+	}
+	if safetensors <= gguf {
+		t.Errorf("safetensors overhead (1.20x, %d) should exceed GGUF overhead (1.10x, %d) for the same disk size", safetensors, gguf)
+	}
+
+	wantGGUF := int64(float64(diskSize/(1024*1024)) * GGUFOverheadMult * 1024 * 1024)
+	wantSafetensors := int64(float64(diskSize/(1024*1024)) * SafetensorsOverheadMult * 1024 * 1024)
+	if gguf != wantGGUF {
+		t.Errorf("gguf estimate = %d, want %d (GGUFOverheadMult applied to disk size)", gguf, wantGGUF)
+	}
+	if safetensors != wantSafetensors {
+		t.Errorf("safetensors estimate = %d, want %d (SafetensorsOverheadMult applied to disk size)", safetensors, wantSafetensors)
 	}
 }
 
@@ -641,7 +693,7 @@ func TestEnsureHeadroomUsesRealVRAMNotDiskSizeForSiblingReservation(t *testing.T
 	// entire node, but its real, previously-observed VRAM footprint (3200
 	// MiB) does not - the reservation must use the real figure.
 	r.recordLastKnownVRAM("pve", "gemma", 3200*mib)
-	r.reserveWarmBytes("pve", "gemma", r.estimateModelSizeBytes(srv.URL, "gemma", true))
+	r.reserveWarmBytes("pve", "gemma", r.estimateModelSizeBytes(srv.URL, "gemma", true, 0))
 
 	// mxbai (640 MiB on disk, never loaded before) should still fit in the
 	// ~896 MiB left over (4096 - 3200 MiB), not be blocked by a phantom 9GiB
@@ -653,7 +705,10 @@ func TestEnsureHeadroomUsesRealVRAMNotDiskSizeForSiblingReservation(t *testing.T
 	if evicted {
 		t.Error("ensureHeadroom triggered an eviction - mxbai should have fit in the real 896 MiB free without evicting anything")
 	}
-	const want = 3200*mib + 640*mib // gemma's real reservation + mxbai's own
+	// mxbai's own reservation runs its 640 MiB disk size through the P410
+	// GGUFOverheadMult (1.10) since it comes from the disk-size tier, not a
+	// real observed footprint: 640 * 1.10 = 704 MiB.
+	const want = 3200*mib + 704*mib // gemma's real reservation + mxbai's overhead-adjusted disk estimate
 	if got := r.PendingPrewarmBytes("pve"); got != want {
 		t.Fatalf("pve pending reservations = %d, want %d - gemma's 9GiB disk size leaked into the total instead of its real 3200 MiB", got, want)
 	}

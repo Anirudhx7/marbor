@@ -253,7 +253,7 @@ func (r *Router) RunPredictionCycle(ctx context.Context, now time.Time) {
 				// ensureHeadroom against stale pre-load free VRAM.
 				if !wasAlreadyWarm && !alreadyPlanned && !r.isWarmupSuppressed(n.Name, P) && !r.hasActiveWarmReservation(n.Name, P) {
 					// Check VRAM headroom
-					estSize := r.estimateModelSizeBytes(n.URL, P, true)
+					estSize := r.estimateModelSizeBytes(n.URL, P, true, 0)
 					n.mu.RLock()
 					freeBytes := (n.VRAMTotalMB - n.VRAMUsedMB) * 1024 * 1024
 					n.mu.RUnlock()
@@ -360,7 +360,7 @@ func (r *Router) runTimeOfDayPrewarm(ctx context.Context, targetHour int, health
 				// slow load would otherwise be re-triggered every cycle.
 				if !loaded && !r.isWarmupSuppressed(n.Name, model) && !r.hasActiveWarmReservation(n.Name, model) {
 					// Check VRAM headroom
-					estSize := r.estimateModelSizeBytes(n.URL, model, true)
+					estSize := r.estimateModelSizeBytes(n.URL, model, true, 0)
 					n.mu.RLock()
 					freeBytes := (n.VRAMTotalMB - n.VRAMUsedMB) * 1024 * 1024
 					n.mu.RUnlock()
