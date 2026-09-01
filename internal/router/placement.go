@@ -436,6 +436,36 @@ func staticVRAMReservation(runtime string) bool {
 	return runtime == "vllm"
 }
 
+// effectiveLoad weights a node's raw active-connection count by its recent
+// observed load shape (P404): Orca-style continuous batching means every
+// connection is not equal work - a prefill-heavy request keeps the node's
+// shared compute busy far longer before its first byte than a decode-light
+// continuation, so counting both as one "slot" (the old inverse_queue_depth
+// arithmetic) makes a node serving a few heavy requests look less loaded
+// than one serving many light ones. n.RecentTTFT (real observed
+// time-to-first-byte, RecordTTFT) is the cheapest available proxy for this:
+// it degrades when a node's connections are actually compute-bound, and does
+// so without inventing a prefill/decode phase classifier the router has no
+// visibility into. A node with no TTFT history yet (new/idle) falls back to
+// the raw connection count unchanged - this is a refinement of the existing
+// formula, not a new code path that can diverge from it when data is
+// missing (R1: never fabricate a load signal from nothing).
+//
+// Must be called with n.mu already held (RLock is sufficient) - it reads
+// n.RecentTTFT directly, matching every other per-node field scoreComponents
+// reads under its own RLock.
+func effectiveLoad(n *NodeState, conns int32) float64 {
+	if len(n.RecentTTFT) == 0 {
+		return float64(conns)
+	}
+	sum := 0.0
+	for _, ttft := range n.RecentTTFT {
+		sum += ttft
+	}
+	avgTTFT := sum / float64(len(n.RecentTTFT))
+	return float64(conns) * (1.0 + avgTTFT)
+}
+
 // scoreComponents calculates the multi-factor score breakdown for a node,
 // term by term, in the exact order and arithmetic computeNodeScore has
 // always used:
@@ -480,7 +510,7 @@ func (r *Router) scoreComponents(n *NodeState, model string) []ScoreComponent {
 		// usable queue-depth or declared-concurrency telemetry field
 		// (marboragent.RuntimeInfo.QueueDepth is never populated - R1).
 		conns := atomic.LoadInt32(&n.ActiveConns)
-		freeVRAM = 1.0 / (1.0 + float64(conns))
+		freeVRAM = 1.0 / (1.0 + effectiveLoad(n, conns))
 	} else if n.VRAMTotalMB > 0 {
 		free := n.VRAMTotalMB - n.VRAMUsedMB
 		// Discount VRAM already reserved-but-unconfirmed by an in-flight
@@ -498,7 +528,7 @@ func (r *Router) scoreComponents(n *NodeState, model string) []ScoreComponent {
 
 	// 3. inverse_queue_depth
 	conns := atomic.LoadInt32(&n.ActiveConns)
-	invQueue := 1.0 / (1.0 + float64(conns))
+	invQueue := 1.0 / (1.0 + effectiveLoad(n, conns))
 
 	// 4. node_health_score
 	health := 1.0
