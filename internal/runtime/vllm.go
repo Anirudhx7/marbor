@@ -42,6 +42,18 @@ func (p *VLLMProbe) Probe(ctx context.Context, nodeURL string) (ProbeResult, err
 	var body struct {
 		Data []struct {
 			ID string `json:"id"`
+			// Root is vLLM's OpenAI-compatible ModelCard field carrying the
+			// local model path or HF repo id the server was actually started
+			// with (see vllm.entrypoints.openai.protocol.ModelCard) - a real
+			// field already returned by vLLM's own API, not something this
+			// probe invents. It is genuinely useful as a content-identity
+			// signal distinct from ID: an operator can serve two different
+			// quantized builds (e.g. a Q4 GPTQ checkpoint and an F16
+			// checkpoint) under the identical --served-model-name, in which
+			// case ID is indistinguishable across nodes but Root (the actual
+			// path/repo loaded) still differs. Empty when vLLM's version
+			// doesn't populate it - never fabricated (R1).
+			Root string `json:"root"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
@@ -51,7 +63,11 @@ func (p *VLLMProbe) Probe(ctx context.Context, nodeURL string) (ProbeResult, err
 	models := make([]LoadedModel, 0, len(body.Data))
 	for _, d := range body.Data {
 		if d.ID != "" {
-			models = append(models, LoadedModel{Name: d.ID, SizeVRAMBytes: 0})
+			digest := ""
+			if d.Root != "" && d.Root != d.ID {
+				digest = d.Root
+			}
+			models = append(models, LoadedModel{Name: d.ID, SizeVRAMBytes: 0, Digest: digest})
 		}
 	}
 

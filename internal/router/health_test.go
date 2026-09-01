@@ -49,6 +49,150 @@ func TestPollNode_RecoversFromProbePanic(t *testing.T) {
 	}
 }
 
+// TestAttributeSoleModelVRAM_SingleModel_UnknownSize fills in the sole
+// loaded model's VRAM size from the node's real VRAMUsedMB (P406): a
+// non-Ollama runtime that reports SizeVRAM=0 for its one loaded model
+// should get that model attributed the node's real observed usage once one
+// exists, rather than staying at a fabricated-looking 0 forever.
+func TestAttributeSoleModelVRAM_SingleModel_UnknownSize(t *testing.T) {
+	n := &NodeState{
+		LoadedModels: []ModelInfo{{Name: "llama-3-70b", SizeVRAM: 0}},
+		VRAMUsedMB:   40000,
+	}
+	attributeSoleModelVRAM(n)
+	want := int64(40000) * 1024 * 1024
+	if n.LoadedModels[0].SizeVRAM != want {
+		t.Errorf("SizeVRAM = %d, want %d (attributed from node VRAMUsedMB)", n.LoadedModels[0].SizeVRAM, want)
+	}
+}
+
+// TestAttributeSoleModelVRAM_NeverOverridesRealSize: Ollama already reports
+// a real per-model size_vram - attribution must never override it, even if
+// it happens to differ from the node's rolled-up VRAMUsedMB (e.g. mid-poll
+// transition).
+func TestAttributeSoleModelVRAM_NeverOverridesRealSize(t *testing.T) {
+	n := &NodeState{
+		LoadedModels: []ModelInfo{{Name: "llama3:8b", SizeVRAM: 8192 * 1024 * 1024}},
+		VRAMUsedMB:   40000,
+	}
+	attributeSoleModelVRAM(n)
+	want := int64(8192) * 1024 * 1024
+	if n.LoadedModels[0].SizeVRAM != want {
+		t.Errorf("SizeVRAM = %d, want %d (must not override an already-known real size)", n.LoadedModels[0].SizeVRAM, want)
+	}
+}
+
+// TestAttributeSoleModelVRAM_MultipleModels_StaysUnknown: with more than one
+// model loaded on the node, per-process VRAM correlation is not observable
+// (no PID-to-model correlation over these HTTP probes) - attribution must
+// leave every unknown size at 0 rather than guess a split (R1).
+func TestAttributeSoleModelVRAM_MultipleModels_StaysUnknown(t *testing.T) {
+	n := &NodeState{
+		LoadedModels: []ModelInfo{
+			{Name: "model-a", SizeVRAM: 0},
+			{Name: "model-b", SizeVRAM: 0},
+		},
+		VRAMUsedMB: 40000,
+	}
+	attributeSoleModelVRAM(n)
+	for i, m := range n.LoadedModels {
+		if m.SizeVRAM != 0 {
+			t.Errorf("LoadedModels[%d].SizeVRAM = %d, want 0 (must not guess a split across multiple models)", i, m.SizeVRAM)
+		}
+	}
+}
+
+// TestAttributeSoleModelVRAM_NoVRAMReading_StaysUnknown: no known VRAMUsedMB
+// (e.g. no agent, non-Ollama) - must stay 0, exactly today's behavior, not a
+// fabricated guess.
+func TestAttributeSoleModelVRAM_NoVRAMReading_StaysUnknown(t *testing.T) {
+	n := &NodeState{
+		LoadedModels: []ModelInfo{{Name: "llama-3-70b", SizeVRAM: 0}},
+		VRAMUsedMB:   0,
+	}
+	attributeSoleModelVRAM(n)
+	if n.LoadedModels[0].SizeVRAM != 0 {
+		t.Errorf("SizeVRAM = %d, want 0 (no real VRAM reading available to attribute)", n.LoadedModels[0].SizeVRAM)
+	}
+}
+
+// nonOllamaZeroVRAMProbe simulates a non-Ollama runtime (P406): reports a
+// loaded model but always SizeVRAMBytes=0, exactly like
+// internal/runtime/{vllm,tgi,llamacpp,mlx}.go today.
+type nonOllamaZeroVRAMProbe struct {
+	models []runtimepkg.LoadedModel
+}
+
+func (p nonOllamaZeroVRAMProbe) Probe(ctx context.Context, nodeURL string) (runtimepkg.ProbeResult, error) {
+	return runtimepkg.ProbeResult{LoadedModels: p.models, VRAMUsedMB: 0}, nil
+}
+
+// TestPollNode_PreservesAgentSourcedVRAM_NonOllama is the P406 regression
+// for the race pollNode and pollAgentHosts run concurrently on the same
+// poll tick (Router.Start): a real, previously agent-reported VRAMUsedMB
+// for a non-Ollama node must not be stomped back to 0 by this poll cycle's
+// own always-zero runtime-API reading. Before this fix, pollNode's default
+// branch unconditionally set n.VRAMUsedMB = psUsedMB (always 0 for
+// non-Ollama), which would flicker a real agent reading back to unknown on
+// roughly every other tick depending on goroutine completion order.
+func TestPollNode_PreservesAgentSourcedVRAM_NonOllama(t *testing.T) {
+	r := New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://gpu-0:8000", Runtime: "vllm"},
+	}, nil)
+
+	n := r.nodes[0]
+	n.mu.Lock()
+	n.probe = nonOllamaZeroVRAMProbe{models: []runtimepkg.LoadedModel{{Name: "llama-3-70b", SizeVRAMBytes: 0}}}
+	// Simulate an already-applied agent telemetry reading from a concurrent
+	// pollAgentHosts cycle (applyAgentTelemetry sets exactly this pair).
+	n.VRAMUsedMB = 40000
+	n.VRAMSource = "agent"
+	n.mu.Unlock()
+
+	r.pollNode(n)
+
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	if n.VRAMUsedMB != 40000 {
+		t.Errorf("VRAMUsedMB = %d, want 40000 (a zero non-Ollama psUsedMB reading must not stomp an agent-sourced value)", n.VRAMUsedMB)
+	}
+	if n.VRAMSource != "agent" {
+		t.Errorf("VRAMSource = %q, want \"agent\" (preserved, not downgraded to declared/none)", n.VRAMSource)
+	}
+	if len(n.LoadedModels) != 1 || n.LoadedModels[0].SizeVRAM != 40000*1024*1024 {
+		t.Errorf("LoadedModels[0].SizeVRAM not attributed from the preserved agent VRAMUsedMB: %+v", n.LoadedModels)
+	}
+}
+
+// TestPollNode_NoAgent_NonOllama_StaysZero is the explicit "old marbor
+// talking to an old/no agent" regression: a non-Ollama node with no agent
+// telemetry ever applied must behave exactly as it does today - VRAM=0,
+// no crash, no fabricated data - not a side effect of the P406 changes.
+func TestPollNode_NoAgent_NonOllama_StaysZero(t *testing.T) {
+	r := New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://gpu-0:8000", Runtime: "vllm"},
+	}, nil)
+
+	n := r.nodes[0]
+	n.mu.Lock()
+	n.probe = nonOllamaZeroVRAMProbe{models: []runtimepkg.LoadedModel{{Name: "llama-3-70b", SizeVRAMBytes: 0}}}
+	n.mu.Unlock()
+
+	r.pollNode(n)
+
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	if n.VRAMUsedMB != 0 {
+		t.Errorf("VRAMUsedMB = %d, want 0 (no agent, non-Ollama - must stay unknown, not guessed)", n.VRAMUsedMB)
+	}
+	if n.VRAMSource != "none" {
+		t.Errorf("VRAMSource = %q, want \"none\"", n.VRAMSource)
+	}
+	if len(n.LoadedModels) != 1 || n.LoadedModels[0].SizeVRAM != 0 {
+		t.Errorf("LoadedModels[0].SizeVRAM = %+v, want 0 (nothing to attribute from)", n.LoadedModels)
+	}
+}
+
 // residentProbe simulates a runtime that reports exactly the given models as
 // resident, for testing poll-driven reservation cleanup (P51).
 type residentProbe struct {

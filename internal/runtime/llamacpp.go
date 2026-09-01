@@ -42,6 +42,14 @@ func (p *LlamaCppProbe) Probe(ctx context.Context, nodeURL string) (ProbeResult,
 	var body struct {
 		Data []struct {
 			ID string `json:"id"`
+			// Root mirrors the same optional field vLLM's OpenAI-compatible
+			// /v1/models returns (the local model path/repo actually
+			// loaded). Not confirmed present across all llama.cpp server
+			// versions (its /v1/models implementation is hand-rolled, not
+			// vLLM's protocol) - parsed defensively so it's used when a
+			// build happens to report it and silently ignored (Digest stays
+			// empty, today's behavior) when absent. Never fabricated (R1).
+			Root string `json:"root"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
@@ -51,7 +59,11 @@ func (p *LlamaCppProbe) Probe(ctx context.Context, nodeURL string) (ProbeResult,
 	models := make([]LoadedModel, 0, len(body.Data))
 	for _, d := range body.Data {
 		if d.ID != "" {
-			models = append(models, LoadedModel{Name: d.ID, SizeVRAMBytes: 0})
+			digest := ""
+			if d.Root != "" && d.Root != d.ID {
+				digest = d.Root
+			}
+			models = append(models, LoadedModel{Name: d.ID, SizeVRAMBytes: 0, Digest: digest})
 		}
 	}
 
