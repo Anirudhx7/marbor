@@ -49,6 +49,23 @@ const (
 	SafetensorsPerTokenMBFallback = 0.20
 )
 
+// FragmentationOverheadMult models a different phenomenon than the two
+// constants above: PagedAttention-style block allocators (vLLM, TGI, and
+// similar) plus CUDA graph/allocator bookkeeping consume real VRAM beyond the
+// sum of already-loaded models' reported bytes, so treating a node's reported
+// used bytes as the complete picture understates true consumption. Applied
+// at the headroom-decision layer (eviction.go's EvictForHeadroom,
+// ModelFitsAnyHealthyNode, ensureHeadroom; placement.go's computeNodeScore
+// free_vram_headroom factor) to the "used" side of a free = total - used
+// computation, never to the raw health.go VRAMUsedMB measurement itself
+// (R1: that stays a real, unmodified measurement). Distinct from
+// GGUFOverheadMult/SafetensorsOverheadMult, which instead correct a
+// *disk-size-to-VRAM* estimate for one specific model being sized - this
+// constant corrects the *already-used* figure for allocator slack regardless
+// of which model is being evaluated. 8% is the midpoint of the audited 5-10%
+// range for allocator/PagedAttention fragmentation overhead.
+const FragmentationOverheadMult = 1.08
+
 // GGUFOnlyRuntime reports whether a node runtime only ever loads GGUF weight
 // files (Ollama, llama.cpp) as opposed to standard HF safetensors repos
 // (vLLM, TGI, MLX). An empty runtime defaults to the historical GGUF-only

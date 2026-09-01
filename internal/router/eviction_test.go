@@ -541,6 +541,90 @@ func TestEvictForHeadroomLowerPriorityKeepWarmModelIsEvictable(t *testing.T) {
 	}
 }
 
+// TestEvictForHeadroomFragmentationOverheadTriggersEviction covers P407: a
+// node whose raw free bytes (total-used) exactly satisfies neededBytes must
+// now require slightly more headroom once FragmentationOverheadMult
+// discounts the reported used bytes for allocator/CUDA-graph slack - a
+// request that would have passed with zero evictions before this fix now
+// triggers one.
+func TestEvictForHeadroomFragmentationOverheadTriggersEviction(t *testing.T) {
+	var mu sync.Mutex
+	evicted := map[string]bool{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		if strings.Contains(string(b), `"cold"`) {
+			evicted["cold"] = true
+		}
+		mu.Unlock()
+		w.Write([]byte(`{"done":true}`))
+	}))
+	defer srv.Close()
+
+	r := &Router{
+		nodes: []*NodeState{{
+			Name: "n1", URL: srv.URL, Healthy: true,
+			VRAMTotalMB: 1000,
+			LoadedModels: []ModelInfo{
+				{Name: "pinned", SizeVRAM: 400 * mib}, // pinned, never evicted
+				{Name: "cold", SizeVRAM: 100 * mib},   // evictable
+			},
+		}},
+		lastUsed: map[string]time.Time{},
+		pinned:   map[string]map[string]bool{},
+	}
+	r.SetPinnedModels("n1", []string{"pinned"})
+	r.lastUsed[modelKey("n1", "cold")] = time.Now().Add(-time.Hour)
+
+	// used = 500 MiB, total = 1000 MiB, raw free = 500 MiB >= 480 MiB needed:
+	// pre-P407 this would have been a no-op. FragmentationOverheadMult (1.08)
+	// adjusts used to 540 MiB, adjusted free = 460 MiB < 480 MiB needed, so
+	// the evictable "cold" model must now be evicted to make up the slack.
+	const neededBytes = 480 * mib
+	n := r.EvictForHeadroom(context.Background(), "n1", "newmodel", neededBytes)
+	if n < 1 {
+		t.Fatalf("expected fragmentation overhead to require an eviction (raw free exactly covers neededBytes), got %d evictions", n)
+	}
+	time.Sleep(100 * time.Millisecond)
+	mu.Lock()
+	defer mu.Unlock()
+	if !evicted["cold"] {
+		t.Error("expected the evictable 'cold' model to be evicted to cover the fragmentation slack")
+	}
+}
+
+// TestEvictForHeadroomFragmentationOverheadDoesNotOvertrigger covers the
+// other half of P407's acceptance criteria: eviction must NOT trigger when
+// the existing free slack already covers the fragmentation overhead - the
+// constant should only close the gap the audit found, not cause gratuitous
+// extra evictions beyond what the new margin requires.
+func TestEvictForHeadroomFragmentationOverheadDoesNotOvertrigger(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"done":true}`))
+	}))
+	defer srv.Close()
+
+	r := &Router{
+		nodes: []*NodeState{{
+			Name: "n1", URL: srv.URL, Healthy: true,
+			VRAMTotalMB: 1000,
+			LoadedModels: []ModelInfo{
+				{Name: "warm", SizeVRAM: 500 * mib},
+			},
+		}},
+		lastUsed: map[string]time.Time{},
+		pinned:   map[string]map[string]bool{},
+	}
+
+	// used = 500 MiB, adjusted free = 1000 - 500*1.08 = 460 MiB, comfortably
+	// above the 400 MiB needed - the slack already covers the overhead, so no
+	// eviction should fire.
+	const neededBytes = 400 * mib
+	if n := r.EvictForHeadroom(context.Background(), "n1", "newmodel", neededBytes); n != 0 {
+		t.Errorf("evicted %d, want 0 (fragmentation-adjusted free already covers neededBytes)", n)
+	}
+}
+
 // TestEnsureHeadroomEvictsWhenModelWontFit verifies the load-path gate evicts the
 // coldest model when a not-yet-loaded model's estimated size won't fit.
 func TestEnsureHeadroomEvictsWhenModelWontFit(t *testing.T) {
@@ -874,6 +958,31 @@ func TestModelFitsAnyHealthyNode_ContextLengthAware(t *testing.T) {
 	}
 	if r.ModelFitsAnyHealthyNode("edge-model", 32000) {
 		t.Error("the same edge-model at 32K context should no longer fit - KV-cache overhead pushes it past 14GB free")
+	}
+}
+
+// TestModelFitsAnyHealthyNode_FragmentationOverheadRequiresMoreHeadroom
+// covers P407's headroom-pass acceptance criterion: a model whose estimate
+// sits between the raw free bytes and the fragmentation-adjusted free bytes
+// must flip from "fits" to "doesn't fit" once FragmentationOverheadMult
+// discounts the node's reported used bytes for allocator/CUDA-graph slack.
+func TestModelFitsAnyHealthyNode_FragmentationOverheadRequiresMoreHeadroom(t *testing.T) {
+	r := New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
+		{Name: "node-a", URL: "http://localhost:11434", VRAMTotalMB: 1000},
+	}, nil)
+	r.nodes[0].Healthy = true
+	r.nodes[0].VRAMTotalMB = 1000
+	r.nodes[0].VRAMUsedMB = 500 // raw free = 500 MiB, fragmentation-adjusted free = 460 MiB
+	r.tagsCache["http://localhost:11434"] = &TagsCache{
+		// 450 MiB disk size * GGUFOverheadMult (1.10) = 495 MiB estimate:
+		// fits in the raw 500 MiB free, but not in the 460 MiB
+		// fragmentation-adjusted free.
+		Models:    []TagModel{{Name: "edge-model", Size: 450 * mib}},
+		FetchedAt: time.Now(),
+	}
+
+	if r.ModelFitsAnyHealthyNode("edge-model", 0) {
+		t.Error("edge-model (495 MiB estimate) should no longer fit once fragmentation overhead reduces free VRAM to 460 MiB - it only fit under the pre-P407 raw 500 MiB free")
 	}
 }
 
