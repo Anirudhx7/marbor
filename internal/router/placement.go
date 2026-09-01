@@ -512,7 +512,12 @@ func (r *Router) scoreComponents(n *NodeState, model string) []ScoreComponent {
 		conns := atomic.LoadInt32(&n.ActiveConns)
 		freeVRAM = 1.0 / (1.0 + effectiveLoad(n, conns))
 	} else if n.VRAMTotalMB > 0 {
-		free := n.VRAMTotalMB - n.VRAMUsedMB
+		// FragmentationOverheadMult: allocator/PagedAttention block slack and
+		// CUDA graph bookkeeping consume real VRAM beyond the sum of loaded
+		// models' reported bytes (see eviction.go's EvictForHeadroom for the
+		// full rationale) - discount it here too so this scoring factor and
+		// the eviction/headroom decisions agree on what "free" means.
+		free := n.VRAMTotalMB - int64(float64(n.VRAMUsedMB)*FragmentationOverheadMult)
 		// Discount VRAM already reserved-but-unconfirmed by an in-flight
 		// cold-start pick on this node (see reserveColdStartBytes) - without
 		// this, two concurrent requests for two different cold models can

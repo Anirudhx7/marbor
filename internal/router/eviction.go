@@ -638,7 +638,10 @@ func (r *Router) EvictForHeadroom(ctx context.Context, nodeName, forModel string
 	if totalBytes <= 0 {
 		return 0
 	}
-	free := totalBytes - usedBytes
+	// FragmentationOverheadMult: allocator/PagedAttention block slack and CUDA
+	// graph bookkeeping consume real VRAM beyond the sum of loaded models'
+	// reported bytes, so a realistic "free" must discount that.
+	free := totalBytes - int64(float64(usedBytes)*FragmentationOverheadMult)
 
 	forModelRank, forModelRanked := r.warmRank(nodeName, forModel)
 
@@ -902,7 +905,9 @@ func (r *Router) ModelFitsAnyHealthyNode(model string, requestedCtx int64) bool 
 	for _, n := range nodes {
 		n.mu.RLock()
 		healthy := n.Healthy && !n.Draining
-		freeBytes := (n.VRAMTotalMB - n.VRAMUsedMB) * 1024 * 1024
+		// FragmentationOverheadMult: see EvictForHeadroom - allocator/CUDA graph
+		// slack beyond reported used bytes.
+		freeBytes := (n.VRAMTotalMB - int64(float64(n.VRAMUsedMB)*FragmentationOverheadMult)) * 1024 * 1024
 		nodeURL := n.URL
 		vramKnown := n.VRAMTotalMB > 0
 		n.mu.RUnlock()
@@ -1086,7 +1091,10 @@ func (r *Router) ensureHeadroom(ctx context.Context, n *NodeState, model string)
 		return
 	}
 
-	if totalBytes-usedBytes-reservedByOthers >= est {
+	// FragmentationOverheadMult: see EvictForHeadroom - allocator/CUDA graph
+	// slack beyond reported used bytes.
+	adjustedUsed := int64(float64(usedBytes) * FragmentationOverheadMult)
+	if totalBytes-adjustedUsed-reservedByOthers >= est {
 		return // fits alongside real usage and any other in-flight loads
 	}
 	// Thrash guard: at most one auto-eviction per node per cooldown window.
