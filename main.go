@@ -551,6 +551,7 @@ func main() {
 	}
 	r.SetWarmupConfig(cfg.Warmup)
 	r.SetWebhookConfig(cfg.Webhook)
+	r.SetContextWindows(cfg.ContextWindows)
 	if cfg.Warmup.Enabled && len(cfg.Warmup.Models) > 0 {
 		log.Printf("Model warmup enabled: %d model(s), interval %dms, keep_alive %s",
 			len(cfg.Warmup.Models), cfg.Warmup.IntervalMs, cfg.Warmup.KeepAlive)
