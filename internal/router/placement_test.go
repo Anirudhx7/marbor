@@ -581,3 +581,47 @@ func TestRouteDecisionReasons(t *testing.T) {
 		}
 	})
 }
+
+// TestPlacementScoring_TTFTWeightedLoad covers P404: a node serving a few
+// prefill-heavy connections (slow real observed TTFT) must score worse than
+// a node serving many decode-light connections (fast TTFT), even though the
+// heavy node has the lower raw ActiveConns count. Before the fix, both nodes
+// only differed by float64(conns), so node-a (fewer conns) always won.
+func TestPlacementScoring_TTFTWeightedLoad(t *testing.T) {
+	r := New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
+		{Name: "node-a", URL: "http://node-a:11434", VRAMTotalMB: 8192},
+		{Name: "node-b", URL: "http://node-b:11434", VRAMTotalMB: 8192},
+	}, nil)
+
+	nodeA, nodeB := r.nodes[0], r.nodes[1]
+
+	// node-a: 2 heavy prefill connections, slow real observed TTFT (large
+	// prompts keep the node's compute busy for seconds before first byte).
+	atomic.StoreInt32(&nodeA.ActiveConns, 2)
+	nodeA.RecentTTFT = []float64{3.5, 4.0, 4.5}
+
+	// node-b: 8 light decode-only continuations, fast real observed TTFT.
+	atomic.StoreInt32(&nodeB.ActiveConns, 8)
+	nodeB.RecentTTFT = []float64{0.08, 0.1, 0.09}
+
+	scoreA := r.computeNodeScore(nodeA, "model-x")
+	scoreB := r.computeNodeScore(nodeB, "model-x")
+	if scoreA >= scoreB {
+		t.Errorf("node-a (2 heavy prefill conns) score=%v, node-b (8 light decode conns) score=%v; want node-a < node-b", scoreA, scoreB)
+	}
+
+	node, _, _ := r.Route("model-x", "", "")
+	if node == nil {
+		t.Fatal("expected to select a node, got nil")
+	}
+	if node.Name != "node-b" {
+		t.Errorf("selected node %q, want \"node-b\" (lighter effective load despite higher raw conns)", node.Name)
+	}
+
+	// No TTFT history yet -> effectiveLoad falls back to the raw conns count
+	// unchanged, matching the pre-P404 formula exactly (backward compatible).
+	nodeC := &NodeState{Name: "node-c", ActiveConns: 3}
+	if got := effectiveLoad(nodeC, atomic.LoadInt32(&nodeC.ActiveConns)); got != 3.0 {
+		t.Errorf("effectiveLoad with no RecentTTFT = %v, want 3.0 (raw conns, unweighted)", got)
+	}
+}
