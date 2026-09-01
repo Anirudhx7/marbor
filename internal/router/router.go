@@ -476,6 +476,21 @@ type Router struct {
 	// digestMismatch in placement.go and .local/audit-fixes-2026-08-03.md #4.
 	modelDigests map[string]string
 	digestMu     sync.RWMutex
+	// contextWindows mirrors config.Config.ContextWindows (operator-declared
+	// per-model max context, in tokens), pushed by admin via SetContextWindows
+	// at startup and on every settings update (P405). Guarded by r.mu, same as
+	// the other admin-pushed config fields (timezone, liteLLM, ...) it lives
+	// alongside. Gives ensureHeadroom a context-length signal on the
+	// router-internal proactive warm paths, which have no live per-request
+	// context length of their own. See kvcache.go.
+	contextWindows map[string]int
+	// modelArchFacts caches real transformer architecture facts (P405) per
+	// model, pushed opportunistically by admin/catalog.go's Model Advisor
+	// handlers - see kvcache.go's SetModelArchFacts for the full rationale.
+	// A model never looked up in the Advisor has no entry and falls back to
+	// the non-GQA-aware estimated path.
+	modelArchFacts map[string]ModelArchFacts
+	archFactsMu    sync.RWMutex
 	// notifyCh is closed and recreated to broadcast wakes when a connection is freed.
 	notifyCh      chan struct{}
 	notifyMu      sync.Mutex

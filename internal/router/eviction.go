@@ -867,11 +867,21 @@ func (r *Router) LocalDegradationChainFor(model string) []string {
 //     capacity data, just nothing to compare it against. This still fails
 //     open (true), matching the existing R1-safe "never guess a value that
 //     wasn't observed" behavior for a genuinely novel model.
-func (r *Router) ModelFitsAnyHealthyNode(model string) bool {
+//
+// requestedCtx, when > 0, is the caller's best available context-length
+// signal (typically a live per-request token estimate) for the fit check
+// below (P405): the same disk-size model can need materially more VRAM at
+// 32K context than at 1K, and a size-only comparison can't see that. <= 0
+// means no context-length signal was available, in which case the pre-P405
+// size-only comparison is used unchanged (R1: never fabricate a context
+// length that wasn't observed or configured).
+func (r *Router) ModelFitsAnyHealthyNode(model string, requestedCtx int64) bool {
 	r.mu.RLock()
 	nodes := make([]*NodeState, len(r.nodes))
 	copy(nodes, r.nodes)
 	r.mu.RUnlock()
+
+	arch, hasArch := r.modelArchFactsFor(model)
 
 	sawKnownSize := false
 	anyCapacityKnown := false
@@ -880,6 +890,7 @@ func (r *Router) ModelFitsAnyHealthyNode(model string) bool {
 		healthy := n.Healthy && !n.Draining
 		freeBytes := (n.VRAMTotalMB - n.VRAMUsedMB) * 1024 * 1024
 		nodeURL := n.URL
+		runtime := n.Runtime
 		vramKnown := n.VRAMTotalMB > 0
 		n.mu.RUnlock()
 		if !healthy || !vramKnown {
@@ -891,6 +902,13 @@ func (r *Router) ModelFitsAnyHealthyNode(model string) bool {
 			continue
 		}
 		sawKnownSize = true
+		if requestedCtx > 0 {
+			var archPtr *ModelArchFacts
+			if hasArch {
+				archPtr = &arch
+			}
+			size = EstimateContextAwareBytes(size/(1024*1024), requestedCtx, runtime, archPtr)
+		}
 		if freeBytes >= size {
 			return true
 		}
@@ -996,6 +1014,7 @@ func (r *Router) ensureHeadroom(ctx context.Context, n *NodeState, model string)
 	n.mu.RLock()
 	nodeURL := n.URL
 	nodeName := n.Name
+	runtime := n.Runtime
 	totalBytes := n.VRAMTotalMB * 1024 * 1024
 	var usedBytes int64
 	resident := false
@@ -1018,6 +1037,20 @@ func (r *Router) ensureHeadroom(ctx context.Context, n *NodeState, model string)
 	est := r.estimateModelSizeBytes(nodeURL, model, true)
 	if est <= 0 {
 		return // unknown size
+	}
+	// P405: when the operator has declared a context window for model, size
+	// the reservation for that context length instead of weights-only - the
+	// same disk size needs materially more real VRAM at a large declared
+	// context than at a small one. No declared window (the common case for a
+	// model nobody has configured a window for) leaves est untouched, exactly
+	// the pre-P405 behavior (R1: never guess an undeclared context length).
+	if window, ok := r.contextWindowFor(model); ok && window > 0 {
+		arch, hasArch := r.modelArchFactsFor(model)
+		var archPtr *ModelArchFacts
+		if hasArch {
+			archPtr = &arch
+		}
+		est = EstimateContextAwareBytes(est/(1024*1024), int64(window), runtime, archPtr)
 	}
 	if est > totalBytes {
 		// This model can never fit on this node no matter what gets evicted -

@@ -1356,31 +1356,27 @@ func parseInt64Raw(raw json.RawMessage) *int64 {
 }
 
 // kvCacheBytesPerToken computes the real per-token KV-cache footprint from
-// known transformer architecture facts: 2 (one for K, one for V) x layers x
-// kv_heads x head_dim x 2 bytes (fp16/bf16 - the default KV-cache dtype
-// across llama.cpp/Ollama/vLLM/TGI absent an explicit quantized-KV-cache
-// configuration, which this codebase has no way to detect - see the P71
-// design plan's edge-case section on KV-cache precision). head_dim is
-// derived (hiddenSize/numAttnHeads), not a separate metadata field.
+// known transformer architecture facts - the formula itself now lives in
+// internal/router/kvcache.go (router.KVCacheBytesPerToken) so the router's
+// own headroom/eviction hot path (P405) can share it instead of maintaining
+// a second copy; internal/admin already imports internal/router, so this
+// package calls the router's exported version rather than the reverse
+// (router cannot import admin - see kvcache.go's ModelArchFacts doc comment).
 func kvCacheBytesPerToken(numLayers, numKVHeads, hiddenSize, numAttnHeads int64) int64 {
-	if numAttnHeads <= 0 {
-		return 0
-	}
-	headDim := hiddenSize / numAttnHeads
-	return 2 * numLayers * numKVHeads * headDim * 2
+	return router.KVCacheBytesPerToken(numLayers, numKVHeads, hiddenSize, numAttnHeads)
 }
 
 // Estimated-path overhead constants for computeContextFeasibility's two
-// runtime families, named and grouped here (rather than inline float
-// literals at each call site) so every runtime's numbers are visible in one
-// place instead of drifting independently. vLLM/TGI/MLX carry more runtime
-// overhead (PagedAttention KV cache, CUDA graph buffers) than llama.cpp,
-// hence the higher multiplier.
+// runtime families - values now live in internal/router/kvcache.go
+// (router.GGUFOverheadMult etc.) for the same reuse-not-duplicate reason as
+// kvCacheBytesPerToken above; aliased here so call sites below don't need
+// renaming. vLLM/TGI/MLX carry more runtime overhead (PagedAttention KV
+// cache, CUDA graph buffers) than llama.cpp, hence the higher multiplier.
 const (
-	ggufOverheadMult              = 1.10
-	ggufPerTokenMBFallback        = 0.15
-	safetensorsOverheadMult       = 1.20
-	safetensorsPerTokenMBFallback = 0.20
+	ggufOverheadMult              = router.GGUFOverheadMult
+	ggufPerTokenMBFallback        = router.GGUFPerTokenMBFallback
+	safetensorsOverheadMult       = router.SafetensorsOverheadMult
+	safetensorsPerTokenMBFallback = router.SafetensorsPerTokenMBFallback
 )
 
 // computeContextFeasibility is the single shared implementation used for
@@ -1833,6 +1829,17 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 						HiddenSize:   info.EmbeddingLength,
 						MaxContext:   info.ContextLength,
 					}
+					// P405: push these real architecture facts into the router's
+					// headroom/eviction hot path so it can stop tying a GQA and
+					// an MHA model of the same disk size - opportunistic, not a
+					// guess (R1): only a model an operator has actually looked
+					// up here ever gets an entry.
+					s.router.SetModelArchFacts(downloadedName, router.ModelArchFacts{
+						NumLayers:    info.BlockCount,
+						NumKVHeads:   info.HeadCountKV,
+						NumAttnHeads: info.HeadCount,
+						HiddenSize:   info.EmbeddingLength,
+					})
 					// info.ContextLength is the model's own GGUF-declared
 					// trained maximum - not the same thing as Ollama's
 					// per-model num_ctx load parameter, which an operator may
@@ -1885,6 +1892,15 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 					HiddenSize:   cfg.HiddenSize,
 					MaxContext:   cfg.MaxPositionEmbeddings,
 				}
+				// P405: same opportunistic push as the GGUF/Ollama branch
+				// above, keyed by repo.ID since that's the name this model
+				// would be routed under once pulled onto a vLLM/TGI/MLX node.
+				s.router.SetModelArchFacts(repo.ID, router.ModelArchFacts{
+					NumLayers:    cfg.NumHiddenLayers,
+					NumKVHeads:   cfg.NumKeyValueHeads,
+					NumAttnHeads: cfg.NumAttentionHeads,
+					HiddenSize:   cfg.HiddenSize,
+				})
 			}
 			// The runtime's own launched context ceiling (e.g. vLLM's
 			// --max-model-len) may sit below the model's trained max declared
