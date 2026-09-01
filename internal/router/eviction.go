@@ -700,19 +700,29 @@ const evictCooldown = 15 * time.Second
 // fully fit in VRAM (partial GPU+CPU split, e.g. a large quantized model on a
 // small GPU) can use far less real VRAM than its on-disk weights size, so once
 // we've actually seen it loaded, that beats guessing from the file forever
-// after; (2) the node's /api/tags on-disk size (a good proxy for GGUF weights
-// before the model has ever been observed loaded) - only consulted when
-// allowFetch is true, since FetchModelTags can perform a live HTTP call on a
-// cache miss and some callers (the streaming request-routing hot path) must
-// never block on I/O (R2); (3) non-Ollama runtimes (vllm, tgi, llamacpp, mlx)
-// don't expose /api/tags, so FetchModelTags fails or the model is absent from
-// the result - fall back to the operator-declared vram_overrides size for that
-// node+model (R1: an explicit operator declaration, not a guess). Returns 0
+// after, and is returned as-is (it's a real measurement, not a proxy - no
+// overhead multiplier applies); (2) the node's /api/tags on-disk size (a good
+// proxy for GGUF/safetensors weights before the model has ever been observed
+// loaded) - only consulted when allowFetch is true, since FetchModelTags can
+// perform a live HTTP call on a cache miss and some callers (the streaming
+// request-routing hot path) must never block on I/O (R2). This tier alone
+// runs the disk size through EstimateContextAwareBytes (P410) so a
+// quantization/format overhead multiplier is applied consistently with what
+// the Model Advisor already tells the operator (GGUFOverheadMult/
+// SafetensorsOverheadMult in kvcache.go) - a Q4_K_M and an F16 build of the
+// same model no longer tie purely because they happen to tie on raw disk
+// bytes, and requestedCtx (0 when the caller has no context-length signal)
+// adds real per-token KV-cache growth on top when available; (3) non-Ollama
+// runtimes (vllm, tgi, llamacpp, mlx) don't expose /api/tags, so
+// FetchModelTags fails or the model is absent from the result - fall back to
+// the operator-declared vram_overrides size for that node+model (R1: an
+// explicit operator declaration already accounts for whatever the operator
+// knows, so it too is returned as-is with no overhead multiplier). Returns 0
 // when the size is unknown by any allowed path so callers can decline to
 // evict/warm/reserve blindly.
-func (r *Router) estimateModelSizeBytes(nodeURL, model string, allowFetch bool) int64 {
+func (r *Router) estimateModelSizeBytes(nodeURL, model string, allowFetch bool, requestedCtx int64) int64 {
 	r.mu.RLock()
-	var nodeName string
+	var nodeName, runtime string
 	var overrideMB int64
 	for _, n := range r.nodes {
 		if n.URL != nodeURL {
@@ -721,6 +731,7 @@ func (r *Router) estimateModelSizeBytes(nodeURL, model string, allowFetch bool) 
 		nodeName = n.Name
 		n.mu.RLock()
 		overrideMB = n.VRAMOverrides[model]
+		runtime = n.Runtime
 		n.mu.RUnlock()
 		break
 	}
@@ -736,7 +747,12 @@ func (r *Router) estimateModelSizeBytes(nodeURL, model string, allowFetch bool) 
 		if tags, err := r.FetchModelTags(nodeURL); err == nil {
 			for _, t := range tags {
 				if t.Name == model {
-					return t.Size
+					arch, hasArch := r.modelArchFactsFor(model)
+					var archPtr *ModelArchFacts
+					if hasArch {
+						archPtr = &arch
+					}
+					return EstimateContextAwareBytes(t.Size/(1024*1024), requestedCtx, runtime, archPtr)
 				}
 			}
 		}
@@ -821,7 +837,7 @@ const unknownModelReserveBytes = 2 * 1024 * 1024 * 1024 // 2 GiB
 // for the same never-seen model double-book a node, since neither request's
 // pick discounted the other's headroom (P402).
 func (r *Router) reserveColdStartBytes(nodeURL, nodeName, model string) {
-	est := r.estimateModelSizeBytes(nodeURL, model, false)
+	est := r.estimateModelSizeBytes(nodeURL, model, false, 0)
 	if est <= 0 {
 		est = unknownModelReserveBytes
 	}
@@ -881,8 +897,6 @@ func (r *Router) ModelFitsAnyHealthyNode(model string, requestedCtx int64) bool 
 	copy(nodes, r.nodes)
 	r.mu.RUnlock()
 
-	arch, hasArch := r.modelArchFactsFor(model)
-
 	sawKnownSize := false
 	anyCapacityKnown := false
 	for _, n := range nodes {
@@ -890,25 +904,17 @@ func (r *Router) ModelFitsAnyHealthyNode(model string, requestedCtx int64) bool 
 		healthy := n.Healthy && !n.Draining
 		freeBytes := (n.VRAMTotalMB - n.VRAMUsedMB) * 1024 * 1024
 		nodeURL := n.URL
-		runtime := n.Runtime
 		vramKnown := n.VRAMTotalMB > 0
 		n.mu.RUnlock()
 		if !healthy || !vramKnown {
 			continue
 		}
 		anyCapacityKnown = true
-		size := r.estimateModelSizeBytes(nodeURL, model, true)
+		size := r.estimateModelSizeBytes(nodeURL, model, true, requestedCtx)
 		if size <= 0 {
 			continue
 		}
 		sawKnownSize = true
-		if requestedCtx > 0 {
-			var archPtr *ModelArchFacts
-			if hasArch {
-				archPtr = &arch
-			}
-			size = EstimateContextAwareBytes(size/(1024*1024), requestedCtx, runtime, archPtr)
-		}
 		if freeBytes >= size {
 			return true
 		}
@@ -1014,7 +1020,6 @@ func (r *Router) ensureHeadroom(ctx context.Context, n *NodeState, model string)
 	n.mu.RLock()
 	nodeURL := n.URL
 	nodeName := n.Name
-	runtime := n.Runtime
 	totalBytes := n.VRAMTotalMB * 1024 * 1024
 	var usedBytes int64
 	resident := false
@@ -1034,23 +1039,23 @@ func (r *Router) ensureHeadroom(ctx context.Context, n *NodeState, model string)
 	if resident || totalBytes <= 0 {
 		return
 	}
-	est := r.estimateModelSizeBytes(nodeURL, model, true)
+	// P405: when the operator has declared a context window for model, size
+	// the disk-size-tier reservation for that context length instead of
+	// weights-only - the same disk size needs materially more real VRAM at a
+	// large declared context than at a small one. No declared window (the
+	// common case for a model nobody has configured a window for) passes 0,
+	// exactly the pre-P405 behavior for the KV-cache-growth term (R1: never
+	// guess an undeclared context length) - the quantization/format overhead
+	// multiplier (P410) still applies either way, entirely inside
+	// estimateModelSizeBytes, and only to the disk-size tier (a real observed
+	// lastKnownVRAM or an operator override passes through unmodified).
+	var requestedCtx int64
+	if window, ok := r.contextWindowFor(model); ok && window > 0 {
+		requestedCtx = int64(window)
+	}
+	est := r.estimateModelSizeBytes(nodeURL, model, true, requestedCtx)
 	if est <= 0 {
 		return // unknown size
-	}
-	// P405: when the operator has declared a context window for model, size
-	// the reservation for that context length instead of weights-only - the
-	// same disk size needs materially more real VRAM at a large declared
-	// context than at a small one. No declared window (the common case for a
-	// model nobody has configured a window for) leaves est untouched, exactly
-	// the pre-P405 behavior (R1: never guess an undeclared context length).
-	if window, ok := r.contextWindowFor(model); ok && window > 0 {
-		arch, hasArch := r.modelArchFactsFor(model)
-		var archPtr *ModelArchFacts
-		if hasArch {
-			archPtr = &arch
-		}
-		est = EstimateContextAwareBytes(est/(1024*1024), int64(window), runtime, archPtr)
 	}
 	if est > totalBytes {
 		// This model can never fit on this node no matter what gets evicted -
