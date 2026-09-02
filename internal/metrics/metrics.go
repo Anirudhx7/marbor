@@ -54,6 +54,20 @@ var (
 		Buckets: []float64{.05, .1, .25, .5, 1, 2.5, 5, 10, 30, 60},
 	}, []string{"model", "node"})
 
+	// requestTPOT is populated by anything that measures real
+	// time-per-output-token from actual decode-phase chunk timestamps (P408) -
+	// e.g. internal/bench's MeasureChatLatency, wired in wherever a caller
+	// derives a real TPOT sample. As of this metric's introduction nothing in
+	// the live proxy hot path (internal/proxy) observes it yet - see
+	// RequestTPOT's doc comment.
+	requestTPOT = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name: "marbor_request_tpot_seconds",
+		Help: "Time per output token (decode-phase), from real inter-chunk timestamps on a streaming response",
+		// Sub-second, finer than requestTTFT's buckets: a single token's
+		// decode time is typically a few ms to a few hundred ms, not seconds.
+		Buckets: []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5},
+	}, []string{"model", "node"})
+
 	activeConns = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "marbor_active_connections",
 		Help: "Current active connections per node",
@@ -153,6 +167,21 @@ func RequestDuration(model, node string, seconds float64) {
 // there is no real TTFT to report in that case, per R1.
 func RequestTTFT(model, node string, seconds float64) {
 	requestTTFT.WithLabelValues(boundModel(model), node).Observe(seconds)
+}
+
+// RequestTPOT records a real time-per-output-token observation. Callers must
+// only call this with a genuinely measured value derived from real
+// decode-phase chunk timestamps (see bench.LatencySample/MeasureChatLatency
+// for the reference calculation: (last content-chunk timestamp - first) /
+// (chunk count - 1)) - never an estimate. As of P408, this is wired into the
+// standalone benchmark tool/job (internal/bench, internal/admin/benchmark.go)
+// only; the live streaming proxy path (internal/proxy) does not yet call
+// this - see P408's queue closure note for why live-traffic TPOT was
+// deliberately deferred (parsing every streamed chunk's JSON content in the
+// proxy's hot Write() path is a bigger, separately-risked change than this
+// item's scope, per R2's "streaming must stay streaming" guard).
+func RequestTPOT(model, node string, seconds float64) {
+	requestTPOT.WithLabelValues(boundModel(model), node).Observe(seconds)
 }
 
 func ActiveConnections(node string, count float64) {

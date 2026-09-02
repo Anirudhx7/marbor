@@ -16,6 +16,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"sort"
 	"sync"
@@ -52,17 +53,19 @@ const benchmarkKeyTTL = 15 * time.Minute
 // benchmarkJob tracks one in-flight or recently-finished hardware benchmark
 // run for the progress UI. Mirrors pullJob's shape/lifecycle.
 type benchmarkJob struct {
-	mu            sync.Mutex
-	Node          string              `json:"node"`
-	Model         string              `json:"model"`
-	N             int                 `json:"n"`
-	Phase         string              `json:"phase"` // "evicting" | "cold" | "warm" | "done" | "error" | "cancelled"
-	ColdSamplesMs []int64             `json:"cold_samples_ms"`
-	WarmSamplesMs []int64             `json:"warm_samples_ms"`
-	Error         string              `json:"error,omitempty"`
-	Result        *store.BenchmarkRun `json:"result,omitempty"`
-	StartedAt     time.Time           `json:"started_at"`
-	FinishedAt    time.Time           `json:"finished_at,omitempty"`
+	mu                sync.Mutex
+	Node              string              `json:"node"`
+	Model             string              `json:"model"`
+	N                 int                 `json:"n"`
+	Phase             string              `json:"phase"` // "evicting" | "cold" | "warm" | "done" | "error" | "cancelled"
+	ColdSamplesMs     []int64             `json:"cold_samples_ms"`
+	WarmSamplesMs     []int64             `json:"warm_samples_ms"`
+	ColdTPOTSamplesMs []float64           `json:"cold_tpot_samples_ms"`
+	WarmTPOTSamplesMs []float64           `json:"warm_tpot_samples_ms"`
+	Error             string              `json:"error,omitempty"`
+	Result            *store.BenchmarkRun `json:"result,omitempty"`
+	StartedAt         time.Time           `json:"started_at"`
+	FinishedAt        time.Time           `json:"finished_at,omitempty"`
 	// cancel and keyName are unexported - never appear in the JSON progress
 	// payload. keyName is the ephemeral API key's name, used by the job
 	// goroutine's deferred cleanup to delete it on every exit path.
@@ -71,16 +74,18 @@ type benchmarkJob struct {
 }
 
 type benchmarkJobSnapshot struct {
-	Node          string              `json:"node"`
-	Model         string              `json:"model"`
-	N             int                 `json:"n"`
-	Phase         string              `json:"phase"`
-	ColdSamplesMs []int64             `json:"cold_samples_ms"`
-	WarmSamplesMs []int64             `json:"warm_samples_ms"`
-	Error         string              `json:"error,omitempty"`
-	Result        *store.BenchmarkRun `json:"result,omitempty"`
-	StartedAt     time.Time           `json:"started_at"`
-	FinishedAt    time.Time           `json:"finished_at,omitempty"`
+	Node              string              `json:"node"`
+	Model             string              `json:"model"`
+	N                 int                 `json:"n"`
+	Phase             string              `json:"phase"`
+	ColdSamplesMs     []int64             `json:"cold_samples_ms"`
+	WarmSamplesMs     []int64             `json:"warm_samples_ms"`
+	ColdTPOTSamplesMs []float64           `json:"cold_tpot_samples_ms"`
+	WarmTPOTSamplesMs []float64           `json:"warm_tpot_samples_ms"`
+	Error             string              `json:"error,omitempty"`
+	Result            *store.BenchmarkRun `json:"result,omitempty"`
+	StartedAt         time.Time           `json:"started_at"`
+	FinishedAt        time.Time           `json:"finished_at,omitempty"`
 }
 
 func (j *benchmarkJob) snapshot() benchmarkJobSnapshot {
@@ -90,9 +95,14 @@ func (j *benchmarkJob) snapshot() benchmarkJobSnapshot {
 	copy(cold, j.ColdSamplesMs)
 	warm := make([]int64, len(j.WarmSamplesMs))
 	copy(warm, j.WarmSamplesMs)
+	coldTPOT := make([]float64, len(j.ColdTPOTSamplesMs))
+	copy(coldTPOT, j.ColdTPOTSamplesMs)
+	warmTPOT := make([]float64, len(j.WarmTPOTSamplesMs))
+	copy(warmTPOT, j.WarmTPOTSamplesMs)
 	return benchmarkJobSnapshot{
 		Node: j.Node, Model: j.Model, N: j.N, Phase: j.Phase,
 		ColdSamplesMs: cold, WarmSamplesMs: warm,
+		ColdTPOTSamplesMs: coldTPOT, WarmTPOTSamplesMs: warmTPOT,
 		Error: j.Error, Result: j.Result,
 		StartedAt: j.StartedAt, FinishedAt: j.FinishedAt,
 	}
@@ -104,15 +114,25 @@ func (j *benchmarkJob) setPhase(phase string) {
 	j.mu.Unlock()
 }
 
-func (j *benchmarkJob) addColdSample(ms int64) {
+// addColdSample records one cold-phase TTFT sample plus its TPOT when
+// computable (tpotMs nil otherwise - not appended, per aggregateTPOTSamples'
+// nil-means-no-data convention).
+func (j *benchmarkJob) addColdSample(ms int64, tpotMs *float64) {
 	j.mu.Lock()
 	j.ColdSamplesMs = append(j.ColdSamplesMs, ms)
+	if tpotMs != nil {
+		j.ColdTPOTSamplesMs = append(j.ColdTPOTSamplesMs, *tpotMs)
+	}
 	j.mu.Unlock()
 }
 
-func (j *benchmarkJob) addWarmSample(ms int64) {
+// addWarmSample is addColdSample's warm-phase counterpart.
+func (j *benchmarkJob) addWarmSample(ms int64, tpotMs *float64) {
 	j.mu.Lock()
 	j.WarmSamplesMs = append(j.WarmSamplesMs, ms)
+	if tpotMs != nil {
+		j.WarmTPOTSamplesMs = append(j.WarmTPOTSamplesMs, *tpotMs)
+	}
 	j.mu.Unlock()
 }
 
@@ -163,9 +183,19 @@ func (s *Server) sweepOldBenchmarkJobs() {
 	}
 }
 
-// aggregateSamples returns p50/min/max (ms, as float64) for a non-empty
-// sample slice. Callers must not call this with an empty slice.
-func aggregateSamples(samples []int64) (p50, min, max float64) {
+// aggregateSamples returns p50/min/max/p95/p99 (ms, as float64) for a
+// non-empty sample slice. Callers must not call this with an empty slice.
+//
+// p50 uses the original midpoint convention (average of the two middle
+// values on an even-length slice) - unchanged from before P408 added
+// p95/p99, so existing callers/tests keep seeing identical p50 output.
+//
+// p95/p99 use nearest-rank: index = ceil(pct/100 * n) - 1, clamped to
+// [0, n-1]. This is a standard, simple percentile method that needs no
+// interpolation and matches what a benchmark sample count (n <= 50, see
+// handleRunBenchmark's cap) can meaningfully resolve - on a small n the
+// difference from linear interpolation is well within measurement noise.
+func aggregateSamples(samples []int64) (p50, min, max, p95, p99 float64) {
 	sorted := make([]int64, len(samples))
 	copy(sorted, samples)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
@@ -175,7 +205,45 @@ func aggregateSamples(samples []int64) (p50, min, max float64) {
 	} else {
 		p50 = float64(sorted[n/2-1]+sorted[n/2]) / 2
 	}
-	return p50, float64(sorted[0]), float64(sorted[n-1])
+	p95 = float64(sorted[nearestRankIndex(n, 95)])
+	p99 = float64(sorted[nearestRankIndex(n, 99)])
+	return p50, float64(sorted[0]), float64(sorted[n-1]), p95, p99
+}
+
+// nearestRankIndex returns the 0-based index into a sorted length-n slice
+// for the given percentile (nearest-rank method), clamped to a valid index.
+func nearestRankIndex(n int, pct float64) int {
+	idx := int(math.Ceil(pct/100*float64(n))) - 1
+	if idx < 0 {
+		idx = 0
+	}
+	if idx > n-1 {
+		idx = n - 1
+	}
+	return idx
+}
+
+// aggregateTPOTSamples returns the p50 (ms, nearest-rank as above) of a
+// nullable-TPOT sample slice, or nil if the slice is empty - i.e. not one
+// sample in that phase produced a computable TPOT. Callers pass only the
+// non-nil TPOTMs values collected from bench.LatencySample (see
+// benchmarkJob.addColdSample/addWarmSample below), so an empty slice here
+// means "no data", never "a genuine zero" (R1).
+func aggregateTPOTSamples(samples []float64) *float64 {
+	if len(samples) == 0 {
+		return nil
+	}
+	sorted := make([]float64, len(samples))
+	copy(sorted, samples)
+	sort.Float64s(sorted)
+	n := len(sorted)
+	var p50 float64
+	if n%2 == 1 {
+		p50 = sorted[n/2]
+	} else {
+		p50 = (sorted[n/2-1] + sorted[n/2]) / 2
+	}
+	return &p50
 }
 
 // handleRunBenchmark starts an in-dashboard hardware benchmark (cold vs warm
@@ -414,7 +482,7 @@ func (s *Server) runBenchmarkJob(ctx context.Context, job *benchmarkJob, apiKey 
 			}
 			time.Sleep(2 * time.Second)
 		}
-		ms, err := bench.MeasureChatTTFT(ctx, client, target, job.Model, apiKey)
+		sample, err := bench.MeasureChatLatency(ctx, client, target, job.Model, apiKey)
 		if err != nil {
 			if ctx.Err() != nil {
 				return
@@ -422,7 +490,7 @@ func (s *Server) runBenchmarkJob(ctx context.Context, job *benchmarkJob, apiKey 
 			fail(fmt.Errorf("cold sample %d: %w", i+1, err))
 			return
 		}
-		job.addColdSample(ms)
+		job.addColdSample(sample.TTFTMs, sample.TPOTMs)
 	}
 
 	job.setPhase("warm")
@@ -430,7 +498,7 @@ func (s *Server) runBenchmarkJob(ctx context.Context, job *benchmarkJob, apiKey 
 		if ctx.Err() != nil {
 			return
 		}
-		ms, err := bench.MeasureChatTTFT(ctx, client, target, job.Model, apiKey)
+		sample, err := bench.MeasureChatLatency(ctx, client, target, job.Model, apiKey)
 		if err != nil {
 			if ctx.Err() != nil {
 				return
@@ -438,7 +506,7 @@ func (s *Server) runBenchmarkJob(ctx context.Context, job *benchmarkJob, apiKey 
 			fail(fmt.Errorf("warm sample %d: %w", i+1, err))
 			return
 		}
-		job.addWarmSample(ms)
+		job.addWarmSample(sample.TTFTMs, sample.TPOTMs)
 	}
 
 	snap := job.snapshot()
@@ -446,8 +514,10 @@ func (s *Server) runBenchmarkJob(ctx context.Context, job *benchmarkJob, apiKey 
 		fail(fmt.Errorf("no samples collected"))
 		return
 	}
-	coldP50, coldMin, coldMax := aggregateSamples(snap.ColdSamplesMs)
-	warmP50, warmMin, warmMax := aggregateSamples(snap.WarmSamplesMs)
+	coldP50, coldMin, coldMax, coldP95, coldP99 := aggregateSamples(snap.ColdSamplesMs)
+	warmP50, warmMin, warmMax, warmP95, warmP99 := aggregateSamples(snap.WarmSamplesMs)
+	coldTPOTP50 := aggregateTPOTSamples(snap.ColdTPOTSamplesMs)
+	warmTPOTP50 := aggregateTPOTSamples(snap.WarmTPOTSamplesMs)
 	var speedup float64
 	if warmP50 > 0 {
 		speedup = coldP50 / warmP50
@@ -457,8 +527,9 @@ func (s *Server) runBenchmarkJob(ctx context.Context, job *benchmarkJob, apiKey 
 		Node:      job.Node,
 		Model:     job.Model,
 		N:         job.N,
-		ColdP50Ms: coldP50, ColdMinMs: coldMin, ColdMaxMs: coldMax,
-		WarmP50Ms: warmP50, WarmMinMs: warmMin, WarmMaxMs: warmMax,
+		ColdP50Ms: coldP50, ColdMinMs: coldMin, ColdMaxMs: coldMax, ColdP95Ms: coldP95, ColdP99Ms: coldP99,
+		WarmP50Ms: warmP50, WarmMinMs: warmMin, WarmMaxMs: warmMax, WarmP95Ms: warmP95, WarmP99Ms: warmP99,
+		ColdTPOTP50Ms: coldTPOTP50, WarmTPOTP50Ms: warmTPOTP50,
 		SpeedupX:  speedup,
 		CreatedAt: time.Now(),
 	}

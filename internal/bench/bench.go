@@ -26,13 +26,19 @@ import (
 	"time"
 )
 
-// Result holds the measured cold and warm TTFT values.
+// Result holds the measured cold and warm TTFT values, plus TPOT
+// (time-per-output-token) when it was computable (P408). ColdTPOTMs/
+// WarmTPOTMs are nil when the corresponding sample carried fewer than 2
+// content-bearing SSE chunks - TPOT genuinely can't be computed from a
+// single-token response, so this is absence, not a fabricated 0 (R1).
 type Result struct {
-	Model          string  `json:"model"`
-	ColdMs         int64   `json:"cold_ms"`
-	WarmMs         int64   `json:"warm_ms"`
-	ImprovementX   float64 `json:"improvement_x"`
-	ImprovementPct float64 `json:"improvement_pct"`
+	Model          string   `json:"model"`
+	ColdMs         int64    `json:"cold_ms"`
+	WarmMs         int64    `json:"warm_ms"`
+	ColdTPOTMs     *float64 `json:"cold_tpot_ms,omitempty"`
+	WarmTPOTMs     *float64 `json:"warm_tpot_ms,omitempty"`
+	ImprovementX   float64  `json:"improvement_x"`
+	ImprovementPct float64  `json:"improvement_pct"`
 }
 
 // Run is the entry-point for the "bench" subcommand.  args is os.Args[2:].
@@ -92,7 +98,7 @@ func Run(args []string) {
 		fmt.Printf("Sending cold request (model loading from disk)...\n")
 	}
 	coldStart := time.Now()
-	coldMs, err := MeasureChatTTFT(context.Background(), client, *target, resolvedModel, *apiKey)
+	coldSample, err := MeasureChatLatency(context.Background(), client, *target, resolvedModel, *apiKey)
 	_ = coldStart
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "bench: cold request failed: %v\n", err)
@@ -103,11 +109,12 @@ func Run(args []string) {
 	if !*jsonOut {
 		fmt.Printf("Sending warm request (model in VRAM)...\n\n")
 	}
-	warmMs, err := MeasureChatTTFT(context.Background(), client, *target, resolvedModel, *apiKey)
+	warmSample, err := MeasureChatLatency(context.Background(), client, *target, resolvedModel, *apiKey)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "bench: warm request failed: %v\n", err)
 		os.Exit(1)
 	}
+	coldMs, warmMs := coldSample.TTFTMs, warmSample.TTFTMs
 
 	// ── 4. Compute improvement ───────────────────────────────────────────────
 	var improvX float64
@@ -123,6 +130,8 @@ func Run(args []string) {
 		Model:          resolvedModel,
 		ColdMs:         coldMs,
 		WarmMs:         warmMs,
+		ColdTPOTMs:     coldSample.TPOTMs,
+		WarmTPOTMs:     warmSample.TPOTMs,
 		ImprovementX:   roundTo1(improvX),
 		ImprovementPct: roundTo1(improvPct),
 	}
@@ -159,8 +168,20 @@ func printTable(r Result) {
 	fmt.Printf("  %-*s %s\n", labelW, "Model:", r.Model)
 	fmt.Printf("  %-*s %s\n", labelW, "Cold TTFT:", fmtMs(r.ColdMs))
 	fmt.Printf("  %-*s %s\n", labelW, "Warm TTFT:", fmtMs(r.WarmMs))
+	fmt.Printf("  %-*s %s\n", labelW, "Cold TPOT:", fmtTPOT(r.ColdTPOTMs))
+	fmt.Printf("  %-*s %s\n", labelW, "Warm TPOT:", fmtTPOT(r.WarmTPOTMs))
 	fmt.Printf("  %-*s %s\n", labelW, "Improvement:", improvStr)
 	fmt.Printf("\n")
+}
+
+// fmtTPOT formats a nullable TPOT sample for the human-readable table. "-"
+// when nil (not computable from that sample's stream - R1: absence, never a
+// fabricated value), matching this project's honest-data convention.
+func fmtTPOT(ms *float64) string {
+	if ms == nil {
+		return "- (not computable: response had fewer than 2 output tokens)"
+	}
+	return fmt.Sprintf("%.1fms/token", *ms)
 }
 
 // fmtMs formats a millisecond count with comma-thousands separation,
@@ -216,15 +237,49 @@ func detectModel(client *http.Client, target, apiKey string) (string, error) {
 	return list.Data[0].ID, nil
 }
 
+// LatencySample captures real per-request timing from one streaming chat
+// completion: TTFT (time-to-first-token, existing measurement) plus TPOT
+// (time-per-output-token) derived from real decode-phase chunk timestamps.
+// TPOTMs is nil when the stream carried fewer than 2 content-bearing chunks -
+// TPOT is not computable for a single-token (or empty) response, and this is
+// absence, never a fabricated value (R1).
+type LatencySample struct {
+	TTFTMs int64
+	TPOTMs *float64
+}
+
 // MeasureChatTTFT sends a single streaming /v1/chat/completions request
 // through marbor and returns the milliseconds until the first non-empty
 // token arrives in the SSE stream. Exported so internal/admin's in-dashboard
 // hardware benchmark page can reuse the exact same measurement logic instead
 // of duplicating it.
 //
+// This is a thin wrapper around MeasureChatLatency for callers that only
+// need TTFT; its own behavior (return as soon as TTFT is captured, without
+// draining the rest of the stream) is unchanged from before MeasureChatLatency
+// existed - see MeasureChatLatency's own doc comment for why draining the
+// full stream to also compute TPOT is a separate, opt-in code path.
+func MeasureChatTTFT(ctx context.Context, client *http.Client, target, model, apiKey string) (int64, error) {
+	ttftOnly, err := measureChatSSE(ctx, client, target, model, apiKey, false)
+	if err != nil {
+		return 0, err
+	}
+	return ttftOnly.TTFTMs, nil
+}
+
+// MeasureChatLatency sends a single streaming /v1/chat/completions request
+// through marbor and returns both TTFT and TPOT for that one request.
+//
 // Using the OpenAI-compatible endpoint ensures the request travels through
 // the full marbor routing stack (proxy → router → backend), not a direct hop
 // to an Ollama node.
+//
+// Unlike MeasureChatTTFT, this reads the SSE stream through to [DONE]/EOF so
+// TPOT can be derived: TPOTMs = (timestamp of last content chunk - timestamp
+// of first content chunk) / (count of content chunks - 1), all from real
+// wall-clock timestamps on real observed chunks - consistent with the
+// industry ITL/TPOT definition. If fewer than 2 content-bearing chunks
+// arrive, TPOTMs is nil (R1: absence, never a guess).
 //
 // ctx bounds the whole call, not just a client.Timeout: internal/admin's
 // benchmark job cancels this context immediately on admin cancel, so a
@@ -233,7 +288,20 @@ func detectModel(client *http.Client, target, apiKey string) (string, error) {
 // without this, a cancelled job's deferred ephemeral-key cleanup would wait
 // out the in-flight request first, leaving a live key on the wire for the
 // remainder of that window.
-func MeasureChatTTFT(ctx context.Context, client *http.Client, target, model, apiKey string) (int64, error) {
+func MeasureChatLatency(ctx context.Context, client *http.Client, target, model, apiKey string) (LatencySample, error) {
+	return measureChatSSE(ctx, client, target, model, apiKey, true)
+}
+
+// measureChatSSE is the shared implementation behind MeasureChatTTFT and
+// MeasureChatLatency. When drainForTPOT is false it returns as soon as TTFT
+// is captured (the original MeasureChatTTFT behavior, unchanged) without
+// reading the rest of the stream - the deferred resp.Body.Close() below
+// closes it without draining, so the connection isn't reused for a
+// subsequent call anyway (each call dials fresh rather than racing a
+// background drain against Close). When drainForTPOT is true it keeps
+// reading every content-bearing chunk (timestamping each) through
+// [DONE]/EOF so TPOT can be computed from real inter-chunk timing.
+func measureChatSSE(ctx context.Context, client *http.Client, target, model, apiKey string, drainForTPOT bool) (LatencySample, error) {
 	payload := map[string]any{
 		"model":  model,
 		"stream": true,
@@ -243,12 +311,12 @@ func MeasureChatTTFT(ctx context.Context, client *http.Client, target, model, ap
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return 0, fmt.Errorf("marshal request: %w", err)
+		return LatencySample{}, fmt.Errorf("marshal request: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target+"/v1/chat/completions", bytes.NewReader(body))
 	if err != nil {
-		return 0, fmt.Errorf("build request: %w", err)
+		return LatencySample{}, fmt.Errorf("build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
@@ -259,17 +327,22 @@ func MeasureChatTTFT(ctx context.Context, client *http.Client, target, model, ap
 	start := time.Now()
 	resp, err := client.Do(req)
 	if err != nil {
-		return 0, fmt.Errorf("send request: %w", err)
+		return LatencySample{}, fmt.Errorf("send request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return 0, fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
+		return LatencySample{}, fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
 	}
 
 	// Parse SSE stream: lines are "data: <json>" or "data: [DONE]".
-	// Record TTFT on the first chunk that carries a non-empty token.
+	// Record TTFT on the first chunk that carries a non-empty token, then
+	// (only if drainForTPOT) keep recording a real timestamp on every
+	// subsequent content-bearing chunk through [DONE]/EOF.
+	var ttftMs int64
+	var ttftCaptured bool
+	var contentTimestamps []time.Time
 	scanner := bufio.NewScanner(resp.Body)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -291,15 +364,31 @@ func MeasureChatTTFT(ctx context.Context, client *http.Client, target, model, ap
 			continue
 		}
 		if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
-			// Return immediately once TTFT is captured; the deferred Body.Close
-			// above closes the stream without draining it, so this connection
-			// isn't reused for the warm request - each MeasureChatTTFT call
-			// dials fresh rather than racing a background drain against Close.
-			return time.Since(start).Milliseconds(), nil
+			now := time.Now()
+			if !ttftCaptured {
+				ttftMs = now.Sub(start).Milliseconds()
+				ttftCaptured = true
+				if !drainForTPOT {
+					// Return immediately once TTFT is captured - same
+					// behavior MeasureChatTTFT always had.
+					return LatencySample{TTFTMs: ttftMs}, nil
+				}
+			}
+			contentTimestamps = append(contentTimestamps, now)
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return 0, fmt.Errorf("read stream: %w", err)
+		return LatencySample{}, fmt.Errorf("read stream: %w", err)
 	}
-	return 0, fmt.Errorf("no tokens received - model may have failed to load, or marbor has no healthy nodes")
+	if !ttftCaptured {
+		return LatencySample{}, fmt.Errorf("no tokens received - model may have failed to load, or marbor has no healthy nodes")
+	}
+
+	sample := LatencySample{TTFTMs: ttftMs}
+	if n := len(contentTimestamps); n >= 2 {
+		totalMs := float64(contentTimestamps[n-1].Sub(contentTimestamps[0]).Milliseconds())
+		tpot := totalMs / float64(n-1)
+		sample.TPOTMs = &tpot
+	}
+	return sample, nil
 }

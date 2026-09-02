@@ -1110,22 +1110,27 @@ export const mockHFModels = [
 export const mockBenchmarkRuns: BenchmarkRun[] = [
   {
     id: 3, node: 'gpu-node-01', model: 'deepseek-r1:8b', n: 10,
-    cold_p50_ms: 3840, cold_min_ms: 3510, cold_max_ms: 4220,
-    warm_p50_ms: 112, warm_min_ms: 98, warm_max_ms: 141,
+    cold_p50_ms: 3840, cold_min_ms: 3510, cold_max_ms: 4220, cold_p95_ms: 4180, cold_p99_ms: 4220,
+    warm_p50_ms: 112, warm_min_ms: 98, warm_max_ms: 141, warm_p95_ms: 138, warm_p99_ms: 141,
+    cold_tpot_p50_ms: 28.4, warm_tpot_p50_ms: 19.1,
     speedup_x: 34.3,
     created_at: '2026-07-18T14:22:00Z',
   },
   {
     id: 2, node: 'gpu-node-03', model: 'qwen2.5-coder:14b', n: 10,
-    cold_p50_ms: 5210, cold_min_ms: 4890, cold_max_ms: 5640,
-    warm_p50_ms: 158, warm_min_ms: 130, warm_max_ms: 202,
+    cold_p50_ms: 5210, cold_min_ms: 4890, cold_max_ms: 5640, cold_p95_ms: 5590, cold_p99_ms: 5640,
+    warm_p50_ms: 158, warm_min_ms: 130, warm_max_ms: 202, warm_p95_ms: 196, warm_p99_ms: 202,
+    cold_tpot_p50_ms: 34.2, warm_tpot_p50_ms: 22.7,
     speedup_x: 33.0,
     created_at: '2026-07-16T09:05:00Z',
   },
   {
     id: 1, node: 'gpu-node-01', model: 'llama3.3:8b', n: 10,
-    cold_p50_ms: 3120, cold_min_ms: 2900, cold_max_ms: 3480,
-    warm_p50_ms: 96, warm_min_ms: 84, warm_max_ms: 120,
+    cold_p50_ms: 3120, cold_min_ms: 2900, cold_max_ms: 3480, cold_p95_ms: 3440, cold_p99_ms: 3480,
+    warm_p50_ms: 96, warm_min_ms: 84, warm_max_ms: 120, warm_p95_ms: 117, warm_p99_ms: 120,
+    // Demonstrates the honest-absence case: this run's responses were too
+    // short (fewer than 2 output tokens per sample) to derive a real TPOT.
+    cold_tpot_p50_ms: null, warm_tpot_p50_ms: null,
     speedup_x: 32.5,
     created_at: '2026-07-14T11:47:00Z',
   },

@@ -1463,3 +1463,70 @@ func TestBackupTo(t *testing.T) {
 		t.Error("BackupTo to an already-existing path should return an error, got nil")
 	}
 }
+
+// TestBenchmarkRunTPOTNullability verifies P408's new fields round-trip
+// through InsertBenchmarkRun/ListBenchmarkRuns: p95/p99 are always populated
+// like the pre-existing p50/min/max, and the nullable TPOT p50 fields
+// preserve nil (not computable) vs. a real value (R1: absence, never a
+// fabricated 0) across the SQL NULL boundary.
+func TestBenchmarkRunTPOTNullability(t *testing.T) {
+	s := openTestDB(t)
+
+	tpot := 12.5
+	withTPOT := store.BenchmarkRun{
+		Node: "gpu-0", Model: "llama3:8b", N: 5,
+		ColdP50Ms: 1000, ColdMinMs: 900, ColdMaxMs: 1100, ColdP95Ms: 1080, ColdP99Ms: 1095,
+		WarmP50Ms: 100, WarmMinMs: 90, WarmMaxMs: 110, WarmP95Ms: 108, WarmP99Ms: 109,
+		ColdTPOTP50Ms: &tpot, WarmTPOTP50Ms: nil,
+		SpeedupX:  10,
+		CreatedAt: time.Now(),
+	}
+	if err := s.InsertBenchmarkRun(withTPOT); err != nil {
+		t.Fatalf("InsertBenchmarkRun (with TPOT): %v", err)
+	}
+
+	noTPOT := store.BenchmarkRun{
+		Node: "gpu-1", Model: "llama3:8b", N: 1,
+		ColdP50Ms: 500, ColdMinMs: 500, ColdMaxMs: 500, ColdP95Ms: 500, ColdP99Ms: 500,
+		WarmP50Ms: 50, WarmMinMs: 50, WarmMaxMs: 50, WarmP95Ms: 50, WarmP99Ms: 50,
+		SpeedupX:  10,
+		CreatedAt: time.Now(),
+	}
+	if err := s.InsertBenchmarkRun(noTPOT); err != nil {
+		t.Fatalf("InsertBenchmarkRun (no TPOT): %v", err)
+	}
+
+	runs, err := s.ListBenchmarkRuns(10)
+	if err != nil {
+		t.Fatalf("ListBenchmarkRuns: %v", err)
+	}
+	if len(runs) != 2 {
+		t.Fatalf("expected 2 runs, got %d", len(runs))
+	}
+
+	var gotWithTPOT, gotNoTPOT *store.BenchmarkRun
+	for i := range runs {
+		switch runs[i].Node {
+		case "gpu-0":
+			gotWithTPOT = &runs[i]
+		case "gpu-1":
+			gotNoTPOT = &runs[i]
+		}
+	}
+	if gotWithTPOT == nil || gotNoTPOT == nil {
+		t.Fatalf("missing expected rows: %+v", runs)
+	}
+
+	if gotWithTPOT.ColdP95Ms != 1080 || gotWithTPOT.ColdP99Ms != 1095 {
+		t.Errorf("cold p95/p99 = %v/%v, want 1080/1095", gotWithTPOT.ColdP95Ms, gotWithTPOT.ColdP99Ms)
+	}
+	if gotWithTPOT.ColdTPOTP50Ms == nil || *gotWithTPOT.ColdTPOTP50Ms != 12.5 {
+		t.Errorf("ColdTPOTP50Ms = %v, want 12.5", gotWithTPOT.ColdTPOTP50Ms)
+	}
+	if gotWithTPOT.WarmTPOTP50Ms != nil {
+		t.Errorf("WarmTPOTP50Ms = %v, want nil", *gotWithTPOT.WarmTPOTP50Ms)
+	}
+	if gotNoTPOT.ColdTPOTP50Ms != nil || gotNoTPOT.WarmTPOTP50Ms != nil {
+		t.Errorf("expected both TPOT fields nil for a run with no computable TPOT, got cold=%v warm=%v", gotNoTPOT.ColdTPOTP50Ms, gotNoTPOT.WarmTPOTP50Ms)
+	}
+}
