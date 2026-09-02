@@ -222,9 +222,10 @@ export interface LoadedModel {
 // BenchmarkRun mirrors internal/store.BenchmarkRun - a persisted result from
 // the in-dashboard hardware benchmark (Settings -> Benchmark, hidden route
 // /benchmark). All *Ms fields are real measured milliseconds, never
-// estimated (R1). *_tpot_p50_ms is undefined/null when not one sample in
-// that phase produced a computable TPOT (fewer than 2 content-bearing SSE
-// chunks) - render as "-", never 0 (P408).
+// estimated (R1). *_p95_ms/*_p99_ms/*_tpot_p50_ms are undefined/null for a
+// run persisted before P408 (no percentile/TPOT data to backfill from) or,
+// for TPOT, when not one sample in that phase produced a computable value
+// (fewer than 2 content-bearing SSE chunks) - render as "-", never 0.
 export interface BenchmarkRun {
   id: number;
   node: string;
@@ -233,13 +234,13 @@ export interface BenchmarkRun {
   cold_p50_ms: number;
   cold_min_ms: number;
   cold_max_ms: number;
-  cold_p95_ms: number;
-  cold_p99_ms: number;
+  cold_p95_ms?: number | null;
+  cold_p99_ms?: number | null;
   warm_p50_ms: number;
   warm_min_ms: number;
   warm_max_ms: number;
-  warm_p95_ms: number;
-  warm_p99_ms: number;
+  warm_p95_ms?: number | null;
+  warm_p99_ms?: number | null;
   cold_tpot_p50_ms?: number | null;
   warm_tpot_p50_ms?: number | null;
   speedup_x: number;

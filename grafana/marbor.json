@@ -493,6 +493,7 @@
         },
         "overrides": []
       },
+      "description": "No data yet: marbor_request_tpot_seconds is populated by the standalone hardware benchmark tool only (marbor bench / the Benchmark dashboard page). It is not yet wired into live proxy traffic - this panel will read empty in production until that follow-up ships.",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
       "id": 15,
       "options": {
