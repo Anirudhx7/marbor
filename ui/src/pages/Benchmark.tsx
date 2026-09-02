@@ -23,6 +23,14 @@ function fmtMs(ms: number): string {
   return `${ms.toLocaleString(undefined, { maximumFractionDigits: 0 })} ms`;
 }
 
+// fmtTpot renders a nullable TPOT p50 (undefined/null when not one sample in
+// that phase produced a computable TPOT - fewer than 2 content-bearing SSE
+// chunks). Always "-" for absence, never 0 (R1).
+function fmtTpot(ms: number | null | undefined): string {
+  if (ms === null || ms === undefined || !Number.isFinite(ms)) return '-';
+  return `${ms.toLocaleString(undefined, { maximumFractionDigits: 1 })} ms/tok`;
+}
+
 // Ollama's own architecture classification (details.family from /api/tags)
 // for known embedding/encoder-only families - these have no chat-completion
 // endpoint, so this benchmark (always a /v1/chat/completions TTFT measurement
@@ -41,7 +49,7 @@ function ResultCard({ result }: { result: BenchmarkRun }) {
   const [copied, setCopied] = useState(false);
 
   function copySummary() {
-    const text = `${result.node} · ${result.model}\n${result.speedup_x.toFixed(1)}x faster warm vs. cold (p50)\nCold TTFT (p50): ${fmtMs(result.cold_p50_ms)} (min ${fmtMs(result.cold_min_ms)}, max ${fmtMs(result.cold_max_ms)})\nWarm TTFT (p50): ${fmtMs(result.warm_p50_ms)} (min ${fmtMs(result.warm_min_ms)}, max ${fmtMs(result.warm_max_ms)})\nn=${result.n} samples per phase, measured via Marbor's own proxy.`;
+    const text = `${result.node} · ${result.model}\n${result.speedup_x.toFixed(1)}x faster warm vs. cold (p50)\nCold TTFT (p50): ${fmtMs(result.cold_p50_ms)} (min ${fmtMs(result.cold_min_ms)}, p95 ${fmtMs(result.cold_p95_ms)}, p99 ${fmtMs(result.cold_p99_ms)}, max ${fmtMs(result.cold_max_ms)})\nWarm TTFT (p50): ${fmtMs(result.warm_p50_ms)} (min ${fmtMs(result.warm_min_ms)}, p95 ${fmtMs(result.warm_p95_ms)}, p99 ${fmtMs(result.warm_p99_ms)}, max ${fmtMs(result.warm_max_ms)})\nCold TPOT (p50): ${fmtTpot(result.cold_tpot_p50_ms)}\nWarm TPOT (p50): ${fmtTpot(result.warm_tpot_p50_ms)}\nn=${result.n} samples per phase, measured via Marbor's own proxy.`;
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -63,20 +71,30 @@ function ResultCard({ result }: { result: BenchmarkRun }) {
         <span className="text-4xl font-bold text-primary">{result.speedup_x.toFixed(1)}×</span>
         <span className="text-sm text-muted-foreground">faster warm vs. cold (p50)</span>
       </div>
-      <div className="grid grid-cols-2 gap-4 text-sm">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
         <div className="rounded-lg border border-border p-3">
           <p className="text-xs text-muted-foreground mb-1">Cold TTFT (p50)</p>
           <p className="font-mono text-foreground font-medium">{fmtMs(result.cold_p50_ms)}</p>
-          <p className="text-[10px] text-muted-foreground/70 font-mono">min {fmtMs(result.cold_min_ms)} · max {fmtMs(result.cold_max_ms)}</p>
+          <p className="text-[10px] text-muted-foreground/70 font-mono">min {fmtMs(result.cold_min_ms)} · p95 {fmtMs(result.cold_p95_ms)} · p99 {fmtMs(result.cold_p99_ms)} · max {fmtMs(result.cold_max_ms)}</p>
         </div>
         <div className="rounded-lg border border-border p-3">
           <p className="text-xs text-muted-foreground mb-1">Warm TTFT (p50)</p>
           <p className="font-mono text-foreground font-medium">{fmtMs(result.warm_p50_ms)}</p>
-          <p className="text-[10px] text-muted-foreground/70 font-mono">min {fmtMs(result.warm_min_ms)} · max {fmtMs(result.warm_max_ms)}</p>
+          <p className="text-[10px] text-muted-foreground/70 font-mono">min {fmtMs(result.warm_min_ms)} · p95 {fmtMs(result.warm_p95_ms)} · p99 {fmtMs(result.warm_p99_ms)} · max {fmtMs(result.warm_max_ms)}</p>
+        </div>
+        <div className="rounded-lg border border-border p-3">
+          <p className="text-xs text-muted-foreground mb-1">Cold TPOT (p50)</p>
+          <p className="font-mono text-foreground font-medium">{fmtTpot(result.cold_tpot_p50_ms)}</p>
+        </div>
+        <div className="rounded-lg border border-border p-3">
+          <p className="text-xs text-muted-foreground mb-1">Warm TPOT (p50)</p>
+          <p className="font-mono text-foreground font-medium">{fmtTpot(result.warm_tpot_p50_ms)}</p>
         </div>
       </div>
       <p className="text-[10px] text-muted-foreground/60 mt-4">
-        n={result.n} samples per phase, measured through this marbor's own proxy. Copy the summary as text, or screenshot this card to share it.
+        n={result.n} samples per phase, measured through this marbor's own proxy. TPOT is "-" when a
+        sample's response was too short (fewer than 2 output tokens) to derive a real per-token rate.
+        Copy the summary as text, or screenshot this card to share it.
       </p>
     </div>
   );
@@ -345,8 +363,9 @@ export function Benchmark() {
                   <span className="text-muted-foreground"> · </span>
                   <span className="font-mono text-xs text-muted-foreground">{r.model}</span>
                 </div>
-                <div className="flex items-center gap-3 text-xs text-muted-foreground font-mono shrink-0">
+                <div className="flex items-center gap-3 text-xs text-muted-foreground font-mono shrink-0 flex-wrap">
                   <span>{fmtMs(r.cold_p50_ms)} → {fmtMs(r.warm_p50_ms)}</span>
+                  <span title="Time-per-output-token (p50), cold vs. warm">TPOT {fmtTpot(r.cold_tpot_p50_ms)} → {fmtTpot(r.warm_tpot_p50_ms)}</span>
                   <span className="text-primary font-semibold">{r.speedup_x.toFixed(1)}×</span>
                   <span className="text-muted-foreground/60">{formatDateTimeInZone(r.created_at, tz)}</span>
                 </div>

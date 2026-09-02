@@ -473,18 +473,24 @@ func (s *sqliteStore) migrate() error {
 		)`,
 
 		`CREATE TABLE IF NOT EXISTS benchmark_runs (
-			id           INTEGER PRIMARY KEY AUTOINCREMENT,
-			node         TEXT NOT NULL,
-			model        TEXT NOT NULL,
-			n            INTEGER NOT NULL,
-			cold_p50_ms  REAL NOT NULL,
-			cold_min_ms  REAL NOT NULL,
-			cold_max_ms  REAL NOT NULL,
-			warm_p50_ms  REAL NOT NULL,
-			warm_min_ms  REAL NOT NULL,
-			warm_max_ms  REAL NOT NULL,
-			speedup_x    REAL NOT NULL,
-			created_at   INTEGER NOT NULL
+			id               INTEGER PRIMARY KEY AUTOINCREMENT,
+			node             TEXT NOT NULL,
+			model            TEXT NOT NULL,
+			n                INTEGER NOT NULL,
+			cold_p50_ms      REAL NOT NULL,
+			cold_min_ms      REAL NOT NULL,
+			cold_max_ms      REAL NOT NULL,
+			cold_p95_ms      REAL NOT NULL DEFAULT 0,
+			cold_p99_ms      REAL NOT NULL DEFAULT 0,
+			warm_p50_ms      REAL NOT NULL,
+			warm_min_ms      REAL NOT NULL,
+			warm_max_ms      REAL NOT NULL,
+			warm_p95_ms      REAL NOT NULL DEFAULT 0,
+			warm_p99_ms      REAL NOT NULL DEFAULT 0,
+			cold_tpot_p50_ms REAL,
+			warm_tpot_p50_ms REAL,
+			speedup_x        REAL NOT NULL,
+			created_at       INTEGER NOT NULL
 		)`,
 	}
 	for _, stmt := range stmts {
@@ -548,6 +554,15 @@ func (s *sqliteStore) migrate() error {
 		// Nullable: NULL/"" means unconstrained (existing fleet unaffected).
 		`ALTER TABLE node_overrides ADD COLUMN parallelism_type TEXT`,
 		`ALTER TABLE node_overrides ADD COLUMN parallelism_width INTEGER`,
+		// P408: latency decomposition - tail percentiles alongside the
+		// existing p50/min/max, and nullable TPOT p50 (NULL when no sample in
+		// that phase had 2+ content-bearing chunks to derive TPOT from).
+		`ALTER TABLE benchmark_runs ADD COLUMN cold_p95_ms REAL NOT NULL DEFAULT 0`,
+		`ALTER TABLE benchmark_runs ADD COLUMN cold_p99_ms REAL NOT NULL DEFAULT 0`,
+		`ALTER TABLE benchmark_runs ADD COLUMN warm_p95_ms REAL NOT NULL DEFAULT 0`,
+		`ALTER TABLE benchmark_runs ADD COLUMN warm_p99_ms REAL NOT NULL DEFAULT 0`,
+		`ALTER TABLE benchmark_runs ADD COLUMN cold_tpot_p50_ms REAL`,
+		`ALTER TABLE benchmark_runs ADD COLUMN warm_tpot_p50_ms REAL`,
 	} {
 		// Idempotent: a rerun against an already-migrated DB hits "duplicate
 		// column name" for every statement here, which is benign and must be
@@ -3178,11 +3193,14 @@ func (s *sqliteStore) AllModelConfigs() ([]ModelConfig, error) {
 func (s *sqliteStore) InsertBenchmarkRun(run BenchmarkRun) error {
 	_, err := s.db.Exec(
 		`INSERT INTO benchmark_runs
-			(node, model, n, cold_p50_ms, cold_min_ms, cold_max_ms, warm_p50_ms, warm_min_ms, warm_max_ms, speedup_x, created_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			(node, model, n, cold_p50_ms, cold_min_ms, cold_max_ms, cold_p95_ms, cold_p99_ms,
+			 warm_p50_ms, warm_min_ms, warm_max_ms, warm_p95_ms, warm_p99_ms,
+			 cold_tpot_p50_ms, warm_tpot_p50_ms, speedup_x, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		run.Node, run.Model, run.N,
-		run.ColdP50Ms, run.ColdMinMs, run.ColdMaxMs,
-		run.WarmP50Ms, run.WarmMinMs, run.WarmMaxMs,
+		run.ColdP50Ms, run.ColdMinMs, run.ColdMaxMs, run.ColdP95Ms, run.ColdP99Ms,
+		run.WarmP50Ms, run.WarmMinMs, run.WarmMaxMs, run.WarmP95Ms, run.WarmP99Ms,
+		nullableFloat64(run.ColdTPOTP50Ms), nullableFloat64(run.WarmTPOTP50Ms),
 		run.SpeedupX, run.CreatedAt.Unix(),
 	)
 	if err != nil {
@@ -3196,7 +3214,9 @@ func (s *sqliteStore) ListBenchmarkRuns(limit int) ([]BenchmarkRun, error) {
 		limit = 50
 	}
 	rows, err := s.db.Query(
-		`SELECT id, node, model, n, cold_p50_ms, cold_min_ms, cold_max_ms, warm_p50_ms, warm_min_ms, warm_max_ms, speedup_x, created_at
+		`SELECT id, node, model, n, cold_p50_ms, cold_min_ms, cold_max_ms, cold_p95_ms, cold_p99_ms,
+			warm_p50_ms, warm_min_ms, warm_max_ms, warm_p95_ms, warm_p99_ms,
+			cold_tpot_p50_ms, warm_tpot_p50_ms, speedup_x, created_at
 			FROM benchmark_runs ORDER BY created_at DESC LIMIT ?`,
 		limit,
 	)
@@ -3209,21 +3229,40 @@ func (s *sqliteStore) ListBenchmarkRuns(limit int) ([]BenchmarkRun, error) {
 	for rows.Next() {
 		var run BenchmarkRun
 		var createdAt int64
+		var coldTPOT, warmTPOT sql.NullFloat64
 		if err := rows.Scan(
 			&run.ID, &run.Node, &run.Model, &run.N,
-			&run.ColdP50Ms, &run.ColdMinMs, &run.ColdMaxMs,
-			&run.WarmP50Ms, &run.WarmMinMs, &run.WarmMaxMs,
+			&run.ColdP50Ms, &run.ColdMinMs, &run.ColdMaxMs, &run.ColdP95Ms, &run.ColdP99Ms,
+			&run.WarmP50Ms, &run.WarmMinMs, &run.WarmMaxMs, &run.WarmP95Ms, &run.WarmP99Ms,
+			&coldTPOT, &warmTPOT,
 			&run.SpeedupX, &createdAt,
 		); err != nil {
 			return nil, fmt.Errorf("store: ListBenchmarkRuns scan: %w", err)
 		}
 		run.CreatedAt = time.Unix(createdAt, 0).UTC()
+		if coldTPOT.Valid {
+			v := coldTPOT.Float64
+			run.ColdTPOTP50Ms = &v
+		}
+		if warmTPOT.Valid {
+			v := warmTPOT.Float64
+			run.WarmTPOTP50Ms = &v
+		}
 		out = append(out, run)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("store: ListBenchmarkRuns rows: %w", err)
 	}
 	return out, nil
+}
+
+// nullableFloat64 converts a *float64 to the sql.NullFloat64 a nullable REAL
+// column expects - nil means "not computable" (R1: absence, never 0).
+func nullableFloat64(v *float64) sql.NullFloat64 {
+	if v == nil {
+		return sql.NullFloat64{}
+	}
+	return sql.NullFloat64{Float64: *v, Valid: true}
 }
 
 // migrateModelConfigsToNodeKeyed rebuilds model_configs from its original

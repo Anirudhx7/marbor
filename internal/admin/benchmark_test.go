@@ -168,6 +168,48 @@ func assertKeyFullyDeleted(t *testing.T, s *Server, node, model, keyValue string
 	t.Fatalf("expected ephemeral key (prefix %q) to be fully deleted from store and auth", prefix)
 }
 
+// ── aggregateSamples / aggregateTPOTSamples ─────────────────────────────────
+
+func TestAggregateSamples_p50MinMaxUnchangedByP408(t *testing.T) {
+	// Verifies the pre-existing p50/min/max convention (average of the two
+	// middle values on an even-length slice) still holds after extending the
+	// signature to also return p95/p99 (P408).
+	p50, min, max, _, _ := aggregateSamples([]int64{10, 20, 30, 40})
+	if p50 != 25 {
+		t.Errorf("p50 = %v, want 25 (avg of 20,30)", p50)
+	}
+	if min != 10 || max != 40 {
+		t.Errorf("min/max = %v/%v, want 10/40", min, max)
+	}
+}
+
+func TestAggregateSamples_p95p99NearestRank(t *testing.T) {
+	samples := make([]int64, 100)
+	for i := range samples {
+		samples[i] = int64(i + 1) // 1..100
+	}
+	_, _, _, p95, p99 := aggregateSamples(samples)
+	if p95 != 95 {
+		t.Errorf("p95 = %v, want 95", p95)
+	}
+	if p99 != 99 {
+		t.Errorf("p99 = %v, want 99", p99)
+	}
+}
+
+func TestAggregateTPOTSamples_emptyIsNil(t *testing.T) {
+	if got := aggregateTPOTSamples(nil); got != nil {
+		t.Errorf("expected nil for empty TPOT samples, got %v", *got)
+	}
+}
+
+func TestAggregateTPOTSamples_p50(t *testing.T) {
+	got := aggregateTPOTSamples([]float64{10, 20, 30})
+	if got == nil || *got != 20 {
+		t.Fatalf("expected p50=20, got %v", got)
+	}
+}
+
 func TestHandleRunBenchmark_ValidationErrors(t *testing.T) {
 	s := newBenchTestServer(t, "http://localhost:11434", "", "llama3:8b")
 

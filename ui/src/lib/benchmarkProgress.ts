@@ -23,6 +23,8 @@ export interface BenchmarkProgressState {
   phase: BenchmarkPhase;
   coldSamplesMs: number[];
   warmSamplesMs: number[];
+  coldTpotSamplesMs: number[];
+  warmTpotSamplesMs: number[];
   error: string;
   result: BenchmarkRun | null;
   startedAtMs: number;
@@ -30,7 +32,8 @@ export interface BenchmarkProgressState {
 
 const IDLE_STATE: BenchmarkProgressState = {
   jobId: '', node: '', model: '', n: 0, phase: 'idle',
-  coldSamplesMs: [], warmSamplesMs: [], error: '', result: null, startedAtMs: 0,
+  coldSamplesMs: [], warmSamplesMs: [], coldTpotSamplesMs: [], warmTpotSamplesMs: [],
+  error: '', result: null, startedAtMs: 0,
 };
 
 let state: BenchmarkProgressState = IDLE_STATE;
@@ -79,6 +82,8 @@ const DEMO = import.meta.env.VITE_FORCE_DEMO === 'true';
 function runDemoBenchmark(node: string, model: string, n: number) {
   const coldBaseMs = 3200 + Math.random() * 900;
   const warmBaseMs = 90 + Math.random() * 40;
+  const coldTpotBaseMs = 25 + Math.random() * 10;
+  const warmTpotBaseMs = 18 + Math.random() * 8;
   let i = 0;
   setState({ phase: 'evicting' });
 
@@ -87,7 +92,8 @@ function runDemoBenchmark(node: string, model: string, n: number) {
     setState({ phase: 'cold' });
     if (i >= n) { i = 0; setTimeout(stepWarm, 300); return; }
     const ms = Math.round(coldBaseMs + (Math.random() - 0.5) * 300);
-    setState({ coldSamplesMs: [...state.coldSamplesMs, ms] });
+    const tpotMs = Math.round((coldTpotBaseMs + (Math.random() - 0.5) * 6) * 10) / 10;
+    setState({ coldSamplesMs: [...state.coldSamplesMs, ms], coldTpotSamplesMs: [...state.coldTpotSamplesMs, tpotMs] });
     i++;
     setTimeout(stepCold, 350);
   };
@@ -99,11 +105,19 @@ function runDemoBenchmark(node: string, model: string, n: number) {
       const cold = [...state.coldSamplesMs].sort((a, b) => a - b);
       const warm = [...state.warmSamplesMs].sort((a, b) => a - b);
       const p50 = (arr: number[]) => arr.length % 2 ? arr[(arr.length - 1) / 2] : (arr[arr.length / 2 - 1] + arr[arr.length / 2]) / 2;
+      // Nearest-rank, mirroring internal/admin/benchmark.go's aggregateSamples.
+      const pct = (arr: number[], p: number) => arr[Math.min(arr.length - 1, Math.max(0, Math.ceil((p / 100) * arr.length) - 1))];
       const coldP50 = p50(cold), warmP50 = p50(warm);
+      const coldTpot = [...state.coldTpotSamplesMs].sort((a, b) => a - b);
+      const warmTpot = [...state.warmTpotSamplesMs].sort((a, b) => a - b);
       const result: BenchmarkRun = {
         id: 0, node, model, n,
         cold_p50_ms: coldP50, cold_min_ms: cold[0], cold_max_ms: cold[cold.length - 1],
+        cold_p95_ms: pct(cold, 95), cold_p99_ms: pct(cold, 99),
         warm_p50_ms: warmP50, warm_min_ms: warm[0], warm_max_ms: warm[warm.length - 1],
+        warm_p95_ms: pct(warm, 95), warm_p99_ms: pct(warm, 99),
+        cold_tpot_p50_ms: coldTpot.length ? p50(coldTpot) : null,
+        warm_tpot_p50_ms: warmTpot.length ? p50(warmTpot) : null,
         speedup_x: warmP50 > 0 ? coldP50 / warmP50 : 0,
         created_at: new Date().toISOString(),
       };
@@ -111,7 +125,8 @@ function runDemoBenchmark(node: string, model: string, n: number) {
       return;
     }
     const ms = Math.round(warmBaseMs + (Math.random() - 0.5) * 20);
-    setState({ warmSamplesMs: [...state.warmSamplesMs, ms] });
+    const tpotMs = Math.round((warmTpotBaseMs + (Math.random() - 0.5) * 4) * 10) / 10;
+    setState({ warmSamplesMs: [...state.warmSamplesMs, ms], warmTpotSamplesMs: [...state.warmTpotSamplesMs, tpotMs] });
     i++;
     setTimeout(stepWarm, 200);
   };
@@ -167,6 +182,8 @@ function subscribeToProgress(jobId: string): void {
       phase: known ? data.phase : 'error',
       coldSamplesMs: data.cold_samples_ms || [],
       warmSamplesMs: data.warm_samples_ms || [],
+      coldTpotSamplesMs: data.cold_tpot_samples_ms || [],
+      warmTpotSamplesMs: data.warm_tpot_samples_ms || [],
       error: known ? (data.error || '') : `Unrecognized server phase "${data.phase}" - this UI may be out of date.`,
       result: data.result || null,
     });

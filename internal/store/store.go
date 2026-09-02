@@ -694,19 +694,31 @@ type ModelConfig struct {
 // samples (model evicted before each) and N warm samples (model resident
 // throughout) measured via the marbor's own /v1/chat/completions, same
 // methodology as bench/ttft.go and bench/cold-loop.sh.
+// ColdP95Ms/ColdP99Ms/WarmP95Ms/WarmP99Ms extend the original P50/min/max with
+// tail latency (P408) - always populated like the fields they sit beside,
+// same aggregateSamples call. ColdTPOTP50Ms/WarmTPOTP50Ms are nullable: nil
+// means not one sample in that phase produced a computable TPOT (fewer than
+// 2 content-bearing SSE chunks in every sample) - absence, never a
+// fabricated 0 (R1).
 type BenchmarkRun struct {
-	ID        int64     `json:"id"`
-	Node      string    `json:"node"`
-	Model     string    `json:"model"`
-	N         int       `json:"n"`
-	ColdP50Ms float64   `json:"cold_p50_ms"`
-	ColdMinMs float64   `json:"cold_min_ms"`
-	ColdMaxMs float64   `json:"cold_max_ms"`
-	WarmP50Ms float64   `json:"warm_p50_ms"`
-	WarmMinMs float64   `json:"warm_min_ms"`
-	WarmMaxMs float64   `json:"warm_max_ms"`
-	SpeedupX  float64   `json:"speedup_x"`
-	CreatedAt time.Time `json:"created_at"`
+	ID            int64     `json:"id"`
+	Node          string    `json:"node"`
+	Model         string    `json:"model"`
+	N             int       `json:"n"`
+	ColdP50Ms     float64   `json:"cold_p50_ms"`
+	ColdMinMs     float64   `json:"cold_min_ms"`
+	ColdMaxMs     float64   `json:"cold_max_ms"`
+	ColdP95Ms     float64   `json:"cold_p95_ms"`
+	ColdP99Ms     float64   `json:"cold_p99_ms"`
+	WarmP50Ms     float64   `json:"warm_p50_ms"`
+	WarmMinMs     float64   `json:"warm_min_ms"`
+	WarmMaxMs     float64   `json:"warm_max_ms"`
+	WarmP95Ms     float64   `json:"warm_p95_ms"`
+	WarmP99Ms     float64   `json:"warm_p99_ms"`
+	ColdTPOTP50Ms *float64  `json:"cold_tpot_p50_ms,omitempty"`
+	WarmTPOTP50Ms *float64  `json:"warm_tpot_p50_ms,omitempty"`
+	SpeedupX      float64   `json:"speedup_x"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 // NopStore satisfies Store with all no-ops. Used when db_path = "-".

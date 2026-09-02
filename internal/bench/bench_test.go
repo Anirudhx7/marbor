@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // ── fmtMs ────────────────────────────────────────────────────────────────────
@@ -186,6 +187,73 @@ func TestMeasureTTFT_emptyStream(t *testing.T) {
 	_, err := MeasureChatTTFT(context.Background(), srv.Client(), srv.URL, "llama3:8b", "")
 	if err == nil {
 		t.Fatal("expected error for empty stream, got nil")
+	}
+}
+
+// ── MeasureChatLatency ───────────────────────────────────────────────────────
+
+func TestMeasureChatLatency_multiChunkProducesTPOT(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher, _ := w.(http.Flusher)
+		fmt.Fprint(w, sseChunk("", false)) // empty role delta, not counted
+		if flusher != nil {
+			flusher.Flush()
+		}
+		for i := 0; i < 4; i++ {
+			time.Sleep(10 * time.Millisecond)
+			fmt.Fprint(w, sseChunk("tok", false))
+			if flusher != nil {
+				flusher.Flush()
+			}
+		}
+		fmt.Fprint(w, sseChunk("[DONE]", true))
+	}))
+	defer srv.Close()
+
+	sample, err := MeasureChatLatency(context.Background(), srv.Client(), srv.URL, "llama3:8b", "")
+	if err != nil {
+		t.Fatalf("MeasureChatLatency: %v", err)
+	}
+	if sample.TTFTMs < 0 {
+		t.Errorf("TTFTMs = %d, want >= 0", sample.TTFTMs)
+	}
+	if sample.TPOTMs == nil {
+		t.Fatal("expected a non-nil TPOTMs for a 4-content-chunk stream")
+	}
+	// 4 content chunks, 10ms apart -> ~30ms total / 3 gaps = ~10ms/token.
+	// Generous bounds to absorb scheduler jitter on a loopback test server.
+	if *sample.TPOTMs <= 0 || *sample.TPOTMs > 100 {
+		t.Errorf("TPOTMs = %v, want a small positive value (~10ms)", *sample.TPOTMs)
+	}
+}
+
+func TestMeasureChatLatency_singleChunkYieldsNilTPOT(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, sseChunk("word", false))
+		fmt.Fprint(w, sseChunk("[DONE]", true))
+	}))
+	defer srv.Close()
+
+	sample, err := MeasureChatLatency(context.Background(), srv.Client(), srv.URL, "llama3:8b", "")
+	if err != nil {
+		t.Fatalf("MeasureChatLatency: %v", err)
+	}
+	if sample.TPOTMs != nil {
+		t.Errorf("expected nil TPOTMs for a single-chunk stream, got %v", *sample.TPOTMs)
+	}
+}
+
+func TestMeasureChatLatency_httpError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "no nodes available", http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	_, err := MeasureChatLatency(context.Background(), srv.Client(), srv.URL, "llama3:8b", "")
+	if err == nil {
+		t.Fatal("expected error for non-200, got nil")
 	}
 }
 
