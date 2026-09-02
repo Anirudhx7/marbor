@@ -210,7 +210,7 @@ func (r *Router) pollNode(n *NodeState) {
 		// claim it IS MLX (R1), only report what was actually seen.
 		n.mu.Lock()
 		if n.Runtime == "llamacpp" && strings.Contains(err.Error(), "/health returned 404") {
-			n.RuntimeMismatchHint = "auto-detected as llamacpp, but /health returned 404 (no such route) - this is the exact signature of an MLX (mlx_lm.server) node, which cannot be auto-detected and must be set manually via runtime: mlx"
+			n.RuntimeMismatchHint = "currently running as llamacpp, but /health returned 404 (no such route) - this is the exact signature of an MLX (mlx_lm.server) node, which cannot be auto-detected and must be set manually via runtime: mlx (a 404 here could also mean a llama.cpp build without /health, or a broken reverse proxy)"
 		}
 		n.mu.Unlock()
 		r.markFailure(n)
