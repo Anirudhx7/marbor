@@ -66,6 +66,11 @@ export interface GPUNode {
   temperature: number | null;
   health: 'healthy' | 'degraded' | 'down';
   runtime: string;
+  // Set only when this node is currently probed as llamacpp and /health is
+  // failing with a 404 (route doesn't exist) - the real, observed signature
+  // of an MLX node that runtime: auto misclassified (P409). Never a guess
+  // presented as fact - empty whenever this exact condition isn't observed.
+  runtimeMismatchHint?: string;
   draining: boolean;
   // Why draining was set (e.g. "manual", "thermal", "scheduled") - persisted
   // alongside draining, empty when not draining.

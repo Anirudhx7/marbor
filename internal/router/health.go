@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -199,9 +200,25 @@ func (r *Router) pollNode(n *NodeState) {
 
 	result, err := probe.Probe(ctx, nodeURL)
 	if err != nil {
+		// P409: an auto-detected-as-llamacpp node that fails /health
+		// specifically with a 404 (the route doesn't exist at all, not a
+		// timeout/connection error) is the exact shape MLX's mlx_lm.server
+		// produces - it has no /health route and is otherwise
+		// indistinguishable from llama.cpp on /v1/models (see
+		// internal/runtime/detect.go). Surface that real, observed fact so
+		// the node doesn't just sit silently unhealthy forever; never
+		// claim it IS MLX (R1), only report what was actually seen.
+		n.mu.Lock()
+		if n.Runtime == "llamacpp" && strings.Contains(err.Error(), "/health returned 404") {
+			n.RuntimeMismatchHint = "auto-detected as llamacpp, but /health returned 404 (no such route) - this is the exact signature of an MLX (mlx_lm.server) node, which cannot be auto-detected and must be set manually via runtime: mlx"
+		}
+		n.mu.Unlock()
 		r.markFailure(n)
 		return
 	}
+	n.mu.Lock()
+	n.RuntimeMismatchHint = ""
+	n.mu.Unlock()
 	// Convert runtime.LoadedModel slice to []ModelInfo (router's internal type).
 	models := make([]ModelInfo, len(result.LoadedModels))
 	for i, m := range result.LoadedModels {

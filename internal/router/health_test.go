@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/Anirudhx7/marbor/internal/config"
@@ -46,6 +47,90 @@ func TestPollNode_RecoversFromProbePanic(t *testing.T) {
 	r.nodes[0].mu.RUnlock()
 	if failures != 1 {
 		t.Errorf("Failures = %d, want 1 (markFailure should run after recovering the panic)", failures)
+	}
+}
+
+// fixedErrProbe always fails Probe with a fixed error - used to simulate a
+// specific failure shape (e.g. llamacpp's checkHealth wrapping "/health
+// returned 404") without standing up a real httptest.Server per case.
+type fixedErrProbe struct{ err error }
+
+func (p fixedErrProbe) Probe(ctx context.Context, nodeURL string) (runtimepkg.ProbeResult, error) {
+	return runtimepkg.ProbeResult{}, p.err
+}
+
+// TestPollNode_SetsRuntimeMismatchHint_LlamaCppHealth404 is the P409
+// regression: a node currently probed as llamacpp whose /health check fails
+// specifically with a 404 (the exact real-world signature an MLX node
+// auto-detected as llamacpp produces, since mlx_lm.server has no /health
+// route at all) must surface RuntimeMismatchHint instead of just sitting
+// silently unhealthy with no explanation.
+func TestPollNode_SetsRuntimeMismatchHint_LlamaCppHealth404(t *testing.T) {
+	r := New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://gpu-0:8080", Runtime: "llamacpp"},
+	}, nil)
+
+	n := r.nodes[0]
+	n.mu.Lock()
+	n.probe = fixedErrProbe{err: fmt.Errorf("llamacpp probe: /health returned 404")}
+	n.mu.Unlock()
+
+	r.pollNode(n)
+
+	n.mu.RLock()
+	hint := n.RuntimeMismatchHint
+	n.mu.RUnlock()
+	if hint == "" {
+		t.Error("RuntimeMismatchHint not set for a llamacpp node whose /health returned 404")
+	}
+}
+
+// TestPollNode_NoRuntimeMismatchHint_GenericFailure guards the false-positive
+// direction: a llamacpp node failing for an ordinary reason (connection
+// refused, timeout, 500, etc.) must NOT get the MLX hint - it's a real,
+// observed-fact hint (R1), not a generic "this node is unhealthy" catch-all.
+func TestPollNode_NoRuntimeMismatchHint_GenericFailure(t *testing.T) {
+	r := New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://gpu-0:8080", Runtime: "llamacpp"},
+	}, nil)
+
+	n := r.nodes[0]
+	n.mu.Lock()
+	n.probe = fixedErrProbe{err: fmt.Errorf("llamacpp probe: health request: connection refused")}
+	n.mu.Unlock()
+
+	r.pollNode(n)
+
+	n.mu.RLock()
+	hint := n.RuntimeMismatchHint
+	n.mu.RUnlock()
+	if hint != "" {
+		t.Errorf("RuntimeMismatchHint = %q, want empty for a generic connection failure (not a /health 404)", hint)
+	}
+}
+
+// TestPollNode_ClearsRuntimeMismatchHint_OnSuccess guards the recovery path:
+// once a node starts probing successfully again (e.g. an operator fixed a
+// misconfigured reverse proxy that was 404ing /health), a stale hint from an
+// earlier failed poll must not linger and mislead.
+func TestPollNode_ClearsRuntimeMismatchHint_OnSuccess(t *testing.T) {
+	r := New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://gpu-0:8080", Runtime: "llamacpp"},
+	}, nil)
+
+	n := r.nodes[0]
+	n.mu.Lock()
+	n.RuntimeMismatchHint = "stale hint from an earlier failed poll"
+	n.probe = nonOllamaZeroVRAMProbe{models: []runtimepkg.LoadedModel{{Name: "some-model", SizeVRAMBytes: 0}}}
+	n.mu.Unlock()
+
+	r.pollNode(n)
+
+	n.mu.RLock()
+	hint := n.RuntimeMismatchHint
+	n.mu.RUnlock()
+	if hint != "" {
+		t.Errorf("RuntimeMismatchHint = %q, want empty after a successful probe", hint)
 	}
 }
 
