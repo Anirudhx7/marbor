@@ -1465,18 +1465,18 @@ func TestBackupTo(t *testing.T) {
 }
 
 // TestBenchmarkRunTPOTNullability verifies P408's new fields round-trip
-// through InsertBenchmarkRun/ListBenchmarkRuns: p95/p99 are always populated
-// like the pre-existing p50/min/max, and the nullable TPOT p50 fields
-// preserve nil (not computable) vs. a real value (R1: absence, never a
-// fabricated 0) across the SQL NULL boundary.
+// through InsertBenchmarkRun/ListBenchmarkRuns: p95/p99 and TPOT p50 are all
+// nullable, preserving nil (not computable/not computed) vs. a real value
+// (R1: absence, never a fabricated 0) across the SQL NULL boundary.
 func TestBenchmarkRunTPOTNullability(t *testing.T) {
 	s := openTestDB(t)
 
 	tpot := 12.5
+	coldP95, coldP99, warmP95, warmP99 := 1080.0, 1095.0, 108.0, 109.0
 	withTPOT := store.BenchmarkRun{
 		Node: "gpu-0", Model: "llama3:8b", N: 5,
-		ColdP50Ms: 1000, ColdMinMs: 900, ColdMaxMs: 1100, ColdP95Ms: 1080, ColdP99Ms: 1095,
-		WarmP50Ms: 100, WarmMinMs: 90, WarmMaxMs: 110, WarmP95Ms: 108, WarmP99Ms: 109,
+		ColdP50Ms: 1000, ColdMinMs: 900, ColdMaxMs: 1100, ColdP95Ms: &coldP95, ColdP99Ms: &coldP99,
+		WarmP50Ms: 100, WarmMinMs: 90, WarmMaxMs: 110, WarmP95Ms: &warmP95, WarmP99Ms: &warmP99,
 		ColdTPOTP50Ms: &tpot, WarmTPOTP50Ms: nil,
 		SpeedupX:  10,
 		CreatedAt: time.Now(),
@@ -1485,15 +1485,19 @@ func TestBenchmarkRunTPOTNullability(t *testing.T) {
 		t.Fatalf("InsertBenchmarkRun (with TPOT): %v", err)
 	}
 
-	noTPOT := store.BenchmarkRun{
+	// noPercentiles simulates a row persisted before this migration added
+	// p95/p99/TPOT (nil on every new field, exactly what a legacy row looks
+	// like once ListBenchmarkRuns scans it) - it must come back with nil on
+	// all four, never a backfilled/fabricated 0 (the bug this test guards).
+	noPercentiles := store.BenchmarkRun{
 		Node: "gpu-1", Model: "llama3:8b", N: 1,
-		ColdP50Ms: 500, ColdMinMs: 500, ColdMaxMs: 500, ColdP95Ms: 500, ColdP99Ms: 500,
-		WarmP50Ms: 50, WarmMinMs: 50, WarmMaxMs: 50, WarmP95Ms: 50, WarmP99Ms: 50,
+		ColdP50Ms: 500, ColdMinMs: 500, ColdMaxMs: 500,
+		WarmP50Ms: 50, WarmMinMs: 50, WarmMaxMs: 50,
 		SpeedupX:  10,
 		CreatedAt: time.Now(),
 	}
-	if err := s.InsertBenchmarkRun(noTPOT); err != nil {
-		t.Fatalf("InsertBenchmarkRun (no TPOT): %v", err)
+	if err := s.InsertBenchmarkRun(noPercentiles); err != nil {
+		t.Fatalf("InsertBenchmarkRun (no percentiles): %v", err)
 	}
 
 	runs, err := s.ListBenchmarkRuns(10)
@@ -1504,20 +1508,20 @@ func TestBenchmarkRunTPOTNullability(t *testing.T) {
 		t.Fatalf("expected 2 runs, got %d", len(runs))
 	}
 
-	var gotWithTPOT, gotNoTPOT *store.BenchmarkRun
+	var gotWithTPOT, gotNoPercentiles *store.BenchmarkRun
 	for i := range runs {
 		switch runs[i].Node {
 		case "gpu-0":
 			gotWithTPOT = &runs[i]
 		case "gpu-1":
-			gotNoTPOT = &runs[i]
+			gotNoPercentiles = &runs[i]
 		}
 	}
-	if gotWithTPOT == nil || gotNoTPOT == nil {
+	if gotWithTPOT == nil || gotNoPercentiles == nil {
 		t.Fatalf("missing expected rows: %+v", runs)
 	}
 
-	if gotWithTPOT.ColdP95Ms != 1080 || gotWithTPOT.ColdP99Ms != 1095 {
+	if gotWithTPOT.ColdP95Ms == nil || *gotWithTPOT.ColdP95Ms != 1080 || gotWithTPOT.ColdP99Ms == nil || *gotWithTPOT.ColdP99Ms != 1095 {
 		t.Errorf("cold p95/p99 = %v/%v, want 1080/1095", gotWithTPOT.ColdP95Ms, gotWithTPOT.ColdP99Ms)
 	}
 	if gotWithTPOT.ColdTPOTP50Ms == nil || *gotWithTPOT.ColdTPOTP50Ms != 12.5 {
@@ -1526,7 +1530,14 @@ func TestBenchmarkRunTPOTNullability(t *testing.T) {
 	if gotWithTPOT.WarmTPOTP50Ms != nil {
 		t.Errorf("WarmTPOTP50Ms = %v, want nil", *gotWithTPOT.WarmTPOTP50Ms)
 	}
-	if gotNoTPOT.ColdTPOTP50Ms != nil || gotNoTPOT.WarmTPOTP50Ms != nil {
-		t.Errorf("expected both TPOT fields nil for a run with no computable TPOT, got cold=%v warm=%v", gotNoTPOT.ColdTPOTP50Ms, gotNoTPOT.WarmTPOTP50Ms)
+	// The regression this test exists for: a row with no p95/p99 supplied
+	// (standing in for a pre-P408 row after migration) must come back with
+	// nil on ColdP95Ms/ColdP99Ms/WarmP95Ms/WarmP99Ms, not a fabricated 0.
+	if gotNoPercentiles.ColdP95Ms != nil || gotNoPercentiles.ColdP99Ms != nil || gotNoPercentiles.WarmP95Ms != nil || gotNoPercentiles.WarmP99Ms != nil {
+		t.Errorf("expected p95/p99 nil for a row with no percentile data, got cold=%v/%v warm=%v/%v",
+			gotNoPercentiles.ColdP95Ms, gotNoPercentiles.ColdP99Ms, gotNoPercentiles.WarmP95Ms, gotNoPercentiles.WarmP99Ms)
+	}
+	if gotNoPercentiles.ColdTPOTP50Ms != nil || gotNoPercentiles.WarmTPOTP50Ms != nil {
+		t.Errorf("expected both TPOT fields nil for a run with no computable TPOT, got cold=%v warm=%v", gotNoPercentiles.ColdTPOTP50Ms, gotNoPercentiles.WarmTPOTP50Ms)
 	}
 }

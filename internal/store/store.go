@@ -695,11 +695,11 @@ type ModelConfig struct {
 // throughout) measured via the marbor's own /v1/chat/completions, same
 // methodology as bench/ttft.go and bench/cold-loop.sh.
 // ColdP95Ms/ColdP99Ms/WarmP95Ms/WarmP99Ms extend the original P50/min/max with
-// tail latency (P408) - always populated like the fields they sit beside,
-// same aggregateSamples call. ColdTPOTP50Ms/WarmTPOTP50Ms are nullable: nil
-// means not one sample in that phase produced a computable TPOT (fewer than
-// 2 content-bearing SSE chunks in every sample) - absence, never a
-// fabricated 0 (R1).
+// tail latency (P408) - nullable, like ColdTPOTP50Ms/WarmTPOTP50Ms below: nil
+// means "not computed" (a row persisted before this migration added these
+// columns has no real p95/p99 sample data to backfill from), never a
+// fabricated 0 - a run that went through the current aggregateSamples always
+// gets a real, non-nil value here (R1).
 type BenchmarkRun struct {
 	ID            int64     `json:"id"`
 	Node          string    `json:"node"`
@@ -708,13 +708,13 @@ type BenchmarkRun struct {
 	ColdP50Ms     float64   `json:"cold_p50_ms"`
 	ColdMinMs     float64   `json:"cold_min_ms"`
 	ColdMaxMs     float64   `json:"cold_max_ms"`
-	ColdP95Ms     float64   `json:"cold_p95_ms"`
-	ColdP99Ms     float64   `json:"cold_p99_ms"`
+	ColdP95Ms     *float64  `json:"cold_p95_ms,omitempty"`
+	ColdP99Ms     *float64  `json:"cold_p99_ms,omitempty"`
 	WarmP50Ms     float64   `json:"warm_p50_ms"`
 	WarmMinMs     float64   `json:"warm_min_ms"`
 	WarmMaxMs     float64   `json:"warm_max_ms"`
-	WarmP95Ms     float64   `json:"warm_p95_ms"`
-	WarmP99Ms     float64   `json:"warm_p99_ms"`
+	WarmP95Ms     *float64  `json:"warm_p95_ms,omitempty"`
+	WarmP99Ms     *float64  `json:"warm_p99_ms,omitempty"`
 	ColdTPOTP50Ms *float64  `json:"cold_tpot_p50_ms,omitempty"`
 	WarmTPOTP50Ms *float64  `json:"warm_tpot_p50_ms,omitempty"`
 	SpeedupX      float64   `json:"speedup_x"`

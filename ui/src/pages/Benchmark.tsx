@@ -23,6 +23,15 @@ function fmtMs(ms: number): string {
   return `${ms.toLocaleString(undefined, { maximumFractionDigits: 0 })} ms`;
 }
 
+// fmtMsNullable renders a nullable ms value (p95/p99 on a run persisted
+// before P408 added them - no data to backfill from). "-" for absence,
+// never 0 (R1) - unlike fmtMs, which is only ever called on fields that are
+// always populated (p50/min/max).
+function fmtMsNullable(ms: number | null | undefined): string {
+  if (ms === null || ms === undefined) return '-';
+  return fmtMs(ms);
+}
+
 // fmtTpot renders a nullable TPOT p50 (undefined/null when not one sample in
 // that phase produced a computable TPOT - fewer than 2 content-bearing SSE
 // chunks). Always "-" for absence, never 0 (R1).
@@ -49,7 +58,7 @@ function ResultCard({ result }: { result: BenchmarkRun }) {
   const [copied, setCopied] = useState(false);
 
   function copySummary() {
-    const text = `${result.node} · ${result.model}\n${result.speedup_x.toFixed(1)}x faster warm vs. cold (p50)\nCold TTFT (p50): ${fmtMs(result.cold_p50_ms)} (min ${fmtMs(result.cold_min_ms)}, p95 ${fmtMs(result.cold_p95_ms)}, p99 ${fmtMs(result.cold_p99_ms)}, max ${fmtMs(result.cold_max_ms)})\nWarm TTFT (p50): ${fmtMs(result.warm_p50_ms)} (min ${fmtMs(result.warm_min_ms)}, p95 ${fmtMs(result.warm_p95_ms)}, p99 ${fmtMs(result.warm_p99_ms)}, max ${fmtMs(result.warm_max_ms)})\nCold TPOT (p50): ${fmtTpot(result.cold_tpot_p50_ms)}\nWarm TPOT (p50): ${fmtTpot(result.warm_tpot_p50_ms)}\nn=${result.n} samples per phase, measured via Marbor's own proxy.`;
+    const text = `${result.node} · ${result.model}\n${result.speedup_x.toFixed(1)}x faster warm vs. cold (p50)\nCold TTFT (p50): ${fmtMs(result.cold_p50_ms)} (min ${fmtMs(result.cold_min_ms)}, p95 ${fmtMsNullable(result.cold_p95_ms)}, p99 ${fmtMsNullable(result.cold_p99_ms)}, max ${fmtMs(result.cold_max_ms)})\nWarm TTFT (p50): ${fmtMs(result.warm_p50_ms)} (min ${fmtMs(result.warm_min_ms)}, p95 ${fmtMsNullable(result.warm_p95_ms)}, p99 ${fmtMsNullable(result.warm_p99_ms)}, max ${fmtMs(result.warm_max_ms)})\nCold TPOT (p50): ${fmtTpot(result.cold_tpot_p50_ms)}\nWarm TPOT (p50): ${fmtTpot(result.warm_tpot_p50_ms)}\nn=${result.n} samples per phase, measured via Marbor's own proxy.`;
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -75,12 +84,12 @@ function ResultCard({ result }: { result: BenchmarkRun }) {
         <div className="rounded-lg border border-border p-3">
           <p className="text-xs text-muted-foreground mb-1">Cold TTFT (p50)</p>
           <p className="font-mono text-foreground font-medium">{fmtMs(result.cold_p50_ms)}</p>
-          <p className="text-[10px] text-muted-foreground/70 font-mono">min {fmtMs(result.cold_min_ms)} · p95 {fmtMs(result.cold_p95_ms)} · p99 {fmtMs(result.cold_p99_ms)} · max {fmtMs(result.cold_max_ms)}</p>
+          <p className="text-[10px] text-muted-foreground/70 font-mono">min {fmtMs(result.cold_min_ms)} · p95 {fmtMsNullable(result.cold_p95_ms)} · p99 {fmtMsNullable(result.cold_p99_ms)} · max {fmtMs(result.cold_max_ms)}</p>
         </div>
         <div className="rounded-lg border border-border p-3">
           <p className="text-xs text-muted-foreground mb-1">Warm TTFT (p50)</p>
           <p className="font-mono text-foreground font-medium">{fmtMs(result.warm_p50_ms)}</p>
-          <p className="text-[10px] text-muted-foreground/70 font-mono">min {fmtMs(result.warm_min_ms)} · p95 {fmtMs(result.warm_p95_ms)} · p99 {fmtMs(result.warm_p99_ms)} · max {fmtMs(result.warm_max_ms)}</p>
+          <p className="text-[10px] text-muted-foreground/70 font-mono">min {fmtMs(result.warm_min_ms)} · p95 {fmtMsNullable(result.warm_p95_ms)} · p99 {fmtMsNullable(result.warm_p99_ms)} · max {fmtMs(result.warm_max_ms)}</p>
         </div>
         <div className="rounded-lg border border-border p-3">
           <p className="text-xs text-muted-foreground mb-1">Cold TPOT (p50)</p>

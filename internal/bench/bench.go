@@ -309,6 +309,17 @@ func measureChatSSE(ctx context.Context, client *http.Client, target, model, api
 			{"role": "user", "content": "Say one word."},
 		},
 	}
+	if drainForTPOT {
+		// Only the TPOT-computing path reads the stream to completion, so
+		// only it needs a bound on how long that can take: nothing in this
+		// payload otherwise limits response length, and a model/runtime that
+		// ignores "Say one word." would make every one of a run's up to 100
+		// samples wait for a full, unbounded generation instead of the
+		// handful of tokens this measurement actually needs. Runtimes that
+		// don't recognize max_tokens simply ignore the field (still bounded
+		// in practice by the prompt itself on those).
+		payload["max_tokens"] = 16
+	}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return LatencySample{}, fmt.Errorf("marshal request: %w", err)
@@ -386,7 +397,12 @@ func measureChatSSE(ctx context.Context, client *http.Client, target, model, api
 
 	sample := LatencySample{TTFTMs: ttftMs}
 	if n := len(contentTimestamps); n >= 2 {
-		totalMs := float64(contentTimestamps[n-1].Sub(contentTimestamps[0]).Milliseconds())
+		// Divide the full-precision duration (nanoseconds), not a
+		// millisecond-truncated one - truncating first can round a real
+		// sub-millisecond elapsed span down to 0 before the division ever
+		// runs, reporting an exact 0ms/token that looks like a real
+		// measurement instead of the imprecision it actually is.
+		totalMs := contentTimestamps[n-1].Sub(contentTimestamps[0]).Seconds() * 1000
 		tpot := totalMs / float64(n-1)
 		sample.TPOTMs = &tpot
 	}
