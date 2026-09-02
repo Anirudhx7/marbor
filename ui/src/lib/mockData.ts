@@ -302,7 +302,14 @@ export const mockGPUNodes: GPUNode[] = [
     host: '10.0.0.16',
     gpuModel: 'NVIDIA RTX 3090 24GB',
     port: 11434,
-    runtime: 'ollama',
+    runtime: 'llamacpp',
+    // P409 demo: this node was actually configured runtime: auto and is a
+    // real MLX host - auto-detect unavoidably guessed llamacpp (MLX's
+    // /v1/models is byte-for-byte identical to llama.cpp's), and /health
+    // then 404s forever since mlx_lm.server has no such route. Shows the
+    // POSSIBLE MLX NODE badge (NodeCard, GPUNodes.tsx) that replaces silent,
+    // unexplained permanent unhealthiness.
+    runtimeMismatchHint: 'auto-detected as llamacpp, but /health returned 404 (no such route) - this is the exact signature of an MLX (mlx_lm.server) node, which cannot be auto-detected and must be set manually via runtime: mlx',
     // Capacity was declared at add time, so it still counts toward the Fleet
     // Capacity card's cluster total; usage reads zero because the node is
     // down and its last live reading was cleared (R1: no stale figures).

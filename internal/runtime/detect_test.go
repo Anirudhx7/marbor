@@ -128,6 +128,46 @@ func TestDetectRuntime_LlamaCpp(t *testing.T) {
 	}
 }
 
+// TestDetectRuntime_MLXMisdetectedAsLlamaCpp documents the known, permanent
+// limitation P409 addresses the symptom of (not the detection itself, which
+// is not fixable from /v1/models alone - see detect.go's own comment above
+// probeV1Models's call site): an MLX (mlx_lm.server) node's /v1/models
+// response is byte-for-byte identical in shape to llama.cpp's, so runtime:
+// auto always resolves it to "llamacpp". This locks in that documented
+// behavior as a regression test rather than as a surprise - the actual fix
+// (health.go's RuntimeMismatchHint) lives on the resulting permanently-
+// failing health probe, covered separately in router/health_test.go.
+func TestDetectRuntime_MLXMisdetectedAsLlamaCpp(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/ps":
+			w.WriteHeader(http.StatusNotFound)
+		case "/info":
+			w.WriteHeader(http.StatusNotFound)
+		case "/v1/models":
+			// mlx_lm.server's real /v1/models shape: no owned_by field,
+			// indistinguishable from llama.cpp's own response here.
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"data":[{"id":"mlx-community/Llama-3.2-3B-Instruct-4bit"}]}`))
+		case "/health":
+			// mlx_lm.server exposes no /health route at all.
+			w.WriteHeader(http.StatusNotFound)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	got, reached := DetectRuntime(context.Background(), srv.URL, srv.Client())
+	if got != "llamacpp" {
+		t.Errorf("expected MLX to be misdetected as llamacpp (documented limitation), got %q", got)
+	}
+	if !reached {
+		t.Error("expected reached=true: node responded, it was contacted")
+	}
+}
+
 func TestDetectRuntime_Fallback(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)

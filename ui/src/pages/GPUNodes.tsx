@@ -284,6 +284,14 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
                   TLS MISMATCH
                 </span>
               )}
+              {node.runtimeMismatchHint && (
+                <span
+                  title={node.runtimeMismatchHint}
+                  className="text-xs font-medium px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 whitespace-nowrap"
+                >
+                  POSSIBLE MLX NODE
+                </span>
+              )}
               {node.warmupErrors && Object.keys(node.warmupErrors).length > 0 && (
                 <span
                   title={Object.entries(node.warmupErrors).map(([model, err]) => `${model}: ${err}`).join('\n')}

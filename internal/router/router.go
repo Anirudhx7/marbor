@@ -160,6 +160,19 @@ type NodeState struct {
 	// Empty string is treated as "ollama" for backwards compatibility.
 	// "auto" means detection is pending; resolved to a real runtime on first poll.
 	Runtime string
+	// RuntimeMismatchHint is set (P409) when this node's health probe is
+	// currently running as "llamacpp" and fails specifically because /health
+	// returned 404 - i.e. the server genuinely has no /health route, not a
+	// generic connection/timeout failure. MLX (mlx_lm.server) has this exact
+	// shape and is byte-for-byte indistinguishable from llama.cpp on
+	// /v1/models (see internal/runtime/detect.go), so runtime: auto always
+	// misclassifies an MLX node as llamacpp and it then fails health forever
+	// with no explanation. This does not claim the node IS MLX (R1 - a 404
+	// here could also mean a llama.cpp build without /health, or a broken
+	// reverse proxy) - it only reports the real observed fact and suggests
+	// the one actionable fix. Cleared on any successful probe or once
+	// Runtime changes away from "llamacpp". Guarded by mu like Runtime.
+	RuntimeMismatchHint string
 	// VRAMOverrides is the operator-declared, per-model VRAM size (MB) from
 	// config (NodeConfig.VRAMOverrides). Used by estimateModelSizeBytes as a
 	// fallback when a node's runtime API can't report a real observed size
@@ -1833,6 +1846,11 @@ func (r *Router) PatchNode(name string, patch NodePatch) bool {
 			}
 			if patch.Runtime != nil {
 				n.Runtime = *patch.Runtime
+				// P409: clear any stale llamacpp/MLX mismatch hint - it no
+				// longer describes this node's current runtime once the
+				// operator has explicitly changed it (that's the hint's own
+				// suggested fix, in the mlx case).
+				n.RuntimeMismatchHint = ""
 				// "auto" re-arms detection so the next poll re-probes the
 				// node instead of keeping whatever runtime it had before.
 				n.autoDetect = *patch.Runtime == "auto"

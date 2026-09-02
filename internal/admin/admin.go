@@ -500,25 +500,31 @@ type nodeResp struct {
 	// declared when present. Detected fields are honest "what agent saw"
 	// (R1) via ps/docker/env, not fabricated. MismatchWarning is amber
 	// warning when declared 4 vs detected 8 (not a 422 block - Adopt fixes).
-	DetectedParallelismType       string             `json:"detectedParallelismType,omitempty"`
-	DetectedParallelismWidth      int                `json:"detectedParallelismWidth,omitempty"`
-	DetectedGPUGroup              []int              `json:"detectedGPUGroup,omitempty"`
-	DetectedSource                string             `json:"detectedSource,omitempty"`
-	DetectedRuntime               string             `json:"detectedRuntime,omitempty"`
-	DetectedEffectiveRequiredGPUs int                `json:"detectedEffectiveRequiredGPUs,omitempty"`
-	MismatchWarning               string             `json:"mismatchWarning,omitempty"`
-	VRAMTotalMB                   int64              `json:"vramTotalMB"`
-	VRAMUsedMB                    int64              `json:"vramUsedMB"`
-	VRAMSource                    string             `json:"vramSource"`
-	PowerDrawW                    float64            `json:"powerDrawW"`
-	Temperature                   *float64           `json:"temperature"`
-	Runtime                       string             `json:"runtime"`
-	Health                        string             `json:"health"`
-	Draining                      bool               `json:"draining"`
-	DrainedReason                 string             `json:"drainedReason,omitempty"`
-	PrewarmDisabled               bool               `json:"prewarmDisabled"`
-	Uptime                        string             `json:"uptime"`
-	LoadedModels                  []router.ModelInfo `json:"loadedModels"`
+	DetectedParallelismType       string   `json:"detectedParallelismType,omitempty"`
+	DetectedParallelismWidth      int      `json:"detectedParallelismWidth,omitempty"`
+	DetectedGPUGroup              []int    `json:"detectedGPUGroup,omitempty"`
+	DetectedSource                string   `json:"detectedSource,omitempty"`
+	DetectedRuntime               string   `json:"detectedRuntime,omitempty"`
+	DetectedEffectiveRequiredGPUs int      `json:"detectedEffectiveRequiredGPUs,omitempty"`
+	MismatchWarning               string   `json:"mismatchWarning,omitempty"`
+	VRAMTotalMB                   int64    `json:"vramTotalMB"`
+	VRAMUsedMB                    int64    `json:"vramUsedMB"`
+	VRAMSource                    string   `json:"vramSource"`
+	PowerDrawW                    float64  `json:"powerDrawW"`
+	Temperature                   *float64 `json:"temperature"`
+	Runtime                       string   `json:"runtime"`
+	// RuntimeMismatchHint (P409) is set only when this node is currently
+	// probed as llamacpp and its /health check is failing specifically with
+	// a 404 - the real, observed signature of an MLX node auto-detected as
+	// llamacpp (see NodeState.RuntimeMismatchHint's doc comment). Empty
+	// otherwise; never a guess presented as fact (R1).
+	RuntimeMismatchHint string             `json:"runtimeMismatchHint,omitempty"`
+	Health              string             `json:"health"`
+	Draining            bool               `json:"draining"`
+	DrainedReason       string             `json:"drainedReason,omitempty"`
+	PrewarmDisabled     bool               `json:"prewarmDisabled"`
+	Uptime              string             `json:"uptime"`
+	LoadedModels        []router.ModelInfo `json:"loadedModels"`
 	// WarmupErrors is the last warmup-ping failure per model (model -> error
 	// string) - populated only for models that failed to warm; a model that
 	// warmed successfully or was never attempted has no entry. Lets the UI
@@ -1455,6 +1461,7 @@ func (s *Server) nodeStateToResp(n *router.NodeState, id string) nodeResp {
 		PowerDrawW:                    n.PowerDrawW,
 		Temperature:                   n.Temperature,
 		Runtime:                       n.Runtime,
+		RuntimeMismatchHint:           n.RuntimeMismatchHint,
 		Health:                        health,
 		Draining:                      n.Draining,
 		DrainedReason:                 n.DrainedReason,
