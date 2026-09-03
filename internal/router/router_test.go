@@ -1049,6 +1049,50 @@ func TestPatchNodeGPUIndices(t *testing.T) {
 	}
 }
 
+// TestPatchNodeVRAMOverrides verifies P411's whole-map-replace PATCH
+// semantics: sets, survives an unrelated patch, and can be explicitly
+// cleared with a non-nil empty map - mirroring TestPatchNodeGPUIndices.
+func TestPatchNodeVRAMOverrides(t *testing.T) {
+	r := New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://gpu-0:11434"},
+	}, nil)
+
+	overrides := map[string]int64{"llama3.1:8b": 8192}
+	if !r.PatchNode("gpu-0", NodePatch{VRAMOverrides: &overrides}) {
+		t.Fatal("PatchNode returned false for existing node")
+	}
+	r.nodes[0].mu.RLock()
+	got := r.nodes[0].VRAMOverrides["llama3.1:8b"]
+	r.nodes[0].mu.RUnlock()
+	if got != 8192 {
+		t.Fatalf("VRAMOverrides[llama3.1:8b] = %d, want 8192", got)
+	}
+
+	// A patch that omits VRAMOverrides (nil) must not clobber the declaration.
+	model := "NVIDIA RTX 4090"
+	if !r.PatchNode("gpu-0", NodePatch{GPUModel: &model}) {
+		t.Fatal("PatchNode returned false for existing node")
+	}
+	r.nodes[0].mu.RLock()
+	got = r.nodes[0].VRAMOverrides["llama3.1:8b"]
+	r.nodes[0].mu.RUnlock()
+	if got != 8192 {
+		t.Fatalf("VRAMOverrides after unrelated patch = %d, want unchanged 8192", got)
+	}
+
+	// A non-nil empty map explicitly clears it.
+	empty := map[string]int64{}
+	if !r.PatchNode("gpu-0", NodePatch{VRAMOverrides: &empty}) {
+		t.Fatal("PatchNode returned false for existing node")
+	}
+	r.nodes[0].mu.RLock()
+	gotLen := len(r.nodes[0].VRAMOverrides)
+	r.nodes[0].mu.RUnlock()
+	if gotLen != 0 {
+		t.Fatalf("VRAMOverrides after clear = %v, want empty", r.nodes[0].VRAMOverrides)
+	}
+}
+
 func TestPatchNodeRuntime(t *testing.T) {
 	r := New(config.RoutingConfig{}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://gpu-0:11434", Runtime: "ollama"},

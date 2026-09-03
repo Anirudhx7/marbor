@@ -840,6 +840,59 @@ func TestHandlePatchNode_SetsRuntime(t *testing.T) {
 	}
 }
 
+// TestHandlePatchNode_RejectsNonPositiveVRAMOverride verifies a 0 or negative
+// vram_overrides value is rejected with 400 before it reaches router.PatchNode
+// or the store override - such a value would otherwise be silently treated
+// as "no override" downstream (estimateModelSizeBytes' map lookup), never
+// actually applying, which R1 requires rejecting explicitly rather than
+// accepting silently.
+func TestHandlePatchNode_RejectsNonPositiveVRAMOverride(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://gpu-0:11434"},
+	}, nil)
+	s := NewServer(r, nil, config.Config{})
+
+	for _, body := range []string{`{"vram_overrides":{"llama3.1:8b":0}}`, `{"vram_overrides":{"llama3.1:8b":-1}}`} {
+		req := httptest.NewRequest(http.MethodPatch, "/admin/nodes/gpu-0", bytes.NewReader([]byte(body)))
+		req.SetPathValue("name", "gpu-0")
+		rec := httptest.NewRecorder()
+		s.handlePatchNode(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("body=%s: status = %d, want 400", body, rec.Code)
+		}
+	}
+}
+
+// TestHandlePatchNode_SetsVRAMOverrides verifies P411's admin API wiring:
+// PATCH /admin/nodes/{name} accepts "vram_overrides" and applies it to the
+// live node, mirroring TestHandlePatchNode_SetsGPUIndices.
+func TestHandlePatchNode_SetsVRAMOverrides(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://gpu-0:11434"},
+	}, nil)
+	s := NewServer(r, nil, config.Config{})
+
+	body := bytes.NewReader([]byte(`{"vram_overrides":{"llama3.1:8b":8192}}`))
+	req := httptest.NewRequest(http.MethodPatch, "/admin/nodes/gpu-0", body)
+	req.SetPathValue("name", "gpu-0")
+	rec := httptest.NewRecorder()
+	s.handlePatchNode(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	nodes := r.Nodes()
+	if len(nodes) != 1 {
+		t.Fatalf("got %d nodes, want 1", len(nodes))
+	}
+	nodes[0].RLock()
+	got := nodes[0].VRAMOverrides["llama3.1:8b"]
+	nodes[0].RUnlock()
+	if got != 8192 {
+		t.Errorf("VRAMOverrides[llama3.1:8b] = %d, want 8192", got)
+	}
+}
+
 // TestHandlePatchNode_SetsGPUIndices verifies the P75 Gap B/C admin API
 // wiring: PATCH /admin/nodes/{name} accepts "gpu_indices" and applies it to
 // the live NodeState via router.PatchNode, mirroring TestHandlePatchNode_SetsRuntime.

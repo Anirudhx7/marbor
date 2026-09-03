@@ -1729,6 +1729,14 @@ type NodePatch struct {
 	// means no change, pointer to 0 clears.
 	ParallelismType  *string `json:"parallelism_type"`
 	ParallelismWidth *int    `json:"parallelism_width"`
+	// VRAMOverrides declares, per model name, how much VRAM (MB) that model
+	// consumes on this node (P411) - nil means "not present in this PATCH,
+	// no change"; a non-nil pointer to an empty map explicitly clears a
+	// prior declaration (mirrors GPUIndices' whole-value-replace
+	// convention above). Key is currently the plain model name - see
+	// config.NodeConfig.VRAMOverrides for why quant-variant qualification
+	// is deliberately deferred.
+	VRAMOverrides *map[string]int64 `json:"vram_overrides"`
 }
 
 // UpdateNodeURL rewrites a node's backend address. Unlike PatchNode's other
@@ -1881,6 +1889,13 @@ func (r *Router) PatchNode(name string, patch NodePatch) bool {
 			}
 			if patch.ParallelismWidth != nil {
 				n.ParallelismWidth = *patch.ParallelismWidth
+			}
+			if patch.VRAMOverrides != nil {
+				overrides := make(map[string]int64, len(*patch.VRAMOverrides))
+				for k, v := range *patch.VRAMOverrides {
+					overrides[k] = v
+				}
+				n.VRAMOverrides = overrides
 			}
 			n.mu.Unlock()
 			return true

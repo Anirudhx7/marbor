@@ -114,6 +114,10 @@ export const mockGPUNodes: GPUNode[] = [
     detectedRuntime: 'vllm',
     detectedEffectiveRequiredGPUs: 8,
     mismatchWarning: 'declared 2 GPUs vs detected 8 GPUs',
+    // P411 demo: operator-declared per-model VRAM override - vLLM doesn't
+    // expose per-model size via its API, so without this the scheduler can't
+    // reserve headroom or predictively warm this model on this node.
+    vramOverrides: { 'meta-llama/Llama-3.3-8B-Instruct': 16384 },
     vramTotalMB: 80 * GB,
     vramUsedMB: Math.round(52.8 * GB),
     vramSource: 'nvidia',

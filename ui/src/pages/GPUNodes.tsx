@@ -340,6 +340,14 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
                   Unknown - add docker.sock or run agent on host
                 </span>
               ) : null}
+              {node.vramOverrides && Object.keys(node.vramOverrides).length > 0 ? (
+                <span
+                  title={Object.entries(node.vramOverrides).map(([model, mb]) => `${model}=${mb}MB`).join(', ')}
+                  className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-secondary text-muted-foreground border border-border"
+                >
+                  {Object.keys(node.vramOverrides).length} VRAM override{Object.keys(node.vramOverrides).length === 1 ? '' : 's'}
+                </span>
+              ) : null}
             </div>
           </div>
         </div>
@@ -1419,9 +1427,10 @@ export function GPUNodes() {
   const [editMaxInFlight, setEditMaxInFlight] = useState('');
   const [editParallelismType, setEditParallelismType] = useState('');
   const [editParallelismWidth, setEditParallelismWidth] = useState('');
+  const [editVRAMOverrides, setEditVRAMOverrides] = useState('');
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
-  const [pendingPatch, setPendingPatch] = useState<{ vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; parallelism_type?: string | null; parallelism_width?: number | null } | null>(null);
+  const [pendingPatch, setPendingPatch] = useState<{ vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; parallelism_type?: string | null; parallelism_width?: number | null; vram_overrides?: Record<string, number> } | null>(null);
   // P24: TLS fingerprint probe/pin state - probing only ever populates
   // tlsProbedFingerprint for display; pinning happens exclusively via the
   // "Confirm & Pin" click (patchNode), never automatically from a probe
@@ -1442,6 +1451,12 @@ export function GPUNodes() {
   const tlsExpectedFingerprintNormalized = normalizeFingerprint(tlsExpectedFingerprint);
   const tlsProbedFingerprintNormalized = normalizeFingerprint(tlsProbedFingerprint || '');
 
+  // vramOverridesToString/fromString mirror the CLI's --vram-override
+  // comma-separated "model=mb" convention (P411), same as the editGPUIndices
+  // comma-separated-list pattern above.
+  const vramOverridesToString = (overrides?: Record<string, number>) =>
+    Object.entries(overrides ?? {}).map(([model, mb]) => `${model}=${mb}`).join(', ');
+
   const openEditModal = (node: GPUNode) => {
     setEditNode(node);
     setEditHost(node.host ?? '');
@@ -1455,6 +1470,7 @@ export function GPUNodes() {
     setEditMaxInFlight(node.maxInFlight && node.maxInFlight > 0 ? String(node.maxInFlight) : '');
     setEditParallelismType(node.parallelismType ?? '');
     setEditParallelismWidth(node.parallelismWidth && node.parallelismWidth > 0 ? String(node.parallelismWidth) : '');
+    setEditVRAMOverrides(vramOverridesToString(node.vramOverrides));
     setEditError('');
   };
 
@@ -1493,12 +1509,15 @@ export function GPUNodes() {
     if (editParallelismWidth === (prev.parallelismWidth && prev.parallelismWidth > 0 ? String(prev.parallelismWidth) : '')) {
       setEditParallelismWidth(fresh.parallelismWidth && fresh.parallelismWidth > 0 ? String(fresh.parallelismWidth) : '');
     }
+    if (editVRAMOverrides === vramOverridesToString(prev.vramOverrides)) {
+      setEditVRAMOverrides(vramOverridesToString(fresh.vramOverrides));
+    }
     setEditNode(fresh);
-  }, [nodes, editNode, editHost, editPort, editUseHttps, editVRAM, editGPUModel, editRuntime, editGPUIndices, editMaxInFlight, editParallelismType, editParallelismWidth]);
+  }, [nodes, editNode, editHost, editPort, editUseHttps, editVRAM, editGPUModel, editRuntime, editGPUIndices, editMaxInFlight, editParallelismType, editParallelismWidth, editVRAMOverrides]);
 
-  const buildPatch = (): { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; parallelism_type?: string | null; parallelism_width?: number | null } | 'invalid' | null => {
+  const buildPatch = (): { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; parallelism_type?: string | null; parallelism_width?: number | null; vram_overrides?: Record<string, number> } | 'invalid' | null => {
     if (!editNode) return null;
-    const patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; parallelism_type?: string | null; parallelism_width?: number | null } = {};
+    const patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; parallelism_type?: string | null; parallelism_width?: number | null; vram_overrides?: Record<string, number> } = {};
     if (editVRAM.trim() !== '') {
       const v = parseFloat(editVRAM);
       if (isNaN(v) || v < 0) { setEditError(`VRAM must be a non-negative number (${editVRAMUnit})`); return 'invalid'; }
@@ -1563,6 +1582,30 @@ export function GPUNodes() {
     }
     if (newType !== priorType) patch.parallelism_type = newType || null;
     if (newWidth !== priorWidth) patch.parallelism_width = newWidth || null;
+    // VRAM overrides - comma-separated "model=mb" pairs, whole-map replace
+    // (P411), mirroring gpu_indices' whole-slice-replace convention above.
+    const priorVRAMOverrides = editNode.vramOverrides ?? {};
+    if (editVRAMOverrides.trim() !== vramOverridesToString(editNode.vramOverrides)) {
+      const newVRAMOverrides: Record<string, number> = {};
+      const entries = editVRAMOverrides.split(',').map(s => s.trim()).filter(s => s !== '');
+      for (const entry of entries) {
+        const eq = entry.indexOf('=');
+        if (eq <= 0) {
+          setEditError(`Invalid VRAM override "${entry}" (want model=mb)`);
+          return 'invalid';
+        }
+        const model = entry.slice(0, eq).trim();
+        const mb = parseInt(entry.slice(eq + 1).trim(), 10);
+        if (!model || isNaN(mb) || mb <= 0) {
+          setEditError(`Invalid VRAM override "${entry}" (mb must be a positive integer)`);
+          return 'invalid';
+        }
+        newVRAMOverrides[model] = mb;
+      }
+      const changed = Object.keys(newVRAMOverrides).length !== Object.keys(priorVRAMOverrides).length
+        || Object.entries(newVRAMOverrides).some(([k, v]) => priorVRAMOverrides[k] !== v);
+      if (changed) patch.vram_overrides = newVRAMOverrides;
+    }
     if (Object.keys(patch).length === 0) return null;
     return patch;
   };
@@ -1571,7 +1614,7 @@ export function GPUNodes() {
   // backend would, so the modal (which holds its own editNode snapshot, not
   // a live reference into `nodes`) can reflect a save without needing to
   // close and reopen.
-  const mergeNodePatch = (n: GPUNode, patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; tls_fingerprint?: string; parallelism_type?: string | null; parallelism_width?: number | null }): GPUNode => {
+  const mergeNodePatch = (n: GPUNode, patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; tls_fingerprint?: string; parallelism_type?: string | null; parallelism_width?: number | null; vram_overrides?: Record<string, number> }): GPUNode => {
     const scheme = patch.url ? (patch.url.startsWith('https://') ? 'https' as const : 'http' as const) : undefined;
     const derivedRequired = (() => {
       const width = patch.parallelism_width !== undefined ? (patch.parallelism_width ?? 0) : (n.parallelismWidth ?? 0);
@@ -1594,6 +1637,7 @@ export function GPUNodes() {
       tlsFingerprintMismatch: patch.tls_fingerprint !== undefined ? false : n.tlsFingerprintMismatch,
       parallelismType: patch.parallelism_type !== undefined ? (patch.parallelism_type || undefined) : n.parallelismType,
       parallelismWidth: patch.parallelism_width !== undefined ? (patch.parallelism_width || undefined) : n.parallelismWidth,
+      vramOverrides: patch.vram_overrides ?? n.vramOverrides,
       effectiveRequiredGPUs: derivedRequired,
     };
   };
@@ -1603,7 +1647,7 @@ export function GPUNodes() {
   // by applyPatch (Runtime edits, editNode-scoped) and applyAgentTLSPatch
   // (Agent TLS pin/reset, agentNode-scoped) so a future fix to this shared
   // core doesn't have to be applied twice.
-  const sendNodePatch = async (nodeName: string, patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; tls_fingerprint?: string; parallelism_type?: string | null; parallelism_width?: number | null }) => {
+  const sendNodePatch = async (nodeName: string, patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; tls_fingerprint?: string; parallelism_type?: string | null; parallelism_width?: number | null; vram_overrides?: Record<string, number> }) => {
     if (demoMode) {
       setNodes(prev => prev.map(n => n.name === nodeName ? mergeNodePatch(n, patch) : n));
       return;
@@ -1618,7 +1662,7 @@ export function GPUNodes() {
   // inside the still-open modal, not a form submit, so closing on success
   // would yank the operator out mid-workflow (they still may want to probe,
   // paste-verify, or reset again).
-  const applyPatch = async (patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; tls_fingerprint?: string; parallelism_type?: string | null; parallelism_width?: number | null }, closeOnSuccess = true) => {
+  const applyPatch = async (patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; tls_fingerprint?: string; parallelism_type?: string | null; parallelism_width?: number | null; vram_overrides?: Record<string, number> }, closeOnSuccess = true) => {
     if (!editNode) return;
     if (demoMode) {
       await sendNodePatch(editNode.name, patch);
@@ -2135,6 +2179,21 @@ export function GPUNodes() {
             />
             <p className="text-xs text-muted-foreground mt-1">
               A node at or above this many in-flight requests is shed immediately (failover/cloud/503) instead of queued. Leave blank to use Settings &rarr; Routing's global Max In-Flight Per Node.
+            </p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+              Per-Model VRAM Overrides
+            </label>
+            <input
+              type="text"
+              value={editVRAMOverrides}
+              onChange={(e) => setEditVRAMOverrides(e.target.value)}
+              placeholder="e.g., llama3.1:8b=8192, mixtral=26000 (comma-separated model=mb pairs)"
+              className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              A comma-separated list of model=mb declarations for how much VRAM a specific model consumes on this node. Mainly needed for non-Ollama runtimes (vLLM, TGI, llama.cpp, MLX), which don't expose per-model size via their APIs - without a declared size the scheduler can't reserve headroom or predictively warm that model. Leave blank to declare nothing.
             </p>
           </div>
           <div className="grid grid-cols-2 gap-3">

@@ -314,6 +314,17 @@ type NodeConfig struct {
 	// predictive warmup and headroom/eviction checks for that node. Operator-
 	// declared, like vram_total_mb - never guessed (R1). Empty/absent map is a
 	// no-op; only declare sizes you actually know.
+	//
+	// Wired end-to-end (Admin API PATCH /admin/nodes/{name}, CLI "nodes patch
+	// --vram-override", UI GPU Nodes edit modal) as of P411. Key is currently
+	// the plain model name, NOT quant-variant-qualified: as of P411 there is
+	// no operator-facing, design-time quant-identity signal to key on (P406's
+	// LoadedModel.Digest is an opaque runtime-probed value used only for live
+	// warm/fungibility comparison, not a stable string an operator would type
+	// ahead of time; P412, which would add real HF-repo-based resolution, has
+	// not landed). A correction for one quant variant of a model will apply to
+	// every variant sharing that model name until a real signal exists and
+	// this key format is migrated - deliberate, not an oversight.
 	VRAMOverrides map[string]int64 `yaml:"vram_overrides,omitempty" json:"vram_overrides,omitempty"`
 	// Host groups this node with any other node that lives on the same
 	// physical machine (e.g. Ollama on :11434 and vLLM on :8000 on one box),

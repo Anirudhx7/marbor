@@ -589,6 +589,23 @@ func (c *Client) PatchNodeParallelismWithPtr(name string, pType *string, pWidth 
 	return nil
 }
 
+// PatchNodeVRAMOverridesWithPtr is the visited-aware variant for CLI patch
+// (P411) - overrides == nil means the flag wasn't set (omit from body, no
+// change); a non-nil pointer to a possibly-empty map is sent as-is (an empty
+// map explicitly clears any prior declaration).
+func (c *Client) PatchNodeVRAMOverridesWithPtr(name string, overrides *map[string]int64) error {
+	if overrides == nil {
+		return nil
+	}
+	body := map[string]interface{}{"vram_overrides": *overrides}
+	resp, err := c.doRequestBody(http.MethodPatch, "/admin/v1/nodes/"+urlPathEscape(name), body)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
 // Nodes calls GET /admin/v1/nodes (session-authed).
 func (c *Client) Nodes() ([]NodeResp, error) {
 	resp, err := c.doRequest(http.MethodGet, "/admin/v1/nodes", true)

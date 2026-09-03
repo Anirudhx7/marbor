@@ -107,6 +107,10 @@ export interface GPUNode {
   detectedRuntime?: string;
   detectedEffectiveRequiredGPUs?: number;
   mismatchWarning?: string;
+  // Operator-declared per-model VRAM size override (MB), keyed by plain
+  // model name (P411) - undefined/empty means nothing declared. Feeds
+  // estimateModelSizeBytes' tier-3 fallback on the router side.
+  vramOverrides?: Record<string, number>;
   // Live, admin-toggleable, in-memory-only. Never persisted - reverts to
   // false (prewarm enabled) on restart.
   prewarmDisabled?: boolean;

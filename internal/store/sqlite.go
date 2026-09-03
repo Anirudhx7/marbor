@@ -567,6 +567,10 @@ func (s *sqliteStore) migrate() error {
 		`ALTER TABLE benchmark_runs ADD COLUMN warm_p99_ms REAL`,
 		`ALTER TABLE benchmark_runs ADD COLUMN cold_tpot_p50_ms REAL`,
 		`ALTER TABLE benchmark_runs ADD COLUMN warm_tpot_p50_ms REAL`,
+		// P411: operator-declared per-model VRAM size overrides (MB), JSON
+		// blob keyed by plain model name - mirrors the gpu_indices column's
+		// JSON-blob convention above. Empty string means "nothing declared".
+		`ALTER TABLE node_overrides ADD COLUMN vram_overrides TEXT NOT NULL DEFAULT ''`,
 	} {
 		// Idempotent: a rerun against an already-migrated DB hits "duplicate
 		// column name" for every statement here, which is benign and must be
@@ -1206,14 +1210,14 @@ func (s *sqliteStore) AllNodes() ([]NodeRecord, error) {
 // names; a column outside that list keeps its current stored value
 // regardless of what the calling binary knows about, which is what makes
 // a downgrade-then-write safe by construction going forward.
-func (s *sqliteStore) UpsertNodeOverride(name string, vramTotalMB *int64, gpuModel *string, runtime *string, gpuIndices *[]int, maxInFlight *int, tlsFingerprint *string, parallelismType *string, parallelismWidth *int) error {
+func (s *sqliteStore) UpsertNodeOverride(name string, vramTotalMB *int64, gpuModel *string, runtime *string, gpuIndices *[]int, maxInFlight *int, tlsFingerprint *string, parallelismType *string, parallelismWidth *int, vramOverrides *map[string]int64) error {
 	var existingVRAM sql.NullInt64
 	var existingGPU, existingRuntime, existingFingerprint, existingParallelismType sql.NullString
-	var existingIndices string
+	var existingIndices, existingVRAMOverrides string
 	var existingMaxInFlight, existingParallelismWidth sql.NullInt64
 	if err := s.db.QueryRow(
-		`SELECT vram_total_mb, gpu_model, runtime, gpu_indices, max_in_flight, tls_fingerprint, parallelism_type, parallelism_width FROM node_overrides WHERE name = ?`, name,
-	).Scan(&existingVRAM, &existingGPU, &existingRuntime, &existingIndices, &existingMaxInFlight, &existingFingerprint, &existingParallelismType, &existingParallelismWidth); err != nil && err != sql.ErrNoRows {
+		`SELECT vram_total_mb, gpu_model, runtime, gpu_indices, max_in_flight, tls_fingerprint, parallelism_type, parallelism_width, vram_overrides FROM node_overrides WHERE name = ?`, name,
+	).Scan(&existingVRAM, &existingGPU, &existingRuntime, &existingIndices, &existingMaxInFlight, &existingFingerprint, &existingParallelismType, &existingParallelismWidth, &existingVRAMOverrides); err != nil && err != sql.ErrNoRows {
 		return err
 	}
 
@@ -1265,10 +1269,18 @@ func (s *sqliteStore) UpsertNodeOverride(name string, vramTotalMB *int64, gpuMod
 			parallelismWidthVal = sql.NullInt64{Int64: int64(*parallelismWidth), Valid: true}
 		}
 	}
+	vramOverridesVal := existingVRAMOverrides
+	if vramOverrides != nil {
+		b, err := json.Marshal(*vramOverrides)
+		if err != nil {
+			return fmt.Errorf("store: UpsertNodeOverride: marshal vram_overrides: %w", err)
+		}
+		vramOverridesVal = string(b)
+	}
 
 	_, err := s.db.Exec(
-		`INSERT INTO node_overrides (name, vram_total_mb, gpu_model, runtime, gpu_indices, max_in_flight, tls_fingerprint, parallelism_type, parallelism_width)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO node_overrides (name, vram_total_mb, gpu_model, runtime, gpu_indices, max_in_flight, tls_fingerprint, parallelism_type, parallelism_width, vram_overrides)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(name) DO UPDATE SET
 		   vram_total_mb = excluded.vram_total_mb,
 		   gpu_model = excluded.gpu_model,
@@ -1277,8 +1289,9 @@ func (s *sqliteStore) UpsertNodeOverride(name string, vramTotalMB *int64, gpuMod
 		   max_in_flight = excluded.max_in_flight,
 		   tls_fingerprint = excluded.tls_fingerprint,
 		   parallelism_type = excluded.parallelism_type,
-		   parallelism_width = excluded.parallelism_width`,
-		name, vram, gpu, rt, indices, maxInFlightVal, fingerprint, parallelismTypeVal, parallelismWidthVal,
+		   parallelism_width = excluded.parallelism_width,
+		   vram_overrides = excluded.vram_overrides`,
+		name, vram, gpu, rt, indices, maxInFlightVal, fingerprint, parallelismTypeVal, parallelismWidthVal, vramOverridesVal,
 	)
 	if err != nil {
 		return fmt.Errorf("store: UpsertNodeOverride: %w", err)
@@ -1288,7 +1301,7 @@ func (s *sqliteStore) UpsertNodeOverride(name string, vramTotalMB *int64, gpuMod
 
 func (s *sqliteStore) NodeOverrides() (map[string]NodeOverride, error) {
 	rows, err := s.db.Query(
-		`SELECT name, vram_total_mb, gpu_model, runtime, gpu_indices, max_in_flight, tls_fingerprint, parallelism_type, parallelism_width FROM node_overrides`,
+		`SELECT name, vram_total_mb, gpu_model, runtime, gpu_indices, max_in_flight, tls_fingerprint, parallelism_type, parallelism_width, vram_overrides FROM node_overrides`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("store: NodeOverrides: %w", err)
@@ -1300,9 +1313,9 @@ func (s *sqliteStore) NodeOverrides() (map[string]NodeOverride, error) {
 		var name string
 		var vram sql.NullInt64
 		var gpu, rt, fingerprint, parallelismType sql.NullString
-		var indicesJSON string
+		var indicesJSON, vramOverridesJSON string
 		var maxInFlight, parallelismWidth sql.NullInt64
-		if err := rows.Scan(&name, &vram, &gpu, &rt, &indicesJSON, &maxInFlight, &fingerprint, &parallelismType, &parallelismWidth); err != nil {
+		if err := rows.Scan(&name, &vram, &gpu, &rt, &indicesJSON, &maxInFlight, &fingerprint, &parallelismType, &parallelismWidth, &vramOverridesJSON); err != nil {
 			return nil, fmt.Errorf("store: NodeOverrides scan: %w", err)
 		}
 		var ov NodeOverride
@@ -1338,6 +1351,14 @@ func (s *sqliteStore) NodeOverrides() (map[string]NodeOverride, error) {
 			// whole row (R1/R8 discipline: a bad reading becomes "unknown",
 			// not a fabricated or half-parsed value) - the node just falls
 			// back to undeclared (host-level) sizing until re-declared.
+		}
+		if vramOverridesJSON != "" {
+			var overrides map[string]int64
+			if err := json.Unmarshal([]byte(vramOverridesJSON), &overrides); err == nil {
+				ov.VRAMOverrides = &overrides
+			}
+			// Same discipline as gpu_indices above: a malformed blob drops
+			// this field only, never the whole row.
 		}
 		out[name] = ov
 	}
