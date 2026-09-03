@@ -3,8 +3,42 @@ package cli
 import (
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 )
+
+// parseVRAMOverrides parses a CLI --vram-override value of the form
+// "model=mb[,model2=mb2...]" into a map[string]int64, validating positive
+// integers client-side (fast-fail UX pre-check, matching
+// isValidTLSFingerprintArg's role - the server remains the authority).
+// An empty input string parses to a non-nil empty map (explicit clear).
+func parseVRAMOverrides(s string) (map[string]int64, error) {
+	out := map[string]int64{}
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return out, nil
+	}
+	for _, pair := range strings.Split(s, ",") {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		parts := strings.SplitN(pair, "=", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid --vram-override entry %q (want model=mb)", pair)
+		}
+		model := strings.TrimSpace(parts[0])
+		if model == "" {
+			return nil, fmt.Errorf("invalid --vram-override entry %q (empty model name)", pair)
+		}
+		mb, err := strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 64)
+		if err != nil || mb <= 0 {
+			return nil, fmt.Errorf("invalid --vram-override entry %q (mb must be a positive integer)", pair)
+		}
+		out[model] = mb
+	}
+	return out, nil
+}
 
 // isValidTLSFingerprintArg mirrors internal/admin/admin.go's
 // isValidTLSFingerprint (server-side validation) so an obviously malformed
@@ -90,14 +124,25 @@ func runNodes(flags *globalFlags, stdout, stderr io.Writer) int {
 	return ExitOK
 }
 
-// runNodesPatchWithCtx implements `marbor nodes patch <node> --parallelism-type tp --parallelism-width 8` (P397).
+// runNodesPatchWithCtx implements `marbor nodes patch <node> --parallelism-type tp --parallelism-width 8` (P397)
+// and `marbor nodes patch <node> --vram-override model=mb[,model2=mb2]` (P411).
 func runNodesPatchWithCtx(ctx *RunCtx, name string) int {
 	pTypeSet := ctx.IsSet("parallelism-type")
 	pWidthSet := ctx.IsSet("parallelism-width")
 	pType := ctx.String("parallelism-type")
 	pWidth := ctx.Int("parallelism-width")
-	if !pTypeSet && !pWidthSet {
-		fmt.Fprintln(ctx.Stderr, "error: at least one of --parallelism-type or --parallelism-width is required")
+	vramOverrideSet := ctx.IsSet("vram-override")
+	var vramOverrides map[string]int64
+	if vramOverrideSet {
+		var err error
+		vramOverrides, err = parseVRAMOverrides(ctx.String("vram-override"))
+		if err != nil {
+			fmt.Fprintf(ctx.Stderr, "error: %v\n", err)
+			return ExitUserError
+		}
+	}
+	if !pTypeSet && !pWidthSet && !vramOverrideSet {
+		fmt.Fprintln(ctx.Stderr, "error: at least one of --parallelism-type, --parallelism-width, or --vram-override is required")
 		return ExitUserError
 	}
 	// For clearing, both must be explicitly set to empty/0
@@ -133,16 +178,42 @@ func runNodesPatchWithCtx(ctx *RunCtx, name string) int {
 		v := pWidth
 		pWidthPtr = &v
 	}
-	if err := client.PatchNodeParallelismWithPtr(name, pTypePtr, pWidthPtr); err != nil {
-		return reportError(err, ctx.Stderr)
+	if pTypeSet || pWidthSet {
+		if err := client.PatchNodeParallelismWithPtr(name, pTypePtr, pWidthPtr); err != nil {
+			return reportError(err, ctx.Stderr)
+		}
 	}
-	if handled, code := emitJSON(ctx.Stdout, ctx.Stderr, ctx.Flags.jsonOutput, map[string]interface{}{"ok": true, "node": name, "parallelism_type": pType, "parallelism_width": pWidth}); handled {
+	var vramOverridesPtr *map[string]int64
+	if vramOverrideSet {
+		vramOverridesPtr = &vramOverrides
+		if err := client.PatchNodeVRAMOverridesWithPtr(name, vramOverridesPtr); err != nil {
+			return reportError(err, ctx.Stderr)
+		}
+	}
+	result := map[string]interface{}{"ok": true, "node": name}
+	if pTypeSet || pWidthSet {
+		result["parallelism_type"] = pType
+		result["parallelism_width"] = pWidth
+	}
+	if vramOverrideSet {
+		result["vram_overrides"] = vramOverrides
+	}
+	if handled, code := emitJSON(ctx.Stdout, ctx.Stderr, ctx.Flags.jsonOutput, result); handled {
 		return code
 	}
-	if pType == "" {
-		fmt.Fprintf(ctx.Stdout, "node %q parallelism cleared\n", name)
-	} else {
-		fmt.Fprintf(ctx.Stdout, "node %q parallelism set to %s=%d\n", name, pType, pWidth)
+	if pTypeSet || pWidthSet {
+		if pType == "" {
+			fmt.Fprintf(ctx.Stdout, "node %q parallelism cleared\n", name)
+		} else {
+			fmt.Fprintf(ctx.Stdout, "node %q parallelism set to %s=%d\n", name, pType, pWidth)
+		}
+	}
+	if vramOverrideSet {
+		if len(vramOverrides) == 0 {
+			fmt.Fprintf(ctx.Stdout, "node %q vram overrides cleared\n", name)
+		} else {
+			fmt.Fprintf(ctx.Stdout, "node %q vram overrides set: %v\n", name, vramOverrides)
+		}
 	}
 	return ExitOK
 }

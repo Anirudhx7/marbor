@@ -492,9 +492,14 @@ type nodeResp struct {
 	// ParallelismType/Width is the deployment topology (P397) - type tp|pp|ep|dp,
 	// width 1..64, derived EffectiveRequiredGPUs = max(len(gpuIndices), width)
 	// - 0/empty means unconstrained (existing fleet).
-	ParallelismType       string `json:"parallelismType,omitempty"`
-	ParallelismWidth      int    `json:"parallelismWidth,omitempty"`
-	EffectiveRequiredGPUs int    `json:"effectiveRequiredGPUs,omitempty"`
+	ParallelismType  string `json:"parallelismType,omitempty"`
+	ParallelismWidth int    `json:"parallelismWidth,omitempty"`
+	// VRAMOverrides is this node's operator-declared per-model VRAM size
+	// override (MB), keyed by plain model name (P411) - empty/omitted means
+	// nothing declared. See NodeState.VRAMOverrides and
+	// config.NodeConfig.VRAMOverrides for the consumption side.
+	VRAMOverrides         map[string]int64 `json:"vramOverrides,omitempty"`
+	EffectiveRequiredGPUs int              `json:"effectiveRequiredGPUs,omitempty"`
 	// P397b: auto-discovered deployment (additive, per-port). Declared above
 	// always overrides detected - effectiveRequiredGPUs already prefers
 	// declared when present. Detected fields are honest "what agent saw"
@@ -1447,6 +1452,7 @@ func (s *Server) nodeStateToResp(n *router.NodeState, id string) nodeResp {
 		TLSFingerprintMismatch:        n.AgentTLSMismatch,
 		ParallelismType:               n.ParallelismType,
 		ParallelismWidth:              n.ParallelismWidth,
+		VRAMOverrides:                 n.VRAMOverrides,
 		EffectiveRequiredGPUs:         n.EffectiveRequiredGPUs(),
 		DetectedParallelismType:       n.DetectedParallelismType,
 		DetectedParallelismWidth:      n.DetectedParallelismWidth,
@@ -2372,7 +2378,7 @@ func (s *Server) handleDisableMarborAgent(w http.ResponseWriter, r *http.Request
 		n.RUnlock()
 		if sameHost && fp != "" {
 			s.router.PatchNode(nodeName, router.NodePatch{TLSFingerprint: &empty})
-			if err := s.st.UpsertNodeOverride(nodeName, nil, nil, nil, nil, nil, &empty, nil, nil); err != nil {
+			if err := s.st.UpsertNodeOverride(nodeName, nil, nil, nil, nil, nil, &empty, nil, nil, nil); err != nil {
 				log.Printf("admin: failed to persist cleared TLS fingerprint override for %s: %v", nodeName, err)
 			}
 		}
@@ -3597,6 +3603,18 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "tls_fingerprint must be empty (to clear the pin) or in the form SHA256:<64 hex characters>")
 		return
 	}
+	// P411: an override of 0 or negative MB is nonsensical (it isn't a real
+	// declared size) and would silently defeat estimateModelSizeBytes' tier-3
+	// fallback (treated as "no override" downstream) - reject explicitly
+	// instead of accepting a value that would never actually apply.
+	if patch.VRAMOverrides != nil {
+		for model, mb := range *patch.VRAMOverrides {
+			if mb <= 0 {
+				writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("vram_overrides[%q] must be a positive number of MB (got %d)", model, mb))
+				return
+			}
+		}
+	}
 	// P397: parallelism validation - structured type tp|pp|ep|dp + width 1..64.
 	if patch.ParallelismType != nil && *patch.ParallelismType != "" {
 		switch *patch.ParallelismType {
@@ -3694,12 +3712,12 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 			}
 			_ = s.st.UpdateNodeURL(name, *patch.URL)
 		}
-		if patch.VRAMTotalMB != nil || patch.GPUModel != nil || patch.Runtime != nil || patch.GPUIndices != nil || patch.MaxInFlight != nil || patch.TLSFingerprint != nil || patch.ParallelismType != nil || patch.ParallelismWidth != nil {
+		if patch.VRAMTotalMB != nil || patch.GPUModel != nil || patch.Runtime != nil || patch.GPUIndices != nil || patch.MaxInFlight != nil || patch.TLSFingerprint != nil || patch.ParallelismType != nil || patch.ParallelismWidth != nil || patch.VRAMOverrides != nil {
 			if !s.router.PatchNode(name, patch) {
 				writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
 				return false
 			}
-			if err := s.st.UpsertNodeOverride(name, patch.VRAMTotalMB, patch.GPUModel, patch.Runtime, patch.GPUIndices, patch.MaxInFlight, patch.TLSFingerprint, patch.ParallelismType, patch.ParallelismWidth); err != nil {
+			if err := s.st.UpsertNodeOverride(name, patch.VRAMTotalMB, patch.GPUModel, patch.Runtime, patch.GPUIndices, patch.MaxInFlight, patch.TLSFingerprint, patch.ParallelismType, patch.ParallelismWidth, patch.VRAMOverrides); err != nil {
 				log.Printf("admin: failed to persist node override for %s: %v", name, err)
 			}
 		}
@@ -3708,7 +3726,7 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 	if !locked {
 		return
 	}
-	s.logSystemChange(r, "patch_node", name, fmt.Sprintf("URLChanged: %v, VRAMTotalMBChanged: %v, GPUModelChanged: %v, RuntimeChanged: %v, GPUIndicesChanged: %v, MaxInFlightChanged: %v, TLSFingerprintChanged: %v, ParallelismChanged: %v", patch.URL != nil, patch.VRAMTotalMB != nil, patch.GPUModel != nil, patch.Runtime != nil, patch.GPUIndices != nil, patch.MaxInFlight != nil, patch.TLSFingerprint != nil, patch.ParallelismType != nil || patch.ParallelismWidth != nil))
+	s.logSystemChange(r, "patch_node", name, fmt.Sprintf("URLChanged: %v, VRAMTotalMBChanged: %v, GPUModelChanged: %v, RuntimeChanged: %v, GPUIndicesChanged: %v, MaxInFlightChanged: %v, TLSFingerprintChanged: %v, ParallelismChanged: %v, VRAMOverridesChanged: %v", patch.URL != nil, patch.VRAMTotalMB != nil, patch.GPUModel != nil, patch.Runtime != nil, patch.GPUIndices != nil, patch.MaxInFlight != nil, patch.TLSFingerprint != nil, patch.ParallelismType != nil || patch.ParallelismWidth != nil, patch.VRAMOverrides != nil))
 	// Return the updated node.
 	s.handleNode(w, r)
 }
