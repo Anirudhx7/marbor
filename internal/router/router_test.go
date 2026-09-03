@@ -888,6 +888,42 @@ func TestAddNode_UpsertsByNameInsteadOfDuplicating(t *testing.T) {
 	}
 }
 
+// TestAddNode_UpsertPreservesLivePatchedVRAMOverrides is a regression test
+// for a P411 code-review finding: AddNode's upsert-by-name branch used to
+// unconditionally overwrite VRAMOverrides from the incoming config.NodeConfig
+// (always empty/nil for a caller like handleAddNode's POST /admin/nodes,
+// which never carries vram_overrides), silently wiping a live operator
+// declaration set via PatchNode any time a node's basic fields were
+// re-submitted through the upsert-by-name path. VRAMOverrides must survive
+// exactly like DeclaredGPUIndices/ParallelismType/ParallelismWidth/
+// TLSFingerprint already do in this same branch.
+func TestAddNode_UpsertPreservesLivePatchedVRAMOverrides(t *testing.T) {
+	r := New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://gpu-0:11434"},
+	}, nil)
+
+	overrides := map[string]int64{"llama3.1:8b": 8192}
+	if !r.PatchNode("gpu-0", NodePatch{VRAMOverrides: &overrides}) {
+		t.Fatal("PatchNode returned false for existing node")
+	}
+
+	// Simulate handleAddNode re-submitting the node's basic fields (a GPU
+	// model edit) via the same upsert-by-name path AddNode always uses - its
+	// config.NodeConfig never carries vram_overrides.
+	r.AddNode(config.NodeConfig{Name: "gpu-0", URL: "http://gpu-0:11434", GPUModel: "NVIDIA RTX 4090"})
+
+	nodes := r.Nodes()
+	if len(nodes) != 1 {
+		t.Fatalf("got %d nodes, want 1", len(nodes))
+	}
+	nodes[0].RLock()
+	got := nodes[0].VRAMOverrides["llama3.1:8b"]
+	nodes[0].RUnlock()
+	if got != 8192 {
+		t.Fatalf("VRAMOverrides[llama3.1:8b] after unrelated AddNode upsert = %d, want unchanged 8192", got)
+	}
+}
+
 // TestAddNode_UpsertReplacesURL is the deliberate-upsert positive case:
 // re-adding an existing name with a DIFFERENT url must update that node's
 // url in place (matching sqliteStore.UpsertNode's unconditional REPLACE

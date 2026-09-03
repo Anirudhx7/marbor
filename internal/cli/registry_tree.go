@@ -127,7 +127,7 @@ func buildRoot() *Command {
 						Flags: []FlagSpec{
 							{Name: "parallelism-type", Kind: FlagString, Usage: "parallelism type: tp, pp, ep, dp (empty to clear)"},
 							{Name: "parallelism-width", Kind: FlagInt, Usage: "parallelism width 1..64 (0 to clear)"},
-							{Name: "vram-override", Kind: FlagString, Usage: "per-model VRAM size overrides in MB, comma-separated model=mb pairs (empty to clear all)"},
+							{Name: "vram-override", Kind: FlagString, Usage: "per-model VRAM size overrides in MB, comma-separated model=mb pairs - REPLACES the whole declared list, dropping any entry not listed here (empty to clear all)"},
 						},
 						Run: func(ctx *RunCtx) int {
 							return runNodesPatchWithCtx(ctx, ctx.Args[0])

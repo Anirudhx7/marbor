@@ -564,8 +564,15 @@ func (c *Client) PatchNodeTLSFingerprint(name, fingerprint string) error {
 	return nil
 }
 
-// PatchNodeParallelismWithPtr is the visited-aware variant for CLI patch.
-func (c *Client) PatchNodeParallelismWithPtr(name string, pType *string, pWidth *int) error {
+// PatchNodeFieldsWithPtr is the visited-aware variant for `marbor nodes
+// patch` (P397 parallelism, P411 vram-override) - sends every visited field
+// in ONE PATCH request/body, matching how handlePatchNode already applies
+// them together atomically server-side. Splitting these into separate
+// sequential requests would reopen a partial-failure window the single-PATCH
+// admin handler doesn't have (code review finding, P411). nil means "flag
+// not visited, no change"; a non-nil pointer to a zero-value ("" / 0 / an
+// empty map) explicitly clears that field.
+func (c *Client) PatchNodeFieldsWithPtr(name string, pType *string, pWidth *int, vramOverrides *map[string]int64) error {
 	body := map[string]interface{}{}
 	if pType != nil {
 		if *pType == "" {
@@ -581,23 +588,9 @@ func (c *Client) PatchNodeParallelismWithPtr(name string, pType *string, pWidth 
 			body["parallelism_width"] = *pWidth
 		}
 	}
-	resp, err := c.doRequestBody(http.MethodPatch, "/admin/v1/nodes/"+urlPathEscape(name), body)
-	if err != nil {
-		return err
+	if vramOverrides != nil {
+		body["vram_overrides"] = *vramOverrides
 	}
-	defer resp.Body.Close()
-	return nil
-}
-
-// PatchNodeVRAMOverridesWithPtr is the visited-aware variant for CLI patch
-// (P411) - overrides == nil means the flag wasn't set (omit from body, no
-// change); a non-nil pointer to a possibly-empty map is sent as-is (an empty
-// map explicitly clears any prior declaration).
-func (c *Client) PatchNodeVRAMOverridesWithPtr(name string, overrides *map[string]int64) error {
-	if overrides == nil {
-		return nil
-	}
-	body := map[string]interface{}{"vram_overrides": *overrides}
 	resp, err := c.doRequestBody(http.MethodPatch, "/admin/v1/nodes/"+urlPathEscape(name), body)
 	if err != nil {
 		return err

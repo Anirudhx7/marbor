@@ -15,6 +15,14 @@ import type { MarborAgentStatus, NodeHealthCheckResult, NodeControlStatus } from
 import type { GPUNode, ModelFitResponse, NodeFit, FitStatus } from '../types';
 import { formatDurationLong } from '../lib/time';
 
+// vramOverridesToString mirrors the CLI's --vram-override comma-separated
+// "model=mb" convention (P411), same as the editGPUIndices
+// comma-separated-list pattern used elsewhere in this file. Module-scoped so
+// both NodeCard's summary badge and GPUNodes' edit modal share one format.
+function vramOverridesToString(overrides?: Record<string, number>): string {
+  return Object.entries(overrides ?? {}).map(([model, mb]) => `${model}=${mb}`).join(', ');
+}
+
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
   const gb = bytes / (1024 * 1024 * 1024);
@@ -342,7 +350,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
               ) : null}
               {node.vramOverrides && Object.keys(node.vramOverrides).length > 0 ? (
                 <span
-                  title={Object.entries(node.vramOverrides).map(([model, mb]) => `${model}=${mb}MB`).join(', ')}
+                  title={`${vramOverridesToString(node.vramOverrides)} MB`}
                   className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-secondary text-muted-foreground border border-border"
                 >
                   {Object.keys(node.vramOverrides).length} VRAM override{Object.keys(node.vramOverrides).length === 1 ? '' : 's'}
@@ -1451,12 +1459,6 @@ export function GPUNodes() {
   const tlsExpectedFingerprintNormalized = normalizeFingerprint(tlsExpectedFingerprint);
   const tlsProbedFingerprintNormalized = normalizeFingerprint(tlsProbedFingerprint || '');
 
-  // vramOverridesToString/fromString mirror the CLI's --vram-override
-  // comma-separated "model=mb" convention (P411), same as the editGPUIndices
-  // comma-separated-list pattern above.
-  const vramOverridesToString = (overrides?: Record<string, number>) =>
-    Object.entries(overrides ?? {}).map(([model, mb]) => `${model}=${mb}`).join(', ');
-
   const openEditModal = (node: GPUNode) => {
     setEditNode(node);
     setEditHost(node.host ?? '');
@@ -1585,27 +1587,33 @@ export function GPUNodes() {
     // VRAM overrides - comma-separated "model=mb" pairs, whole-map replace
     // (P411), mirroring gpu_indices' whole-slice-replace convention above.
     const priorVRAMOverrides = editNode.vramOverrides ?? {};
-    if (editVRAMOverrides.trim() !== vramOverridesToString(editNode.vramOverrides)) {
-      const newVRAMOverrides: Record<string, number> = {};
-      const entries = editVRAMOverrides.split(',').map(s => s.trim()).filter(s => s !== '');
-      for (const entry of entries) {
-        const eq = entry.indexOf('=');
-        if (eq <= 0) {
-          setEditError(`Invalid VRAM override "${entry}" (want model=mb)`);
-          return 'invalid';
-        }
-        const model = entry.slice(0, eq).trim();
-        const mb = parseInt(entry.slice(eq + 1).trim(), 10);
-        if (!model || isNaN(mb) || mb <= 0) {
-          setEditError(`Invalid VRAM override "${entry}" (mb must be a positive integer)`);
-          return 'invalid';
-        }
-        newVRAMOverrides[model] = mb;
+    const newVRAMOverrides: Record<string, number> = {};
+    const vramEntries = editVRAMOverrides.split(',').map(s => s.trim()).filter(s => s !== '');
+    for (const entry of vramEntries) {
+      const eq = entry.indexOf('=');
+      if (eq <= 0) {
+        setEditError(`Invalid VRAM override "${entry}" (want model=mb)`);
+        return 'invalid';
       }
-      const changed = Object.keys(newVRAMOverrides).length !== Object.keys(priorVRAMOverrides).length
-        || Object.entries(newVRAMOverrides).some(([k, v]) => priorVRAMOverrides[k] !== v);
-      if (changed) patch.vram_overrides = newVRAMOverrides;
+      const model = entry.slice(0, eq).trim();
+      const mbRaw = entry.slice(eq + 1).trim();
+      // /^\d+$/ (not parseInt) so trailing garbage like "8192mb" is
+      // rejected instead of silently truncated - matches the CLI's
+      // stricter strconv.ParseInt-based parseVRAMOverrides.
+      if (!model || !/^\d+$/.test(mbRaw)) {
+        setEditError(`Invalid VRAM override "${entry}" (mb must be a positive integer)`);
+        return 'invalid';
+      }
+      const mb = parseInt(mbRaw, 10);
+      if (mb <= 0) {
+        setEditError(`Invalid VRAM override "${entry}" (mb must be a positive integer)`);
+        return 'invalid';
+      }
+      newVRAMOverrides[model] = mb;
     }
+    const vramOverridesChanged = Object.keys(newVRAMOverrides).length !== Object.keys(priorVRAMOverrides).length
+      || Object.entries(newVRAMOverrides).some(([k, v]) => priorVRAMOverrides[k] !== v);
+    if (vramOverridesChanged) patch.vram_overrides = newVRAMOverrides;
     if (Object.keys(patch).length === 0) return null;
     return patch;
   };

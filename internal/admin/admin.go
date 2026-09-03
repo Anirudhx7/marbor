@@ -3609,6 +3609,10 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 	// instead of accepting a value that would never actually apply.
 	if patch.VRAMOverrides != nil {
 		for model, mb := range *patch.VRAMOverrides {
+			if model == "" {
+				writeJSONError(w, http.StatusBadRequest, "vram_overrides keys must be non-empty model names")
+				return
+			}
 			if mb <= 0 {
 				writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("vram_overrides[%q] must be a positive number of MB (got %d)", model, mb))
 				return
