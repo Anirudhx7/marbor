@@ -468,7 +468,7 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor whoami` | show the CLI's saved identity (live-verified) |
 | `marbor nodes` | list nodes known to marbor (requires auth) |
 | `marbor nodes confirm-tls <node>` | pin a marbor agent's TLS certificate fingerprint (headless enrollment) (requires auth) |
-| `marbor nodes patch <node>` | set deployment parallelism for a node (P397) (requires auth) |
+| `marbor nodes patch <node>` | set deployment parallelism or per-model VRAM overrides for a node (P397, P411) (requires auth) |
 | `marbor models` | fleet-wide list, or pull/delete/unload/list on one node (requires auth) |
 | `marbor models pull <node> <model>` | start pulling a model onto a node (async - does not wait for completion) (requires auth) |
 | `marbor models delete <node> <model>` | delete a model from a node's local storage (requires auth) |
