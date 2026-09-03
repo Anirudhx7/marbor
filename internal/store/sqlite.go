@@ -582,6 +582,9 @@ func (s *sqliteStore) migrate() error {
 			return fmt.Errorf("migrate stmt: %w\nSQL: %s", err, col)
 		}
 	}
+	if err := s.migrateRenameNodeAgentTable(); err != nil {
+		return fmt.Errorf("migrate legacy node_agent table: %w", err)
+	}
 	if err := s.migrateEncryptSecrets(); err != nil {
 		return fmt.Errorf("migrate encrypt secrets: %w", err)
 	}
@@ -591,6 +594,53 @@ func (s *sqliteStore) migrate() error {
 	if err := s.SetSetting("schema_version", strconv.Itoa(CurrentSchemaVersion)); err != nil {
 		return fmt.Errorf("migrate: stamp schema_version: %w", err)
 	}
+	return nil
+}
+
+// migrateRenameNodeAgentTable copies any rows left in the legacy node_agent
+// table (its name before commit 19147ea renamed it to marbor_agent, shipped
+// in v0.20.0) into marbor_agent, then drops the legacy table. Needed because
+// 19147ea only renamed the Go string literal that emits the CREATE TABLE
+// statement - it never renamed the table on any already-existing marbor.db,
+// so CREATE TABLE IF NOT EXISTS marbor_agent instead created a brand-new
+// empty table while node_agent sat untouched. Every fleet that had real
+// node_agent rows (any install that ran v0.19.0 through v0.19.3) silently
+// lost its Marbor Agent enrollment - enabled/port/token/scope/scheme, one
+// row per node - on upgrade to v0.20.0+, since no code path has read
+// node_agent since the rename. Found while proving B.3 (schema migration
+// from every prior release) with reconstructed historical DB shapes, not
+// from a user report.
+func (s *sqliteStore) migrateRenameNodeAgentTable() error {
+	var exists int
+	if err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='node_agent'`,
+	).Scan(&exists); err != nil {
+		return fmt.Errorf("check for legacy node_agent table: %w", err)
+	}
+	if exists == 0 {
+		return nil
+	}
+	// Idempotent against a node_agent frozen at a shape older than P54/the
+	// scheme fix - same "duplicate column name" tolerance as the ALTER loop
+	// above - so the copy below can always name all six columns.
+	for _, col := range []string{
+		`ALTER TABLE node_agent ADD COLUMN scope TEXT NOT NULL DEFAULT 'admin'`,
+		`ALTER TABLE node_agent ADD COLUMN scheme TEXT NOT NULL DEFAULT 'http'`,
+	} {
+		if _, err := s.db.Exec(col); err != nil && !strings.Contains(err.Error(), "duplicate column name") {
+			return fmt.Errorf("migrate legacy node_agent stmt: %w\nSQL: %s", err, col)
+		}
+	}
+	if _, err := s.db.Exec(
+		`INSERT OR IGNORE INTO marbor_agent (name, enabled, port, token, scope, scheme)
+		 SELECT name, enabled, port, token, scope, scheme FROM node_agent`,
+	); err != nil {
+		return fmt.Errorf("copy legacy node_agent rows into marbor_agent: %w", err)
+	}
+	if _, err := s.db.Exec(`DROP TABLE node_agent`); err != nil {
+		return fmt.Errorf("drop legacy node_agent table: %w", err)
+	}
+	log.Printf("store: migrated legacy node_agent table into marbor_agent")
 	return nil
 }
 
