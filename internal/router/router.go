@@ -176,8 +176,9 @@ type NodeState struct {
 	// VRAMOverrides is the operator-declared, per-model VRAM size (MB) from
 	// config (NodeConfig.VRAMOverrides). Used by estimateModelSizeBytes as a
 	// fallback when a node's runtime API can't report a real observed size
-	// (non-Ollama backends). Set once at construction; never mutated at
-	// runtime, so it is safe to read under RLock like any other field.
+	// (non-Ollama backends). Whole-map-replaced by PatchNode at runtime
+	// (P411, mirroring DeclaredGPUIndices) - reads must go through n.mu like
+	// any other mutable field, not treated as construction-only.
 	VRAMOverrides map[string]int64
 	// DeclaredGPUIndices is the operator-declared set of physical GPU indices
 	// this specific node/runtime instance actually uses (P75 Gap B/C) - see
@@ -1438,7 +1439,14 @@ func (r *Router) AddNode(n config.NodeConfig) bool {
 		existingByName.Host = hostOrDefault(n.Host, n.URL)
 		existingByName.GPUModel = n.GPUModel
 		existingByName.NvidiaIndex = n.NvidiaIndex
-		existingByName.VRAMOverrides = n.VRAMOverrides
+		// VRAMOverrides is deliberately NOT overwritten here (P411 review) -
+		// unlike MaxInFlight, it is now live-mutable via PatchNode/node_overrides,
+		// and config.NodeConfig.VRAMOverrides is never populated by any live
+		// upsert caller (e.g. handleAddNode's POST /admin/nodes body never
+		// carries it). Overwriting it here would silently wipe an
+		// operator-declared override on every basic-field edit. Matches how
+		// DeclaredGPUIndices/ParallelismType/ParallelismWidth/TLSFingerprint
+		// are already excluded from this block for the same reason.
 		existingByName.MaxInFlight = n.MaxInFlight
 		existingByName.Runtime = n.Runtime
 		if n.Runtime == "auto" {

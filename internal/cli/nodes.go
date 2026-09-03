@@ -178,17 +178,12 @@ func runNodesPatchWithCtx(ctx *RunCtx, name string) int {
 		v := pWidth
 		pWidthPtr = &v
 	}
-	if pTypeSet || pWidthSet {
-		if err := client.PatchNodeParallelismWithPtr(name, pTypePtr, pWidthPtr); err != nil {
-			return reportError(err, ctx.Stderr)
-		}
-	}
 	var vramOverridesPtr *map[string]int64
 	if vramOverrideSet {
 		vramOverridesPtr = &vramOverrides
-		if err := client.PatchNodeVRAMOverridesWithPtr(name, vramOverridesPtr); err != nil {
-			return reportError(err, ctx.Stderr)
-		}
+	}
+	if err := client.PatchNodeFieldsWithPtr(name, pTypePtr, pWidthPtr, vramOverridesPtr); err != nil {
+		return reportError(err, ctx.Stderr)
 	}
 	result := map[string]interface{}{"ok": true, "node": name}
 	if pTypeSet || pWidthSet {
