@@ -76,7 +76,7 @@ Flags:
 
 #### `patch <node>`
 
-set deployment parallelism for a node (P397)
+set deployment parallelism or per-model VRAM overrides for a node (P397, P411)
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
@@ -84,6 +84,7 @@ Flags:
 
 - `--parallelism-type string` - parallelism type: tp, pp, ep, dp (empty to clear)
 - `--parallelism-width int` - parallelism width 1..64 (0 to clear)
+- `--vram-override string` - per-model VRAM size overrides in MB, comma-separated model=mb pairs - REPLACES the whole declared list, dropping any entry not listed here (empty to clear all)
 
 ### `models`
 
