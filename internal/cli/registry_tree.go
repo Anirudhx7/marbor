@@ -318,6 +318,24 @@ func buildRoot() *Command {
 							return runModelsRepo(ctx.Flags, ctx.Args[0], ctx.String("node"), ctx.String("runtime"), ctx.Int("ctx"), ctx.Stdout, ctx.Stderr)
 						},
 					},
+					{
+						Name:      "pull-progress",
+						Short:     "show a point-in-time snapshot of an active pull (P-A2-08b)",
+						NeedsAuth: true,
+						Args:      []ArgSpec{{Name: "node"}, {Name: "model"}},
+						Run: func(ctx *RunCtx) int {
+							return runModelsPullProgress(ctx.Flags, ctx.Args[0], ctx.Args[1], ctx.Stdout, ctx.Stderr)
+						},
+					},
+					{
+						Name:      "cancel-pull",
+						Short:     "cancel an in-flight pull (P-A2-08b)",
+						NeedsAuth: true,
+						Args:      []ArgSpec{{Name: "node"}, {Name: "model"}},
+						Run: func(ctx *RunCtx) int {
+							return runModelsCancelPull(ctx.Flags, ctx.Args[0], ctx.Args[1], ctx.Stdout, ctx.Stderr)
+						},
+					},
 				},
 			},
 			{
@@ -930,6 +948,84 @@ func buildRoot() *Command {
 				},
 			},
 			{
+				Name:      "pulls",
+				Short:     "list every active model pull job across the fleet (P-A2-08b)",
+				NeedsAuth: true,
+				Footer:    authFlags,
+				Run:       func(ctx *RunCtx) int { return runPulls(ctx.Flags, ctx.Stdout, ctx.Stderr) },
+			},
+			{
+				Name:      "warmup",
+				Short:     "global warmup engine status and manual controls (P-A2-08c)",
+				NeedsAuth: true,
+				Footer:    authFlags,
+				Sub: []*Command{
+					{
+						Name:      "status",
+						Short:     "show global warmup engine status",
+						NeedsAuth: true,
+						Run:       func(ctx *RunCtx) int { return runWarmupStatus(ctx.Flags, ctx.Stdout, ctx.Stderr) },
+					},
+					{
+						Name:      "predictive",
+						Short:     "enable/disable the predictive prewarm engine",
+						NeedsAuth: true,
+						Sub: []*Command{
+							{
+								Name:      "set",
+								Short:     "enable/disable the predictive prewarm engine",
+								NeedsAuth: true,
+								Flags: []FlagSpec{
+									{Name: "enabled", Kind: FlagBool, Usage: "enable the predictive engine"},
+								},
+								Run: func(ctx *RunCtx) int {
+									return runWarmupPredictiveSet(ctx.Flags, ctx.Bool("enabled"), ctx.Stdout, ctx.Stderr)
+								},
+							},
+						},
+					},
+					{
+						Name:      "ping",
+						Short:     "manually trigger a warmup cycle now",
+						NeedsAuth: true,
+						Run:       func(ctx *RunCtx) int { return runWarmupPing(ctx.Flags, ctx.Stdout, ctx.Stderr) },
+					},
+				},
+			},
+			{
+				Name:      "predictive",
+				Short:     "show recent predictive prewarm decisions (P-A2-08c)",
+				NeedsAuth: true,
+				Footer:    authFlags,
+				Sub: []*Command{
+					{
+						Name:      "decisions",
+						Short:     "show recent predictive prewarm decisions",
+						NeedsAuth: true,
+						Run:       func(ctx *RunCtx) int { return runPredictiveDecisions(ctx.Flags, ctx.Stdout, ctx.Stderr) },
+					},
+				},
+			},
+			{
+				Name:      "system-info",
+				Short:     "show control-plane host system info and per-node GPU summary (P-A2-08c)",
+				NeedsAuth: true,
+				Footer:    authFlags,
+				Run:       func(ctx *RunCtx) int { return runSystemInfo(ctx.Flags, ctx.Stdout, ctx.Stderr) },
+			},
+			{
+				Name:  "config",
+				Short: "control-plane configuration operations (P-A2-08c)",
+				Sub: []*Command{
+					{
+						Name:      "reload",
+						Short:     "re-sync live router/auth state from SQLite",
+						NeedsAuth: true,
+						Run:       func(ctx *RunCtx) int { return runConfigReload(ctx.Flags, ctx.Stdout, ctx.Stderr) },
+					},
+				},
+			},
+			{
 				Name:      "spill",
 				Short:     "show per-key, per-provider local-vs-cloud request counts",
 				NeedsAuth: true,
@@ -1094,6 +1190,12 @@ func buildRoot() *Command {
 						Run: func(ctx *RunCtx) int {
 							return runUsersDelete(ctx.Flags, ctx.Args[0], ctx.Stdout, ctx.Stderr, ctx)
 						},
+					},
+					{
+						Name:      "pending-count",
+						Short:     "show the number of users awaiting approval (P-A2-08d)",
+						NeedsAuth: true,
+						Run:       func(ctx *RunCtx) int { return runUsersPendingCount(ctx.Flags, ctx.Stdout, ctx.Stderr) },
 					},
 				},
 			},

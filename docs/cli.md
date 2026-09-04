@@ -241,6 +241,18 @@ Flags:
 - `--runtime string` - runtime to size variants for
 - `--ctx int` - context window in tokens for VRAM sizing (0 = server default 8192)
 
+#### `pull-progress <node> <model>`
+
+show a point-in-time snapshot of an active pull (P-A2-08b)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+#### `cancel-pull <node> <model>`
+
+cancel an in-flight pull (P-A2-08b)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
 ### `runtime`
 
 start/stop/restart/logs/drain/undrain/health on one node
@@ -792,6 +804,82 @@ show the dashboard summary strip (nodes, active requests, latency, tokens/min)
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
+### `pulls`
+
+list every active model pull job across the fleet (P-A2-08b)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).
+
+### `warmup`
+
+global warmup engine status and manual controls (P-A2-08c)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).
+
+#### `status`
+
+show global warmup engine status
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+#### `predictive`
+
+enable/disable the predictive prewarm engine
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+##### `set`
+
+enable/disable the predictive prewarm engine
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--enabled` - enable the predictive engine
+
+#### `ping`
+
+manually trigger a warmup cycle now
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+### `predictive`
+
+show recent predictive prewarm decisions (P-A2-08c)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).
+
+#### `decisions`
+
+show recent predictive prewarm decisions
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+### `system-info`
+
+show control-plane host system info and per-node GPU summary (P-A2-08c)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).
+
+### `config`
+
+control-plane configuration operations (P-A2-08c)
+
+#### `reload`
+
+re-sync live router/auth state from SQLite
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
 ### `spill`
 
 show per-key, per-provider local-vs-cloud request counts
@@ -942,6 +1030,12 @@ Requires authentication - see the root README's CLI auth section, or run `marbor
 Flags:
 
 - `--yes` - confirm deletion without prompting
+
+#### `pending-count`
+
+show the number of users awaiting approval (P-A2-08d)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
 ### `completion <shell>`
 

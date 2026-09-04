@@ -2101,6 +2101,154 @@ func (c *Client) MetricsSummary() (*MetricsSummary, error) {
 	return &out, nil
 }
 
+// WarmupStatus mirrors GET /admin/warmup's response shape.
+type WarmupStatus struct {
+	Enabled                 bool     `json:"enabled"`
+	IntervalMs              int      `json:"interval_ms"`
+	KeepAlive               string   `json:"keep_alive"`
+	Models                  []string `json:"models"`
+	PredictiveEngineEnabled bool     `json:"predictive_engine_enabled"`
+}
+
+// GetWarmupStatus calls GET /admin/warmup - global warmup engine status
+// (P-A2-08c).
+func (c *Client) GetWarmupStatus() (*WarmupStatus, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/warmup", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out WarmupStatus
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse warmup status response: %v", err)
+	}
+	return &out, nil
+}
+
+// SetPredictiveEngine calls PUT /admin/warmup/predictive.
+func (c *Client) SetPredictiveEngine(enabled bool) error {
+	resp, err := c.doRequestBody(http.MethodPut, "/admin/warmup/predictive", map[string]bool{"enabled": enabled})
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
+// WarmupPing calls POST /admin/warmup/ping - manually triggers a warmup cycle.
+func (c *Client) WarmupPing() error {
+	resp, err := c.doRequestBody(http.MethodPost, "/admin/warmup/ping", nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
+// SystemInfo calls GET /admin/system-info, returning the raw JSON body -
+// control-plane host system info plus per-node GPU summary (see
+// ModelCatalog's doc comment for why this stays raw JSON, P-A2-08c).
+func (c *Client) SystemInfo() (json.RawMessage, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/system-info", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	return io.ReadAll(resp.Body)
+}
+
+// ConfigReloadResult mirrors POST /admin/config/reload's response shape.
+type ConfigReloadResult struct {
+	Reloaded       bool `json:"reloaded"`
+	AuthKeys       int  `json:"auth_keys"`
+	NodesAdded     int  `json:"nodes_added"`
+	NodesRemoved   int  `json:"nodes_removed"`
+	CloudProviders int  `json:"cloud_providers"`
+}
+
+// ConfigReload calls POST /admin/config/reload - re-syncs live
+// router/auth state from SQLite (P-A2-08c).
+func (c *Client) ConfigReload() (*ConfigReloadResult, error) {
+	resp, err := c.doRequestBody(http.MethodPost, "/admin/config/reload", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out ConfigReloadResult
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse config reload response: %v", err)
+	}
+	return &out, nil
+}
+
+// PendingUserCount calls GET /admin/v1/users/pending-count (P-A2-08d).
+func (c *Client) PendingUserCount() (int, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/v1/users/pending-count", true)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Count int `json:"count"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return 0, serverErrorf("could not parse pending user count response: %v", err)
+	}
+	return out.Count, nil
+}
+
+// PullJobSnapshot mirrors admin.go's pullJobSnapshot - one active/recent
+// model pull job (P-A2-08b).
+type PullJobSnapshot struct {
+	Node           string    `json:"node"`
+	Model          string    `json:"model"`
+	Method         string    `json:"method"`
+	Status         string    `json:"status"`
+	StartedAt      time.Time `json:"started_at"`
+	FinishedAt     time.Time `json:"finished_at,omitempty"`
+	BytesTotal     int64     `json:"bytes_total,omitempty"`
+	BytesCompleted int64     `json:"bytes_completed,omitempty"`
+	Error          string    `json:"error,omitempty"`
+	VerifyLoad     bool      `json:"verify_load"`
+}
+
+// ActivePulls calls GET /admin/pulls - every currently-active pull job
+// across the fleet, mirroring the UI's pullProgress.ts tracking (P-A2-08b).
+// "models pull-progress" (a single node+model) filters this same list
+// client-side rather than following the separate SSE progress stream, per
+// operational-interfaces.md's "the CLI is always exactly one Admin API
+// request" contract.
+func (c *Client) ActivePulls() ([]PullJobSnapshot, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/pulls", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out []PullJobSnapshot
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse active pulls response: %v", err)
+	}
+	return out, nil
+}
+
+// CancelPull calls DELETE /admin/nodes/{name}/pull?model=X - cancels an
+// in-flight pull (P-A2-08b).
+func (c *Client) CancelPull(node, model string) (cancelled bool, err error) {
+	resp, err := c.doRequestBody(http.MethodDelete, "/admin/nodes/"+urlPathEscape(node)+"/pull?model="+url.QueryEscape(model), nil)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+	var out struct {
+		OK        bool `json:"ok"`
+		Cancelled bool `json:"cancelled"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return false, serverErrorf("could not parse cancel pull response: %v", err)
+	}
+	return out.Cancelled, nil
+}
+
 // savedSessionHint returns a suffix clarifying that a 401/403 came from a
 // saved-session token specifically (as opposed to an explicit --token the
 // operator just typed), which is the case where "run it again" is the right
