@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Users as UsersIcon, Plus, Check, Ban, Trash2, UserCheck, Key, RotateCcw } from 'lucide-react';
-import { listUsers, createUser, approveUser, suspendUser, deleteUser, resetUserPassword, fetchKeys, fetchModels, loadSession } from '../lib/api';
+import { Users as UsersIcon, Plus, Check, Ban, Trash2, UserCheck, Key, RotateCcw, Pencil } from 'lucide-react';
+import { listUsers, createUser, approveUser, suspendUser, deleteUser, resetUserPassword, patchUser, fetchKeys, fetchModels, loadSession } from '../lib/api';
 import type { UserRecord, APIKey, ModelCatalog } from '../types';
 import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
@@ -332,6 +332,79 @@ function CreateUserModal({ onClose, onDone }: CreateUserModalProps) {
   );
 }
 
+// ── Edit User Modal ───────────────────────────────────────────────────────────
+// PATCH /admin/v1/users/{id} (handlePatchUser) has had a CLI command (marbor
+// users patch) since P84 but no UI surface until now - the one clear UI gap
+// found by the A.2 three-surface-parity audit (2026-09-04).
+
+interface EditUserModalProps {
+  user: UserRecord;
+  onClose: () => void;
+  onDone: () => void;
+}
+
+function EditUserModal({ user, onClose, onDone }: EditUserModalProps) {
+  const [email, setEmail] = useState(user.email);
+  const [role, setRole] = useState<'user' | 'admin'>(user.role);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    try {
+      await patchUser(user.id, { email, role });
+      onDone();
+    } catch (err: any) {
+      setError(err.message || 'Failed to update user');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal isOpen={true} onClose={onClose} title="Edit User">
+      <div className="space-y-4">
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1.5">Username</label>
+            <input type="text" value={user.username} disabled
+              className="w-full px-3 py-2 bg-secondary/30 border border-border rounded-lg text-sm text-muted-foreground cursor-not-allowed" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1.5">Email</label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} autoFocus
+              className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1.5">Role</label>
+            <CustomSelect
+              value={role}
+              onChange={val => setRole(val as any)}
+              options={[
+                { value: 'user', label: 'User' },
+                { value: 'admin', label: 'Admin' },
+              ]}
+            />
+          </div>
+        </div>
+
+        {error && <p className="text-xs text-destructive bg-destructive/10 px-3 py-2 rounded-lg">{error}</p>}
+
+        <div className="flex gap-2 pt-4 border-t border-border">
+          <button onClick={onClose} className="flex-1 py-2 border border-border text-sm font-medium rounded-lg text-muted-foreground hover:bg-secondary transition-colors">
+            Cancel
+          </button>
+          <button onClick={handleSave} disabled={saving}
+            className="flex-1 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 shadow-sm">
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // ── Main Users Page ───────────────────────────────────────────────────────────
 
 export function Users() {
@@ -342,6 +415,7 @@ export function Users() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [approveTarget, setApproveTarget] = useState<UserRecord | null>(null);
+  const [editTarget, setEditTarget] = useState<UserRecord | null>(null);
   const [resetTarget, setResetTarget] = useState<UserRecord | null>(null);
   const [resetConfirmTarget, setResetConfirmTarget] = useState<UserRecord | null>(null);
   const [suspendTarget, setSuspendTarget] = useState<UserRecord | null>(null);
@@ -489,6 +563,11 @@ export function Users() {
                               <UserCheck className="w-4 h-4" />
                             </button>
                           )}
+                          <button onClick={() => { setActionError(null); setEditTarget(u); }}
+                            title="Edit email/role"
+                            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+                            <Pencil className="w-4 h-4" />
+                          </button>
                           <button
                             onClick={() => { setActionError(null); setResetConfirmTarget(u); }}
                             disabled={u.username === currentUsername}
@@ -563,6 +642,11 @@ export function Users() {
                         <UserCheck className="w-4 h-4" />
                       </button>
                     )}
+                    <button onClick={() => { setActionError(null); setEditTarget(u); }}
+                      title="Edit email/role"
+                      className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+                      <Pencil className="w-4 h-4" />
+                    </button>
                     <button
                       onClick={() => { setActionError(null); setResetConfirmTarget(u); }}
                       disabled={u.username === currentUsername}
@@ -584,6 +668,13 @@ export function Users() {
         )}
       </div>
 
+      {editTarget && (
+        <EditUserModal
+          user={editTarget}
+          onClose={() => setEditTarget(null)}
+          onDone={() => { setEditTarget(null); load(); }}
+        />
+      )}
       {approveTarget && (
         <ApproveModal
           user={approveTarget}

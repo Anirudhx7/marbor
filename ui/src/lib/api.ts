@@ -242,6 +242,26 @@ export async function deleteUser(id: number): Promise<void> {
   if (!res.ok) throw new Error('Failed to delete user');
 }
 
+export async function patchUser(id: number, data: { email?: string; role?: 'admin' | 'user' }): Promise<UserRecord> {
+  if (DEMO) {
+    const u = demoUserStore().find(x => x.id === id);
+    if (!u) throw new Error('user not found');
+    if (data.email !== undefined) u.email = data.email;
+    if (data.role !== undefined) u.role = data.role;
+    return demoDelay({ ...u });
+  }
+  const res = await apiFetch(`${BASE}/v1/users/${id}`, {
+    method: 'PATCH',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const j = await res.json().catch(() => ({}));
+    throw new Error((j as any).error || 'Failed to update user');
+  }
+  return res.json();
+}
+
 export async function resetUserPassword(id: number): Promise<{ initial_password: string }> {
   if (DEMO) {
     const u = demoUserStore().find(x => x.id === id);
