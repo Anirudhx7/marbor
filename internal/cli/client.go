@@ -2400,6 +2400,13 @@ func (c *Client) RegenerateMarborAgentToken(node string) (*MarborAgentEnableResu
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return nil, serverErrorf("could not parse regenerate marbor agent token response: %v", err)
 	}
+	// handleRegenerateMarborAgentToken's response body has no "enabled" key
+	// (unlike handleEnableMarborAgent's), so out.Enabled would otherwise
+	// decode to Go's zero-value false here - not a real "now disabled"
+	// signal (the endpoint 404s before this point unless the agent is
+	// already enabled), just an absent field. Set explicitly rather than
+	// let a --json caller read a fabricated false (code review finding).
+	out.Enabled = true
 	return &out, nil
 }
 

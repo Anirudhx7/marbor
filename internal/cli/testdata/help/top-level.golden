@@ -30,7 +30,6 @@ Commands:
   system-info   show control-plane host system info and per-node GPU summary (P-A2-08c)
   config        control-plane configuration operations (P-A2-08c)
   benchmark     run/inspect in-dashboard hardware benchmark jobs (P-A2-09a)
-  agent         manage marbor agent lifecycle for a node (P-A2-09b)
   spill         show per-key, per-provider local-vs-cloud request counts
   activity      show unified fleet activity feed (drain, agent, runtime, node, warmup, schedule, predictive, config)
   requests      inspect routing decisions for past requests

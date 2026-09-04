@@ -353,6 +353,47 @@ Flags:
 
 - `--yes` - confirm without prompting
 
+#### `agent`
+
+manage marbor agent lifecycle for a node (P-A2-09b)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).
+
+##### `get <node>`
+
+show a node's marbor agent config (never the token - R8)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+##### `enable <node>`
+
+enable or reconfigure the marbor agent for a node
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--port int` - agent port (required) (required)
+- `--scheme string` - http or https (empty = keep existing, or http on first enable)
+
+##### `disable <node>`
+
+disable the marbor agent for a node
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--yes` - confirm without prompting
+
+##### `regenerate <node>`
+
+issue a fresh token for an already-enabled marbor agent
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
 ### `key`
 
 per-API-key local/cloud routing overrides (masked list, plaintext-once on create)
@@ -923,47 +964,6 @@ Requires authentication - see the root README's CLI auth section, or run `marbor
 #### `runs`
 
 show persisted benchmark run history
-
-Requires authentication - see the root README's CLI auth section, or run `marbor login`.
-
-### `agent`
-
-manage marbor agent lifecycle for a node (P-A2-09b)
-
-Requires authentication - see the root README's CLI auth section, or run `marbor login`.
-
-requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).
-
-#### `get <node>`
-
-show a node's marbor agent config (never the token - R8)
-
-Requires authentication - see the root README's CLI auth section, or run `marbor login`.
-
-#### `enable <node>`
-
-enable or reconfigure the marbor agent for a node
-
-Requires authentication - see the root README's CLI auth section, or run `marbor login`.
-
-Flags:
-
-- `--port int` - agent port (required) (required)
-- `--scheme string` - http or https (empty = keep existing, or http on first enable)
-
-#### `disable <node>`
-
-disable the marbor agent for a node
-
-Requires authentication - see the root README's CLI auth section, or run `marbor login`.
-
-Flags:
-
-- `--yes` - confirm without prompting
-
-#### `regenerate <node>`
-
-issue a fresh token for an already-enabled marbor agent
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 

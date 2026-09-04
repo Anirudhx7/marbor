@@ -503,6 +503,11 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor node control probe <node>` | show a node's control-driver status (configured + discovered) (requires auth) |
 | `marbor node control accept <node>` | accept a control driver + identifier for a node (requires auth) |
 | `marbor node control clear <node>` | clear the accepted control driver for a node (P-A2-09c) (requires auth) |
+| `marbor node agent` | manage marbor agent lifecycle for a node (P-A2-09b) (requires auth) |
+| `marbor node agent get <node>` | show a node's marbor agent config (never the token - R8) (requires auth) |
+| `marbor node agent enable <node>` | enable or reconfigure the marbor agent for a node (requires auth) |
+| `marbor node agent disable <node>` | disable the marbor agent for a node (requires auth) |
+| `marbor node agent regenerate <node>` | issue a fresh token for an already-enabled marbor agent (requires auth) |
 | `marbor key` | per-API-key local/cloud routing overrides (masked list, plaintext-once on create) (requires auth) |
 | `marbor key list` | list keys (masked) (requires auth) |
 | `marbor key create` | create a key (prints plaintext once) (requires auth) |
@@ -571,11 +576,6 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor benchmark progress <job-id>` | show a point-in-time snapshot of a running benchmark job (requires auth) |
 | `marbor benchmark cancel <job-id>` | cancel an in-flight benchmark job (requires auth) |
 | `marbor benchmark runs` | show persisted benchmark run history (requires auth) |
-| `marbor agent` | manage marbor agent lifecycle for a node (P-A2-09b) (requires auth) |
-| `marbor agent get <node>` | show a node's marbor agent config (never the token - R8) (requires auth) |
-| `marbor agent enable <node>` | enable or reconfigure the marbor agent for a node (requires auth) |
-| `marbor agent disable <node>` | disable the marbor agent for a node (requires auth) |
-| `marbor agent regenerate <node>` | issue a fresh token for an already-enabled marbor agent (requires auth) |
 | `marbor spill` | show per-key, per-provider local-vs-cloud request counts (requires auth) |
 | `marbor activity` | show unified fleet activity feed (drain, agent, runtime, node, warmup, schedule, predictive, config) (requires auth) |
 | `marbor requests` | inspect routing decisions for past requests (requires auth) |
