@@ -27,6 +27,34 @@ fleet residency with VRAM totals and drift (same live data as bare models, filte
 .B \-\-drifted-only
 only show models where nodes disagree on digest
 .RE
+.TP
+.B search
+search Hugging Face models (P\-A2-06c)
+.RS
+.TP
+.B \-\-q string
+search query
+.TP
+.B \-\-runtime string
+filter by runtime compatibility
+.TP
+.B \-\-sort string
+downloads (default), likes, newest, or oldest
+.RE
+.TP
+.B repo <owner/name>
+show Hugging Face repo detail with per\-node fit (P\-A2-06c)
+.RS
+.TP
+.B \-\-node string
+node to check fit/downloaded\-status against
+.TP
+.B \-\-runtime string
+runtime to size variants for
+.TP
+.B \-\-ctx int
+context window in tokens for VRAM sizing (0 = server default 8192)
+.RE
 .SH FLAGS
 .TP
 .B \-\-server
