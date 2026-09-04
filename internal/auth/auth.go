@@ -379,6 +379,13 @@ func (m *Middleware) AddKey(k config.KeyConfig) {
 		allowLocalDegradation: k.AllowLocalDegradation,
 	}
 	m.mu.Lock()
+	// A name collision with a different token value is a rotation - drop the
+	// old token from m.keys so it stops authenticating immediately, rather
+	// than staying valid alongside the new one until the next Reload/restart
+	// (B1 ADMIN-02: a compromised key "rotated" this way must not survive).
+	if existing, ok := m.byName[k.Name]; ok && existing.key != k.Key {
+		delete(m.keys, existing.key)
+	}
 	m.keys[k.Key] = ks
 	m.byName[k.Name] = ks
 	m.mu.Unlock()

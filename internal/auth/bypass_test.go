@@ -134,3 +134,42 @@ func TestAddKeyAndRevokeBypass(t *testing.T) {
 		t.Errorf("after revoke, exact key: got %d, want 401", got)
 	}
 }
+
+// TestAddKeySameNameRevokesOldToken is a regression test for B1 finding
+// ADMIN-02: AddKey used to insert the new token into m.keys without removing
+// the old one when a key was "rotated" by adding a new token under the same
+// name (the path handleAddKey takes) - so a compromised key survived its own
+// rotation until the next full Reload or process restart. Adding a key under
+// a name that already exists must invalidate the old token immediately.
+func TestAddKeySameNameRevokesOldToken(t *testing.T) {
+	const oldKey = "sk-old-compromised"
+	const newKey = "sk-new-rotated"
+
+	mw := NewMiddleware(config.AuthConfig{Enabled: config.BoolPtr(true)})
+	handler := mw.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	makeReq := func(bearer string) int {
+		req := httptest.NewRequest("GET", "/", nil)
+		req.Header.Set("Authorization", "Bearer "+bearer)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	mw.AddKey(config.KeyConfig{Name: "prod", Key: oldKey, RateLimit: 100})
+	if got := makeReq(oldKey); got != 200 {
+		t.Fatalf("after initial add, old key: got %d, want 200", got)
+	}
+
+	// Rotate: add a key with the same name but a different token value.
+	mw.AddKey(config.KeyConfig{Name: "prod", Key: newKey, RateLimit: 100})
+
+	if got := makeReq(newKey); got != 200 {
+		t.Errorf("after rotation, new key: got %d, want 200", got)
+	}
+	if got := makeReq(oldKey); got != 401 {
+		t.Errorf("after rotation, old key: got %d, want 401 (compromised key must not survive rotation)", got)
+	}
+}
