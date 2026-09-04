@@ -704,6 +704,94 @@ Requires authentication - see the root README's CLI auth section, or run `marbor
 
 requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).
 
+### `backup`
+
+manage marbor.db backups (P-A2-07)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).
+
+#### `now`
+
+trigger an on-demand backup and download it
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--output string` - local file path to save to (default: server-suggested filename)
+
+#### `list`
+
+list backup files on the server
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+#### `restore <filename>`
+
+restore marbor.db from a backup file (marbor restarts)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--yes` - confirm restore without prompting
+
+#### `upload`
+
+upload a local .db file as a restorable backup
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--file string` - local .db file path (required) (required)
+
+### `analytics`
+
+hourly analytics + per-model stats (P-A2-07)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).
+
+#### `show`
+
+show analytics (raw JSON)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+#### `export`
+
+export analytics to a local file
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--type string` - hourly (default) or models
+- `--format string` - csv or json (default json)
+- `--output string` - local file path to save to (default: server-suggested filename)
+
+### `savings`
+
+show cloud-vs-local savings summary (P-A2-07)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).
+
+### `metrics`
+
+dashboard metrics (P-A2-07)
+
+#### `summary`
+
+show the dashboard summary strip (nodes, active requests, latency, tokens/min)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
 ### `spill`
 
 show per-key, per-provider local-vs-cloud request counts
