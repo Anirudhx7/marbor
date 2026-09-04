@@ -8,8 +8,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -1907,6 +1909,196 @@ func (c *Client) ModelRepo(opts ModelRepoOpts) (json.RawMessage, error) {
 	}
 	defer resp.Body.Close()
 	return io.ReadAll(resp.Body)
+}
+
+// BackupFileInfo mirrors admin.go's backupFileInfo.
+type BackupFileInfo struct {
+	Name       string    `json:"name"`
+	SizeBytes  int64     `json:"size_bytes"`
+	ModifiedAt time.Time `json:"modified_at"`
+}
+
+// ListBackups calls GET /admin/backup/list.
+func (c *Client) ListBackups() ([]BackupFileInfo, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/backup/list", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Backups []BackupFileInfo `json:"backups"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse backup list response: %v", err)
+	}
+	return out.Backups, nil
+}
+
+// RestoreBackup calls POST /admin/backup/restore - restarts marbor onto the
+// named backup file (R10-destructive; the caller is responsible for
+// confirming with the operator first).
+func (c *Client) RestoreBackup(filename string) error {
+	resp, err := c.doRequestBody(http.MethodPost, "/admin/backup/restore", map[string]string{"filename": filename})
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
+// backupContentDispositionRE extracts the filename from a
+// `Content-Disposition: attachment; filename="..."` response header.
+var backupContentDispositionRE = regexp.MustCompile(`filename="([^"]+)"`)
+
+// BackupNow calls POST /admin/backup - an on-demand backup streamed back as
+// a binary .db download. Returns the server-suggested filename (parsed from
+// Content-Disposition, falling back to a timestamped name if absent/
+// unparsable) and the raw file bytes; the caller writes it to disk.
+func (c *Client) BackupNow() (filename string, data []byte, err error) {
+	resp, err := c.doRequestBody(http.MethodPost, "/admin/backup", nil)
+	if err != nil {
+		return "", nil, err
+	}
+	defer resp.Body.Close()
+	data, err = io.ReadAll(resp.Body)
+	if err != nil {
+		return "", nil, serverErrorf("could not read backup response: %v", err)
+	}
+	filename = "marbor-backup.db"
+	if m := backupContentDispositionRE.FindStringSubmatch(resp.Header.Get("Content-Disposition")); len(m) == 2 {
+		filename = m[1]
+	}
+	return filename, data, nil
+}
+
+// UploadBackup calls POST /admin/backup/upload with r's content as a
+// multipart/form-data "file" field, mirroring the UI's Settings.tsx upload
+// picker. filename is only used for the multipart part's own filename field
+// (informational to the server, which renames the staged file to its own
+// timestamped shape regardless - see handleUploadBackup).
+func (c *Client) UploadBackup(filename string, r io.Reader) error {
+	if c.Token == "" {
+		return userErrorf("authentication required: run 'marbor login', or pass --username/--password (or set MARBOR_USERNAME+MARBOR_PASSWORD)")
+	}
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	part, err := mw.CreateFormFile("file", filename)
+	if err != nil {
+		return userErrorf("building upload request: %v", err)
+	}
+	if _, err := io.Copy(part, r); err != nil {
+		return userErrorf("reading local file: %v", err)
+	}
+	if err := mw.Close(); err != nil {
+		return userErrorf("building upload request: %v", err)
+	}
+	req, err := http.NewRequest(http.MethodPost, c.BaseURL+"/admin/backup/upload", &buf)
+	if err != nil {
+		return userErrorf("building request: %v", err)
+	}
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return serverErrorf("could not reach %s: %v", c.BaseURL, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return userErrorf("%s", readErrorMessage(resp.Body))
+	}
+	return nil
+}
+
+// AnalyticsSummary calls GET /admin/analytics, returning the raw JSON body
+// (hourly analytics + per-model stats - a large, purely-informational
+// dashboard aggregate; see ModelCatalog's doc comment for why this stays
+// raw JSON, P-A2-07).
+func (c *Client) AnalyticsSummary() (json.RawMessage, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/analytics", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	return io.ReadAll(resp.Body)
+}
+
+// AnalyticsExport downloads GET /admin/analytics/export?type=X, returning
+// the raw CSV bytes and the server-suggested filename.
+func (c *Client) AnalyticsExport(exportType, format string) (filename string, data []byte, err error) {
+	params := queryParams("type", exportType, "format", format)
+	path := "/admin/analytics/export"
+	if len(params) > 0 {
+		path += "?" + params.Encode()
+	}
+	resp, err := c.doRequest(http.MethodGet, path, true)
+	if err != nil {
+		return "", nil, err
+	}
+	defer resp.Body.Close()
+	data, err = io.ReadAll(resp.Body)
+	if err != nil {
+		return "", nil, serverErrorf("could not read analytics export response: %v", err)
+	}
+	filename = "analytics-export.json"
+	if format == "csv" {
+		filename = "analytics-export.csv"
+	}
+	if m := backupContentDispositionRE.FindStringSubmatch(resp.Header.Get("Content-Disposition")); len(m) == 2 {
+		filename = m[1]
+	}
+	return filename, data, nil
+}
+
+// CloudSavings mirrors GET /admin/metrics/savings' response shape.
+type CloudSavings struct {
+	LocalRequests int64   `json:"local_requests"`
+	CloudRequests int64   `json:"cloud_requests"`
+	TotalRequests int64   `json:"total_requests"`
+	CloudSpentUSD float64 `json:"cloud_spent_usd"`
+	SavedUSD      float64 `json:"saved_usd"`
+	Since         string  `json:"since"`
+}
+
+// Savings calls GET /admin/metrics/savings.
+func (c *Client) Savings() (*CloudSavings, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/metrics/savings", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out CloudSavings
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse savings response: %v", err)
+	}
+	return &out, nil
+}
+
+// MetricsSummary mirrors GET /admin/metrics/summary's response shape.
+type MetricsSummary struct {
+	ActiveRequests int32   `json:"active_requests"`
+	NodesOnline    int     `json:"nodes_online"`
+	NodesDraining  int     `json:"nodes_draining"`
+	TotalNodes     int     `json:"total_nodes"`
+	QueueDepth     int     `json:"queue_depth"`
+	AvgLatency     float64 `json:"avg_latency"`
+	TokensPerMin   int64   `json:"tokens_per_min"`
+	ColdStarts     int64   `json:"cold_starts"`
+	WarmHitRatio   float64 `json:"warm_hit_ratio"`
+}
+
+// MetricsSummary calls GET /admin/metrics/summary - the dashboard's top
+// summary strip (nodes online, active requests, latency, tokens/min).
+func (c *Client) MetricsSummary() (*MetricsSummary, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/metrics/summary", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out MetricsSummary
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse metrics summary response: %v", err)
+	}
+	return &out, nil
 }
 
 // savedSessionHint returns a suffix clarifying that a 401/403 came from a

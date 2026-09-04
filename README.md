@@ -541,6 +541,17 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor model-config list` | list every configured model parameter profile (requires auth) |
 | `marbor model-config capabilities` | show which parameter fields take effect per runtime (requires auth) |
 | `marbor catalog` | show the fleet-aware HF/local model catalog with per-node fit (P-A2-06c) (requires auth) |
+| `marbor backup` | manage marbor.db backups (P-A2-07) (requires auth) |
+| `marbor backup now` | trigger an on-demand backup and download it (requires auth) |
+| `marbor backup list` | list backup files on the server (requires auth) |
+| `marbor backup restore <filename>` | restore marbor.db from a backup file (marbor restarts) (requires auth) |
+| `marbor backup upload` | upload a local .db file as a restorable backup (requires auth) |
+| `marbor analytics` | hourly analytics + per-model stats (P-A2-07) (requires auth) |
+| `marbor analytics show` | show analytics (raw JSON) (requires auth) |
+| `marbor analytics export` | export analytics to a local file (requires auth) |
+| `marbor savings` | show cloud-vs-local savings summary (P-A2-07) (requires auth) |
+| `marbor metrics` | dashboard metrics (P-A2-07) |
+| `marbor metrics summary` | show the dashboard summary strip (nodes, active requests, latency, tokens/min) (requires auth) |
 | `marbor spill` | show per-key, per-provider local-vs-cloud request counts (requires auth) |
 | `marbor activity` | show unified fleet activity feed (drain, agent, runtime, node, warmup, schedule, predictive, config) (requires auth) |
 | `marbor requests` | inspect routing decisions for past requests (requires auth) |

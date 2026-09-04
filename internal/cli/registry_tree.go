@@ -840,6 +840,96 @@ func buildRoot() *Command {
 				Run:       func(ctx *RunCtx) int { return runCatalog(ctx.Flags, ctx.Stdout, ctx.Stderr) },
 			},
 			{
+				Name:      "backup",
+				Short:     "manage marbor.db backups (P-A2-07)",
+				NeedsAuth: true,
+				Footer:    authFlags,
+				Sub: []*Command{
+					{
+						Name:      "now",
+						Short:     "trigger an on-demand backup and download it",
+						NeedsAuth: true,
+						Flags: []FlagSpec{
+							{Name: "output", Kind: FlagString, DefString: "", Usage: "local file path to save to (default: server-suggested filename)"},
+						},
+						Run: func(ctx *RunCtx) int { return runBackupNow(ctx.Flags, ctx.String("output"), ctx.Stdout, ctx.Stderr) },
+					},
+					{
+						Name:      "list",
+						Short:     "list backup files on the server",
+						NeedsAuth: true,
+						Run:       func(ctx *RunCtx) int { return runBackupList(ctx.Flags, ctx.Stdout, ctx.Stderr) },
+					},
+					{
+						Name:      "restore",
+						Short:     "restore marbor.db from a backup file (marbor restarts)",
+						NeedsAuth: true,
+						Args:      []ArgSpec{{Name: "filename"}},
+						Flags: []FlagSpec{
+							{Name: "yes", Kind: FlagBool, Usage: "confirm restore without prompting"},
+						},
+						Run: func(ctx *RunCtx) int {
+							return runBackupRestore(ctx.Flags, ctx.Args[0], ctx.Bool("yes"), ctx.Stdout, ctx.Stderr)
+						},
+					},
+					{
+						Name:      "upload",
+						Short:     "upload a local .db file as a restorable backup",
+						NeedsAuth: true,
+						Flags: []FlagSpec{
+							{Name: "file", Kind: FlagString, Usage: "local .db file path (required)", Required: true, RequiredMsg: "error: --file is required"},
+						},
+						Run: func(ctx *RunCtx) int { return runBackupUpload(ctx.Flags, ctx.String("file"), ctx.Stdout, ctx.Stderr) },
+					},
+				},
+			},
+			{
+				Name:      "analytics",
+				Short:     "hourly analytics + per-model stats (P-A2-07)",
+				NeedsAuth: true,
+				Footer:    authFlags,
+				Sub: []*Command{
+					{
+						Name:      "show",
+						Short:     "show analytics (raw JSON)",
+						NeedsAuth: true,
+						Run:       func(ctx *RunCtx) int { return runAnalyticsShow(ctx.Flags, ctx.Stdout, ctx.Stderr) },
+					},
+					{
+						Name:      "export",
+						Short:     "export analytics to a local file",
+						NeedsAuth: true,
+						Flags: []FlagSpec{
+							{Name: "type", Kind: FlagString, DefString: "hourly", Usage: "hourly (default) or models"},
+							{Name: "format", Kind: FlagString, DefString: "", Usage: "csv or json (default json)"},
+							{Name: "output", Kind: FlagString, DefString: "", Usage: "local file path to save to (default: server-suggested filename)"},
+						},
+						Run: func(ctx *RunCtx) int {
+							return runAnalyticsExport(ctx.Flags, ctx.String("type"), ctx.String("format"), ctx.String("output"), ctx.Stdout, ctx.Stderr)
+						},
+					},
+				},
+			},
+			{
+				Name:      "savings",
+				Short:     "show cloud-vs-local savings summary (P-A2-07)",
+				NeedsAuth: true,
+				Footer:    authFlags,
+				Run:       func(ctx *RunCtx) int { return runSavings(ctx.Flags, ctx.Stdout, ctx.Stderr) },
+			},
+			{
+				Name:  "metrics",
+				Short: "dashboard metrics (P-A2-07)",
+				Sub: []*Command{
+					{
+						Name:      "summary",
+						Short:     "show the dashboard summary strip (nodes, active requests, latency, tokens/min)",
+						NeedsAuth: true,
+						Run:       func(ctx *RunCtx) int { return runMetricsSummary(ctx.Flags, ctx.Stdout, ctx.Stderr) },
+					},
+				},
+			},
+			{
 				Name:      "spill",
 				Short:     "show per-key, per-provider local-vs-cloud request counts",
 				NeedsAuth: true,
