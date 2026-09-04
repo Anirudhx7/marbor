@@ -159,6 +159,78 @@ func buildRoot() *Command {
 							return runNodesRemove(ctx.Flags, ctx.Args[0], ctx.Bool("yes"), ctx.Stdout, ctx.Stderr)
 						},
 					},
+					{
+						Name:      "warmup",
+						Short:     "get or set a node's proactive warmup config (P-A2-02)",
+						NeedsAuth: true,
+						Sub: []*Command{
+							{
+								Name:      "get",
+								Short:     "show a node's proactive warmup config",
+								NeedsAuth: true,
+								Args:      []ArgSpec{{Name: "node"}},
+								Run:       func(ctx *RunCtx) int { return runNodesWarmupGet(ctx.Flags, ctx.Args[0], ctx.Stdout, ctx.Stderr) },
+							},
+							{
+								Name:      "set",
+								Short:     "set a node's proactive warmup config",
+								NeedsAuth: true,
+								Args:      []ArgSpec{{Name: "node"}},
+								Flags: []FlagSpec{
+									{Name: "enabled", Kind: FlagBool, Usage: "enable proactive warmup for the listed models"},
+									{Name: "models", Kind: FlagString, DefString: "", Usage: "comma-separated models to keep resident (empty clears)"},
+								},
+								Run: func(ctx *RunCtx) int {
+									return runNodesWarmupSet(ctx.Flags, ctx.Args[0], ctx.Bool("enabled"), ctx.String("models"), ctx.Stdout, ctx.Stderr)
+								},
+							},
+						},
+					},
+					{
+						Name:      "pinned",
+						Short:     "get or set a node's never-evict (pinned) model list (P-A2-02)",
+						NeedsAuth: true,
+						Sub: []*Command{
+							{
+								Name:      "get",
+								Short:     "show a node's pinned model list",
+								NeedsAuth: true,
+								Args:      []ArgSpec{{Name: "node"}},
+								Run:       func(ctx *RunCtx) int { return runNodesPinnedGet(ctx.Flags, ctx.Args[0], ctx.Stdout, ctx.Stderr) },
+							},
+							{
+								Name:      "set",
+								Short:     "set a node's pinned model list (whole-list replace)",
+								NeedsAuth: true,
+								Args:      []ArgSpec{{Name: "node"}},
+								Flags: []FlagSpec{
+									{Name: "models", Kind: FlagString, DefString: "", Usage: "comma-separated models to pin (empty clears all)"},
+								},
+								Run: func(ctx *RunCtx) int {
+									return runNodesPinnedSet(ctx.Flags, ctx.Args[0], ctx.String("models"), ctx.Stdout, ctx.Stderr)
+								},
+							},
+						},
+					},
+					{
+						Name:      "prewarm",
+						Short:     "disable or re-enable predictive prewarm for a node (P-A2-02)",
+						NeedsAuth: true,
+						Sub: []*Command{
+							{
+								Name:      "set",
+								Short:     "disable or re-enable predictive prewarm for a node",
+								NeedsAuth: true,
+								Args:      []ArgSpec{{Name: "node"}},
+								Flags: []FlagSpec{
+									{Name: "disabled", Kind: FlagBool, Usage: "disable predictive prewarm for this node"},
+								},
+								Run: func(ctx *RunCtx) int {
+									return runNodesPrewarmSet(ctx.Flags, ctx.Args[0], ctx.Bool("disabled"), ctx.Stdout, ctx.Stderr)
+								},
+							},
+						},
+					},
 				},
 			},
 			{

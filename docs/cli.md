@@ -108,6 +108,67 @@ Flags:
 
 - `--yes` - confirm removal without prompting
 
+#### `warmup`
+
+get or set a node's proactive warmup config (P-A2-02)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+##### `get <node>`
+
+show a node's proactive warmup config
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+##### `set <node>`
+
+set a node's proactive warmup config
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--enabled` - enable proactive warmup for the listed models
+- `--models string` - comma-separated models to keep resident (empty clears)
+
+#### `pinned`
+
+get or set a node's never-evict (pinned) model list (P-A2-02)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+##### `get <node>`
+
+show a node's pinned model list
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+##### `set <node>`
+
+set a node's pinned model list (whole-list replace)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--models string` - comma-separated models to pin (empty clears all)
+
+#### `prewarm`
+
+disable or re-enable predictive prewarm for a node (P-A2-02)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+##### `set <node>`
+
+disable or re-enable predictive prewarm for a node
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--disabled` - disable predictive prewarm for this node
+
 ### `models`
 
 fleet-wide list, or pull/delete/unload/list on one node
