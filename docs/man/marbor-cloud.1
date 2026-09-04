@@ -1,0 +1,113 @@
+.TH MARBOR\-CLOUD 1 "2026-08-17" "marbor dev" "Marbor Manual"
+.SH NAME
+marbor\-cloud \- manage cloud overflow providers and view budget status (P\-A2-05)
+.SH SYNOPSIS
+.B marbor cloud
+[action] [args] [\fIflags\fR]
+.SH DESCRIPTION
+manage cloud overflow providers and view budget status (P\-A2-05)
+.SH COMMANDS
+.TP
+.B providers
+list/add/update/delete/reorder/test cloud providers
+.TP
+.B providers list
+list cloud providers (never shows the API key - R8)
+.TP
+.B providers add
+add a cloud provider
+.RS
+.TP
+.B \-\-name string
+provider config name (required) (required)
+.TP
+.B \-\-provider string
+provider type, e.g. openai, anthropic, openrouter (required) (required)
+.TP
+.B \-\-base-url string
+provider API base URL (required if \-\-enabled)
+.TP
+.B \-\-api-key string
+provider API key (required if \-\-enabled) - never echoed back by "list"
+.TP
+.B \-\-default-model string
+default model for this provider
+.TP
+.B \-\-cost-per-1k string
+cost per 1K tokens in USD, for savings tracking
+.TP
+.B \-\-priority int
+fallback priority (lower tries first)
+.TP
+.B \-\-enabled
+enable immediately
+.RE
+.TP
+.B providers update <name>
+update a cloud provider (omit \-\-api-key to keep the stored key - R8)
+.RS
+.TP
+.B \-\-provider string
+provider type, e.g. openai, anthropic, openrouter
+.TP
+.B \-\-base-url string
+provider API base URL
+.TP
+.B \-\-api-key string
+provider API key (omit to keep the currently stored key)
+.TP
+.B \-\-default-model string
+default model for this provider
+.TP
+.B \-\-cost-per-1k string
+cost per 1K tokens in USD, for savings tracking
+.TP
+.B \-\-priority int
+fallback priority (lower tries first)
+.TP
+.B \-\-enabled
+enable this provider
+.RE
+.TP
+.B providers delete <name>
+delete a cloud provider
+.RS
+.TP
+.B \-\-yes
+confirm deletion without prompting
+.RE
+.TP
+.B providers reorder <names>
+set cloud provider fallback priority order
+.TP
+.B providers test
+verify a base\-url+api\-key pair authenticates, without saving it
+.RS
+.TP
+.B \-\-provider string
+provider type (required) (required)
+.TP
+.B \-\-base-url string
+provider API base URL (required) (required)
+.TP
+.B \-\-api-key string
+provider API key to test (required) (required)
+.RE
+.TP
+.B budget\-status
+show global and per\-key cloud spend vs budget caps
+.SH FLAGS
+.TP
+.B \-\-server
+Admin API base URL (default "http://localhost:8080", env MARBOR_SERVER)
+.TP
+.B \-\-json
+output machine\-readable JSON instead of a human table
+.TP
+.B \-\-username
+admin username, used to log in (env MARBOR_USERNAME)
+.TP
+.B \-\-password
+admin password, used to log in (env MARBOR_PASSWORD)
+.SH SEE ALSO
+\fBmarbor\fR(1)
