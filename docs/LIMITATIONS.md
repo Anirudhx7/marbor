@@ -28,6 +28,45 @@ For production HA, the standard approach is to put a layer-4 load balancer (e.g.
 
 ---
 
+## Scale Ceiling (req/s and node count)
+
+marbor's write path - the per-request `audit_log`, `request_log`, and `hourly_buckets`/`model_stats`
+writes - is fully async via bounded 5000-slot buffered channels with drop-on-full
+(`internal/audit/audit.go`, `internal/admin/admin.go`). Under sustained load, entries for a full
+queue are dropped (and logged) rather than blocking requests. That queue-full point is the real
+operational ceiling, and this section states it plainly. Full methodology, tooling
+(`bench/loadtest`), and per-rate tables live in `docs/PRODUCTION.md`'s "Write-Path Capacity" section.
+
+**req/s ceiling (single marbor process, single warm backend node, Windows dev workstation,
+`bench/loadtest` sweep, re-measured 2026-09-05, superseding the 2026-08-13 P53 figures which this
+re-measurement found to be optimistic):**
+
+| Signal | Result |
+|---|---|
+| Latency knee | ~400 req/s - p50 jumps from the 20-40ms baseline to 1.1-1.7s. Reproduced in two independent isolated runs, consistent with the original 2026-08-13 measurement. |
+| First observed write-queue drop | As early as ~200-300 req/s (async logger / audit logger "queue full" lines), earlier than the 2026-08-13 figure of ~500 req/s. Real code changes landed on the write path between the two measurements (activity/audit merge, `internal/store` correctness fixes) - a plausible explanation for the shift, though this re-measurement ran on a shared, contended dev workstation with other concurrent processes and could not fully rule that out either. Treat ~200-300 req/s, not ~500, as the current honest single-node figure. |
+
+**Node-count sensitivity:** measured with 2 and 4 real `cmd/mocknode` backend instances registered
+against a single marbor process, same rate sweep. Result: **adding backend nodes did not raise the
+req/s ceiling** - if anything, the tested 2-node and 4-node runs saturated the load generator earlier
+than the 1-node baseline, but the marbor's own write-queue drop signal did not correspondingly worsen
+(the 4-node run logged zero queue-full drops across the same rate range that reliably dropped
+requests at 1 and 2 nodes). This points at the SQLite write path itself, not per-node backend
+capacity, as the limiting factor - consistent with P53's original framing - but the specific
+degradation observed at higher node counts is confounded by this measurement running on a shared,
+contended machine (more concurrent mocknode processes and marbor's own per-node polling loop compete
+for the same CPU as the load generator). **Conclusion an operator can act on: node count is not a
+lever for raising this ceiling; do not expect adding GPU nodes to increase write-path throughput.**
+A precise linear/sub-linear verdict needs a re-run on a dedicated (uncontended) host.
+
+**What this means operationally:** at the low hundreds of req/s, marbor's audit/request-log/stats
+recording can start silently dropping entries (each drop is logged, never a request failure) well
+before request-serving itself is affected. An honest small number is the point of this section - if
+your fleet's real traffic approaches ~200 req/s sustained, budget for this and watch the marbor's own
+log output for "queue full" lines rather than assuming headroom.
+
+---
+
 ## Docker Node Auto-Discovery
 Docker-based auto-discovery works by scanning the Docker socket for containers running Ollama and registering them as nodes. Discovered nodes use the container's own network IP (from the Docker API's `NetworkSettings`) when one is available, which is correct for containers on a bridge network regardless of whether marbor itself runs on bare metal or inside another container on the same Docker network.
 

@@ -294,25 +294,52 @@ goroutine (`internal/audit/audit.go`, `internal/admin/admin.go`). Under sustaine
 design absorbs a burst without adding request latency until a queue actually fills, at which
 point new entries for that table are dropped (and logged) rather than blocking requests.
 
-_Measured 2026-08-13 with `bench/loadtest` (see `bench/README.md`) against a single marbor process,
-a single `cmd/mocknode` backend (warm model, `LATENCY_MS=20`), on a Windows dev workstation - not
-production server hardware. Reproduced across two independent, isolated sweeps._
+_Originally measured 2026-08-13 with `bench/loadtest` (see `bench/README.md`) against a single
+marbor process, a single `cmd/mocknode` backend (warm model, `LATENCY_MS=20`), on a Windows dev
+workstation - not production server hardware. **Re-measured 2026-09-05** (B.6) after enough
+write-path-adjacent code had landed since (the activity/audit merge, several `internal/store`
+correctness fixes) to warrant re-checking rather than trusting the original numbers as-is._
 
-| Metric | Result |
-|---|---|
-| No drops observed | Up to 300 req/s sustained, p50 latency ~330-380ms (flat, matching the mock backend's own fixed per-response time), zero request failures. |
-| Latency knee | ~400 req/s - p50 jumps from ~380ms (at 300 req/s) to ~1.7s, indicating request backlog starting to build. |
-| First observed queue-full drop | ~500 req/s sustained, reproduced in both isolated test runs (`async logger: queue full`, `audit logger: queue full`, `async logger: stats queue full` all fired within the same run). |
-| Node-count sensitivity | Not yet tested - this measurement used the single-node baseline only, which is the primary claim for the SQLite write path itself. A secondary multi-node run is still open (see `bench/README.md`). |
+| Metric | 2026-08-13 (P53) | 2026-09-05 re-measurement |
+|---|---|---|
+| No drops observed | Up to 300 req/s, p50 ~330-380ms flat, zero failures. | Not reproduced at the same level - see "First observed queue-full drop" below; effectively no clean no-drop plateau above ~100-200 req/s in this re-run. |
+| Latency knee | ~400 req/s - p50 jumps from ~380ms to ~1.7s. | **Confirmed, reproduced across two independent isolated single-node runs** - p50 jumps from the 20-40ms baseline to 1.1-1.7s at 400 req/s in both runs. This is the most stable finding across both measurement dates. |
+| First observed queue-full drop | ~500 req/s, reproduced across two isolated runs. | **As early as ~200-300 req/s** across two isolated runs (`async logger: queue full`, `audit logger: queue full`, `async logger: stats queue full` all observed) - materially earlier than the 2026-08-13 figure. Real write-path-adjacent code changes landed between the two dates and are a plausible cause; this re-measurement also ran on a shared dev workstation with other concurrent Claude Code sessions active, which is a confound this run could not rule out. Do not treat ~500 req/s as current - use ~200-300 req/s. |
+| Node-count sensitivity | Not yet tested. | **Tested** - see the dedicated subsection below. Headline: adding backend nodes did not raise the ceiling. |
 
 **Important caveat on what this number does and doesn't isolate:** this test setup (one marbor
 process, one mock backend node) could not cleanly separate "the 5000-slot async queues filled up"
 from "the single backend node's own per-request service time became the bottleneck first." Both
-plausibly contribute at the ~400-500 req/s knee. Treat "~500 req/s" as *this setup's* observed
+plausibly contribute at the ~300-400 req/s knee. Treat these as *this setup's* observed
 ceiling, not a proven SQLite-write-path-alone limit - a cleaner isolation would need either a
-zero-latency synthetic write-only path or several concurrent mock nodes so no single backend's
-service time can be the constraint. That refinement is a reasonable follow-up, not required to
-have an honest number today.
+zero-latency synthetic write-only path, several concurrent mock nodes so no single backend's
+service time can be the constraint, or a dedicated (non-shared) test host to remove the
+concurrent-session confound noted above.
+
+### Node-count sensitivity (measured 2026-09-05, B.6)
+
+Same `bench/loadtest` sweep methodology, same single marbor process, run against 2 and then 4
+real `cmd/mocknode` backend instances (each warm, `LATENCY_MS=20`), all registered simultaneously
+so requests could land on any of them.
+
+| Node count | First queue-full drop observed | Notes |
+|---|---|---|
+| 1 (baseline) | ~200-300 req/s (two isolated runs) | See table above. |
+| 2 | Yes, drops observed within the swept range (100-400 req/s, 10s steps). | Load generator itself saturated earlier than the 1-node baseline (down to ~130 sent req/s at a 300 req/s target, vs. ~274-287 sent req/s at 1 node). |
+| 4 | **Zero** queue-full drops logged across the same swept range (100-400 req/s). | Load generator saturated even more severely (down to ~113-136 sent req/s at 200-400 req/s targets) - but marbor's own write-queue never actually filled, meaning the offered write-side load at 4 nodes never reached the level that triggers drops at 1-2 nodes. |
+
+**Reading this honestly:** node count did not raise the SQLite write-path's real (drop-based)
+ceiling in this test - if anything the 4-node run's total realized throughput was lower than the
+1-node baseline's, but that appears to be a load-generator/test-machine artifact rather than a
+marbor-side capacity change, since marbor's own queues logged *fewer* drops (zero) at 4 nodes than
+at 1-2 nodes over the same target-rate range. This is consistent with P53's original framing -
+the SQLite write path itself, not per-node backend capacity, is the constraint - but this specific
+run cannot cleanly separate that from CPU contention on the shared test machine (more concurrent
+`cmd/mocknode` processes plus marbor's own per-node `/api/ps` poll loop competing with the load
+generator for the same CPU). **The actionable conclusion for an operator: node count is not a
+lever for raising this ceiling.** Do not expect adding GPU nodes to increase write-path throughput.
+A precise linear/sub-linear/flat verdict (rather than "flat-to-not-improving, confounded by test
+conditions") needs a re-run on a dedicated, uncontended host.
 
 Re-run `bench/loadtest` after any change to `internal/audit`, `internal/admin`'s async
 queues, or `internal/store/sqlite.go`'s connection/pragma settings, or on real production
