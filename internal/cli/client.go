@@ -1551,6 +1551,136 @@ func (c *Client) SetRoutingStrategy(strategy string) error {
 	return nil
 }
 
+// CloudProvider mirrors handleCloudProviders' response shape (GET
+// /admin/cloud/providers) - the API key itself is NEVER returned by the
+// server (R8), so this type deliberately has no APIKey field (P-A2-05).
+type CloudProvider struct {
+	Name            string  `json:"name"`
+	Provider        string  `json:"provider"`
+	BaseURL         string  `json:"base_url"`
+	DefaultModel    string  `json:"default_model"`
+	CostPer1KTokens float64 `json:"cost_per_1k_tokens"`
+	Enabled         bool    `json:"enabled"`
+	Priority        int     `json:"priority"`
+}
+
+// CloudProviderRequest is the body for POST /admin/cloud/providers and PUT
+// /admin/cloud/providers/{name}. APIKey is write-only: pass "" on an update
+// to leave the currently stored key unchanged (handleUpdateCloudProvider
+// preserves the existing value for both "" and the UI's "***" placeholder -
+// R8, never round-trip the real secret through a read).
+type CloudProviderRequest struct {
+	Name            string  `json:"name"`
+	Provider        string  `json:"provider"`
+	BaseURL         string  `json:"base_url"`
+	APIKey          string  `json:"api_key,omitempty"`
+	DefaultModel    string  `json:"default_model,omitempty"`
+	CostPer1KTokens float64 `json:"cost_per_1k_tokens,omitempty"`
+	Enabled         bool    `json:"enabled"`
+	Priority        int     `json:"priority,omitempty"`
+}
+
+// CloudProviders calls GET /admin/cloud/providers.
+func (c *Client) CloudProviders() ([]CloudProvider, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/cloud/providers", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out []CloudProvider
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse cloud providers response: %v", err)
+	}
+	return out, nil
+}
+
+// AddCloudProvider calls POST /admin/cloud/providers.
+func (c *Client) AddCloudProvider(req CloudProviderRequest) error {
+	resp, err := c.doRequestBody(http.MethodPost, "/admin/cloud/providers", req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
+// UpdateCloudProvider calls PUT /admin/cloud/providers/{name}.
+func (c *Client) UpdateCloudProvider(name string, req CloudProviderRequest) error {
+	resp, err := c.doRequestBody(http.MethodPut, "/admin/cloud/providers/"+urlPathEscape(name), req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
+// DeleteCloudProvider calls DELETE /admin/cloud/providers/{name}.
+func (c *Client) DeleteCloudProvider(name string) error {
+	resp, err := c.doRequestBody(http.MethodDelete, "/admin/cloud/providers/"+urlPathEscape(name), nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
+// ReorderCloudProviders calls PUT /admin/cloud/providers/reorder.
+func (c *Client) ReorderCloudProviders(order []string) error {
+	resp, err := c.doRequestBody(http.MethodPut, "/admin/cloud/providers/reorder", map[string]interface{}{"order": order})
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
+// TestCloudProvider calls POST /admin/cloud/providers/test - verifies a
+// base_url+api_key pair authenticates against the provider before saving.
+// The api_key is sent once, on the wire, for this one-shot probe only - it
+// is never persisted or echoed back by this call (R8).
+func (c *Client) TestCloudProvider(provider, baseURL, apiKey string) error {
+	resp, err := c.doRequestBody(http.MethodPost, "/admin/cloud/providers/test", map[string]string{
+		"provider": provider, "base_url": baseURL, "api_key": apiKey,
+	})
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
+// CloudBudgetEntry mirrors admin.go's BudgetEntry.
+type CloudBudgetEntry struct {
+	Name         string  `json:"name,omitempty"`
+	DailySpent   float64 `json:"dailySpent"`
+	DailyCap     float64 `json:"dailyCap"`
+	DailyPct     float64 `json:"dailyPct"`
+	MonthlySpent float64 `json:"monthlySpent"`
+	MonthlyCap   float64 `json:"monthlyCap"`
+	MonthlyPct   float64 `json:"monthlyPct"`
+}
+
+// CloudBudgetStatus mirrors admin.go's CloudBudgetStatusResp.
+type CloudBudgetStatus struct {
+	SoftBudgetPct float64            `json:"softBudgetPct"`
+	Global        CloudBudgetEntry   `json:"global"`
+	PerKey        []CloudBudgetEntry `json:"perKey"`
+}
+
+// CloudBudgetStatus calls GET /admin/cloud-budget-status.
+func (c *Client) CloudBudgetStatus() (*CloudBudgetStatus, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/cloud-budget-status", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out CloudBudgetStatus
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse cloud budget status response: %v", err)
+	}
+	return &out, nil
+}
+
 // savedSessionHint returns a suffix clarifying that a 401/403 came from a
 // saved-session token specifically (as opposed to an explicit --token the
 // operator just typed), which is the case where "run it again" is the right

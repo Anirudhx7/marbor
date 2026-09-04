@@ -616,6 +616,103 @@ func buildRoot() *Command {
 				},
 			},
 			{
+				Name:      "cloud",
+				Short:     "manage cloud overflow providers and view budget status (P-A2-05)",
+				NeedsAuth: true,
+				Footer:    authFlags,
+				Sub: []*Command{
+					{
+						Name:      "providers",
+						Short:     "list/add/update/delete/reorder/test cloud providers",
+						NeedsAuth: true,
+						Sub: []*Command{
+							{
+								Name:      "list",
+								Short:     "list cloud providers (never shows the API key - R8)",
+								NeedsAuth: true,
+								Run:       func(ctx *RunCtx) int { return runCloudProvidersList(ctx.Flags, ctx.Stdout, ctx.Stderr) },
+							},
+							{
+								Name:      "add",
+								Short:     "add a cloud provider",
+								NeedsAuth: true,
+								Flags: []FlagSpec{
+									{Name: "name", Kind: FlagString, Usage: "provider config name (required)", Required: true, RequiredMsg: "error: --name is required"},
+									{Name: "provider", Kind: FlagString, Usage: "provider type, e.g. openai, anthropic, openrouter (required)", Required: true, RequiredMsg: "error: --provider is required"},
+									{Name: "base-url", Kind: FlagString, DefString: "", Usage: "provider API base URL (required if --enabled)"},
+									{Name: "api-key", Kind: FlagString, DefString: "", Usage: "provider API key (required if --enabled) - never echoed back by \"list\""},
+									{Name: "default-model", Kind: FlagString, DefString: "", Usage: "default model for this provider"},
+									{Name: "cost-per-1k", Kind: FlagString, DefString: "", Usage: "cost per 1K tokens in USD, for savings tracking"},
+									{Name: "priority", Kind: FlagInt, DefInt: 0, Usage: "fallback priority (lower tries first)"},
+									{Name: "enabled", Kind: FlagBool, Usage: "enable immediately"},
+								},
+								Run: func(ctx *RunCtx) int {
+									return runCloudProvidersAdd(ctx.Flags, ctx.String("name"), ctx.String("provider"), ctx.String("base-url"), ctx.String("api-key"), ctx.String("default-model"), ctx.String("cost-per-1k"), ctx.Int("priority"), ctx.Bool("enabled"), ctx.Stdout, ctx.Stderr)
+								},
+							},
+							{
+								Name:      "update",
+								Short:     "update a cloud provider (omit --api-key to keep the stored key - R8)",
+								NeedsAuth: true,
+								Args:      []ArgSpec{{Name: "name"}},
+								Flags: []FlagSpec{
+									{Name: "provider", Kind: FlagString, DefString: "", Usage: "provider type, e.g. openai, anthropic, openrouter"},
+									{Name: "base-url", Kind: FlagString, DefString: "", Usage: "provider API base URL"},
+									{Name: "api-key", Kind: FlagString, DefString: "", Usage: "provider API key (omit to keep the currently stored key)"},
+									{Name: "default-model", Kind: FlagString, DefString: "", Usage: "default model for this provider"},
+									{Name: "cost-per-1k", Kind: FlagString, DefString: "", Usage: "cost per 1K tokens in USD, for savings tracking"},
+									{Name: "priority", Kind: FlagInt, DefInt: 0, Usage: "fallback priority (lower tries first)"},
+									{Name: "enabled", Kind: FlagBool, Usage: "enable this provider"},
+								},
+								Run: func(ctx *RunCtx) int {
+									return runCloudProvidersUpdate(ctx.Flags, ctx.Args[0], ctx.String("provider"), ctx.String("base-url"), ctx.String("api-key"), ctx.String("default-model"), ctx.String("cost-per-1k"), ctx.Int("priority"), ctx.Bool("enabled"), ctx.Stdout, ctx.Stderr)
+								},
+							},
+							{
+								Name:      "delete",
+								Short:     "delete a cloud provider",
+								NeedsAuth: true,
+								Args:      []ArgSpec{{Name: "name"}},
+								Flags: []FlagSpec{
+									{Name: "yes", Kind: FlagBool, Usage: "confirm deletion without prompting"},
+								},
+								Run: func(ctx *RunCtx) int {
+									return runCloudProvidersDelete(ctx.Flags, ctx.Args[0], ctx.Bool("yes"), ctx.Stdout, ctx.Stderr)
+								},
+							},
+							{
+								Name:      "reorder",
+								Short:     "set cloud provider fallback priority order",
+								NeedsAuth: true,
+								Args:      []ArgSpec{{Name: "names"}},
+								Run: func(ctx *RunCtx) int {
+									return runCloudProvidersReorder(ctx.Flags, ctx.Args[0], ctx.Stdout, ctx.Stderr)
+								},
+							},
+							{
+								Name:      "test",
+								Short:     "verify a base-url+api-key pair authenticates, without saving it",
+								NeedsAuth: true,
+								Flags: []FlagSpec{
+									{Name: "provider", Kind: FlagString, Usage: "provider type (required)", Required: true, RequiredMsg: "error: --provider is required"},
+									{Name: "base-url", Kind: FlagString, Usage: "provider API base URL (required)", Required: true, RequiredMsg: "error: --base-url is required"},
+									{Name: "api-key", Kind: FlagString, Usage: "provider API key to test (required)", Required: true, RequiredMsg: "error: --api-key is required"},
+								},
+								Run: func(ctx *RunCtx) int {
+									return runCloudProvidersTest(ctx.Flags, ctx.String("provider"), ctx.String("base-url"), ctx.String("api-key"), ctx.Stdout, ctx.Stderr)
+								},
+							},
+						},
+					},
+					{
+						Name:      "budget-status",
+						Short:     "show global and per-key cloud spend vs budget caps",
+						NeedsAuth: true,
+						Run:       func(ctx *RunCtx) int { return runCloudBudgetStatus(ctx.Flags, ctx.Stdout, ctx.Stderr) },
+					},
+				},
+			},
+			{
 				Name:      "spill",
 				Short:     "show per-key, per-provider local-vs-cloud request counts",
 				NeedsAuth: true,

@@ -518,6 +518,15 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor routing strategy` | get/set the global routing strategy (requires auth) |
 | `marbor routing strategy get` | show the global routing strategy (requires auth) |
 | `marbor routing strategy set <strategy>` | set the global routing strategy (requires auth) |
+| `marbor cloud` | manage cloud overflow providers and view budget status (P-A2-05) (requires auth) |
+| `marbor cloud providers` | list/add/update/delete/reorder/test cloud providers (requires auth) |
+| `marbor cloud providers list` | list cloud providers (never shows the API key - R8) (requires auth) |
+| `marbor cloud providers add` | add a cloud provider (requires auth) |
+| `marbor cloud providers update <name>` | update a cloud provider (omit --api-key to keep the stored key - R8) (requires auth) |
+| `marbor cloud providers delete <name>` | delete a cloud provider (requires auth) |
+| `marbor cloud providers reorder <names>` | set cloud provider fallback priority order (requires auth) |
+| `marbor cloud providers test` | verify a base-url+api-key pair authenticates, without saving it (requires auth) |
+| `marbor cloud budget-status` | show global and per-key cloud spend vs budget caps (requires auth) |
 | `marbor spill` | show per-key, per-provider local-vs-cloud request counts (requires auth) |
 | `marbor activity` | show unified fleet activity feed (drain, agent, runtime, node, warmup, schedule, predictive, config) (requires auth) |
 | `marbor requests` | inspect routing decisions for past requests (requires auth) |

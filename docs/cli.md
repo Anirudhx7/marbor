@@ -496,6 +496,93 @@ set the global routing strategy
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
+### `cloud`
+
+manage cloud overflow providers and view budget status (P-A2-05)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).
+
+#### `providers`
+
+list/add/update/delete/reorder/test cloud providers
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+##### `list`
+
+list cloud providers (never shows the API key - R8)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+##### `add`
+
+add a cloud provider
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--name string` - provider config name (required) (required)
+- `--provider string` - provider type, e.g. openai, anthropic, openrouter (required) (required)
+- `--base-url string` - provider API base URL (required if --enabled)
+- `--api-key string` - provider API key (required if --enabled) - never echoed back by "list"
+- `--default-model string` - default model for this provider
+- `--cost-per-1k string` - cost per 1K tokens in USD, for savings tracking
+- `--priority int` - fallback priority (lower tries first)
+- `--enabled` - enable immediately
+
+##### `update <name>`
+
+update a cloud provider (omit --api-key to keep the stored key - R8)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--provider string` - provider type, e.g. openai, anthropic, openrouter
+- `--base-url string` - provider API base URL
+- `--api-key string` - provider API key (omit to keep the currently stored key)
+- `--default-model string` - default model for this provider
+- `--cost-per-1k string` - cost per 1K tokens in USD, for savings tracking
+- `--priority int` - fallback priority (lower tries first)
+- `--enabled` - enable this provider
+
+##### `delete <name>`
+
+delete a cloud provider
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--yes` - confirm deletion without prompting
+
+##### `reorder <names>`
+
+set cloud provider fallback priority order
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+##### `test`
+
+verify a base-url+api-key pair authenticates, without saving it
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--provider string` - provider type (required) (required)
+- `--base-url string` - provider API base URL (required) (required)
+- `--api-key string` - provider API key to test (required) (required)
+
+#### `budget-status`
+
+show global and per-key cloud spend vs budget caps
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
 ### `spill`
 
 show per-key, per-provider local-vs-cloud request counts
