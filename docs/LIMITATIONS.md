@@ -49,6 +49,31 @@ AMD and Intel GPU support via the marbor agent (`rocm-smi`/`xpu-smi` parsing) ha
 
 ---
 
+## Validated Runtime x GPU Vendor Matrix
+
+marbor is designed for 5 runtimes (Ollama, vLLM, TGI, llama.cpp, MLX) x 4 GPU vendors (NVIDIA, AMD, Intel, Apple Silicon) - code-level support exists for all 5 runtime probes and all 4 GPU telemetry collectors. **Code existing is not the same as validated on real hardware.** This table states, per cell, what has actually been exercised against the real thing, so scope is stated honestly rather than implied by the feature list above.
+
+| Runtime \ Vendor | NVIDIA | AMD | Intel | Apple Silicon |
+|---|---|---|---|---|
+| **Ollama** | VALIDATED - real deployment, real GPU, real workload. See the [TTFT benchmark](../README.md#ttft-performance-the-business-case) (v0.13.1, single consumer NVIDIA GPU, `bench/ttft.go`) and this page's Deployment Topology section. | UNTESTED - Ollama itself supports ROCm, but marbor's AMD GPU telemetry (`rocm-smi` parsing via the marbor agent) has not been exercised against a real AMD GPU. | UNTESTED - same gap as AMD: `xpu-smi` parsing is unvalidated against real Intel GPU hardware. | UNTESTED - Ollama runs natively on Apple Silicon; a Mac-mini heterogeneous-fleet run is planned (`.local/core/BENCH-RUNBOOK.md` step 8) but has not yet happened. |
+| **vLLM** | UNTESTED - only exercised against a mock server (`cmd/mocknode`, matching vLLM's `/v1/models` and `/health` shapes) in the demo stack, never a real running vLLM instance. | UNTESTED - same mock-only coverage; vLLM's ROCm build has never been run against marbor. | UNTESTED - same mock-only coverage. | UNTESTED - vLLM has no official Apple Silicon (Metal/MPS) backend as of this writing; not marked UNSUPPORTED without direct confirmation, but real validation here is unlikely to be possible upstream. |
+| **TGI** | UNTESTED - mock-only (`cmd/mocknode`), same as vLLM. | UNTESTED - mock-only. | UNTESTED - mock-only. | UNTESTED - mock-only; HuggingFace TGI has no native Apple Silicon build upstream, so real validation is unlikely to be possible. |
+| **llama.cpp** | UNTESTED - mock-only (`cmd/mocknode`). | UNTESTED - mock-only. | UNTESTED - mock-only. | UNTESTED - mock-only, despite llama.cpp having a real, mature Metal backend for Apple Silicon - it just hasn't been run against marbor yet. |
+| **MLX** | UNSUPPORTED - `mlx_lm.server` is Apple's own inference framework and only runs on Apple Silicon; there is no NVIDIA/CUDA build. | UNSUPPORTED - same reason: no ROCm build exists. | UNSUPPORTED - same reason: no Intel/oneAPI build exists. | UNTESTED - code exists (`internal/runtime/mlx.go`, request translation verified against `mlx_lm.server`'s documented SERVER.md schema) and is covered by unit tests against fixture responses, but has never been run against a real `mlx_lm.server` process on real Apple Silicon hardware. |
+
+**Summary: 1 of 20 cells VALIDATED (Ollama + NVIDIA), 3 of 20 UNSUPPORTED (MLX on non-Apple vendors, by upstream design), 16 of 20 UNTESTED.**
+
+Evidence basis for each marking:
+- **VALIDATED (Ollama + NVIDIA):** [README.md's TTFT benchmark section](../README.md#ttft-performance-the-business-case) - a deployed marbor v0.13.1 routing to a real single consumer-GPU Ollama node, measured with `bench/ttft.go`.
+- **UNTESTED (AMD/Intel GPU telemetry, any runtime):** CHANGELOG.md's marbor-agent GPU telemetry entry states plainly: "AMD and Intel support have not yet been validated against real hardware (built against each tool's publicly documented output format)."
+- **UNTESTED (vLLM/TGI/llama.cpp, any vendor):** the only exercised counterparts are mock servers (`cmd/mocknode`, CHANGELOG: "Real vLLM/TGI/llama.cpp mock servers in the demo stack... verified against that code, not each project's full real API"). No CHANGELOG entry, commit, or test record describes running marbor against a real vLLM, TGI, or llama.cpp server.
+- **UNTESTED (MLX + Apple Silicon):** MLX runtime support shipped as enum wiring and request translation verified against `mlx_lm.server`'s published SERVER.md schema (CHANGELOG), with unit-test coverage against fixture responses (`internal/runtime/detect_test.go`, `probe_test.go`) - not a real Apple Silicon run. The bench runbook's Mac-mini step (`.local/core/BENCH-RUNBOOK.md` step 8) is written but has not executed; V1-RELEASE-GATE.md's E.2 (hardware bench) remains BLOCKED on hardware access.
+- **UNSUPPORTED (MLX on NVIDIA/AMD/Intel):** `mlx_lm.server` is Apple's own ML framework, built on Apple's Metal API; it has no CUDA, ROCm, or oneAPI build, so these three cells are not applicable rather than merely unexercised.
+
+**Expanding coverage** (moving UNTESTED cells to VALIDATED) requires access to the real thing per cell - a running vLLM/TGI/llama.cpp server, a real AMD or Intel GPU host with the marbor agent installed, or Apple Silicon hardware for the Ollama and MLX Apple-Silicon cells. This is desirable but not required to state the matrix honestly; it is a separate, hardware-gated effort tracked as V1-RELEASE-GATE.md's E.2.
+
+---
+
 ## Admin Dashboard Security
 
 ### Admin login lockout
