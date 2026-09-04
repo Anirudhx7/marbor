@@ -504,6 +504,11 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor key patch <name>` | update key settings (requires auth) |
 | `marbor key set-local-only <name> <true\|false>` | block (or re-allow) cloud fallback for one API key (requires auth) |
 | `marbor key set-allow-local-degradation <name> <true\|false>` | let (or forbid) one API key receive a local alternate model (requires auth) |
+| `marbor schedules` | manage time-of-day warmup/unload/drain/undrain automations (P-A2-03) (requires auth) |
+| `marbor schedules list` | list schedules (requires auth) |
+| `marbor schedules create` | create a schedule (requires auth) |
+| `marbor schedules patch <id>` | update a schedule (only flags you pass are changed) (requires auth) |
+| `marbor schedules delete <id>` | delete a schedule (requires auth) |
 | `marbor spill` | show per-key, per-provider local-vs-cloud request counts (requires auth) |
 | `marbor activity` | show unified fleet activity feed (drain, agent, runtime, node, warmup, schedule, predictive, config) (requires auth) |
 | `marbor requests` | inspect routing decisions for past requests (requires auth) |

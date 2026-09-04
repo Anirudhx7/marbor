@@ -1383,6 +1383,94 @@ func (c *Client) SetNodePrewarm(node string, disabled bool) error {
 	return nil
 }
 
+// Schedule mirrors router.Schedule - a time-of-day warmup/unload/drain/
+// undrain automation entry (P-A2-03).
+type Schedule struct {
+	ID         string   `json:"id"`
+	Action     string   `json:"action"`
+	Node       string   `json:"node"`
+	Models     []string `json:"models,omitempty"`
+	At         string   `json:"at"`
+	Days       []int    `json:"days,omitempty"`
+	Enabled    bool     `json:"enabled"`
+	LastRunAt  string   `json:"last_run_at,omitempty"`
+	LastStatus string   `json:"last_status,omitempty"`
+	LastError  string   `json:"last_error,omitempty"`
+}
+
+// ScheduleCreateRequest is the body for POST /admin/schedules.
+type ScheduleCreateRequest struct {
+	Action  string   `json:"action"`
+	Node    string   `json:"node"`
+	Models  []string `json:"models,omitempty"`
+	At      string   `json:"at"`
+	Days    []int    `json:"days,omitempty"`
+	Enabled bool     `json:"enabled"`
+}
+
+// SchedulePatch is the body for PATCH /admin/schedules/{id} - nil fields are
+// left unchanged server-side.
+type SchedulePatch struct {
+	Enabled *bool     `json:"enabled,omitempty"`
+	Action  *string   `json:"action,omitempty"`
+	Node    *string   `json:"node,omitempty"`
+	Models  *[]string `json:"models,omitempty"`
+	At      *string   `json:"at,omitempty"`
+	Days    *[]int    `json:"days,omitempty"`
+}
+
+// ListSchedules calls GET /admin/schedules.
+func (c *Client) ListSchedules() ([]Schedule, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/schedules", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out []Schedule
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse schedules response: %v", err)
+	}
+	return out, nil
+}
+
+// CreateSchedule calls POST /admin/schedules.
+func (c *Client) CreateSchedule(req ScheduleCreateRequest) (*Schedule, error) {
+	resp, err := c.doRequestBody(http.MethodPost, "/admin/schedules", req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out Schedule
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse schedule response: %v", err)
+	}
+	return &out, nil
+}
+
+// PatchSchedule calls PATCH /admin/schedules/{id}.
+func (c *Client) PatchSchedule(id string, patch SchedulePatch) (*Schedule, error) {
+	resp, err := c.doRequestBody(http.MethodPatch, "/admin/schedules/"+urlPathEscape(id), patch)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out Schedule
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse schedule response: %v", err)
+	}
+	return &out, nil
+}
+
+// DeleteSchedule calls DELETE /admin/schedules/{id}.
+func (c *Client) DeleteSchedule(id string) error {
+	resp, err := c.doRequestBody(http.MethodDelete, "/admin/schedules/"+urlPathEscape(id), nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
 // savedSessionHint returns a suffix clarifying that a 401/403 came from a
 // saved-session token specifically (as opposed to an explicit --token the
 // operator just typed), which is the case where "run it again" is the right
