@@ -118,6 +118,65 @@ func TestMarborAgentRowPredatingScopeColumnDefaultsToAdmin(t *testing.T) {
 	}
 }
 
+// TestMigrateMarborAgentRekeyByHostPreservesScopeAndScheme is a regression
+// test for B1 finding STORE-06: migrateMarborAgentRekeyByHost's rekey INSERT
+// used to name only (name, enabled, port, token), silently dropping scope
+// and scheme when a legacy-name-keyed row was moved onto its node's shared
+// host key. On a fleet upgrading from v0.19.x with a readonly-scoped or
+// https-scheme row, that omission meant the migrated row silently fell back
+// to the column defaults ('admin' scope, 'http' scheme) - a privilege
+// escalation and a plaintext downgrade, both irreversible once the legacy
+// row was deleted by the same migration.
+func TestMigrateMarborAgentRekeyByHostPreservesScopeAndScheme(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	st, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer st.Close()
+	ss := st.(*sqliteStore)
+
+	const legacyName = "old-node-name"
+	const sharedHost = "gpu-host-1"
+	if err := st.UpsertNode(NodeRecord{Name: legacyName, URL: "http://10.0.0.5:11434", Runtime: "ollama", Host: sharedHost}); err != nil {
+		t.Fatalf("UpsertNode: %v", err)
+	}
+
+	// Seed a row keyed by the pre-host-scoping legacy node name, with a
+	// non-default scope and scheme - exactly the shape a v0.19.x install
+	// would have on disk.
+	if _, err := ss.db.Exec(
+		`INSERT INTO marbor_agent (name, enabled, port, token, scope, scheme) VALUES (?, ?, ?, ?, ?, ?)`,
+		legacyName, 1, 9200, "readonly.sk-legacy-token", "readonly", "https",
+	); err != nil {
+		t.Fatalf("seed legacy-keyed row: %v", err)
+	}
+
+	if err := ss.migrateMarborAgentRekeyByHost(); err != nil {
+		t.Fatalf("migrateMarborAgentRekeyByHost: %v", err)
+	}
+
+	got, found, err := st.GetMarborAgent(sharedHost)
+	if err != nil {
+		t.Fatalf("GetMarborAgent(%q): %v", sharedHost, err)
+	}
+	if !found {
+		t.Fatalf("GetMarborAgent(%q): found=false, want true after rekey", sharedHost)
+	}
+	if got.Scope != "readonly" {
+		t.Fatalf("rekeyed row Scope = %q, want %q (must not silently escalate to admin)", got.Scope, "readonly")
+	}
+	if got.Scheme != "https" {
+		t.Fatalf("rekeyed row Scheme = %q, want %q (must not silently downgrade to http)", got.Scheme, "https")
+	}
+
+	if _, found, err := st.GetMarborAgent(legacyName); err != nil {
+		t.Fatalf("GetMarborAgent(%q): %v", legacyName, err)
+	} else if found {
+		t.Fatalf("legacy-keyed row %q should have been deleted by the rekey migration", legacyName)
+	}
+}
+
 func TestGetMarborAgentNotFound(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	st, err := Open(dbPath)
