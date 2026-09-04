@@ -4,6 +4,16 @@ This page documents what marbor does not do, what has been tested, and what to p
 
 ---
 
+## Encryption Key Loss
+
+Secrets at rest (cloud provider API keys, runtime API keys, marbor-agent tokens, LiteLLM/HuggingFace/webhook credentials) are AES-256-GCM encrypted under a 32-byte master key (`MARBOR_ENCRYPTION_KEY` env var, or an auto-generated `marbor.db.key` file next to the database). **Losing that key is unrecoverable by design** - there is no way to decrypt the affected secrets without it.
+
+If the key file is corrupted, marbor refuses to start with an explicit error - the safe case. If the key file is simply missing (deleted, or an env-var-only deployment lost the variable), marbor currently generates a new key silently instead of refusing to start, orphaning every previously-encrypted secret with no warning; the process still boots and keeps routing traffic, but affected secrets are silently dropped from list views or fail outright on lookup until re-entered. This gap is confirmed but not yet fixed.
+
+Full blast-radius breakdown and the backup story: [`backup.md`](backup.md#the-encryption-key---back-it-up-like-the-database).
+
+---
+
 ## Deployment Topology
 
 ### What has been tested
