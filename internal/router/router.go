@@ -1580,6 +1580,26 @@ func (r *Router) RemoveNode(name string) {
 	delete(r.warmReserved, name)
 	r.evictMu.Unlock()
 
+	// B1 ROUTER-05: warmupSuppressed (keyed by node name) and showCache
+	// (keyed by "nodeURL|tag") used to survive RemoveNode entirely - a ghost
+	// warmupSuppressed entry forever reported the removed node as suppressed
+	// if the name were ever reused, and showCache accumulated dead entries
+	// for the removed node's URL until their own 30s TTL/size-cap eviction.
+	// Neither is catastrophic (showCache is TTL'd and size-capped;
+	// warmupSuppressed is invisible unless the name is reused) but both are
+	// a one-line delete/purge with no risk, so clean them up here too.
+	r.clearAllWarmupSuppress(name)
+	if urlToRemove != "" {
+		r.showMu.Lock()
+		prefix := urlToRemove + "|"
+		for k := range r.showCache {
+			if strings.HasPrefix(k, prefix) {
+				delete(r.showCache, k)
+			}
+		}
+		r.showMu.Unlock()
+	}
+
 	// Drop the removed node's warm state immediately (Tier 1): its residency is
 	// no longer meaningful and must not be restored on the next start.
 	if st != nil {
