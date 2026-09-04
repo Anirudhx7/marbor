@@ -711,7 +711,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		latencyMs = 0 // error requests show as instant fail in UI
 	}
 	if h.admin != nil {
-		tokens := rec.tokenCount(aborted)
+		tokens := rec.tokenCount(aborted || rec.truncatedTail)
 		clientIP := r.RemoteAddr
 		if h.trustProxyHeaders {
 			if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
@@ -1170,7 +1170,7 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 
 	if h.admin != nil {
 		latencyMs := int(time.Since(start).Milliseconds())
-		tokens := rec.tokenCount(aborted)
+		tokens := rec.tokenCount(aborted || rec.truncatedTail)
 		logTokens := tokens
 		if logTokens < 0 {
 			logTokens = 0
@@ -1281,11 +1281,12 @@ func rewritePromptToInput(body []byte) []byte {
 
 type statusRecorder struct {
 	http.ResponseWriter
-	statusCode  int
-	tail        []byte    // retained body for token-count parsing - see tailMax
-	sawNewline  bool      // true once a '\n' has appeared in the written body
-	start       time.Time // request start, for TTFT; zero value means TTFT is unavailable
-	firstByteAt time.Time // set on the first Write(); zero until then
+	statusCode    int
+	tail          []byte    // retained body for token-count parsing - see tailMax
+	sawNewline    bool      // true once a '\n' has appeared in the written body
+	truncatedTail bool      // true if the no-newline tail hit embedTailMax before the response finished
+	start         time.Time // request start, for TTFT; zero value means TTFT is unavailable
+	firstByteAt   time.Time // set on the first Write(); zero until then
 }
 
 // tailMax bounds the retained response tail for line-oriented responses -
@@ -1296,10 +1297,20 @@ type statusRecorder struct {
 // trails a large embedding array with no newline anywhere in the body) can't
 // be identified by "final line" at all, so Write does not truncate until it
 // has seen at least one '\n' - see sawNewline. Until then the buffer grows up
-// to maxRequestBodyBytes, matching the size the proxy already accepts on the
-// request side. Writes still pass straight through in both cases - streaming
-// to the client is never buffered (R2).
+// to embedTailMax. Writes still pass straight through in both cases -
+// streaming to the client is never buffered (R2).
 const tailMax = 8192
+
+// embedTailMax bounds the no-newline retention path (see tailMax doc above).
+// It used to grow all the way to maxRequestBodyBytes (32 MiB) per request -
+// a burst of concurrent /v1/embeddings requests could each hold a 32 MiB
+// tail, OOM-killing the control plane under anonymous traffic (B1 PROXY-01).
+// 1 MiB is generous headroom for the "model"/"usage" fields that surround a
+// real embedding array while keeping worst-case per-request retention two
+// orders of magnitude below the old bound. A body that exceeds this before
+// finishing is marked truncatedTail so tokenCount reports -1 (unknown)
+// rather than a fake 0 for a body it never fully saw (R1).
+const embedTailMax = 1 << 20 // 1 MiB
 
 func (r *statusRecorder) Write(b []byte) (int, error) {
 	n, err := r.ResponseWriter.Write(b)
@@ -1311,8 +1322,10 @@ func (r *statusRecorder) Write(b []byte) (int, error) {
 			r.sawNewline = true
 		}
 		if !r.sawNewline {
-			if len(r.tail) < maxRequestBodyBytes {
+			if len(r.tail) < embedTailMax {
 				r.tail = append(r.tail, b[:n]...)
+			} else {
+				r.truncatedTail = true
 			}
 		} else {
 			r.tail = append(r.tail, b[:n]...)

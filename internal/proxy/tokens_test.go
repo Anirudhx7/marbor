@@ -88,6 +88,43 @@ func TestTTFTZeroWhenStartUnset(t *testing.T) {
 	}
 }
 
+// TestNoNewlineTailBoundedAtEmbedTailMax is a regression test for B1 finding
+// PROXY-01: a no-newline response body (e.g. /v1/embeddings, whose usage
+// field trails a large embedding array with no '\n' anywhere) used to grow
+// the retained tail all the way to maxRequestBodyBytes (32 MiB) per request -
+// a burst of concurrent embeddings requests could each pin 32 MiB, OOM-
+// killing the control plane on anonymous traffic. Retention must now stop at
+// embedTailMax, well below that bound, and mark the tail truncated so
+// tokenCount reports -1 (unknown) instead of a fake 0 (R1) once real usage
+// data past the cut is unreachable.
+func TestNoNewlineTailBoundedAtEmbedTailMax(t *testing.T) {
+	rec := &statusRecorder{ResponseWriter: httptest.NewRecorder()}
+	// A single JSON document with no newline anywhere, larger than
+	// embedTailMax, simulating a large real /v1/embeddings response whose
+	// "usage" field would trail a huge "embedding" array.
+	chunk := make([]byte, 64*1024)
+	for i := range chunk {
+		chunk[i] = 'x'
+	}
+	total := 0
+	for total < embedTailMax+len(chunk) {
+		rec.Write(chunk)
+		total += len(chunk)
+	}
+
+	if len(rec.tail) > embedTailMax {
+		t.Fatalf("tail length = %d, want <= embedTailMax (%d)", len(rec.tail), embedTailMax)
+	}
+	if !rec.truncatedTail {
+		t.Fatal("truncatedTail = false, want true after exceeding embedTailMax with no newline seen")
+	}
+	// A truncated no-newline body must never report a fake 0 - callers OR in
+	// truncatedTail alongside aborted before calling tokenCount (proxy.go).
+	if got := rec.tokenCount(true); got != -1 {
+		t.Errorf("tokenCount(true) on truncated tail = %d, want -1 (unknown)", got)
+	}
+}
+
 func TestTokenCountTailBounded(t *testing.T) {
 	rec := &statusRecorder{ResponseWriter: httptest.NewRecorder()}
 	// Stream far more than tailMax, then the final Ollama object.
