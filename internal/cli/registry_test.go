@@ -1,6 +1,9 @@
 package cli
 
-import "testing"
+import (
+	"regexp"
+	"testing"
+)
 
 // TestRegistry_TreeValid pins the CLI command registry's structural
 // invariants: finalize must accept the real tree, must not run until
@@ -165,4 +168,74 @@ func TestRegistry_Finalize_AllowsNilRunWithSub(t *testing.T) {
 		},
 	}
 	finalize(c) // must not panic
+}
+
+// internalIDPattern catches internal-only references that must never reach
+// user-facing text (--help output, generated docs, man pages): queue/ticket
+// IDs (P411, P-A2-09b), guard citations (R8, R10), Law references (Law 6),
+// and LESSONS refs (L23). It is intentionally case-sensitive - lowercase
+// "p50"/"p95"/"p99" (latency percentiles) are legitimate product vocabulary,
+// not ticket IDs, and must not be flagged (P415).
+var internalIDPattern = regexp.MustCompile(
+	`\bP-?[A-Z0-9]*-?\d{2,}[a-z]?\b` + // P411, P84, P-A2-09b
+		`|\bR\d{1,2}\b` + // R8, R10 guard shorthand
+		`|\bLaw\s*\d+\b` + // Law 6
+		`|\bL\d{2,}\b`, // L23 LESSONS ref
+)
+
+// internalIDExceptions lists exact matched substrings that look like ticket
+// IDs to the regex above but are real, legitimate product terms. Add an
+// entry here (with a one-line reason) rather than weakening the pattern -
+// the pattern is the guard; this list is the documented, reviewable escape
+// hatch for the rare true false-positive (e.g. a GPU model number).
+var internalIDExceptions = map[string]string{
+	"P40":  "NVIDIA Tesla P40 GPU model name",
+	"P100": "NVIDIA Tesla P100 GPU model name",
+}
+
+// checkInternalLeak fails t if s contains an internal-only reference not
+// covered by internalIDExceptions. path/field identify where s came from so
+// a failure points straight at the string to fix.
+func checkInternalLeak(t *testing.T, path, field, s string) {
+	t.Helper()
+	for _, m := range internalIDPattern.FindAllString(s, -1) {
+		if _, ok := internalIDExceptions[m]; ok {
+			continue
+		}
+		t.Errorf("%s: %s contains internal-only reference %q in %q - reword for an operator who has never seen this codebase's internal docs, or add a documented exception to internalIDExceptions if this is a genuine false positive", path, field, m, s)
+	}
+}
+
+// walkForLeaks recursively checks every Short/Long/Footer/flag-usage string
+// reachable from c against internalIDPattern.
+func walkForLeaks(t *testing.T, c *Command, path string) {
+	t.Helper()
+	p := path
+	if c.Name != "" {
+		if p == "" {
+			p = c.Name
+		} else {
+			p = p + " " + c.Name
+		}
+	}
+	checkInternalLeak(t, p, "Short", c.Short)
+	checkInternalLeak(t, p, "Long", c.Long)
+	checkInternalLeak(t, p, "Footer", c.Footer)
+	for _, f := range c.Flags {
+		checkInternalLeak(t, p, "Flag[--"+f.Name+"].Usage", f.Usage)
+	}
+	for _, sub := range c.Sub {
+		walkForLeaks(t, sub, p)
+	}
+}
+
+// TestRegistry_NoInternalIDLeakage is the standing guard for P415: it walks
+// the full command tree and fails if any user-facing help string still
+// carries an internal queue-item ID, guard/Law reference, or LESSONS ref.
+// Runs under the existing `go test ./...` step in scripts/gate.sh - no
+// separate CI wiring needed. If this test is failing, the fix is rewording
+// the flagged string in registry_tree.go in plain language, not touching
+// this test.
+func TestRegistry_NoInternalIDLeakage(t *testing.T) {
+	walkForLeaks(t, root(), "")
 }
