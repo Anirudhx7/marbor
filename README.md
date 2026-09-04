@@ -479,6 +479,7 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor nodes pinned set <node>` | set a node's pinned model list (whole-list replace) (requires auth) |
 | `marbor nodes prewarm` | disable or re-enable predictive prewarm for a node (P-A2-02) (requires auth) |
 | `marbor nodes prewarm set <node>` | disable or re-enable predictive prewarm for a node (requires auth) |
+| `marbor nodes fit` | show per-node VRAM fit analysis for resident/warm models (P-A2-06b) (requires auth) |
 | `marbor models` | fleet-wide list, or pull/delete/unload/list on one node (requires auth) |
 | `marbor models pull <node> <model>` | start pulling a model onto a node (async - does not wait for completion) (requires auth) |
 | `marbor models delete <node> <model>` | delete a model from a node's local storage (requires auth) |
@@ -531,6 +532,12 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor favorites list` | list starred model ids (requires auth) |
 | `marbor favorites add <model-id>` | star a model (requires auth) |
 | `marbor favorites remove <model-id>` | unstar a model (requires auth) |
+| `marbor model-config` | manage per-node model parameter profiles (P-A2-06b) (requires auth) |
+| `marbor model-config get` | get a model's parameter profile on one node (requires auth) |
+| `marbor model-config set` | create/update a model's parameter profile (full JSON body) (requires auth) |
+| `marbor model-config delete` | reset a model on a node to backend defaults (requires auth) |
+| `marbor model-config list` | list every configured model parameter profile (requires auth) |
+| `marbor model-config capabilities` | show which parameter fields take effect per runtime (requires auth) |
 | `marbor spill` | show per-key, per-provider local-vs-cloud request counts (requires auth) |
 | `marbor activity` | show unified fleet activity feed (drain, agent, runtime, node, warmup, schedule, predictive, config) (requires auth) |
 | `marbor requests` | inspect routing decisions for past requests (requires auth) |

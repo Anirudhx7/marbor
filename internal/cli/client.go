@@ -1718,6 +1718,129 @@ func (c *Client) RemoveFavorite(modelID string) error {
 	return nil
 }
 
+// GetModelConfig calls GET /admin/model-config?model=X&node=Y, returning the
+// raw JSON body (store.ModelConfig has ~40 optional per-runtime sampling/
+// load-time fields - see internal/store/store.go - kept as raw JSON here
+// rather than mirrored field-by-field into a CLI-local type, matching this
+// method's read-only "pass through what the server sent" role; SetModelConfig
+// takes the same raw-JSON shape for writes, deliberately not exposing 40
+// individual flags, P-A2-06b).
+func (c *Client) GetModelConfig(model, node string) (json.RawMessage, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/model-config?model="+url.QueryEscape(model)+"&node="+url.QueryEscape(node), true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, serverErrorf("could not read model config response: %v", err)
+	}
+	return body, nil
+}
+
+// SetModelConfig calls PUT /admin/model-config with a raw JSON body (the
+// full store.ModelConfig shape - model+node required, every other field is
+// forwarded as-is; see GetModelConfig's doc comment for why this stays raw
+// JSON instead of ~40 individual flags).
+func (c *Client) SetModelConfig(rawBody json.RawMessage) (json.RawMessage, error) {
+	req, err := http.NewRequest(http.MethodPut, c.BaseURL+"/admin/model-config", bytes.NewReader(rawBody))
+	if err != nil {
+		return nil, userErrorf("building request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return nil, serverErrorf("could not reach %s: %v", c.BaseURL, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return nil, userErrorf("%s", readErrorMessage(resp.Body))
+	}
+	out, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, serverErrorf("could not read model config response: %v", err)
+	}
+	return out, nil
+}
+
+// DeleteModelConfig calls DELETE /admin/model-config?model=X&node=Y.
+func (c *Client) DeleteModelConfig(model, node string) error {
+	resp, err := c.doRequestBody(http.MethodDelete, "/admin/model-config?model="+url.QueryEscape(model)+"&node="+url.QueryEscape(node), nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
+// ListModelConfigs calls GET /admin/model-configs, returning the raw
+// {"configs":[...]} JSON body (see GetModelConfig's doc comment for why
+// this package keeps ModelConfig as raw JSON rather than a mirrored type).
+func (c *Client) ListModelConfigs() (json.RawMessage, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/model-configs", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, serverErrorf("could not read model configs response: %v", err)
+	}
+	return body, nil
+}
+
+// ModelConfigCapabilities calls GET /admin/model-config/capabilities -
+// per-runtime list of which ModelConfig fields actually take effect.
+func (c *Client) ModelConfigCapabilities() (map[string][]string, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/model-config/capabilities", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out map[string][]string
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse model config capabilities response: %v", err)
+	}
+	return out, nil
+}
+
+// ModelFitEntry mirrors handleModelFit's modelFitEntry.
+type ModelFitEntry struct {
+	Name              string `json:"name"`
+	SizeBytes         int64  `json:"size_bytes"`
+	VRAMEstimateBytes int64  `json:"vram_estimate_bytes"`
+	Fit               string `json:"fit"`
+	Loaded            bool   `json:"loaded"`
+}
+
+// NodeFitEntry mirrors handleModelFit's nodeFitEntry.
+type NodeFitEntry struct {
+	Name           string          `json:"name"`
+	URL            string          `json:"url"`
+	VRAMFreeBytes  int64           `json:"vram_free_bytes"`
+	VRAMTotalBytes int64           `json:"vram_total_bytes"`
+	VRAMSource     string          `json:"vram_source"`
+	Models         []ModelFitEntry `json:"models"`
+}
+
+// ModelFit calls GET /admin/nodes/model-fit - per-node VRAM fit analysis
+// for models (P-A2-06b).
+func (c *Client) ModelFit() ([]NodeFitEntry, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/nodes/model-fit", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Nodes []NodeFitEntry `json:"nodes"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse model fit response: %v", err)
+	}
+	return out.Nodes, nil
+}
+
 // savedSessionHint returns a suffix clarifying that a 401/403 came from a
 // saved-session token specifically (as opposed to an explicit --token the
 // operator just typed), which is the case where "run it again" is the right

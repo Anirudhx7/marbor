@@ -231,6 +231,12 @@ func buildRoot() *Command {
 							},
 						},
 					},
+					{
+						Name:      "fit",
+						Short:     "show per-node VRAM fit analysis for resident/warm models (P-A2-06b)",
+						NeedsAuth: true,
+						Run:       func(ctx *RunCtx) int { return runNodesFit(ctx.Flags, ctx.Stdout, ctx.Stderr) },
+					},
 				},
 			},
 			{
@@ -737,6 +743,65 @@ func buildRoot() *Command {
 						NeedsAuth: true,
 						Args:      []ArgSpec{{Name: "model-id"}},
 						Run:       func(ctx *RunCtx) int { return runFavoritesRemove(ctx.Flags, ctx.Args[0], ctx.Stdout, ctx.Stderr) },
+					},
+				},
+			},
+			{
+				Name:  "model-config",
+				Short: "manage per-node model parameter profiles (P-A2-06b)",
+				Long: "store.ModelConfig has ~40 optional per-runtime sampling/load-time fields, so\n" +
+					"\"set\" takes a JSON body via --from-json (a literal JSON string or\n" +
+					"@path/to/file.json) rather than dozens of individual flags - see\n" +
+					"internal/cli/modelconfig.go for the full field list and rationale.",
+				NeedsAuth: true,
+				Footer:    authFlags,
+				Sub: []*Command{
+					{
+						Name:      "get",
+						Short:     "get a model's parameter profile on one node",
+						NeedsAuth: true,
+						Flags: []FlagSpec{
+							{Name: "model", Kind: FlagString, Usage: "model name (required)", Required: true, RequiredMsg: "error: --model is required"},
+							{Name: "node", Kind: FlagString, Usage: "node name (required)", Required: true, RequiredMsg: "error: --node is required"},
+						},
+						Run: func(ctx *RunCtx) int {
+							return runModelConfigGet(ctx.Flags, ctx.String("model"), ctx.String("node"), ctx.Stdout, ctx.Stderr)
+						},
+					},
+					{
+						Name:      "set",
+						Short:     "create/update a model's parameter profile (full JSON body)",
+						NeedsAuth: true,
+						Flags: []FlagSpec{
+							{Name: "from-json", Kind: FlagString, Usage: "JSON body (literal string, or @path/to/file.json) - must include \"model\" and \"node\" (required)", Required: true, RequiredMsg: "error: --from-json is required"},
+						},
+						Run: func(ctx *RunCtx) int {
+							return runModelConfigSet(ctx.Flags, ctx.String("from-json"), ctx.Stdout, ctx.Stderr)
+						},
+					},
+					{
+						Name:      "delete",
+						Short:     "reset a model on a node to backend defaults",
+						NeedsAuth: true,
+						Flags: []FlagSpec{
+							{Name: "model", Kind: FlagString, Usage: "model name (required)", Required: true, RequiredMsg: "error: --model is required"},
+							{Name: "node", Kind: FlagString, Usage: "node name (required)", Required: true, RequiredMsg: "error: --node is required"},
+						},
+						Run: func(ctx *RunCtx) int {
+							return runModelConfigDelete(ctx.Flags, ctx.String("model"), ctx.String("node"), ctx.Stdout, ctx.Stderr)
+						},
+					},
+					{
+						Name:      "list",
+						Short:     "list every configured model parameter profile",
+						NeedsAuth: true,
+						Run:       func(ctx *RunCtx) int { return runModelConfigList(ctx.Flags, ctx.Stdout, ctx.Stderr) },
+					},
+					{
+						Name:      "capabilities",
+						Short:     "show which parameter fields take effect per runtime",
+						NeedsAuth: true,
+						Run:       func(ctx *RunCtx) int { return runModelConfigCapabilities(ctx.Flags, ctx.Stdout, ctx.Stderr) },
 					},
 				},
 			},

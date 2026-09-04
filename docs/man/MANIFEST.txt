@@ -8,5 +8,6 @@ marbor-schedules.1
 marbor-routing.1
 marbor-cloud.1
 marbor-favorites.1
+marbor-model-config.1
 marbor-requests.1
 marbor-users.1

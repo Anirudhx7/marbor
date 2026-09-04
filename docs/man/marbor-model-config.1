@@ -1,0 +1,63 @@
+.TH MARBOR\-MODEL-CONFIG 1 "2026-08-17" "marbor dev" "Marbor Manual"
+.SH NAME
+marbor\-model-config \- manage per\-node model parameter profiles (P\-A2-06b)
+.SH SYNOPSIS
+.B marbor model\-config
+[action] [args] [\fIflags\fR]
+.SH DESCRIPTION
+store.ModelConfig has ~40 optional per\-runtime sampling/load\-time fields, so
+"set" takes a JSON body via \-\-from-json (a literal JSON string or
+@path/to/file.json) rather than dozens of individual flags - see
+internal/cli/modelconfig.go for the full field list and rationale.
+.SH COMMANDS
+.TP
+.B get
+get a model's parameter profile on one node
+.RS
+.TP
+.B \-\-model string
+model name (required) (required)
+.TP
+.B \-\-node string
+node name (required) (required)
+.RE
+.TP
+.B set
+create/update a model's parameter profile (full JSON body)
+.RS
+.TP
+.B \-\-from-json string
+JSON body (literal string, or @path/to/file.json) - must include "model" and "node" (required) (required)
+.RE
+.TP
+.B delete
+reset a model on a node to backend defaults
+.RS
+.TP
+.B \-\-model string
+model name (required) (required)
+.TP
+.B \-\-node string
+node name (required) (required)
+.RE
+.TP
+.B list
+list every configured model parameter profile
+.TP
+.B capabilities
+show which parameter fields take effect per runtime
+.SH FLAGS
+.TP
+.B \-\-server
+Admin API base URL (default "http://localhost:8080", env MARBOR_SERVER)
+.TP
+.B \-\-json
+output machine\-readable JSON instead of a human table
+.TP
+.B \-\-username
+admin username, used to log in (env MARBOR_USERNAME)
+.TP
+.B \-\-password
+admin password, used to log in (env MARBOR_PASSWORD)
+.SH SEE ALSO
+\fBmarbor\fR(1)
