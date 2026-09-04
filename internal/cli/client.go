@@ -1301,6 +1301,88 @@ func (c *Client) AuditQuery(f AuditFilter) (*AuditResult, error) {
 	return &out, nil
 }
 
+// NodeWarmupInfo mirrors handleGetNodeWarmup/handleSetNodeWarmup's response
+// shape (GET/PUT /admin/nodes/{name}/warmup) - P-A2-02.
+type NodeWarmupInfo struct {
+	Enabled bool     `json:"enabled"`
+	Models  []string `json:"models"`
+}
+
+// GetNodeWarmup calls GET /admin/nodes/{name}/warmup.
+func (c *Client) GetNodeWarmup(node string) (*NodeWarmupInfo, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/nodes/"+urlPathEscape(node)+"/warmup", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out NodeWarmupInfo
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse node warmup response: %v", err)
+	}
+	return &out, nil
+}
+
+// SetNodeWarmup calls PUT /admin/nodes/{name}/warmup.
+func (c *Client) SetNodeWarmup(node string, enabled bool, models []string) (*NodeWarmupInfo, error) {
+	resp, err := c.doRequestBody(http.MethodPut, "/admin/nodes/"+urlPathEscape(node)+"/warmup",
+		map[string]interface{}{"enabled": enabled, "models": models})
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out NodeWarmupInfo
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse node warmup response: %v", err)
+	}
+	return &out, nil
+}
+
+// GetPinned calls GET /admin/nodes/{name}/pinned - the node's never-evict
+// model list (P-A2-02).
+func (c *Client) GetPinned(node string) ([]string, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/nodes/"+urlPathEscape(node)+"/pinned", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Models []string `json:"models"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse pinned response: %v", err)
+	}
+	return out.Models, nil
+}
+
+// SetPinned calls PUT /admin/nodes/{name}/pinned (whole-list replace).
+func (c *Client) SetPinned(node string, models []string) ([]string, error) {
+	resp, err := c.doRequestBody(http.MethodPut, "/admin/nodes/"+urlPathEscape(node)+"/pinned",
+		map[string]interface{}{"models": models})
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Models []string `json:"models"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse pinned response: %v", err)
+	}
+	return out.Models, nil
+}
+
+// SetNodePrewarm calls POST /admin/nodes/{name}/prewarm - disables/re-enables
+// predictive prewarm for one node (P-A2-02).
+func (c *Client) SetNodePrewarm(node string, disabled bool) error {
+	resp, err := c.doRequestBody(http.MethodPost, "/admin/nodes/"+urlPathEscape(node)+"/prewarm",
+		map[string]interface{}{"disabled": disabled})
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
 // savedSessionHint returns a suffix clarifying that a 401/403 came from a
 // saved-session token specifically (as opposed to an explicit --token the
 // operator just typed), which is the case where "run it again" is the right

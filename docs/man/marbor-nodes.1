@@ -51,6 +51,48 @@ remove a node from the fleet (P\-A2-01)
 .B \-\-yes
 confirm removal without prompting
 .RE
+.TP
+.B warmup
+get or set a node's proactive warmup config (P\-A2-02)
+.TP
+.B warmup get <node>
+show a node's proactive warmup config
+.TP
+.B warmup set <node>
+set a node's proactive warmup config
+.RS
+.TP
+.B \-\-enabled
+enable proactive warmup for the listed models
+.TP
+.B \-\-models string
+comma\-separated models to keep resident (empty clears)
+.RE
+.TP
+.B pinned
+get or set a node's never\-evict (pinned) model list (P\-A2-02)
+.TP
+.B pinned get <node>
+show a node's pinned model list
+.TP
+.B pinned set <node>
+set a node's pinned model list (whole\-list replace)
+.RS
+.TP
+.B \-\-models string
+comma\-separated models to pin (empty clears all)
+.RE
+.TP
+.B prewarm
+disable or re\-enable predictive prewarm for a node (P\-A2-02)
+.TP
+.B prewarm set <node>
+disable or re\-enable predictive prewarm for a node
+.RS
+.TP
+.B \-\-disabled
+disable predictive prewarm for this node
+.RE
 .SH FLAGS
 .TP
 .B \-\-server

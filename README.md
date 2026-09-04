@@ -471,6 +471,14 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor nodes patch <node>` | set deployment parallelism or per-model VRAM overrides for a node (P397, P411) (requires auth) |
 | `marbor nodes add <name> <url>` | add (or update, by name) a node in the fleet (P-A2-01) (requires auth) |
 | `marbor nodes remove <node>` | remove a node from the fleet (P-A2-01) (requires auth) |
+| `marbor nodes warmup` | get or set a node's proactive warmup config (P-A2-02) (requires auth) |
+| `marbor nodes warmup get <node>` | show a node's proactive warmup config (requires auth) |
+| `marbor nodes warmup set <node>` | set a node's proactive warmup config (requires auth) |
+| `marbor nodes pinned` | get or set a node's never-evict (pinned) model list (P-A2-02) (requires auth) |
+| `marbor nodes pinned get <node>` | show a node's pinned model list (requires auth) |
+| `marbor nodes pinned set <node>` | set a node's pinned model list (whole-list replace) (requires auth) |
+| `marbor nodes prewarm` | disable or re-enable predictive prewarm for a node (P-A2-02) (requires auth) |
+| `marbor nodes prewarm set <node>` | disable or re-enable predictive prewarm for a node (requires auth) |
 | `marbor models` | fleet-wide list, or pull/delete/unload/list on one node (requires auth) |
 | `marbor models pull <node> <model>` | start pulling a model onto a node (async - does not wait for completion) (requires auth) |
 | `marbor models delete <node> <model>` | delete a model from a node's local storage (requires auth) |

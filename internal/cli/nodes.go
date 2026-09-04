@@ -180,6 +180,111 @@ func runNodesRemove(flags *globalFlags, name string, yes bool, stdout, stderr io
 	return ExitOK
 }
 
+// parseCommaList splits a comma-separated flag value into a trimmed,
+// non-empty-entry slice. An empty input string returns a non-nil empty
+// slice (explicit clear), matching parseVRAMOverrides' convention.
+func parseCommaList(s string) []string {
+	out := []string{}
+	for _, part := range strings.Split(s, ",") {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
+// runNodesWarmupGet implements `marbor nodes warmup get <node>` - GET
+// /admin/nodes/{name}/warmup (P-A2-02).
+func runNodesWarmupGet(flags *globalFlags, name string, stdout, stderr io.Writer) int {
+	client, err := authenticatedClient(flags)
+	if err != nil {
+		return reportError(err, stderr)
+	}
+	info, err := client.GetNodeWarmup(name)
+	if err != nil {
+		return reportError(err, stderr)
+	}
+	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, info); handled {
+		return code
+	}
+	fmt.Fprintf(stdout, "node %q warmup enabled=%v models=%v\n", name, info.Enabled, info.Models)
+	return ExitOK
+}
+
+// runNodesWarmupSet implements `marbor nodes warmup set <node> --enabled
+// true|false --models a,b` - PUT /admin/nodes/{name}/warmup (P-A2-02).
+func runNodesWarmupSet(flags *globalFlags, name string, enabled bool, models string, stdout, stderr io.Writer) int {
+	client, err := authenticatedClient(flags)
+	if err != nil {
+		return reportError(err, stderr)
+	}
+	info, err := client.SetNodeWarmup(name, enabled, parseCommaList(models))
+	if err != nil {
+		return reportError(err, stderr)
+	}
+	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, info); handled {
+		return code
+	}
+	fmt.Fprintf(stdout, "node %q warmup set: enabled=%v models=%v\n", name, info.Enabled, info.Models)
+	return ExitOK
+}
+
+// runNodesPinnedGet implements `marbor nodes pinned get <node>` - GET
+// /admin/nodes/{name}/pinned (P-A2-02).
+func runNodesPinnedGet(flags *globalFlags, name string, stdout, stderr io.Writer) int {
+	client, err := authenticatedClient(flags)
+	if err != nil {
+		return reportError(err, stderr)
+	}
+	models, err := client.GetPinned(name)
+	if err != nil {
+		return reportError(err, stderr)
+	}
+	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, map[string]interface{}{"models": models}); handled {
+		return code
+	}
+	fmt.Fprintf(stdout, "node %q pinned models: %v\n", name, models)
+	return ExitOK
+}
+
+// runNodesPinnedSet implements `marbor nodes pinned set <node> --models
+// a,b` - PUT /admin/nodes/{name}/pinned (whole-list replace, P-A2-02).
+func runNodesPinnedSet(flags *globalFlags, name, models string, stdout, stderr io.Writer) int {
+	client, err := authenticatedClient(flags)
+	if err != nil {
+		return reportError(err, stderr)
+	}
+	out, err := client.SetPinned(name, parseCommaList(models))
+	if err != nil {
+		return reportError(err, stderr)
+	}
+	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, map[string]interface{}{"models": out}); handled {
+		return code
+	}
+	fmt.Fprintf(stdout, "node %q pinned models set: %v\n", name, out)
+	return ExitOK
+}
+
+// runNodesPrewarmSet implements `marbor nodes prewarm set <node> --disabled
+// true|false` - POST /admin/nodes/{name}/prewarm (P-A2-02).
+func runNodesPrewarmSet(flags *globalFlags, name string, disabled bool, stdout, stderr io.Writer) int {
+	client, err := authenticatedClient(flags)
+	if err != nil {
+		return reportError(err, stderr)
+	}
+	if err := client.SetNodePrewarm(name, disabled); err != nil {
+		return reportError(err, stderr)
+	}
+	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, map[string]interface{}{
+		"node": name, "prewarm_disabled": disabled,
+	}); handled {
+		return code
+	}
+	fmt.Fprintf(stdout, "node %q prewarm disabled=%v\n", name, disabled)
+	return ExitOK
+}
+
 // runNodesPatchWithCtx implements `marbor nodes patch <node> --parallelism-type tp --parallelism-width 8` (P397)
 // and `marbor nodes patch <node> --vram-override model=mb[,model2=mb2]` (P411).
 func runNodesPatchWithCtx(ctx *RunCtx, name string) int {
