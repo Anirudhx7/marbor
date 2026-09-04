@@ -1,0 +1,27 @@
+.TH MARBOR\-CONFIG 1 "2026-08-17" "marbor dev" "Marbor Manual"
+.SH NAME
+marbor\-config \- control\-plane configuration operations (P\-A2-08c)
+.SH SYNOPSIS
+.B marbor config
+[action] [args] [\fIflags\fR]
+.SH DESCRIPTION
+control\-plane configuration operations (P\-A2-08c)
+.SH COMMANDS
+.TP
+.B reload
+re\-sync live router/auth state from SQLite
+.SH FLAGS
+.TP
+.B \-\-server
+Admin API base URL (default "http://localhost:8080", env MARBOR_SERVER)
+.TP
+.B \-\-json
+output machine\-readable JSON instead of a human table
+.TP
+.B \-\-username
+admin username, used to log in (env MARBOR_USERNAME)
+.TP
+.B \-\-password
+admin password, used to log in (env MARBOR_PASSWORD)
+.SH SEE ALSO
+\fBmarbor\fR(1)

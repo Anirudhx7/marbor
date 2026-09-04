@@ -69,6 +69,21 @@ show cloud\-vs-local savings summary (P\-A2-07)
 .B metrics
 dashboard metrics (P\-A2-07). See \fBmarbor-metrics\fR(1).
 .TP
+.B pulls
+list every active model pull job across the fleet (P\-A2-08b)
+.TP
+.B warmup
+global warmup engine status and manual controls (P\-A2-08c). See \fBmarbor-warmup\fR(1).
+.TP
+.B predictive
+show recent predictive prewarm decisions (P\-A2-08c). See \fBmarbor-predictive\fR(1).
+.TP
+.B system\-info
+show control\-plane host system info and per\-node GPU summary (P\-A2-08c)
+.TP
+.B config
+control\-plane configuration operations (P\-A2-08c). See \fBmarbor-config\fR(1).
+.TP
 .B spill
 show per\-key, per\-provider local\-vs-cloud request counts
 .TP
@@ -156,5 +171,8 @@ marbor completion fish > ~/.config/fish/completions/marbor.fish
 \fBmarbor-backup\fR(1),
 \fBmarbor-analytics\fR(1),
 \fBmarbor-metrics\fR(1),
+\fBmarbor-warmup\fR(1),
+\fBmarbor-predictive\fR(1),
+\fBmarbor-config\fR(1),
 \fBmarbor-requests\fR(1),
 \fBmarbor-users\fR(1)

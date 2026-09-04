@@ -1,13 +1,15 @@
 Usage: marbor models [action] [args] [flags]
 
 Actions:
-  pull <node> <model>    start pulling a model onto a node (async - does not wait for completion)
-  delete <node> <model>  delete a model from a node's local storage
-  unload <node> <model>  unload a model from a node's warm state
-  list <node>            list models present on a node's local storage (per-node, not the fleet-wide aggregate above)
-  fleet                  fleet residency with VRAM totals and drift (same live data as bare models, filterable)
-  search                 search Hugging Face models (P-A2-06c)
-  repo <owner/name>      show Hugging Face repo detail with per-node fit (P-A2-06c)
+  pull <node> <model>           start pulling a model onto a node (async - does not wait for completion)
+  delete <node> <model>         delete a model from a node's local storage
+  unload <node> <model>         unload a model from a node's warm state
+  list <node>                   list models present on a node's local storage (per-node, not the fleet-wide aggregate above)
+  fleet                         fleet residency with VRAM totals and drift (same live data as bare models, filterable)
+  search                        search Hugging Face models (P-A2-06c)
+  repo <owner/name>             show Hugging Face repo detail with per-node fit (P-A2-06c)
+  pull-progress <node> <model>  show a point-in-time snapshot of an active pull (P-A2-08b)
+  cancel-pull <node> <model>    cancel an in-flight pull (P-A2-08b)
 
 Flags:
   --server string    Admin API base URL (default "http://localhost:8080", env MARBOR_SERVER)

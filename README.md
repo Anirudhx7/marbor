@@ -488,6 +488,8 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor models fleet` | fleet residency with VRAM totals and drift (same live data as bare models, filterable) (requires auth) |
 | `marbor models search` | search Hugging Face models (P-A2-06c) (requires auth) |
 | `marbor models repo <owner/name>` | show Hugging Face repo detail with per-node fit (P-A2-06c) (requires auth) |
+| `marbor models pull-progress <node> <model>` | show a point-in-time snapshot of an active pull (P-A2-08b) (requires auth) |
+| `marbor models cancel-pull <node> <model>` | cancel an in-flight pull (P-A2-08b) (requires auth) |
 | `marbor runtime` | start/stop/restart/logs/drain/undrain/health on one node (requires auth) |
 | `marbor runtime start <node>` | start the node's inference runtime process (requires auth) |
 | `marbor runtime stop <node>` | stop the node's inference runtime process (requires auth) |
@@ -552,6 +554,17 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor savings` | show cloud-vs-local savings summary (P-A2-07) (requires auth) |
 | `marbor metrics` | dashboard metrics (P-A2-07) |
 | `marbor metrics summary` | show the dashboard summary strip (nodes, active requests, latency, tokens/min) (requires auth) |
+| `marbor pulls` | list every active model pull job across the fleet (P-A2-08b) (requires auth) |
+| `marbor warmup` | global warmup engine status and manual controls (P-A2-08c) (requires auth) |
+| `marbor warmup status` | show global warmup engine status (requires auth) |
+| `marbor warmup predictive` | enable/disable the predictive prewarm engine (requires auth) |
+| `marbor warmup predictive set` | enable/disable the predictive prewarm engine (requires auth) |
+| `marbor warmup ping` | manually trigger a warmup cycle now (requires auth) |
+| `marbor predictive` | show recent predictive prewarm decisions (P-A2-08c) (requires auth) |
+| `marbor predictive decisions` | show recent predictive prewarm decisions (requires auth) |
+| `marbor system-info` | show control-plane host system info and per-node GPU summary (P-A2-08c) (requires auth) |
+| `marbor config` | control-plane configuration operations (P-A2-08c) |
+| `marbor config reload` | re-sync live router/auth state from SQLite (requires auth) |
 | `marbor spill` | show per-key, per-provider local-vs-cloud request counts (requires auth) |
 | `marbor activity` | show unified fleet activity feed (drain, agent, runtime, node, warmup, schedule, predictive, config) (requires auth) |
 | `marbor requests` | inspect routing decisions for past requests (requires auth) |
@@ -567,6 +580,7 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor users reset-password <id>` | reset a user's password (printed once) (requires auth) |
 | `marbor users patch <id>` | update a user's email or role (requires auth) |
 | `marbor users delete <id>` | delete a user (requires auth) |
+| `marbor users pending-count` | show the number of users awaiting approval (P-A2-08d) (requires auth) |
 | `marbor completion <shell>` | generate a shell completion script (bash, zsh, or fish) (hidden from `--help`; see `docs/cli.md`) |
 <!-- END CLI TABLE -->
 

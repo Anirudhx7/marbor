@@ -24,6 +24,11 @@ Commands:
   analytics     hourly analytics + per-model stats (P-A2-07)
   savings       show cloud-vs-local savings summary (P-A2-07)
   metrics       dashboard metrics (P-A2-07)
+  pulls         list every active model pull job across the fleet (P-A2-08b)
+  warmup        global warmup engine status and manual controls (P-A2-08c)
+  predictive    show recent predictive prewarm decisions (P-A2-08c)
+  system-info   show control-plane host system info and per-node GPU summary (P-A2-08c)
+  config        control-plane configuration operations (P-A2-08c)
   spill         show per-key, per-provider local-vs-cloud request counts
   activity      show unified fleet activity feed (drain, agent, runtime, node, warmup, schedule, predictive, config)
   requests      inspect routing decisions for past requests
