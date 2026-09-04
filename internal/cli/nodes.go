@@ -212,21 +212,45 @@ func runNodesWarmupGet(flags *globalFlags, name string, stdout, stderr io.Writer
 	return ExitOK
 }
 
-// runNodesWarmupSet implements `marbor nodes warmup set <node> --enabled
-// true|false --models a,b` - PUT /admin/nodes/{name}/warmup (P-A2-02).
-func runNodesWarmupSet(flags *globalFlags, name string, enabled bool, models string, stdout, stderr io.Writer) int {
-	client, err := authenticatedClient(flags)
+// runNodesWarmupSet implements `marbor nodes warmup set <node> [--enabled
+// true|false] [--models a,b]` - PUT /admin/nodes/{name}/warmup (P-A2-02).
+// handleSetNodeWarmup takes enabled+models together in one whole-object PUT
+// with no partial-patch semantics, so an operator who only wants to flip
+// --enabled (a common single-purpose case, e.g. pausing warmup) would
+// otherwise silently wipe any previously configured --models by omitting it
+// (code review finding). To make "set" behave like a patch from the
+// operator's point of view without inventing a new Admin API capability
+// (Law 6), any flag NOT explicitly passed is filled in from the node's
+// current warmup config (one extra GET) before the PUT.
+func runNodesWarmupSet(ctx *RunCtx, name string) int {
+	client, err := authenticatedClient(ctx.Flags)
 	if err != nil {
-		return reportError(err, stderr)
+		return reportError(err, ctx.Stderr)
 	}
-	info, err := client.SetNodeWarmup(name, enabled, parseCommaList(models))
+
+	enabled := ctx.Bool("enabled")
+	models := parseCommaList(ctx.String("models"))
+	if !ctx.IsSet("enabled") || !ctx.IsSet("models") {
+		cur, err := client.GetNodeWarmup(name)
+		if err != nil {
+			return reportError(err, ctx.Stderr)
+		}
+		if !ctx.IsSet("enabled") {
+			enabled = cur.Enabled
+		}
+		if !ctx.IsSet("models") {
+			models = cur.Models
+		}
+	}
+
+	info, err := client.SetNodeWarmup(name, enabled, models)
 	if err != nil {
-		return reportError(err, stderr)
+		return reportError(err, ctx.Stderr)
 	}
-	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, info); handled {
+	if handled, code := emitJSON(ctx.Stdout, ctx.Stderr, ctx.Flags.jsonOutput, info); handled {
 		return code
 	}
-	fmt.Fprintf(stdout, "node %q warmup set: enabled=%v models=%v\n", name, info.Enabled, info.Models)
+	fmt.Fprintf(ctx.Stdout, "node %q warmup set: enabled=%v models=%v\n", name, info.Enabled, info.Models)
 	return ExitOK
 }
 

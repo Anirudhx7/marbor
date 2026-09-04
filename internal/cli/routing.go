@@ -55,8 +55,14 @@ func runRoutingRulesAdd(flags *globalFlags, id, condition, target, strategy stri
 	return ExitOK
 }
 
-// runRoutingRulesRemove implements `marbor routing rules remove <id>`.
-func runRoutingRulesRemove(flags *globalFlags, id string, stdout, stderr io.Writer) int {
+// runRoutingRulesRemove implements `marbor routing rules remove <id>
+// [--yes]`. Destructive per R10 (irreversible): requires --yes or an
+// interactive TTY confirmation, matching the "key revoke"/"users delete"
+// pattern (code review finding - this was originally missing).
+func runRoutingRulesRemove(flags *globalFlags, id string, yes bool, stdout, stderr io.Writer) int {
+	if err := requireConfirm("remove routing rule", id, yes, stderr); err != nil {
+		return reportError(err, stderr)
+	}
 	client, err := authenticatedClient(flags)
 	if err != nil {
 		return reportError(err, stderr)

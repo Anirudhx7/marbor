@@ -134,17 +134,7 @@ func runKeyCreate(flags *globalFlags, stdout, stderr io.Writer, ctx *RunCtx) int
 		}
 	}
 	if ctx.IsSet("models") {
-		raw := ctx.String("models")
-		if raw != "" {
-			parts := strings.Split(raw, ",")
-			var out []string
-			for _, p := range parts {
-				if s := strings.TrimSpace(p); s != "" {
-					out = append(out, s)
-				}
-			}
-			req.Models = out
-		}
+		req.Models = parseCommaList(ctx.String("models"))
 	}
 	if ctx.IsSet("expires-at") {
 		req.ExpiresAt = ctx.String("expires-at")
@@ -293,20 +283,8 @@ func runKeyPatch(flags *globalFlags, name string, stdout, stderr io.Writer, ctx 
 		hasField = true
 	}
 	if ctx.IsSet("models") {
-		raw := ctx.String("models")
-		if raw == "" {
-			empty := []string{}
-			patch.Models = &empty
-		} else {
-			parts := strings.Split(raw, ",")
-			var out []string
-			for _, p := range parts {
-				if s := strings.TrimSpace(p); s != "" {
-					out = append(out, s)
-				}
-			}
-			patch.Models = &out
-		}
+		out := parseCommaList(ctx.String("models"))
+		patch.Models = &out
 		hasField = true
 	}
 	if ctx.IsSet("expires-at") {
