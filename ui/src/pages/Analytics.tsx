@@ -183,7 +183,7 @@ export function Analytics() {
       {/* Hero Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <StatCard
-          title="Total Saved vs Cloud"
+          title="Estimated Saved vs Cloud"
           value={loading ? '--' : data?.total_saved_usd != null ? `$${data.total_saved_usd.toFixed(2)}` : '-'}
           sub={`${localPct}% requests served locally`}
           icon={<DollarSign className="w-5 h-5" />}
