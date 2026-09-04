@@ -1,0 +1,41 @@
+.TH MARBOR\-BENCHMARK 1 "2026-08-17" "marbor dev" "Marbor Manual"
+.SH NAME
+marbor\-benchmark \- run/inspect in\-dashboard hardware benchmark jobs (P\-A2-09a)
+.SH SYNOPSIS
+.B marbor benchmark
+[action] [args] [\fIflags\fR]
+.SH DESCRIPTION
+run/inspect in\-dashboard hardware benchmark jobs (P\-A2-09a)
+.SH COMMANDS
+.TP
+.B run <node> <model>
+start a benchmark job
+.RS
+.TP
+.B \-\-n int
+number of cold/warm samples (1-50, default 10)
+.RE
+.TP
+.B progress <job\-id>
+show a point\-in-time snapshot of a running benchmark job
+.TP
+.B cancel <job\-id>
+cancel an in\-flight benchmark job
+.TP
+.B runs
+show persisted benchmark run history
+.SH FLAGS
+.TP
+.B \-\-server
+Admin API base URL (default "http://localhost:8080", env MARBOR_SERVER)
+.TP
+.B \-\-json
+output machine\-readable JSON instead of a human table
+.TP
+.B \-\-username
+admin username, used to log in (env MARBOR_USERNAME)
+.TP
+.B \-\-password
+admin password, used to log in (env MARBOR_PASSWORD)
+.SH SEE ALSO
+\fBmarbor\fR(1)
