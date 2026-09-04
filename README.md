@@ -486,6 +486,8 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor models unload <node> <model>` | unload a model from a node's warm state (requires auth) |
 | `marbor models list <node>` | list models present on a node's local storage (per-node, not the fleet-wide aggregate above) (requires auth) |
 | `marbor models fleet` | fleet residency with VRAM totals and drift (same live data as bare models, filterable) (requires auth) |
+| `marbor models search` | search Hugging Face models (P-A2-06c) (requires auth) |
+| `marbor models repo <owner/name>` | show Hugging Face repo detail with per-node fit (P-A2-06c) (requires auth) |
 | `marbor runtime` | start/stop/restart/logs/drain/undrain/health on one node (requires auth) |
 | `marbor runtime start <node>` | start the node's inference runtime process (requires auth) |
 | `marbor runtime stop <node>` | stop the node's inference runtime process (requires auth) |
@@ -538,6 +540,7 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor model-config delete` | reset a model on a node to backend defaults (requires auth) |
 | `marbor model-config list` | list every configured model parameter profile (requires auth) |
 | `marbor model-config capabilities` | show which parameter fields take effect per runtime (requires auth) |
+| `marbor catalog` | show the fleet-aware HF/local model catalog with per-node fit (P-A2-06c) (requires auth) |
 | `marbor spill` | show per-key, per-provider local-vs-cloud request counts (requires auth) |
 | `marbor activity` | show unified fleet activity feed (drain, agent, runtime, node, warmup, schedule, predictive, config) (requires auth) |
 | `marbor requests` | inspect routing decisions for past requests (requires auth) |

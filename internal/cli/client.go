@@ -1841,6 +1841,74 @@ func (c *Client) ModelFit() ([]NodeFitEntry, error) {
 	return out.Nodes, nil
 }
 
+// ModelCatalog calls GET /admin/models/catalog, returning the raw JSON body
+// - a nested {"catalog":[...],"nodes":[...]} shape (fleet-aware HF/local
+// model catalog with per-node fit and downloaded-status data). Kept as raw
+// JSON rather than mirrored field-by-field, same rationale as
+// GetModelConfig: a large, purely-informational discovery response where a
+// hand-mirrored type would only need updating every time the browsing UI
+// gains a field (P-A2-06c).
+func (c *Client) ModelCatalog() (json.RawMessage, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/models/catalog", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	return io.ReadAll(resp.Body)
+}
+
+// ModelSearchOpts mirrors the query params for GET /admin/models/search.
+type ModelSearchOpts struct {
+	Query   string
+	Runtime string
+	Sort    string // downloads (default) | likes | newest | oldest
+}
+
+// ModelSearch calls GET /admin/models/search, returning the raw JSON array
+// of Hugging Face search results (see ModelCatalog's doc comment for why
+// this stays raw JSON).
+func (c *Client) ModelSearch(opts ModelSearchOpts) (json.RawMessage, error) {
+	params := queryParams("q", opts.Query, "runtime", opts.Runtime, "sort", opts.Sort)
+	path := "/admin/models/search"
+	if len(params) > 0 {
+		path += "?" + params.Encode()
+	}
+	resp, err := c.doRequest(http.MethodGet, path, true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	return io.ReadAll(resp.Body)
+}
+
+// ModelRepoOpts mirrors the query params for GET /admin/models/repo.
+type ModelRepoOpts struct {
+	ID      string // required: owner/name
+	Node    string
+	Runtime string
+	CtxLen  int
+}
+
+// ModelRepo calls GET /admin/models/repo, returning the raw JSON repo detail
+// (see ModelCatalog's doc comment for why this stays raw JSON).
+func (c *Client) ModelRepo(opts ModelRepoOpts) (json.RawMessage, error) {
+	ctxLen := ""
+	if opts.CtxLen > 0 {
+		ctxLen = fmt.Sprintf("%d", opts.CtxLen)
+	}
+	params := queryParams("id", opts.ID, "node", opts.Node, "runtime", opts.Runtime, "ctx", ctxLen)
+	path := "/admin/models/repo"
+	if len(params) > 0 {
+		path += "?" + params.Encode()
+	}
+	resp, err := c.doRequest(http.MethodGet, path, true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	return io.ReadAll(resp.Body)
+}
+
 // savedSessionHint returns a suffix clarifying that a 401/403 came from a
 // saved-session token specifically (as opposed to an explicit --token the
 // operator just typed), which is the case where "run it again" is the right

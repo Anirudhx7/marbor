@@ -217,6 +217,30 @@ Flags:
 
 - `--drifted-only` - only show models where nodes disagree on digest
 
+#### `search`
+
+search Hugging Face models (P-A2-06c)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--q string` - search query
+- `--runtime string` - filter by runtime compatibility
+- `--sort string` - downloads (default), likes, newest, or oldest
+
+#### `repo <owner/name>`
+
+show Hugging Face repo detail with per-node fit (P-A2-06c)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--node string` - node to check fit/downloaded-status against
+- `--runtime string` - runtime to size variants for
+- `--ctx int` - context window in tokens for VRAM sizing (0 = server default 8192)
+
 ### `runtime`
 
 start/stop/restart/logs/drain/undrain/health on one node
@@ -671,6 +695,14 @@ Requires authentication - see the root README's CLI auth section, or run `marbor
 show which parameter fields take effect per runtime
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+### `catalog`
+
+show the fleet-aware HF/local model catalog with per-node fit (P-A2-06c)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).
 
 ### `spill`
 

@@ -291,6 +291,33 @@ func buildRoot() *Command {
 							return runModelsFleet(ctx.Flags, ctx.Bool("drifted-only"), ctx.Stdout, ctx.Stderr)
 						},
 					},
+					{
+						Name:      "search",
+						Short:     "search Hugging Face models (P-A2-06c)",
+						NeedsAuth: true,
+						Flags: []FlagSpec{
+							{Name: "q", Kind: FlagString, DefString: "", Usage: "search query"},
+							{Name: "runtime", Kind: FlagString, DefString: "", Usage: "filter by runtime compatibility"},
+							{Name: "sort", Kind: FlagString, DefString: "", Usage: "downloads (default), likes, newest, or oldest"},
+						},
+						Run: func(ctx *RunCtx) int {
+							return runModelsSearch(ctx.Flags, ctx.String("q"), ctx.String("runtime"), ctx.String("sort"), ctx.Stdout, ctx.Stderr)
+						},
+					},
+					{
+						Name:      "repo",
+						Short:     "show Hugging Face repo detail with per-node fit (P-A2-06c)",
+						NeedsAuth: true,
+						Args:      []ArgSpec{{Name: "owner/name"}},
+						Flags: []FlagSpec{
+							{Name: "node", Kind: FlagString, DefString: "", Usage: "node to check fit/downloaded-status against"},
+							{Name: "runtime", Kind: FlagString, DefString: "", Usage: "runtime to size variants for"},
+							{Name: "ctx", Kind: FlagInt, DefInt: 0, Usage: "context window in tokens for VRAM sizing (0 = server default 8192)"},
+						},
+						Run: func(ctx *RunCtx) int {
+							return runModelsRepo(ctx.Flags, ctx.Args[0], ctx.String("node"), ctx.String("runtime"), ctx.Int("ctx"), ctx.Stdout, ctx.Stderr)
+						},
+					},
 				},
 			},
 			{
@@ -804,6 +831,13 @@ func buildRoot() *Command {
 						Run:       func(ctx *RunCtx) int { return runModelConfigCapabilities(ctx.Flags, ctx.Stdout, ctx.Stderr) },
 					},
 				},
+			},
+			{
+				Name:      "catalog",
+				Short:     "show the fleet-aware HF/local model catalog with per-node fit (P-A2-06c)",
+				NeedsAuth: true,
+				Footer:    authFlags,
+				Run:       func(ctx *RunCtx) int { return runCatalog(ctx.Flags, ctx.Stdout, ctx.Stderr) },
 			},
 			{
 				Name:      "spill",
