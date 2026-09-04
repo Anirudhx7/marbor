@@ -116,6 +116,72 @@ temporary debug pod with the same PVC mounted, or `kubectl cp` into that pod), t
 
 ---
 
+## Downgrading after an upgrade
+
+**Downgrade is not automatically supported.** If you upgrade marbor and hit a problem, the only
+real path back to an older binary is restoring a backup taken *before* the upgrade - there is no
+in-place backward migration.
+
+Why: `marbor.db` carries a `schema_version` setting, stamped on every successful startup by the
+binary that opened it. `migrate()` in `internal/store/sqlite.go` is forward-only and refuses to
+start if the stored `schema_version` is newer than the one the running binary understands
+(`internal/store/sqlite.go:158-160`):
+
+```
+marbor.db schema_version 2 is newer than this binary supports (1) - refusing to start;
+upgrade the binary or restore an older marbor.db backup
+```
+
+This is deliberate, not a bug - it exists specifically to stop an older binary from silently
+running unmigrated logic against a database a newer release already wrote to. There is no code
+path that lets an older binary "downgrade" a database in place; the schema check fails closed and
+the process exits without touching the file.
+
+**Tested** (`internal/store/schema_version_test.go`'s `TestOpenRefusesNewerSchemaVersion`, and a
+manual end-to-end drill: create a DB, back it up, stamp it with a schema version one ahead of
+`CurrentSchemaVersion` to stand in for "a newer release already touched this file," confirm the
+same binary refuses to reopen it with the exact error above - no crash, no silent corruption -
+then copy the pre-upgrade backup back over the live path and confirm the binary opens it cleanly
+with all data intact). Both directions behave as documented.
+
+### The procedure
+
+**Before upgrading**, always take a backup first (see "Taking backups" above) - this is the thing
+that makes downgrade possible at all:
+
+- `marbor.db` itself (via **Download Backup Now**, a scheduled backup, or a plain file copy taken
+  while the process is stopped).
+- `marbor.db.key` alongside it, or your `MARBOR_ENCRYPTION_KEY` value recorded somewhere durable -
+  see "The encryption key" below. A `marbor.db` backup without its matching key restores as
+  unreadable ciphertext for every secret field (cloud provider keys, runtime API keys, marbor-agent
+  enrollment tokens).
+
+**If a problem surfaces after upgrading**, roll back using the same manual restore steps as any
+other restore (see "Fully manual alternative" above), pointed at your pre-upgrade backup instead of
+a later one:
+
+```bash
+# bare metal / systemd - swap in both the pre-upgrade db AND its matching key
+sudo systemctl stop marbor
+sudo cp /path/to/pre-upgrade-marbor-backup.db /opt/marbor/marbor.db
+sudo cp /path/to/pre-upgrade-marbor-backup.db.key /opt/marbor/marbor.db.key
+sudo systemctl start marbor    # now running the OLDER binary against the OLDER schema
+```
+
+The same pattern applies to Docker/Compose and Kubernetes - stop the process, replace both
+`marbor.db` and `marbor.db.key`, start the older binary. The dashboard's one-click **Restore** also
+works for this (it validates and swaps `marbor.db` the same way) but only handles the database file
+- if the upgrade rotated or regenerated the key, you still need to manually restore
+`marbor.db.key` alongside it.
+
+**What you lose**: exactly what you'd lose restoring any backup - every request, config change, or
+node/model state change made between the backup and the restore is gone. This mirrors the
+in-flight-request-loss framing in [`LIMITATIONS.md`](LIMITATIONS.md#deployment-topology)'s
+Deployment Topology section: marbor is stateless for the routing path, so the blast radius of a
+restore is "state since the last backup," not "requests currently in flight only."
+
+---
+
 ## The encryption key - back it up like the database
 
 Secrets stored in `marbor.db` (cloud provider API keys, marbor-issued runtime API keys,
