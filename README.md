@@ -468,28 +468,28 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor whoami` | show the CLI's saved identity (live-verified) |
 | `marbor nodes` | list nodes known to marbor (requires auth) |
 | `marbor nodes confirm-tls <node>` | pin a marbor agent's TLS certificate fingerprint (headless enrollment) (requires auth) |
-| `marbor nodes patch <node>` | set deployment parallelism or per-model VRAM overrides for a node (P397, P411) (requires auth) |
-| `marbor nodes add <name> <url>` | add (or update, by name) a node in the fleet (P-A2-01) (requires auth) |
-| `marbor nodes remove <node>` | remove a node from the fleet (P-A2-01) (requires auth) |
-| `marbor nodes warmup` | get or set a node's proactive warmup config (P-A2-02) (requires auth) |
+| `marbor nodes patch <node>` | set deployment parallelism or per-model VRAM overrides for a node (requires auth) |
+| `marbor nodes add <name> <url>` | add (or update, by name) a node in the fleet (requires auth) |
+| `marbor nodes remove <node>` | remove a node from the fleet (requires auth) |
+| `marbor nodes warmup` | get or set a node's proactive warmup config (requires auth) |
 | `marbor nodes warmup get <node>` | show a node's proactive warmup config (requires auth) |
 | `marbor nodes warmup set <node>` | set a node's proactive warmup config (requires auth) |
-| `marbor nodes pinned` | get or set a node's never-evict (pinned) model list (P-A2-02) (requires auth) |
+| `marbor nodes pinned` | get or set a node's never-evict (pinned) model list (requires auth) |
 | `marbor nodes pinned get <node>` | show a node's pinned model list (requires auth) |
 | `marbor nodes pinned set <node>` | set a node's pinned model list (whole-list replace) (requires auth) |
-| `marbor nodes prewarm` | disable or re-enable predictive prewarm for a node (P-A2-02) (requires auth) |
+| `marbor nodes prewarm` | disable or re-enable predictive prewarm for a node (requires auth) |
 | `marbor nodes prewarm set <node>` | disable or re-enable predictive prewarm for a node (requires auth) |
-| `marbor nodes fit` | show per-node VRAM fit analysis for resident/warm models (P-A2-06b) (requires auth) |
+| `marbor nodes fit` | show per-node VRAM fit analysis for resident/warm models (requires auth) |
 | `marbor models` | fleet-wide list, or pull/delete/unload/list on one node (requires auth) |
 | `marbor models pull <node> <model>` | start pulling a model onto a node (async - does not wait for completion) (requires auth) |
 | `marbor models delete <node> <model>` | delete a model from a node's local storage (requires auth) |
 | `marbor models unload <node> <model>` | unload a model from a node's warm state (requires auth) |
 | `marbor models list <node>` | list models present on a node's local storage (per-node, not the fleet-wide aggregate above) (requires auth) |
 | `marbor models fleet` | fleet residency with VRAM totals and drift (same live data as bare models, filterable) (requires auth) |
-| `marbor models search` | search Hugging Face models (P-A2-06c) (requires auth) |
-| `marbor models repo <owner/name>` | show Hugging Face repo detail with per-node fit (P-A2-06c) (requires auth) |
-| `marbor models pull-progress <node> <model>` | show a point-in-time snapshot of an active pull (P-A2-08b) (requires auth) |
-| `marbor models cancel-pull <node> <model>` | cancel an in-flight pull (P-A2-08b) (requires auth) |
+| `marbor models search` | search Hugging Face models (requires auth) |
+| `marbor models repo <owner/name>` | show Hugging Face repo detail with per-node fit (requires auth) |
+| `marbor models pull-progress <node> <model>` | show a point-in-time snapshot of an active pull (requires auth) |
+| `marbor models cancel-pull <node> <model>` | cancel an in-flight pull (requires auth) |
 | `marbor runtime` | start/stop/restart/logs/drain/undrain/health on one node (requires auth) |
 | `marbor runtime start <node>` | start the node's inference runtime process (requires auth) |
 | `marbor runtime stop <node>` | stop the node's inference runtime process (requires auth) |
@@ -502,9 +502,9 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor node control` | show or accept a node's control driver (requires auth) |
 | `marbor node control probe <node>` | show a node's control-driver status (configured + discovered) (requires auth) |
 | `marbor node control accept <node>` | accept a control driver + identifier for a node (requires auth) |
-| `marbor node control clear <node>` | clear the accepted control driver for a node (P-A2-09c) (requires auth) |
-| `marbor node agent` | manage marbor agent lifecycle for a node (P-A2-09b) (requires auth) |
-| `marbor node agent get <node>` | show a node's marbor agent config (never the token - R8) (requires auth) |
+| `marbor node control clear <node>` | clear the accepted control driver for a node (requires auth) |
+| `marbor node agent` | manage marbor agent lifecycle for a node (requires auth) |
+| `marbor node agent get <node>` | show a node's marbor agent config (does not display the auth token) (requires auth) |
 | `marbor node agent enable <node>` | enable or reconfigure the marbor agent for a node (requires auth) |
 | `marbor node agent disable <node>` | disable the marbor agent for a node (requires auth) |
 | `marbor node agent regenerate <node>` | issue a fresh token for an already-enabled marbor agent (requires auth) |
@@ -515,12 +515,12 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor key patch <name>` | update key settings (requires auth) |
 | `marbor key set-local-only <name> <true\|false>` | block (or re-allow) cloud fallback for one API key (requires auth) |
 | `marbor key set-allow-local-degradation <name> <true\|false>` | let (or forbid) one API key receive a local alternate model (requires auth) |
-| `marbor schedules` | manage time-of-day warmup/unload/drain/undrain automations (P-A2-03) (requires auth) |
+| `marbor schedules` | manage time-of-day warmup/unload/drain/undrain automations (requires auth) |
 | `marbor schedules list` | list schedules (requires auth) |
 | `marbor schedules create` | create a schedule (requires auth) |
 | `marbor schedules patch <id>` | update a schedule (only flags you pass are changed) (requires auth) |
 | `marbor schedules delete <id>` | delete a schedule (requires auth) |
-| `marbor routing` | manage routing rules and global routing strategy (P-A2-04) (requires auth) |
+| `marbor routing` | manage routing rules and global routing strategy (requires auth) |
 | `marbor routing rules` | list/add/remove/toggle routing rules (requires auth) |
 | `marbor routing rules list` | list routing rules (requires auth) |
 | `marbor routing rules add` | add a routing rule (requires auth) |
@@ -529,49 +529,49 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor routing strategy` | get/set the global routing strategy (requires auth) |
 | `marbor routing strategy get` | show the global routing strategy (requires auth) |
 | `marbor routing strategy set <strategy>` | set the global routing strategy (requires auth) |
-| `marbor cloud` | manage cloud overflow providers and view budget status (P-A2-05) (requires auth) |
+| `marbor cloud` | manage cloud overflow providers and view budget status (requires auth) |
 | `marbor cloud providers` | list/add/update/delete/reorder/test cloud providers (requires auth) |
-| `marbor cloud providers list` | list cloud providers (never shows the API key - R8) (requires auth) |
+| `marbor cloud providers list` | list cloud providers (does not display the API key) (requires auth) |
 | `marbor cloud providers add` | add a cloud provider (requires auth) |
-| `marbor cloud providers update <name>` | update a cloud provider (omit --api-key to keep the stored key - R8) (requires auth) |
+| `marbor cloud providers update <name>` | update a cloud provider (omit --api-key to keep the stored key) (requires auth) |
 | `marbor cloud providers delete <name>` | delete a cloud provider (requires auth) |
 | `marbor cloud providers reorder <names>` | set cloud provider fallback priority order (requires auth) |
 | `marbor cloud providers test` | verify a base-url+api-key pair authenticates, without saving it (requires auth) |
 | `marbor cloud budget-status` | show global and per-key cloud spend vs budget caps (requires auth) |
-| `marbor favorites` | manage your starred model list (P-A2-06a) (requires auth) |
+| `marbor favorites` | manage your starred model list (requires auth) |
 | `marbor favorites list` | list starred model ids (requires auth) |
 | `marbor favorites add <model-id>` | star a model (requires auth) |
 | `marbor favorites remove <model-id>` | unstar a model (requires auth) |
-| `marbor model-config` | manage per-node model parameter profiles (P-A2-06b) (requires auth) |
+| `marbor model-config` | manage per-node model parameter profiles (requires auth) |
 | `marbor model-config get` | get a model's parameter profile on one node (requires auth) |
 | `marbor model-config set` | create/update a model's parameter profile (full JSON body) (requires auth) |
 | `marbor model-config delete` | reset a model on a node to backend defaults (requires auth) |
 | `marbor model-config list` | list every configured model parameter profile (requires auth) |
 | `marbor model-config capabilities` | show which parameter fields take effect per runtime (requires auth) |
-| `marbor catalog` | show the fleet-aware HF/local model catalog with per-node fit (P-A2-06c) (requires auth) |
-| `marbor backup` | manage marbor.db backups (P-A2-07) (requires auth) |
+| `marbor catalog` | show the fleet-aware HF/local model catalog with per-node fit (requires auth) |
+| `marbor backup` | manage marbor.db backups (requires auth) |
 | `marbor backup now` | trigger an on-demand backup and download it (requires auth) |
 | `marbor backup list` | list backup files on the server (requires auth) |
 | `marbor backup restore <filename>` | restore marbor.db from a backup file (marbor restarts) (requires auth) |
 | `marbor backup upload` | upload a local .db file as a restorable backup (requires auth) |
-| `marbor analytics` | hourly analytics + per-model stats (P-A2-07) (requires auth) |
+| `marbor analytics` | hourly analytics + per-model stats (requires auth) |
 | `marbor analytics show` | show analytics (raw JSON) (requires auth) |
 | `marbor analytics export` | export analytics to a local file (requires auth) |
-| `marbor savings` | show cloud-vs-local savings summary (P-A2-07) (requires auth) |
-| `marbor metrics` | dashboard metrics (P-A2-07) |
+| `marbor savings` | show cloud-vs-local savings summary (requires auth) |
+| `marbor metrics` | dashboard metrics |
 | `marbor metrics summary` | show the dashboard summary strip (nodes, active requests, latency, tokens/min) (requires auth) |
-| `marbor pulls` | list every active model pull job across the fleet (P-A2-08b) (requires auth) |
-| `marbor warmup` | global warmup engine status and manual controls (P-A2-08c) (requires auth) |
+| `marbor pulls` | list every active model pull job across the fleet (requires auth) |
+| `marbor warmup` | global warmup engine status and manual controls (requires auth) |
 | `marbor warmup status` | show global warmup engine status (requires auth) |
 | `marbor warmup predictive` | enable/disable the predictive prewarm engine (requires auth) |
 | `marbor warmup predictive set` | enable/disable the predictive prewarm engine (requires auth) |
 | `marbor warmup ping` | manually trigger a warmup cycle now (requires auth) |
-| `marbor predictive` | show recent predictive prewarm decisions (P-A2-08c) (requires auth) |
+| `marbor predictive` | show recent predictive prewarm decisions (requires auth) |
 | `marbor predictive decisions` | show recent predictive prewarm decisions (requires auth) |
-| `marbor system-info` | show control-plane host system info and per-node GPU summary (P-A2-08c) (requires auth) |
-| `marbor config` | control-plane configuration operations (P-A2-08c) |
+| `marbor system-info` | show control-plane host system info and per-node GPU summary (requires auth) |
+| `marbor config` | control-plane configuration operations |
 | `marbor config reload` | re-sync live router/auth state from SQLite (requires auth) |
-| `marbor benchmark` | run/inspect in-dashboard hardware benchmark jobs (P-A2-09a) (requires auth) |
+| `marbor benchmark` | run/inspect in-dashboard hardware benchmark jobs (requires auth) |
 | `marbor benchmark run <node> <model>` | start a benchmark job (requires auth) |
 | `marbor benchmark progress <job-id>` | show a point-in-time snapshot of a running benchmark job (requires auth) |
 | `marbor benchmark cancel <job-id>` | cancel an in-flight benchmark job (requires auth) |
@@ -580,9 +580,9 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor activity` | show unified fleet activity feed (drain, agent, runtime, node, warmup, schedule, predictive, config) (requires auth) |
 | `marbor requests` | inspect routing decisions for past requests (requires auth) |
 | `marbor requests explain <request-id>` | show why the router picked the node it did for one request (requires auth) |
-| `marbor requests list` | show the in-memory request log, newest first (P-A2-08a) (requires auth) |
-| `marbor requests live` | show the same bounded request ring in its raw live-widget shape (P-A2-08a) (requires auth) |
-| `marbor audit` | inspect the persisted, filterable request audit log (P-A2-08a) (requires auth) |
+| `marbor requests list` | show the in-memory request log, newest first (requires auth) |
+| `marbor requests live` | show the same bounded request ring in its raw live-widget shape (requires auth) |
+| `marbor audit` | inspect the persisted, filterable request audit log (requires auth) |
 | `marbor users` | manage dashboard users (requires auth) |
 | `marbor users list` | list users (requires auth) |
 | `marbor users create` | create a user (password printed once) (requires auth) |
@@ -591,9 +591,9 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor users reset-password <id>` | reset a user's password (printed once) (requires auth) |
 | `marbor users patch <id>` | update a user's email or role (requires auth) |
 | `marbor users delete <id>` | delete a user (requires auth) |
-| `marbor users pending-count` | show the number of users awaiting approval (P-A2-08d) (requires auth) |
-| `marbor users change-password` | change your own password (interactive, masked prompts) (P-A2-09d) (requires auth) |
-| `marbor users skip-password-change` | dismiss the forced-password-change prompt for this session only (P-A2-09d) (requires auth) |
+| `marbor users pending-count` | show the number of users awaiting approval (requires auth) |
+| `marbor users change-password` | change your own password (interactive, masked prompts) (requires auth) |
+| `marbor users skip-password-change` | dismiss the forced-password-change prompt for this session only (requires auth) |
 | `marbor completion <shell>` | generate a shell completion script (bash, zsh, or fish) (hidden from `--help`; see `docs/cli.md`) |
 <!-- END CLI TABLE -->
 

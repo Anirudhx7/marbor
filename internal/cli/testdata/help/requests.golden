@@ -2,8 +2,8 @@ Usage: marbor requests [action] [args] [flags]
 
 Actions:
   explain <request-id>  show why the router picked the node it did for one request
-  list                  show the in-memory request log, newest first (P-A2-08a)
-  live                  show the same bounded request ring in its raw live-widget shape (P-A2-08a)
+  list                  show the in-memory request log, newest first
+  live                  show the same bounded request ring in its raw live-widget shape
 
 Flags:
   --server string    Admin API base URL (default "http://localhost:8080", env MARBOR_SERVER)
