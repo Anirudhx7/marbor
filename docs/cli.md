@@ -86,6 +86,28 @@ Flags:
 - `--parallelism-width int` - parallelism width 1..64 (0 to clear)
 - `--vram-override string` - per-model VRAM size overrides in MB, comma-separated model=mb pairs - REPLACES the whole declared list, dropping any entry not listed here (empty to clear all)
 
+#### `add <name> <url>`
+
+add (or update, by name) a node in the fleet (P-A2-01)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--runtime string` - runtime: ollama (default), vllm, tgi, llamacpp, mlx
+- `--gpu-model string` - GPU model label (informational)
+- `--vram-total-mb int` - declared total VRAM in MB (0 = unknown)
+
+#### `remove <node>`
+
+remove a node from the fleet (P-A2-01)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--yes` - confirm removal without prompting
+
 ### `models`
 
 fleet-wide list, or pull/delete/unload/list on one node

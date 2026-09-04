@@ -133,6 +133,32 @@ func buildRoot() *Command {
 							return runNodesPatchWithCtx(ctx, ctx.Args[0])
 						},
 					},
+					{
+						Name:      "add",
+						Short:     "add (or update, by name) a node in the fleet (P-A2-01)",
+						NeedsAuth: true,
+						Args:      []ArgSpec{{Name: "name"}, {Name: "url"}},
+						Flags: []FlagSpec{
+							{Name: "runtime", Kind: FlagString, DefString: "", Usage: "runtime: ollama (default), vllm, tgi, llamacpp, mlx"},
+							{Name: "gpu-model", Kind: FlagString, DefString: "", Usage: "GPU model label (informational)"},
+							{Name: "vram-total-mb", Kind: FlagInt, DefInt: 0, Usage: "declared total VRAM in MB (0 = unknown)"},
+						},
+						Run: func(ctx *RunCtx) int {
+							return runNodesAdd(ctx.Flags, ctx.Args[0], ctx.Args[1], ctx.String("gpu-model"), ctx.String("runtime"), int64(ctx.Int("vram-total-mb")), ctx.Stdout, ctx.Stderr)
+						},
+					},
+					{
+						Name:      "remove",
+						Short:     "remove a node from the fleet (P-A2-01)",
+						NeedsAuth: true,
+						Args:      []ArgSpec{{Name: "node"}},
+						Flags: []FlagSpec{
+							{Name: "yes", Kind: FlagBool, Usage: "confirm removal without prompting"},
+						},
+						Run: func(ctx *RunCtx) int {
+							return runNodesRemove(ctx.Flags, ctx.Args[0], ctx.Bool("yes"), ctx.Stdout, ctx.Stderr)
+						},
+					},
 				},
 			},
 			{

@@ -614,6 +614,43 @@ func (c *Client) Nodes() ([]NodeResp, error) {
 	return out, nil
 }
 
+// NodeAddRequest mirrors config.NodeConfig's JSON shape for POST
+// /admin/nodes - kept as a local DTO (this package's existing convention,
+// see NodeResp) rather than importing internal/config.
+type NodeAddRequest struct {
+	Name        string `json:"name"`
+	URL         string `json:"url"`
+	GPUModel    string `json:"gpu_model,omitempty"`
+	VRAMTotalMB int64  `json:"vram_total_mb,omitempty"`
+	Runtime     string `json:"runtime,omitempty"`
+}
+
+// AddNode calls POST /admin/nodes - fleet membership add, mirroring the UI's
+// GPUNodes.tsx "Add Node" action. handleAddNode upserts by name in place, so
+// this can also update an existing node's declared fields; the returned bool
+// reports which happened (201 Created vs 200 OK), matching the server's own
+// isUpdate distinction.
+func (c *Client) AddNode(req NodeAddRequest) (created bool, err error) {
+	resp, err := c.doRequestBody(http.MethodPost, "/admin/nodes", req)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode == http.StatusCreated, nil
+}
+
+// DeleteNode calls DELETE /admin/nodes/{name} - fleet membership remove
+// (cascades marbor_agent + warmup settings server-side, see
+// handleRemoveNode), mirroring the UI's GPUNodes.tsx "Remove" action.
+func (c *Client) DeleteNode(name string) error {
+	resp, err := c.doRequestBody(http.MethodDelete, "/admin/nodes/"+urlPathEscape(name), nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
 // ScoreComponent mirrors one term of router.RoutingDecision.Components - a
 // weighted factor contributing to a node's placement score.
 type ScoreComponent struct {
