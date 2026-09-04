@@ -373,6 +373,56 @@ let (or forbid) one API key receive a local alternate model
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
+### `schedules`
+
+manage time-of-day warmup/unload/drain/undrain automations (P-A2-03)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).
+
+#### `list`
+
+list schedules
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+#### `create`
+
+create a schedule
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--action string` - warmup, unload, drain, or undrain (required) (required)
+- `--node string` - target node name (required) (required)
+- `--at string` - time of day, HH:MM 24h server-local (required) (required)
+- `--models string` - comma-separated models (required for warmup/unload)
+- `--days string` - comma-separated days 0=Sun..6=Sat (empty = every day)
+- `--enabled` - enable immediately
+
+#### `patch <id>`
+
+update a schedule (only flags you pass are changed)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--enabled` - enable or disable
+- `--action string` - warmup, unload, drain, or undrain
+- `--node string` - target node name
+- `--models string` - comma-separated models (empty clears)
+- `--at string` - time of day, HH:MM 24h server-local
+- `--days string` - comma-separated days 0=Sun..6=Sat (empty = every day)
+
+#### `delete <id>`
+
+delete a schedule
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
 ### `spill`
 
 show per-key, per-provider local-vs-cloud request counts

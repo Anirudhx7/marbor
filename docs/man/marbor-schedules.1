@@ -1,0 +1,76 @@
+.TH MARBOR\-SCHEDULES 1 "2026-08-17" "marbor dev" "Marbor Manual"
+.SH NAME
+marbor\-schedules \- manage time\-of-day warmup/unload/drain/undrain automations (P\-A2-03)
+.SH SYNOPSIS
+.B marbor schedules
+[action] [args] [\fIflags\fR]
+.SH DESCRIPTION
+manage time\-of-day warmup/unload/drain/undrain automations (P\-A2-03)
+.SH COMMANDS
+.TP
+.B list
+list schedules
+.TP
+.B create
+create a schedule
+.RS
+.TP
+.B \-\-action string
+warmup, unload, drain, or undrain (required) (required)
+.TP
+.B \-\-node string
+target node name (required) (required)
+.TP
+.B \-\-at string
+time of day, HH:MM 24h server\-local (required) (required)
+.TP
+.B \-\-models string
+comma\-separated models (required for warmup/unload)
+.TP
+.B \-\-days string
+comma\-separated days 0=Sun..6=Sat (empty = every day)
+.TP
+.B \-\-enabled
+enable immediately
+.RE
+.TP
+.B patch <id>
+update a schedule (only flags you pass are changed)
+.RS
+.TP
+.B \-\-enabled
+enable or disable
+.TP
+.B \-\-action string
+warmup, unload, drain, or undrain
+.TP
+.B \-\-node string
+target node name
+.TP
+.B \-\-models string
+comma\-separated models (empty clears)
+.TP
+.B \-\-at string
+time of day, HH:MM 24h server\-local
+.TP
+.B \-\-days string
+comma\-separated days 0=Sun..6=Sat (empty = every day)
+.RE
+.TP
+.B delete <id>
+delete a schedule
+.SH FLAGS
+.TP
+.B \-\-server
+Admin API base URL (default "http://localhost:8080", env MARBOR_SERVER)
+.TP
+.B \-\-json
+output machine\-readable JSON instead of a human table
+.TP
+.B \-\-username
+admin username, used to log in (env MARBOR_USERNAME)
+.TP
+.B \-\-password
+admin password, used to log in (env MARBOR_PASSWORD)
+.SH SEE ALSO
+\fBmarbor\fR(1)

@@ -483,6 +483,58 @@ func buildRoot() *Command {
 				},
 			},
 			{
+				Name:      "schedules",
+				Short:     "manage time-of-day warmup/unload/drain/undrain automations (P-A2-03)",
+				NeedsAuth: true,
+				Footer:    authFlags,
+				Sub: []*Command{
+					{
+						Name:      "list",
+						Short:     "list schedules",
+						NeedsAuth: true,
+						Run:       func(ctx *RunCtx) int { return runSchedulesList(ctx.Flags, ctx.Stdout, ctx.Stderr) },
+					},
+					{
+						Name:      "create",
+						Short:     "create a schedule",
+						NeedsAuth: true,
+						Flags: []FlagSpec{
+							{Name: "action", Kind: FlagString, Usage: "warmup, unload, drain, or undrain (required)", Required: true, RequiredMsg: "error: --action is required"},
+							{Name: "node", Kind: FlagString, Usage: "target node name (required)", Required: true, RequiredMsg: "error: --node is required"},
+							{Name: "at", Kind: FlagString, Usage: "time of day, HH:MM 24h server-local (required)", Required: true, RequiredMsg: "error: --at is required"},
+							{Name: "models", Kind: FlagString, DefString: "", Usage: "comma-separated models (required for warmup/unload)"},
+							{Name: "days", Kind: FlagString, DefString: "", Usage: "comma-separated days 0=Sun..6=Sat (empty = every day)"},
+							{Name: "enabled", Kind: FlagBool, Usage: "enable immediately"},
+						},
+						Run: func(ctx *RunCtx) int {
+							return runSchedulesCreate(ctx.Flags, ctx.String("action"), ctx.String("node"), ctx.String("at"), ctx.String("models"), ctx.String("days"), ctx.Bool("enabled"), ctx.Stdout, ctx.Stderr)
+						},
+					},
+					{
+						Name:      "patch",
+						Short:     "update a schedule (only flags you pass are changed)",
+						NeedsAuth: true,
+						Args:      []ArgSpec{{Name: "id"}},
+						Flags: []FlagSpec{
+							{Name: "enabled", Kind: FlagBool, Usage: "enable or disable"},
+							{Name: "action", Kind: FlagString, Usage: "warmup, unload, drain, or undrain"},
+							{Name: "node", Kind: FlagString, Usage: "target node name"},
+							{Name: "models", Kind: FlagString, Usage: "comma-separated models (empty clears)"},
+							{Name: "at", Kind: FlagString, Usage: "time of day, HH:MM 24h server-local"},
+							{Name: "days", Kind: FlagString, Usage: "comma-separated days 0=Sun..6=Sat (empty = every day)"},
+						},
+						Run: func(ctx *RunCtx) int { return runSchedulesPatch(ctx, ctx.Args[0]) },
+					},
+					{
+						Name:      "delete",
+						Short:     "delete a schedule",
+						NeedsAuth: true,
+						Args:      []ArgSpec{{Name: "id"}},
+						Run:       func(ctx *RunCtx) int { return runSchedulesDelete(ctx.Flags, ctx.Args[0], ctx.Stdout, ctx.Stderr) },
+					},
+				},
+			},
+			{
 				Name:      "spill",
 				Short:     "show per-key, per-provider local-vs-cloud request counts",
 				NeedsAuth: true,
