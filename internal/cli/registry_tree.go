@@ -453,6 +453,38 @@ func buildRoot() *Command {
 						Args:      []ArgSpec{{Name: "request-id"}},
 						Run:       func(ctx *RunCtx) int { return runRequestsExplain(ctx.Flags, ctx.Args[0], ctx.Stdout, ctx.Stderr) },
 					},
+					{
+						Name:      "list",
+						Short:     "show the in-memory request log, newest first (P-A2-08a)",
+						NeedsAuth: true,
+						Run:       func(ctx *RunCtx) int { return runRequestsList(ctx.Flags, ctx.Stdout, ctx.Stderr) },
+					},
+					{
+						Name:      "live",
+						Short:     "show the same bounded request ring in its raw live-widget shape (P-A2-08a)",
+						NeedsAuth: true,
+						Run:       func(ctx *RunCtx) int { return runRequestsLive(ctx.Flags, ctx.Stdout, ctx.Stderr) },
+					},
+				},
+			},
+			{
+				Name:      "audit",
+				Short:     "inspect the persisted, filterable request audit log (P-A2-08a)",
+				Long:      "Distinct from \"activity\", which covers operator actions (drain/agent/runtime/node/warmup); \"audit\" covers individual proxied requests.",
+				NeedsAuth: true,
+				Footer:    authFlags,
+				Flags: []FlagSpec{
+					{Name: "limit", Kind: FlagInt, DefInt: 100, Usage: "max entries to show (1-1000, default 100)"},
+					{Name: "model", Kind: FlagString, DefString: "", Usage: "filter by exact model name"},
+					{Name: "key", Kind: FlagString, DefString: "", Usage: "filter by exact API key name"},
+					{Name: "node", Kind: FlagString, DefString: "", Usage: "filter by exact node name"},
+					{Name: "status", Kind: FlagString, DefString: "", Usage: "filter by status category: success, client_error, or server_error"},
+					{Name: "cloud", Kind: FlagString, DefString: "", Usage: "filter by cloud fallback: true or false"},
+					{Name: "since", Kind: FlagString, DefString: "", Usage: "filter from time (RFC3339)"},
+					{Name: "until", Kind: FlagString, DefString: "", Usage: "filter to time (RFC3339)"},
+				},
+				Run: func(ctx *RunCtx) int {
+					return runAudit(ctx.Flags, ctx.Int("limit"), ctx.String("model"), ctx.String("key"), ctx.String("node"), ctx.String("status"), ctx.String("cloud"), ctx.String("since"), ctx.String("until"), ctx.Stdout, ctx.Stderr)
 				},
 			},
 			{

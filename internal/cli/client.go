@@ -1155,6 +1155,152 @@ func (c *Client) PredictiveDecisions() ([]PredictiveDecision, error) {
 	return wrapper.Decisions, nil
 }
 
+// RequestEntry mirrors handleRequests' response entry shape (GET
+// /admin/requests) - the dashboard's request log, newest first.
+type RequestEntry struct {
+	ID            string    `json:"id"`
+	Time          time.Time `json:"time"`
+	KeyName       string    `json:"key_name"`
+	SourceIP      string    `json:"source_ip"`
+	Model         string    `json:"model"`
+	Node          string    `json:"node"`
+	Status        int       `json:"status"`
+	LatencyMs     int       `json:"latency_ms"`
+	Cloud         bool      `json:"cloud"`
+	RoutingReason string    `json:"routingReason,omitempty"`
+}
+
+// Requests calls GET /admin/requests - the full in-memory request log ring,
+// newest first, mirroring the UI's Dashboard.tsx/Requests.tsx table (P-A2-08a).
+func (c *Client) Requests() ([]RequestEntry, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/requests", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out []RequestEntry
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse /admin/requests response: %v", err)
+	}
+	return out, nil
+}
+
+// LiveRequestEntry mirrors admin.go's RequestLog shape (GET
+// /admin/requests/live) - a raw in-flight/recent request row, distinct from
+// RequestEntry's dashboard-formatted shape (different status semantics:
+// Status here is the "warm/loading/error/aborted/cloud" label, not an HTTP
+// code).
+type LiveRequestEntry struct {
+	ID            string    `json:"id"`
+	ApiKey        string    `json:"apiKey"`
+	SourceIP      string    `json:"sourceIP"`
+	Model         string    `json:"model"`
+	Node          string    `json:"routedTo"`
+	Status        string    `json:"status"`
+	HTTPStatus    int       `json:"httpStatus"`
+	Latency       int       `json:"latency"`
+	Tokens        int64     `json:"tokens"`
+	TokensPerSec  float64   `json:"tokensPerSec"`
+	Time          time.Time `json:"time"`
+	RoutingReason string    `json:"routingReason,omitempty"`
+}
+
+// LiveRequests calls GET /admin/requests/live - the same bounded in-memory
+// ring as Requests, in its raw (non-dashboard-formatted) shape, mirroring
+// the UI's live-updating request widget (P-A2-08a).
+func (c *Client) LiveRequests() ([]LiveRequestEntry, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/requests/live", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out []LiveRequestEntry
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse /admin/requests/live response: %v", err)
+	}
+	return out, nil
+}
+
+// AuditEntry mirrors internal/audit.Entry - a persisted, filterable request
+// audit row (distinct from SystemAuditEntry, which covers operator actions
+// like drain/agent/runtime, not individual proxied requests).
+type AuditEntry struct {
+	Time          time.Time `json:"time"`
+	RequestID     string    `json:"request_id"`
+	KeyName       string    `json:"key_name"`
+	Model         string    `json:"model"`
+	Node          string    `json:"node"`
+	Status        string    `json:"status"`
+	LatencyMs     int       `json:"latency_ms"`
+	Cloud         bool      `json:"cloud"`
+	CloudModel    string    `json:"cloud_model,omitempty"`
+	RoutingReason string    `json:"routing_reason,omitempty"`
+}
+
+// AuditFilter mirrors the query params for GET /admin/audit.
+type AuditFilter struct {
+	Limit  int
+	Model  string
+	Key    string
+	Node   string
+	Status string // success | client_error | server_error
+	Cloud  *bool
+	Since  string // RFC3339
+	Until  string // RFC3339
+}
+
+// AuditResult mirrors GET /admin/audit's wrapped response shape.
+type AuditResult struct {
+	Entries   []AuditEntry `json:"entries"`
+	Total     int          `json:"total"`
+	Truncated bool         `json:"truncated"`
+}
+
+// AuditQuery calls GET /admin/audit with the request audit log's own filter
+// set (distinct from SystemAuditFiltered's operator-action filters), mirroring
+// the UI's Requests.tsx audit view (P-A2-08a).
+func (c *Client) AuditQuery(f AuditFilter) (*AuditResult, error) {
+	params := url.Values{}
+	if f.Limit > 0 {
+		params.Set("limit", fmt.Sprintf("%d", f.Limit))
+	}
+	if f.Model != "" {
+		params.Set("model", f.Model)
+	}
+	if f.Key != "" {
+		params.Set("key", f.Key)
+	}
+	if f.Node != "" {
+		params.Set("node", f.Node)
+	}
+	if f.Status != "" {
+		params.Set("status", f.Status)
+	}
+	if f.Cloud != nil {
+		params.Set("cloud", fmt.Sprintf("%t", *f.Cloud))
+	}
+	if f.Since != "" {
+		params.Set("since", f.Since)
+	}
+	if f.Until != "" {
+		params.Set("until", f.Until)
+	}
+	path := "/admin/audit"
+	if len(params) > 0 {
+		path += "?" + params.Encode()
+	}
+	resp, err := c.doRequest(http.MethodGet, path, true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out AuditResult
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse /admin/audit response: %v", err)
+	}
+	return &out, nil
+}
+
 // savedSessionHint returns a suffix clarifying that a 401/403 came from a
 // saved-session token specifically (as opposed to an explicit --token the
 // operator just typed), which is the case where "run it again" is the right
