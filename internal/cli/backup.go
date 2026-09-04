@@ -163,8 +163,15 @@ func runSavings(flags *globalFlags, stdout, stderr io.Writer) int {
 	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, s); handled {
 		return code
 	}
-	fmt.Fprintf(stdout, "local requests: %d, cloud requests: %d, saved: $%.2f, cloud spent: $%.2f (since %s)\n",
-		s.LocalRequests, s.CloudRequests, s.SavedUSD, s.CloudSpentUSD, s.Since)
+	savedStr, spentStr := "-", "-"
+	if s.SavedUSD != nil {
+		savedStr = fmt.Sprintf("$%.2f", *s.SavedUSD)
+	}
+	if s.CloudSpentUSD != nil {
+		spentStr = fmt.Sprintf("$%.2f", *s.CloudSpentUSD)
+	}
+	fmt.Fprintf(stdout, "local requests: %d, cloud requests: %d, saved: %s, cloud spent: %s (since %s)\n",
+		s.LocalRequests, s.CloudRequests, savedStr, spentStr, s.Since)
 	return ExitOK
 }
 

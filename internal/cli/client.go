@@ -2051,13 +2051,16 @@ func (c *Client) AnalyticsExport(exportType, format string) (filename string, da
 }
 
 // CloudSavings mirrors GET /admin/metrics/savings' response shape.
+// CloudSpentUSD and SavedUSD are nullable pointers because the server sends
+// JSON null (not 0.0) when requests exist but no token data was ever parsed -
+// a non-pointer float64 would silently decode that null as a fabricated $0.00 (R1).
 type CloudSavings struct {
-	LocalRequests int64   `json:"local_requests"`
-	CloudRequests int64   `json:"cloud_requests"`
-	TotalRequests int64   `json:"total_requests"`
-	CloudSpentUSD float64 `json:"cloud_spent_usd"`
-	SavedUSD      float64 `json:"saved_usd"`
-	Since         string  `json:"since"`
+	LocalRequests int64    `json:"local_requests"`
+	CloudRequests int64    `json:"cloud_requests"`
+	TotalRequests int64    `json:"total_requests"`
+	CloudSpentUSD *float64 `json:"cloud_spent_usd"`
+	SavedUSD      *float64 `json:"saved_usd"`
+	Since         string   `json:"since"`
 }
 
 // Savings calls GET /admin/metrics/savings.

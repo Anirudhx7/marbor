@@ -448,7 +448,7 @@ function ModelDetailPanel({
                     <div className="min-w-0 flex-1 mr-2">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="font-mono font-semibold text-foreground">{v.quantization}</span>
-                        <span className="text-[10px] text-muted-foreground whitespace-nowrap">{sizeGB} size · {vramGB} VRAM</span>
+                        <span className="text-[10px] text-muted-foreground whitespace-nowrap" title="Estimated from registry size + requested context">{sizeGB} size · {vramGB} est. VRAM</span>
                       </div>
                       <span className="text-[9px] text-muted-foreground font-mono block truncate" title={v.tag}>
                         {v.tag}
