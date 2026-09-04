@@ -4,6 +4,7 @@
 package cli
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -2247,6 +2248,235 @@ func (c *Client) CancelPull(node, model string) (cancelled bool, err error) {
 		return false, serverErrorf("could not parse cancel pull response: %v", err)
 	}
 	return out.Cancelled, nil
+}
+
+// RunBenchmark calls POST /admin/benchmark/run - starts a hardware
+// benchmark job, returning its job id (P-A2-09a).
+func (c *Client) RunBenchmark(node, model string, n int) (jobID string, err error) {
+	resp, err := c.doRequestBody(http.MethodPost, "/admin/benchmark/run", map[string]interface{}{
+		"node": node, "model": model, "n": n,
+	})
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	var out struct {
+		JobID string `json:"job_id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return "", serverErrorf("could not parse benchmark run response: %v", err)
+	}
+	return out.JobID, nil
+}
+
+// CancelBenchmark calls DELETE /admin/benchmark/{id}.
+func (c *Client) CancelBenchmark(jobID string) (cancelled bool, err error) {
+	resp, err := c.doRequestBody(http.MethodDelete, "/admin/benchmark/"+urlPathEscape(jobID), nil)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Cancelled bool `json:"cancelled"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return false, serverErrorf("could not parse cancel benchmark response: %v", err)
+	}
+	return out.Cancelled, nil
+}
+
+// BenchmarkProgress calls GET /admin/benchmark/{id}/progress - a
+// point-in-time snapshot from the SSE progress stream's underlying data,
+// not a live follow (see ActivePulls' doc comment for the same one-request
+// rationale). The endpoint itself is SSE-only, so this reads the first
+// event off the stream and returns its raw JSON payload.
+func (c *Client) BenchmarkProgress(jobID string) (json.RawMessage, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/benchmark/"+urlPathEscape(jobID)+"/progress", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if data, ok := strings.CutPrefix(line, "data: "); ok {
+			return json.RawMessage(data), nil
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, serverErrorf("could not read benchmark progress stream: %v", err)
+	}
+	return nil, serverErrorf("benchmark progress stream closed with no data")
+}
+
+// BenchmarkRuns calls GET /admin/benchmark/runs, returning the raw JSON
+// {"runs":[...]} body - store.BenchmarkRun has many percentile/TPOT fields,
+// kept as raw JSON rather than mirrored (see ModelCatalog's doc comment).
+func (c *Client) BenchmarkRuns() (json.RawMessage, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/benchmark/runs", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	return io.ReadAll(resp.Body)
+}
+
+// MarborAgentInfo mirrors handleGetMarborAgent's response shape - never
+// carries the token (only enable/regenerate return that, once, R8-style).
+type MarborAgentInfo struct {
+	Node    string `json:"node"`
+	Enabled bool   `json:"enabled"`
+	Port    int    `json:"port"`
+	Scope   string `json:"scope,omitempty"`
+	Scheme  string `json:"scheme,omitempty"`
+}
+
+// GetMarborAgent calls GET /admin/nodes/{name}/agent (P-A2-09b).
+func (c *Client) GetMarborAgent(node string) (*MarborAgentInfo, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/nodes/"+urlPathEscape(node)+"/agent", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out MarborAgentInfo
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse marbor agent response: %v", err)
+	}
+	return &out, nil
+}
+
+// MarborAgentEnableResult mirrors handleEnableMarborAgent/
+// handleRegenerateMarborAgentToken's response shape - the ONLY response
+// that ever carries the plaintext enrollment install command/token (P50,
+// R8: never persisted or echoed back by GetMarborAgent).
+type MarborAgentEnableResult struct {
+	Node                  string `json:"node"`
+	Enabled               bool   `json:"enabled"`
+	Port                  int    `json:"port"`
+	Scheme                string `json:"scheme"`
+	Token                 string `json:"token"`
+	InstallCommand        string `json:"install_command"`
+	InstallCommandWindows string `json:"install_command_windows"`
+}
+
+// EnableMarborAgent calls POST /admin/nodes/{name}/agent - enables or
+// reconfigures the marbor agent for a node. scheme empty means "keep the
+// host's existing scheme, or http on first enable" (see handler doc).
+func (c *Client) EnableMarborAgent(node string, port int, scheme string) (*MarborAgentEnableResult, error) {
+	body := map[string]interface{}{"port": port}
+	if scheme != "" {
+		body["scheme"] = scheme
+	}
+	resp, err := c.doRequestBody(http.MethodPost, "/admin/nodes/"+urlPathEscape(node)+"/agent", body)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out MarborAgentEnableResult
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse enable marbor agent response: %v", err)
+	}
+	return &out, nil
+}
+
+// DisableMarborAgent calls DELETE /admin/nodes/{name}/agent.
+func (c *Client) DisableMarborAgent(node string) error {
+	resp, err := c.doRequestBody(http.MethodDelete, "/admin/nodes/"+urlPathEscape(node)+"/agent", nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
+// RegenerateMarborAgentToken calls POST /admin/nodes/{name}/agent/regenerate.
+func (c *Client) RegenerateMarborAgentToken(node string) (*MarborAgentEnableResult, error) {
+	resp, err := c.doRequestBody(http.MethodPost, "/admin/nodes/"+urlPathEscape(node)+"/agent/regenerate", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out MarborAgentEnableResult
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse regenerate marbor agent token response: %v", err)
+	}
+	return &out, nil
+}
+
+// ClearNodeControl calls DELETE /admin/nodes/{name}/control - clears the
+// accepted control driver config (P-A2-09c).
+func (c *Client) ClearNodeControl(node string) error {
+	resp, err := c.doRequestBody(http.MethodDelete, "/admin/nodes/"+urlPathEscape(node)+"/control", nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
+// ChangePassword calls POST /change-password (session-role-agnostic, same
+// route choice as Logout's doc comment explains). currentPassword may be
+// empty only on a forced first-login change (MustChangePassword=true) - the
+// server itself enforces that, not this client. The endpoint invalidates
+// every existing session for the user and issues a fresh one, so this
+// updates c.Token in place from the response's Set-Cookie, mirroring Login
+// (P-A2-09d).
+func (c *Client) ChangePassword(currentPassword, newPassword string) error {
+	payload, err := json.Marshal(struct {
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
+	}{currentPassword, newPassword})
+	if err != nil {
+		return userErrorf("building request body: %v", err)
+	}
+	req, err := http.NewRequest(http.MethodPost, c.BaseURL+"/change-password", bytes.NewReader(payload))
+	if err != nil {
+		return userErrorf("building request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return serverErrorf("could not reach %s: %v", c.BaseURL, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return userErrorf("%s", readErrorMessage(resp.Body))
+	}
+	for _, cookie := range resp.Cookies() {
+		if cookie.Name == "marbor_session" {
+			c.Token = cookie.Value
+			break
+		}
+	}
+	return nil
+}
+
+// SkipPasswordChange calls POST /skip-password-change - dismisses the
+// forced-password-change prompt for this session only, up to
+// maxSkipPasswordChanges times server-side. Also rotates the session token
+// (P-A2-09d).
+func (c *Client) SkipPasswordChange() error {
+	req, err := http.NewRequest(http.MethodPost, c.BaseURL+"/skip-password-change", nil)
+	if err != nil {
+		return userErrorf("building request: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return serverErrorf("could not reach %s: %v", c.BaseURL, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return userErrorf("%s", readErrorMessage(resp.Body))
+	}
+	for _, cookie := range resp.Cookies() {
+		if cookie.Name == "marbor_session" {
+			c.Token = cookie.Value
+			break
+		}
+	}
+	return nil
 }
 
 // savedSessionHint returns a suffix clarifying that a 401/403 came from a

@@ -440,6 +440,18 @@ func buildRoot() *Command {
 									return runNodeControlAccept(ctx.Flags, ctx.Args[0], ctx.String("driver"), ctx.String("identifier"), ctx.String("start-command"), ctx.Stdout, ctx.Stderr)
 								},
 							},
+							{
+								Name:      "clear",
+								Short:     "clear the accepted control driver for a node (P-A2-09c)",
+								NeedsAuth: true,
+								Args:      []ArgSpec{{Name: "node"}},
+								Flags: []FlagSpec{
+									{Name: "yes", Kind: FlagBool, Usage: "confirm without prompting"},
+								},
+								Run: func(ctx *RunCtx) int {
+									return runNodeControlClear(ctx.Flags, ctx.Args[0], ctx.Bool("yes"), ctx.Stdout, ctx.Stderr)
+								},
+							},
 						},
 					},
 				},
@@ -1026,6 +1038,93 @@ func buildRoot() *Command {
 				},
 			},
 			{
+				Name:      "benchmark",
+				Short:     "run/inspect in-dashboard hardware benchmark jobs (P-A2-09a)",
+				NeedsAuth: true,
+				Footer:    authFlags,
+				Sub: []*Command{
+					{
+						Name:      "run",
+						Short:     "start a benchmark job",
+						NeedsAuth: true,
+						Args:      []ArgSpec{{Name: "node"}, {Name: "model"}},
+						Flags: []FlagSpec{
+							{Name: "n", Kind: FlagInt, DefInt: 10, Usage: "number of cold/warm samples (1-50, default 10)"},
+						},
+						Run: func(ctx *RunCtx) int {
+							return runBenchmarkRun(ctx.Flags, ctx.Args[0], ctx.Args[1], ctx.Int("n"), ctx.Stdout, ctx.Stderr)
+						},
+					},
+					{
+						Name:      "progress",
+						Short:     "show a point-in-time snapshot of a running benchmark job",
+						NeedsAuth: true,
+						Args:      []ArgSpec{{Name: "job-id"}},
+						Run:       func(ctx *RunCtx) int { return runBenchmarkProgress(ctx.Flags, ctx.Args[0], ctx.Stdout, ctx.Stderr) },
+					},
+					{
+						Name:      "cancel",
+						Short:     "cancel an in-flight benchmark job",
+						NeedsAuth: true,
+						Args:      []ArgSpec{{Name: "job-id"}},
+						Run:       func(ctx *RunCtx) int { return runBenchmarkCancel(ctx.Flags, ctx.Args[0], ctx.Stdout, ctx.Stderr) },
+					},
+					{
+						Name:      "runs",
+						Short:     "show persisted benchmark run history",
+						NeedsAuth: true,
+						Run:       func(ctx *RunCtx) int { return runBenchmarkRuns(ctx.Flags, ctx.Stdout, ctx.Stderr) },
+					},
+				},
+			},
+			{
+				Name:      "agent",
+				Short:     "manage marbor agent lifecycle for a node (P-A2-09b)",
+				NeedsAuth: true,
+				Footer:    authFlags,
+				Sub: []*Command{
+					{
+						Name:      "get",
+						Short:     "show a node's marbor agent config (never the token - R8)",
+						NeedsAuth: true,
+						Args:      []ArgSpec{{Name: "node"}},
+						Run:       func(ctx *RunCtx) int { return runAgentGet(ctx.Flags, ctx.Args[0], ctx.Stdout, ctx.Stderr) },
+					},
+					{
+						Name:      "enable",
+						Short:     "enable or reconfigure the marbor agent for a node",
+						NeedsAuth: true,
+						Args:      []ArgSpec{{Name: "node"}},
+						Flags: []FlagSpec{
+							{Name: "port", Kind: FlagInt, Usage: "agent port (required)", Required: true, RequiredMsg: "error: --port is required"},
+							{Name: "scheme", Kind: FlagString, DefString: "", Usage: "http or https (empty = keep existing, or http on first enable)"},
+						},
+						Run: func(ctx *RunCtx) int {
+							return runAgentEnable(ctx.Flags, ctx.Args[0], ctx.Int("port"), ctx.String("scheme"), ctx.Stdout, ctx.Stderr)
+						},
+					},
+					{
+						Name:      "disable",
+						Short:     "disable the marbor agent for a node",
+						NeedsAuth: true,
+						Args:      []ArgSpec{{Name: "node"}},
+						Flags: []FlagSpec{
+							{Name: "yes", Kind: FlagBool, Usage: "confirm without prompting"},
+						},
+						Run: func(ctx *RunCtx) int {
+							return runAgentDisable(ctx.Flags, ctx.Args[0], ctx.Bool("yes"), ctx.Stdout, ctx.Stderr)
+						},
+					},
+					{
+						Name:      "regenerate",
+						Short:     "issue a fresh token for an already-enabled marbor agent",
+						NeedsAuth: true,
+						Args:      []ArgSpec{{Name: "node"}},
+						Run:       func(ctx *RunCtx) int { return runAgentRegenerate(ctx.Flags, ctx.Args[0], ctx.Stdout, ctx.Stderr) },
+					},
+				},
+			},
+			{
 				Name:      "spill",
 				Short:     "show per-key, per-provider local-vs-cloud request counts",
 				NeedsAuth: true,
@@ -1196,6 +1295,18 @@ func buildRoot() *Command {
 						Short:     "show the number of users awaiting approval (P-A2-08d)",
 						NeedsAuth: true,
 						Run:       func(ctx *RunCtx) int { return runUsersPendingCount(ctx.Flags, ctx.Stdout, ctx.Stderr) },
+					},
+					{
+						Name:      "change-password",
+						Short:     "change your own password (interactive, masked prompts) (P-A2-09d)",
+						NeedsAuth: true,
+						Run:       func(ctx *RunCtx) int { return runUsersChangePassword(ctx.Flags, ctx.Stdout, ctx.Stderr) },
+					},
+					{
+						Name:      "skip-password-change",
+						Short:     "dismiss the forced-password-change prompt for this session only (P-A2-09d)",
+						NeedsAuth: true,
+						Run:       func(ctx *RunCtx) int { return runUsersSkipPasswordChange(ctx.Flags, ctx.Stdout, ctx.Stderr) },
 					},
 				},
 			},
