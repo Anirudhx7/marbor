@@ -128,8 +128,8 @@ Requires authentication - see the root README's CLI auth section, or run `marbor
 
 Flags:
 
-- `--enabled` - enable proactive warmup for the listed models
-- `--models string` - comma-separated models to keep resident (empty clears)
+- `--enabled` - enable proactive warmup (omit to leave the node's current setting unchanged)
+- `--models string` - comma-separated models to keep resident (omit to leave unchanged, pass empty string to clear)
 
 #### `pinned`
 
@@ -423,6 +423,10 @@ delete a schedule
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
+Flags:
+
+- `--yes` - confirm deletion without prompting
+
 ### `routing`
 
 manage routing rules and global routing strategy (P-A2-04)
@@ -463,6 +467,10 @@ Flags:
 remove a routing rule
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--yes` - confirm removal without prompting
 
 ##### `toggle <id>`
 

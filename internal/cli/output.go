@@ -38,6 +38,18 @@ func newTabWriter(w io.Writer) *tabwriter.Writer {
 	return tabwriter.NewWriter(w, 0, 2, 2, ' ', 0)
 }
 
+// ptrIf returns &v when set is true, nil otherwise - the shared shape of a
+// "visited flag becomes an optional patch pointer" assignment (RunCtx.IsSet
+// -> *T), used by every PATCH-style command (schedules patch, nodes patch)
+// so each visited-flag block is one line instead of a hand-copied
+// if/declare/assign (code review finding).
+func ptrIf[T any](set bool, v T) *T {
+	if !set {
+		return nil
+	}
+	return &v
+}
+
 func yesNo(b bool) string {
 	if b {
 		return "yes"

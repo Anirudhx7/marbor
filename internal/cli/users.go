@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"strconv"
-	"strings"
 )
 
 func runUsersList(flags *globalFlags, stdout, stderr io.Writer) int {
@@ -110,15 +109,7 @@ func runUsersApprove(flags *globalFlags, idStr string, stdout, stderr io.Writer,
 			ck.MonthlyLimit = ctx.Int("key-monthly-limit")
 		}
 		if ctx.IsSet("key-models") {
-			raw := ctx.String("key-models")
-			if raw != "" {
-				parts := strings.Split(raw, ",")
-				for _, p := range parts {
-					if s := strings.TrimSpace(p); s != "" {
-						ck.Models = append(ck.Models, s)
-					}
-				}
-			}
+			ck.Models = parseCommaList(ctx.String("key-models"))
 		}
 		req.CreateKey = ck
 	}

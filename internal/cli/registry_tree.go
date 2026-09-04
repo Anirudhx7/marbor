@@ -177,11 +177,11 @@ func buildRoot() *Command {
 								NeedsAuth: true,
 								Args:      []ArgSpec{{Name: "node"}},
 								Flags: []FlagSpec{
-									{Name: "enabled", Kind: FlagBool, Usage: "enable proactive warmup for the listed models"},
-									{Name: "models", Kind: FlagString, DefString: "", Usage: "comma-separated models to keep resident (empty clears)"},
+									{Name: "enabled", Kind: FlagBool, Usage: "enable proactive warmup (omit to leave the node's current setting unchanged)"},
+									{Name: "models", Kind: FlagString, DefString: "", Usage: "comma-separated models to keep resident (omit to leave unchanged, pass empty string to clear)"},
 								},
 								Run: func(ctx *RunCtx) int {
-									return runNodesWarmupSet(ctx.Flags, ctx.Args[0], ctx.Bool("enabled"), ctx.String("models"), ctx.Stdout, ctx.Stderr)
+									return runNodesWarmupSet(ctx, ctx.Args[0])
 								},
 							},
 						},
@@ -530,7 +530,12 @@ func buildRoot() *Command {
 						Short:     "delete a schedule",
 						NeedsAuth: true,
 						Args:      []ArgSpec{{Name: "id"}},
-						Run:       func(ctx *RunCtx) int { return runSchedulesDelete(ctx.Flags, ctx.Args[0], ctx.Stdout, ctx.Stderr) },
+						Flags: []FlagSpec{
+							{Name: "yes", Kind: FlagBool, Usage: "confirm deletion without prompting"},
+						},
+						Run: func(ctx *RunCtx) int {
+							return runSchedulesDelete(ctx.Flags, ctx.Args[0], ctx.Bool("yes"), ctx.Stdout, ctx.Stderr)
+						},
 					},
 				},
 			},
@@ -572,7 +577,12 @@ func buildRoot() *Command {
 								Short:     "remove a routing rule",
 								NeedsAuth: true,
 								Args:      []ArgSpec{{Name: "id"}},
-								Run:       func(ctx *RunCtx) int { return runRoutingRulesRemove(ctx.Flags, ctx.Args[0], ctx.Stdout, ctx.Stderr) },
+								Flags: []FlagSpec{
+									{Name: "yes", Kind: FlagBool, Usage: "confirm removal without prompting"},
+								},
+								Run: func(ctx *RunCtx) int {
+									return runRoutingRulesRemove(ctx.Flags, ctx.Args[0], ctx.Bool("yes"), ctx.Stdout, ctx.Stderr)
+								},
 							},
 							{
 								Name:      "toggle",

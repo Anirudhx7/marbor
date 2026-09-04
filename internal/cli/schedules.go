@@ -106,34 +106,22 @@ func runSchedulesCreate(flags *globalFlags, action, node, at, models, days strin
 // true|false] [--action x] [--node x] [--models a,b] [--at HH:MM] [--days
 // 0,1,2]` - only visited flags are sent (RunCtx.IsSet).
 func runSchedulesPatch(ctx *RunCtx, id string) int {
-	patch := SchedulePatch{}
-	if ctx.IsSet("enabled") {
-		v := ctx.Bool("enabled")
-		patch.Enabled = &v
-	}
-	if ctx.IsSet("action") {
-		v := ctx.String("action")
-		patch.Action = &v
-	}
-	if ctx.IsSet("node") {
-		v := ctx.String("node")
-		patch.Node = &v
+	patch := SchedulePatch{
+		Enabled: ptrIf(ctx.IsSet("enabled"), ctx.Bool("enabled")),
+		Action:  ptrIf(ctx.IsSet("action"), ctx.String("action")),
+		Node:    ptrIf(ctx.IsSet("node"), ctx.String("node")),
+		At:      ptrIf(ctx.IsSet("at"), ctx.String("at")),
 	}
 	if ctx.IsSet("models") {
-		v := parseCommaList(ctx.String("models"))
-		patch.Models = &v
-	}
-	if ctx.IsSet("at") {
-		v := ctx.String("at")
-		patch.At = &v
+		patch.Models = ptrIf(true, parseCommaList(ctx.String("models")))
 	}
 	if ctx.IsSet("days") {
-		v, err := parseIntList(ctx.String("days"))
+		days, err := parseIntList(ctx.String("days"))
 		if err != nil {
 			fmt.Fprintf(ctx.Stderr, "error: %v\n", err)
 			return ExitUserError
 		}
-		patch.Days = &v
+		patch.Days = ptrIf(true, days)
 	}
 	client, err := authenticatedClient(ctx.Flags)
 	if err != nil {
@@ -151,8 +139,14 @@ func runSchedulesPatch(ctx *RunCtx, id string) int {
 	return ExitOK
 }
 
-// runSchedulesDelete implements `marbor schedules delete <id>`.
-func runSchedulesDelete(flags *globalFlags, id string, stdout, stderr io.Writer) int {
+// runSchedulesDelete implements `marbor schedules delete <id> [--yes]`.
+// Destructive per R10 (irreversible): requires --yes or an interactive TTY
+// confirmation, matching the "key revoke"/"users delete" pattern (code
+// review finding - this was originally missing).
+func runSchedulesDelete(flags *globalFlags, id string, yes bool, stdout, stderr io.Writer) int {
+	if err := requireConfirm("delete schedule", id, yes, stderr); err != nil {
+		return reportError(err, stderr)
+	}
 	client, err := authenticatedClient(flags)
 	if err != nil {
 		return reportError(err, stderr)

@@ -1060,6 +1060,21 @@ type SystemAuditEntry struct {
 	SourceIP string `json:"source_ip"`
 }
 
+// queryParams builds a url.Values from alternating name/value pairs,
+// skipping any pair whose value is empty. Shared by every filtered-list
+// Client method (SystemAuditFiltered, AuditQuery, ...) so the "only send
+// non-empty optional filters" pattern lives in one place instead of being
+// hand-copied per method (code review finding).
+func queryParams(pairs ...string) url.Values {
+	v := url.Values{}
+	for i := 0; i+1 < len(pairs); i += 2 {
+		if pairs[i+1] != "" {
+			v.Set(pairs[i], pairs[i+1])
+		}
+	}
+	return v
+}
+
 // SystemAuditFilter mirrors the query params for GET /admin/system-audit.
 type SystemAuditFilter struct {
 	From     string
@@ -1080,34 +1095,21 @@ func (c *Client) SystemAudit(limit int) ([]SystemAuditEntry, error) {
 
 // SystemAuditFiltered calls GET /admin/system-audit with enterprise filters.
 func (c *Client) SystemAuditFiltered(f SystemAuditFilter) ([]SystemAuditEntry, error) {
-	params := url.Values{}
-	if f.From != "" {
-		params.Set("from", f.From)
-	}
-	if f.To != "" {
-		params.Set("to", f.To)
-	}
-	if f.Before != "" {
-		params.Set("before", f.Before)
-	}
+	limit := ""
 	if f.Limit > 0 {
-		params.Set("limit", fmt.Sprintf("%d", f.Limit))
+		limit = fmt.Sprintf("%d", f.Limit)
 	}
-	if f.Kind != "" {
-		params.Set("kind", f.Kind)
-	}
-	if f.Action != "" {
-		params.Set("action", f.Action)
-	}
-	if f.User != "" {
-		params.Set("user", f.User)
-	}
-	if f.Target != "" {
-		params.Set("target", f.Target)
-	}
-	if f.SourceIP != "" {
-		params.Set("source_ip", f.SourceIP)
-	}
+	params := queryParams(
+		"from", f.From,
+		"to", f.To,
+		"before", f.Before,
+		"limit", limit,
+		"kind", f.Kind,
+		"action", f.Action,
+		"user", f.User,
+		"target", f.Target,
+		"source_ip", f.SourceIP,
+	)
 	path := "/admin/system-audit"
 	if len(params) > 0 {
 		path += "?" + params.Encode()
@@ -1260,31 +1262,24 @@ type AuditResult struct {
 // set (distinct from SystemAuditFiltered's operator-action filters), mirroring
 // the UI's Requests.tsx audit view (P-A2-08a).
 func (c *Client) AuditQuery(f AuditFilter) (*AuditResult, error) {
-	params := url.Values{}
+	limit := ""
 	if f.Limit > 0 {
-		params.Set("limit", fmt.Sprintf("%d", f.Limit))
+		limit = fmt.Sprintf("%d", f.Limit)
 	}
-	if f.Model != "" {
-		params.Set("model", f.Model)
-	}
-	if f.Key != "" {
-		params.Set("key", f.Key)
-	}
-	if f.Node != "" {
-		params.Set("node", f.Node)
-	}
-	if f.Status != "" {
-		params.Set("status", f.Status)
-	}
+	cloud := ""
 	if f.Cloud != nil {
-		params.Set("cloud", fmt.Sprintf("%t", *f.Cloud))
+		cloud = fmt.Sprintf("%t", *f.Cloud)
 	}
-	if f.Since != "" {
-		params.Set("since", f.Since)
-	}
-	if f.Until != "" {
-		params.Set("until", f.Until)
-	}
+	params := queryParams(
+		"limit", limit,
+		"model", f.Model,
+		"key", f.Key,
+		"node", f.Node,
+		"status", f.Status,
+		"cloud", cloud,
+		"since", f.Since,
+		"until", f.Until,
+	)
 	path := "/admin/audit"
 	if len(params) > 0 {
 		path += "?" + params.Encode()
@@ -1337,6 +1332,15 @@ func (c *Client) SetNodeWarmup(node string, enabled bool, models []string) (*Nod
 	return &out, nil
 }
 
+// pinnedModelsResp is the shared response shape for both GET and PUT
+// /admin/nodes/{name}/pinned (handleGetPinned/handleSetPinned echo the same
+// {"models":[...]} envelope) - named once so a future field addition needs
+// updating in exactly one place, not the two inline copies this used to be
+// (code review finding).
+type pinnedModelsResp struct {
+	Models []string `json:"models"`
+}
+
 // GetPinned calls GET /admin/nodes/{name}/pinned - the node's never-evict
 // model list (P-A2-02).
 func (c *Client) GetPinned(node string) ([]string, error) {
@@ -1345,9 +1349,7 @@ func (c *Client) GetPinned(node string) ([]string, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	var out struct {
-		Models []string `json:"models"`
-	}
+	var out pinnedModelsResp
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return nil, serverErrorf("could not parse pinned response: %v", err)
 	}
@@ -1362,9 +1364,7 @@ func (c *Client) SetPinned(node string, models []string) ([]string, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	var out struct {
-		Models []string `json:"models"`
-	}
+	var out pinnedModelsResp
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return nil, serverErrorf("could not parse pinned response: %v", err)
 	}
