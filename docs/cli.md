@@ -583,6 +583,32 @@ show global and per-key cloud spend vs budget caps
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
+### `favorites`
+
+manage your starred model list (P-A2-06a)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).
+
+#### `list`
+
+list starred model ids
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+#### `add <model-id>`
+
+star a model
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+#### `remove <model-id>`
+
+unstar a model
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
 ### `spill`
 
 show per-key, per-provider local-vs-cloud request counts

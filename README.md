@@ -527,6 +527,10 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor cloud providers reorder <names>` | set cloud provider fallback priority order (requires auth) |
 | `marbor cloud providers test` | verify a base-url+api-key pair authenticates, without saving it (requires auth) |
 | `marbor cloud budget-status` | show global and per-key cloud spend vs budget caps (requires auth) |
+| `marbor favorites` | manage your starred model list (P-A2-06a) (requires auth) |
+| `marbor favorites list` | list starred model ids (requires auth) |
+| `marbor favorites add <model-id>` | star a model (requires auth) |
+| `marbor favorites remove <model-id>` | unstar a model (requires auth) |
 | `marbor spill` | show per-key, per-provider local-vs-cloud request counts (requires auth) |
 | `marbor activity` | show unified fleet activity feed (drain, agent, runtime, node, warmup, schedule, predictive, config) (requires auth) |
 | `marbor requests` | inspect routing decisions for past requests (requires auth) |

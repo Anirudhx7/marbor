@@ -713,6 +713,34 @@ func buildRoot() *Command {
 				},
 			},
 			{
+				Name:      "favorites",
+				Short:     "manage your starred model list (P-A2-06a)",
+				NeedsAuth: true,
+				Footer:    authFlags,
+				Sub: []*Command{
+					{
+						Name:      "list",
+						Short:     "list starred model ids",
+						NeedsAuth: true,
+						Run:       func(ctx *RunCtx) int { return runFavoritesList(ctx.Flags, ctx.Stdout, ctx.Stderr) },
+					},
+					{
+						Name:      "add",
+						Short:     "star a model",
+						NeedsAuth: true,
+						Args:      []ArgSpec{{Name: "model-id"}},
+						Run:       func(ctx *RunCtx) int { return runFavoritesAdd(ctx.Flags, ctx.Args[0], ctx.Stdout, ctx.Stderr) },
+					},
+					{
+						Name:      "remove",
+						Short:     "unstar a model",
+						NeedsAuth: true,
+						Args:      []ArgSpec{{Name: "model-id"}},
+						Run:       func(ctx *RunCtx) int { return runFavoritesRemove(ctx.Flags, ctx.Args[0], ctx.Stdout, ctx.Stderr) },
+					},
+				},
+			},
+			{
 				Name:      "spill",
 				Short:     "show per-key, per-provider local-vs-cloud request counts",
 				NeedsAuth: true,
