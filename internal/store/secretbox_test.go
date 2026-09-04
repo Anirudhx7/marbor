@@ -340,6 +340,71 @@ func TestAllKeysDropsUndecryptableRowWithoutBreakingOthers(t *testing.T) {
 	}
 }
 
+// TestUpsertKeyRejectsEmptyKey is the regression guard for F-C2-01 (C.2
+// security review): encryptSecret/decryptSecret both treat "" as "unset" and
+// round-trip it with no error, so an empty runtime_keys.key would otherwise
+// persist silently and reappear from AllKeys as Key="" - the same auth-bypass
+// shape as TestAllKeysDropsUndecryptableRowWithoutBreakingOthers, but via a
+// clean round-trip instead of a decrypt failure. UpsertKey must refuse to
+// write the row at all.
+func TestUpsertKeyRejectsEmptyKey(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	st, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer st.Close()
+
+	if err := st.UpsertKey(KeyRecord{Name: "empty-key", Key: ""}); err == nil {
+		t.Fatal("UpsertKey with Key=\"\" want error, got nil - an empty key would authenticate any request with an empty bearer token")
+	}
+
+	keys, err := st.AllKeys()
+	if err != nil {
+		t.Fatalf("AllKeys: %v", err)
+	}
+	if len(keys) != 0 {
+		t.Fatalf("AllKeys = %+v, want no rows persisted for a rejected empty key", keys)
+	}
+}
+
+// TestAllKeysDropsLegacyEmptyKeyRow covers a row written before
+// UpsertKey's empty-key guard existed (or restored from an old backup, or
+// edited directly in the DB): its key column round-trips cleanly through
+// decryptSecret to "" with no error, so it needs its own drop check in
+// AllKeys distinct from the decrypt-failure path.
+func TestAllKeysDropsLegacyEmptyKeyRow(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	st, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer st.Close()
+
+	if err := st.UpsertKey(KeyRecord{Name: "good-key", Key: "sk-marbor-good"}); err != nil {
+		t.Fatalf("UpsertKey(good-key): %v", err)
+	}
+
+	ss := st.(*sqliteStore)
+	if _, err := ss.db.Exec(`INSERT INTO runtime_keys (name, key, rate_limit, daily_limit, monthly_limit, models, revoked) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		"legacy-empty-key", "", 0, 0, 0, "[]", 0); err != nil {
+		t.Fatalf("seed legacy empty-key row: %v", err)
+	}
+
+	keys, err := st.AllKeys()
+	if err != nil {
+		t.Fatalf("AllKeys: want no error from one empty-key row, got %v", err)
+	}
+	if len(keys) != 1 || keys[0].Name != "good-key" {
+		t.Fatalf("AllKeys = %+v, want only the good row, legacy-empty-key row absent", keys)
+	}
+	for _, k := range keys {
+		if k.Key == "" {
+			t.Fatalf("AllKeys returned a row with Key=\"\" (name=%s)", k.Name)
+		}
+	}
+}
+
 // TestAllCloudProvidersDropsUndecryptableRow mirrors
 // TestAllKeysDropsUndecryptableRowWithoutBreakingOthers for cloud providers.
 func TestAllCloudProvidersDropsUndecryptableRow(t *testing.T) {

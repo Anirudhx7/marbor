@@ -698,8 +698,8 @@ func (s *sqliteStore) migrateMarborAgentRekeyByHost() error {
 			continue // not a known node name, or would be a no-op rename
 		}
 		if _, err := s.db.Exec(
-			`INSERT OR IGNORE INTO marbor_agent (name, enabled, port, token)
-			 SELECT ?, enabled, port, token FROM marbor_agent WHERE name = ?`,
+			`INSERT OR IGNORE INTO marbor_agent (name, enabled, port, token, scope, scheme)
+			 SELECT ?, enabled, port, token, scope, scheme FROM marbor_agent WHERE name = ?`,
 			host, key,
 		); err != nil {
 			return fmt.Errorf("rekey marbor_agent %s -> %s: %w", key, host, err)
@@ -1730,6 +1730,15 @@ func (s *sqliteStore) PredictiveHistory() ([]PredictiveTransition, error) {
 // --- Runtime API keys ---
 
 func (s *sqliteStore) UpsertKey(k KeyRecord) error {
+	if k.Key == "" {
+		// An empty key round-trips through encryptSecret/decryptSecret
+		// silently (both treat "" as "unset", no error) and would reappear
+		// from AllKeys as KeyRecord{Key: ""}. auth.go registers keys in a
+		// map keyed by the literal token string, so "" is reachable via a
+		// client sending "Authorization: Bearer " (trailing space, empty
+		// token) - refuse to persist it rather than let that row exist.
+		return fmt.Errorf("store: UpsertKey: key must not be empty")
+	}
 	modelsJSON, err := json.Marshal(k.Models)
 	if err != nil {
 		return fmt.Errorf("store: UpsertKey marshal models: %w", err)
@@ -1825,6 +1834,15 @@ func (s *sqliteStore) AllKeys() ([]KeyRecord, error) {
 			// from a client sending "Authorization: Bearer " (trailing space,
 			// empty token), which would let it match and authenticate.
 			log.Printf("store: AllKeys: dropping %s: %v (re-enter its key to restore it)", k.Name, decErr)
+			continue
+		}
+		if dec == "" {
+			// UpsertKey rejects an empty key going forward, but a row
+			// written before that guard existed (or restored from an old
+			// backup, or edited directly in the DB) decrypts cleanly to ""
+			// with no error - same auth-bypass risk as the decrypt-failure
+			// case above, so it gets the same drop-and-log treatment.
+			log.Printf("store: AllKeys: dropping %s: stored key is empty (re-enter its key to restore it)", k.Name)
 			continue
 		}
 		k.Key = dec
