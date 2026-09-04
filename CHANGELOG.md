@@ -7,6 +7,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- **CLI parity: `marbor favorites list/add/remove` (P-A2-06a).** The A.2 parity audit found `GET/POST/DELETE /admin/favorites` (per-user starred model list) had full UI coverage (`ModelAdvisor.tsx`) but no CLI. New top-level `marbor favorites` group via three new `Client` methods hitting the existing endpoints - no new Admin API capability.
 - **CLI parity: `marbor cloud providers` + `marbor cloud budget-status` (P-A2-05).** The A.2 parity audit found all 7 cloud-provider/budget endpoints (`GET/POST/PUT/DELETE /admin/cloud/providers[/{name}[/reorder|test]]`, `GET /admin/cloud-budget-status`) had full UI coverage (`Settings.tsx`) but no CLI. New top-level `marbor cloud` group: `cloud providers list|add|update|delete|reorder|test` and `cloud budget-status`, via eight new `Client` methods hitting the existing endpoints. R8 handled explicitly: `list`'s `CloudProvider` type has no API-key field (the server never returns it either), `update` omitting `--api-key` sends `""` so the server preserves the currently stored key (matching `handleUpdateCloudProvider`'s own `"" `/`"***"` preservation logic), and `test`'s key is sent once for the one-shot probe and never persisted or echoed back. `providers delete` is R10-destructive (`--yes`/interactive-confirm, same pattern as `key revoke`).
 
 ### Fixed

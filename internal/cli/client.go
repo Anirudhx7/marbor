@@ -1681,6 +1681,43 @@ func (c *Client) CloudBudgetStatus() (*CloudBudgetStatus, error) {
 	return &out, nil
 }
 
+// Favorites calls GET /admin/favorites - the calling user's starred model
+// ids (P-A2-06a).
+func (c *Client) Favorites() ([]string, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/favorites", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out struct {
+		ModelIDs []string `json:"model_ids"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse favorites response: %v", err)
+	}
+	return out.ModelIDs, nil
+}
+
+// AddFavorite calls POST /admin/favorites - stars a model for the calling user.
+func (c *Client) AddFavorite(modelID string) error {
+	resp, err := c.doRequestBody(http.MethodPost, "/admin/favorites", map[string]string{"model_id": modelID})
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
+// RemoveFavorite calls DELETE /admin/favorites/{modelId} - unstars a model.
+func (c *Client) RemoveFavorite(modelID string) error {
+	resp, err := c.doRequestBody(http.MethodDelete, "/admin/favorites/"+escapeModelPathSegments(modelID), nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
 // savedSessionHint returns a suffix clarifying that a 401/403 came from a
 // saved-session token specifically (as opposed to an explicit --token the
 // operator just typed), which is the case where "run it again" is the right

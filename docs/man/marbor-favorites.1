@@ -1,0 +1,33 @@
+.TH MARBOR\-FAVORITES 1 "2026-08-17" "marbor dev" "Marbor Manual"
+.SH NAME
+marbor\-favorites \- manage your starred model list (P\-A2-06a)
+.SH SYNOPSIS
+.B marbor favorites
+[action] [args] [\fIflags\fR]
+.SH DESCRIPTION
+manage your starred model list (P\-A2-06a)
+.SH COMMANDS
+.TP
+.B list
+list starred model ids
+.TP
+.B add <model\-id>
+star a model
+.TP
+.B remove <model\-id>
+unstar a model
+.SH FLAGS
+.TP
+.B \-\-server
+Admin API base URL (default "http://localhost:8080", env MARBOR_SERVER)
+.TP
+.B \-\-json
+output machine\-readable JSON instead of a human table
+.TP
+.B \-\-username
+admin username, used to log in (env MARBOR_USERNAME)
+.TP
+.B \-\-password
+admin password, used to log in (env MARBOR_PASSWORD)
+.SH SEE ALSO
+\fBmarbor\fR(1)
