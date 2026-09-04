@@ -154,20 +154,24 @@ func seedHistoricalData(t *testing.T, db *sql.DB, tag string) {
 		`INSERT INTO node_drain (name, draining) VALUES (?, ?)`,
 		"hist-node", 0)
 
-	// runtime_keys.key and (where the table exists) cloud_providers.api_key
-	// are only seeded as PLAINTEXT for the three tags that predate secretbox
-	// (commit fe3437e, 2026-07-16): v0.11.0, v0.14.0, v0.16.0. That is the
-	// genuinely faithful historical state - a real DB from any of those
-	// releases could only ever have plaintext there, since the encryption
-	// feature did not exist yet. Seeding plaintext for v0.19.0/v0.20.0 would
-	// be unfaithful (a real DB from those releases already has ciphertext,
-	// written by that release's own migrate()), so those two tags seed no
-	// secret-bearing column at all here - runtime_keys.key/cloud_providers
-	// stay at their table default ('' / not inserted). The plaintext-to-
-	// ciphertext upgrade path (migrateEncryptSecrets) is still fully proven
-	// by the three earlier tags.
+	// runtime_keys.key is seeded as PLAINTEXT for the three tags that predate
+	// secretbox (commit fe3437e, 2026-07-16): v0.11.0, v0.14.0, v0.16.0. That
+	// is the genuinely faithful historical state - a real DB from any of
+	// those releases could only ever have plaintext there, since the
+	// encryption feature did not exist yet. v0.19.0/v0.20.0 seed a different
+	// plaintext value instead of reusing the pre-secretbox one, to keep the
+	// preSecretbox assertion below (which checks for the exact pre-secretbox
+	// value) meaningful; migrateEncryptSecrets picks up any plaintext it
+	// finds regardless of tag, so this still proves the row (and its
+	// non-default fields) survive migration. It is never seeded empty: an
+	// empty runtime_keys.key is not a state a real row is ever in (F-C2-01,
+	// C.2 security review) - AllKeys() now deliberately drops such a row as
+	// an auth-bypass guard (a client sending "Authorization: Bearer " with
+	// no token must never match a stored key), so seeding "" here would make
+	// this test assert the wrong thing about that guard rather than about
+	// schema migration.
 	preSecretbox := tag == "v0.11.0" || tag == "v0.14.0" || tag == "v0.16.0"
-	keyValue := ""
+	keyValue := "sk-hist-post-secretbox-key"
 	if preSecretbox {
 		keyValue = "sk-hist-plaintext-key"
 	}
