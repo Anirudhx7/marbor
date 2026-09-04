@@ -77,25 +77,70 @@ func runCloudProvidersAdd(flags *globalFlags, name, provider, baseURL, apiKey, d
 }
 
 // runCloudProvidersUpdate implements `marbor cloud providers update <name>
-// --provider --base-url [--api-key --default-model --cost-per-1k --priority
-// --enabled]`. Leaving --api-key unset sends "" so the server preserves the
-// currently stored key (R8) - see handleUpdateCloudProvider.
-func runCloudProvidersUpdate(flags *globalFlags, name, provider, baseURL, apiKey, defaultModel, costPer1KRaw string, priority int, enabled bool, stdout, stderr io.Writer) int {
-	costPer1K, err := parseCostPer1K(costPer1KRaw)
+// [--provider --base-url --api-key --default-model --cost-per-1k --priority
+// --enabled]`. handleUpdateCloudProvider is a whole-object PUT with no
+// partial-patch semantics beyond api_key's own "" / "***" special case (R8)
+// - any other field the operator doesn't repeat would otherwise silently
+// revert to its Go zero-value (e.g. an omitted --enabled would silently
+// disable a previously-enabled provider). To give this command real
+// patch-like behavior without inventing new Admin API surface (Law 6), any
+// flag NOT explicitly passed is filled in from the provider's current state
+// (one extra GET) before the PUT - same fix as L43 (nodes warmup set).
+func runCloudProvidersUpdate(ctx *RunCtx, name string) int {
+	client, err := authenticatedClient(ctx.Flags)
 	if err != nil {
-		fmt.Fprintf(stderr, "invalid --cost-per-1k %q: %v\n", costPer1KRaw, err)
+		return reportError(err, ctx.Stderr)
+	}
+
+	provider, baseURL, defaultModel := ctx.String("provider"), ctx.String("base-url"), ctx.String("default-model")
+	priority, enabled := ctx.Int("priority"), ctx.Bool("enabled")
+	costPer1K, err := parseCostPer1K(ctx.String("cost-per-1k"))
+	if err != nil {
+		fmt.Fprintf(ctx.Stderr, "invalid --cost-per-1k %q: %v\n", ctx.String("cost-per-1k"), err)
 		return ExitUserError
 	}
-	client, err := authenticatedClient(flags)
-	if err != nil {
-		return reportError(err, stderr)
+	if !ctx.IsSet("provider") || !ctx.IsSet("base-url") || !ctx.IsSet("default-model") || !ctx.IsSet("cost-per-1k") || !ctx.IsSet("priority") || !ctx.IsSet("enabled") {
+		providers, err := client.CloudProviders()
+		if err != nil {
+			return reportError(err, ctx.Stderr)
+		}
+		var cur *CloudProvider
+		for i := range providers {
+			if providers[i].Name == name {
+				cur = &providers[i]
+				break
+			}
+		}
+		if cur == nil {
+			return reportError(userErrorf("cloud provider %q not found", name), ctx.Stderr)
+		}
+		if !ctx.IsSet("provider") {
+			provider = cur.Provider
+		}
+		if !ctx.IsSet("base-url") {
+			baseURL = cur.BaseURL
+		}
+		if !ctx.IsSet("default-model") {
+			defaultModel = cur.DefaultModel
+		}
+		if !ctx.IsSet("cost-per-1k") {
+			costPer1K = cur.CostPer1KTokens
+		}
+		if !ctx.IsSet("priority") {
+			priority = cur.Priority
+		}
+		if !ctx.IsSet("enabled") {
+			enabled = cur.Enabled
+		}
 	}
+
 	if err := client.UpdateCloudProvider(name, CloudProviderRequest{
-		Name: name, Provider: provider, BaseURL: baseURL, APIKey: apiKey,
+		Name: name, Provider: provider, BaseURL: baseURL, APIKey: ctx.String("api-key"),
 		DefaultModel: defaultModel, CostPer1KTokens: costPer1K, Priority: priority, Enabled: enabled,
 	}); err != nil {
-		return reportError(err, stderr)
+		return reportError(err, ctx.Stderr)
 	}
+	stdout, stderr, flags := ctx.Stdout, ctx.Stderr, ctx.Flags
 	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, map[string]interface{}{"ok": true, "name": name}); handled {
 		return code
 	}

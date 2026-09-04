@@ -454,6 +454,60 @@ func buildRoot() *Command {
 							},
 						},
 					},
+					{
+						// Deliberately NOT a bare top-level "agent" command: main.go's
+						// resolveCommand special-cases the literal word "agent" to mean
+						// "removed" (the marbor agent binary split, v0.19.2) before it ever
+						// consults this registry - see CLAUDE.md's "marbor agent ... no
+						// longer exists" note and TestResolveCommand_MatchesRegistry, which
+						// caught this the first time (P-A2-09b). Nested here as a sibling of
+						// "control" instead, matching the existing "node control ..." shape.
+						Name:      "agent",
+						Short:     "manage marbor agent lifecycle for a node (P-A2-09b)",
+						NeedsAuth: true,
+						Footer:    authFlags,
+						Sub: []*Command{
+							{
+								Name:      "get",
+								Short:     "show a node's marbor agent config (never the token - R8)",
+								NeedsAuth: true,
+								Args:      []ArgSpec{{Name: "node"}},
+								Run:       func(ctx *RunCtx) int { return runAgentGet(ctx.Flags, ctx.Args[0], ctx.Stdout, ctx.Stderr) },
+							},
+							{
+								Name:      "enable",
+								Short:     "enable or reconfigure the marbor agent for a node",
+								NeedsAuth: true,
+								Args:      []ArgSpec{{Name: "node"}},
+								Flags: []FlagSpec{
+									{Name: "port", Kind: FlagInt, Usage: "agent port (required)", Required: true, RequiredMsg: "error: --port is required"},
+									{Name: "scheme", Kind: FlagString, DefString: "", Usage: "http or https (empty = keep existing, or http on first enable)"},
+								},
+								Run: func(ctx *RunCtx) int {
+									return runAgentEnable(ctx.Flags, ctx.Args[0], ctx.Int("port"), ctx.String("scheme"), ctx.Stdout, ctx.Stderr)
+								},
+							},
+							{
+								Name:      "disable",
+								Short:     "disable the marbor agent for a node",
+								NeedsAuth: true,
+								Args:      []ArgSpec{{Name: "node"}},
+								Flags: []FlagSpec{
+									{Name: "yes", Kind: FlagBool, Usage: "confirm without prompting"},
+								},
+								Run: func(ctx *RunCtx) int {
+									return runAgentDisable(ctx.Flags, ctx.Args[0], ctx.Bool("yes"), ctx.Stdout, ctx.Stderr)
+								},
+							},
+							{
+								Name:      "regenerate",
+								Short:     "issue a fresh token for an already-enabled marbor agent",
+								NeedsAuth: true,
+								Args:      []ArgSpec{{Name: "node"}},
+								Run:       func(ctx *RunCtx) int { return runAgentRegenerate(ctx.Flags, ctx.Args[0], ctx.Stdout, ctx.Stderr) },
+							},
+						},
+					},
 				},
 			},
 			{
@@ -728,7 +782,7 @@ func buildRoot() *Command {
 									{Name: "enabled", Kind: FlagBool, Usage: "enable this provider"},
 								},
 								Run: func(ctx *RunCtx) int {
-									return runCloudProvidersUpdate(ctx.Flags, ctx.Args[0], ctx.String("provider"), ctx.String("base-url"), ctx.String("api-key"), ctx.String("default-model"), ctx.String("cost-per-1k"), ctx.Int("priority"), ctx.Bool("enabled"), ctx.Stdout, ctx.Stderr)
+									return runCloudProvidersUpdate(ctx, ctx.Args[0])
 								},
 							},
 							{
@@ -1074,53 +1128,6 @@ func buildRoot() *Command {
 						Short:     "show persisted benchmark run history",
 						NeedsAuth: true,
 						Run:       func(ctx *RunCtx) int { return runBenchmarkRuns(ctx.Flags, ctx.Stdout, ctx.Stderr) },
-					},
-				},
-			},
-			{
-				Name:      "agent",
-				Short:     "manage marbor agent lifecycle for a node (P-A2-09b)",
-				NeedsAuth: true,
-				Footer:    authFlags,
-				Sub: []*Command{
-					{
-						Name:      "get",
-						Short:     "show a node's marbor agent config (never the token - R8)",
-						NeedsAuth: true,
-						Args:      []ArgSpec{{Name: "node"}},
-						Run:       func(ctx *RunCtx) int { return runAgentGet(ctx.Flags, ctx.Args[0], ctx.Stdout, ctx.Stderr) },
-					},
-					{
-						Name:      "enable",
-						Short:     "enable or reconfigure the marbor agent for a node",
-						NeedsAuth: true,
-						Args:      []ArgSpec{{Name: "node"}},
-						Flags: []FlagSpec{
-							{Name: "port", Kind: FlagInt, Usage: "agent port (required)", Required: true, RequiredMsg: "error: --port is required"},
-							{Name: "scheme", Kind: FlagString, DefString: "", Usage: "http or https (empty = keep existing, or http on first enable)"},
-						},
-						Run: func(ctx *RunCtx) int {
-							return runAgentEnable(ctx.Flags, ctx.Args[0], ctx.Int("port"), ctx.String("scheme"), ctx.Stdout, ctx.Stderr)
-						},
-					},
-					{
-						Name:      "disable",
-						Short:     "disable the marbor agent for a node",
-						NeedsAuth: true,
-						Args:      []ArgSpec{{Name: "node"}},
-						Flags: []FlagSpec{
-							{Name: "yes", Kind: FlagBool, Usage: "confirm without prompting"},
-						},
-						Run: func(ctx *RunCtx) int {
-							return runAgentDisable(ctx.Flags, ctx.Args[0], ctx.Bool("yes"), ctx.Stdout, ctx.Stderr)
-						},
-					},
-					{
-						Name:      "regenerate",
-						Short:     "issue a fresh token for an already-enabled marbor agent",
-						NeedsAuth: true,
-						Args:      []ArgSpec{{Name: "node"}},
-						Run:       func(ctx *RunCtx) int { return runAgentRegenerate(ctx.Flags, ctx.Args[0], ctx.Stdout, ctx.Stderr) },
 					},
 				},
 			},

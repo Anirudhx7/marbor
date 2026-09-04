@@ -12,7 +12,7 @@ import (
 	"os"
 )
 
-func printAgentUsage(w io.Writer) { writeHelp(w, findCommand(root(), "agent")) }
+func printAgentUsage(w io.Writer) { writeHelp(w, findCommand(root(), "node", "agent")) }
 
 // runAgentGet implements `marbor agent get <node>`. Never prints a token -
 // GetMarborAgent's response never carries one (R8).

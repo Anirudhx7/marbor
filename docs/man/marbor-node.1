@@ -35,6 +35,34 @@ clear the accepted control driver for a node (P\-A2-09c)
 .B \-\-yes
 confirm without prompting
 .RE
+.TP
+.B agent
+manage marbor agent lifecycle for a node (P\-A2-09b)
+.TP
+.B agent get <node>
+show a node's marbor agent config (never the token - R8)
+.TP
+.B agent enable <node>
+enable or reconfigure the marbor agent for a node
+.RS
+.TP
+.B \-\-port int
+agent port (required) (required)
+.TP
+.B \-\-scheme string
+http or https (empty = keep existing, or http on first enable)
+.RE
+.TP
+.B agent disable <node>
+disable the marbor agent for a node
+.RS
+.TP
+.B \-\-yes
+confirm without prompting
+.RE
+.TP
+.B agent regenerate <node>
+issue a fresh token for an already\-enabled marbor agent
 .SH FLAGS
 .TP
 .B \-\-server
