@@ -354,6 +354,39 @@ show why the router picked the node it did for one request
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
+#### `list`
+
+show the in-memory request log, newest first (P-A2-08a)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+#### `live`
+
+show the same bounded request ring in its raw live-widget shape (P-A2-08a)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+### `audit`
+
+inspect the persisted, filterable request audit log (P-A2-08a)
+
+Distinct from "activity", which covers operator actions (drain/agent/runtime/node/warmup); "audit" covers individual proxied requests.
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--limit int` - max entries to show (1-1000, default 100)
+- `--model string` - filter by exact model name
+- `--key string` - filter by exact API key name
+- `--node string` - filter by exact node name
+- `--status string` - filter by status category: success, client_error, or server_error
+- `--cloud string` - filter by cloud fallback: true or false
+- `--since string` - filter from time (RFC3339)
+- `--until string` - filter to time (RFC3339)
+
+requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).
+
 ### `users`
 
 manage dashboard users

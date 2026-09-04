@@ -13,6 +13,60 @@ import (
 // (help.go) - see the P83+ CLI hardening plan, migration step 4.
 func printRequestsUsage(w io.Writer) { writeHelp(w, findCommand(root(), "requests")) }
 
+// runRequestsList implements `marbor requests list` - GET /admin/requests,
+// the full in-memory request log ring, newest first (P-A2-08a).
+func runRequestsList(flags *globalFlags, stdout, stderr io.Writer) int {
+	client, err := authenticatedClient(flags)
+	if err != nil {
+		return reportError(err, stderr)
+	}
+	reqs, err := client.Requests()
+	if err != nil {
+		return reportError(err, stderr)
+	}
+	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, reqs); handled {
+		return code
+	}
+	tw := newTabWriter(stdout)
+	fmt.Fprintln(tw, "TIME\tID\tKEY\tMODEL\tNODE\tSTATUS\tLATENCY MS\tCLOUD\tREASON")
+	for _, r := range reqs {
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%d\t%d\t%s\t%s\n",
+			r.Time.Format("2006-01-02T15:04:05Z07:00"), r.ID, r.KeyName, r.Model, r.Node, r.Status, r.LatencyMs, yesNo(r.Cloud), r.RoutingReason)
+	}
+	if err := tw.Flush(); err != nil {
+		fmt.Fprintln(stderr, err)
+		return ExitServerError
+	}
+	return ExitOK
+}
+
+// runRequestsLive implements `marbor requests live` - GET
+// /admin/requests/live, the same bounded ring in its raw shape (P-A2-08a).
+func runRequestsLive(flags *globalFlags, stdout, stderr io.Writer) int {
+	client, err := authenticatedClient(flags)
+	if err != nil {
+		return reportError(err, stderr)
+	}
+	reqs, err := client.LiveRequests()
+	if err != nil {
+		return reportError(err, stderr)
+	}
+	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, reqs); handled {
+		return code
+	}
+	tw := newTabWriter(stdout)
+	fmt.Fprintln(tw, "TIME\tID\tMODEL\tNODE\tSTATUS\tHTTP\tLATENCY MS\tTOK/S")
+	for _, r := range reqs {
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%d\t%d\t%.1f\n",
+			r.Time.Format("2006-01-02T15:04:05Z07:00"), r.ID, r.Model, r.Node, r.Status, r.HTTPStatus, r.Latency, r.TokensPerSec)
+	}
+	if err := tw.Flush(); err != nil {
+		fmt.Fprintln(stderr, err)
+		return ExitServerError
+	}
+	return ExitOK
+}
+
 func runRequestsExplain(flags *globalFlags, requestID string, stdout, stderr io.Writer) int {
 	client, err := authenticatedClient(flags)
 	if err != nil {

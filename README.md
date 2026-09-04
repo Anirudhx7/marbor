@@ -500,6 +500,9 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor activity` | show unified fleet activity feed (drain, agent, runtime, node, warmup, schedule, predictive, config) (requires auth) |
 | `marbor requests` | inspect routing decisions for past requests (requires auth) |
 | `marbor requests explain <request-id>` | show why the router picked the node it did for one request (requires auth) |
+| `marbor requests list` | show the in-memory request log, newest first (P-A2-08a) (requires auth) |
+| `marbor requests live` | show the same bounded request ring in its raw live-widget shape (P-A2-08a) (requires auth) |
+| `marbor audit` | inspect the persisted, filterable request audit log (P-A2-08a) (requires auth) |
 | `marbor users` | manage dashboard users (requires auth) |
 | `marbor users list` | list users (requires auth) |
 | `marbor users create` | create a user (password printed once) (requires auth) |
