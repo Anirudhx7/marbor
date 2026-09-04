@@ -423,6 +423,71 @@ delete a schedule
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
+### `routing`
+
+manage routing rules and global routing strategy (P-A2-04)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).
+
+#### `rules`
+
+list/add/remove/toggle routing rules
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+##### `list`
+
+list routing rules
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+##### `add`
+
+add a routing rule
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--id string` - rule id (required) (required)
+- `--condition string` - match condition (required) (required)
+- `--target string` - target node name
+- `--strategy string` - per-rule strategy override
+- `--priority int` - rule priority (higher wins)
+- `--enabled` - enable immediately
+
+##### `remove <id>`
+
+remove a routing rule
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+##### `toggle <id>`
+
+toggle a routing rule's enabled state
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+#### `strategy`
+
+get/set the global routing strategy
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+##### `get`
+
+show the global routing strategy
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+##### `set <strategy>`
+
+set the global routing strategy
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
 ### `spill`
 
 show per-key, per-provider local-vs-cloud request counts

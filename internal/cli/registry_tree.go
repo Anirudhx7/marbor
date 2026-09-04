@@ -535,6 +535,77 @@ func buildRoot() *Command {
 				},
 			},
 			{
+				Name:      "routing",
+				Short:     "manage routing rules and global routing strategy (P-A2-04)",
+				NeedsAuth: true,
+				Footer:    authFlags,
+				Sub: []*Command{
+					{
+						Name:      "rules",
+						Short:     "list/add/remove/toggle routing rules",
+						NeedsAuth: true,
+						Sub: []*Command{
+							{
+								Name:      "list",
+								Short:     "list routing rules",
+								NeedsAuth: true,
+								Run:       func(ctx *RunCtx) int { return runRoutingRulesList(ctx.Flags, ctx.Stdout, ctx.Stderr) },
+							},
+							{
+								Name:      "add",
+								Short:     "add a routing rule",
+								NeedsAuth: true,
+								Flags: []FlagSpec{
+									{Name: "id", Kind: FlagString, Usage: "rule id (required)", Required: true, RequiredMsg: "error: --id is required"},
+									{Name: "condition", Kind: FlagString, Usage: "match condition (required)", Required: true, RequiredMsg: "error: --condition is required"},
+									{Name: "target", Kind: FlagString, DefString: "", Usage: "target node name"},
+									{Name: "strategy", Kind: FlagString, DefString: "", Usage: "per-rule strategy override"},
+									{Name: "priority", Kind: FlagInt, DefInt: 0, Usage: "rule priority (higher wins)"},
+									{Name: "enabled", Kind: FlagBool, Usage: "enable immediately"},
+								},
+								Run: func(ctx *RunCtx) int {
+									return runRoutingRulesAdd(ctx.Flags, ctx.String("id"), ctx.String("condition"), ctx.String("target"), ctx.String("strategy"), ctx.Int("priority"), ctx.Bool("enabled"), ctx.Stdout, ctx.Stderr)
+								},
+							},
+							{
+								Name:      "remove",
+								Short:     "remove a routing rule",
+								NeedsAuth: true,
+								Args:      []ArgSpec{{Name: "id"}},
+								Run:       func(ctx *RunCtx) int { return runRoutingRulesRemove(ctx.Flags, ctx.Args[0], ctx.Stdout, ctx.Stderr) },
+							},
+							{
+								Name:      "toggle",
+								Short:     "toggle a routing rule's enabled state",
+								NeedsAuth: true,
+								Args:      []ArgSpec{{Name: "id"}},
+								Run:       func(ctx *RunCtx) int { return runRoutingRulesToggle(ctx.Flags, ctx.Args[0], ctx.Stdout, ctx.Stderr) },
+							},
+						},
+					},
+					{
+						Name:      "strategy",
+						Short:     "get/set the global routing strategy",
+						NeedsAuth: true,
+						Sub: []*Command{
+							{
+								Name:      "get",
+								Short:     "show the global routing strategy",
+								NeedsAuth: true,
+								Run:       func(ctx *RunCtx) int { return runRoutingStrategyGet(ctx.Flags, ctx.Stdout, ctx.Stderr) },
+							},
+							{
+								Name:      "set",
+								Short:     "set the global routing strategy",
+								NeedsAuth: true,
+								Args:      []ArgSpec{{Name: "strategy"}},
+								Run:       func(ctx *RunCtx) int { return runRoutingStrategySet(ctx.Flags, ctx.Args[0], ctx.Stdout, ctx.Stderr) },
+							},
+						},
+					},
+				},
+			},
+			{
 				Name:      "spill",
 				Short:     "show per-key, per-provider local-vs-cloud request counts",
 				NeedsAuth: true,

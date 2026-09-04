@@ -509,6 +509,15 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor schedules create` | create a schedule (requires auth) |
 | `marbor schedules patch <id>` | update a schedule (only flags you pass are changed) (requires auth) |
 | `marbor schedules delete <id>` | delete a schedule (requires auth) |
+| `marbor routing` | manage routing rules and global routing strategy (P-A2-04) (requires auth) |
+| `marbor routing rules` | list/add/remove/toggle routing rules (requires auth) |
+| `marbor routing rules list` | list routing rules (requires auth) |
+| `marbor routing rules add` | add a routing rule (requires auth) |
+| `marbor routing rules remove <id>` | remove a routing rule (requires auth) |
+| `marbor routing rules toggle <id>` | toggle a routing rule's enabled state (requires auth) |
+| `marbor routing strategy` | get/set the global routing strategy (requires auth) |
+| `marbor routing strategy get` | show the global routing strategy (requires auth) |
+| `marbor routing strategy set <strategy>` | set the global routing strategy (requires auth) |
 | `marbor spill` | show per-key, per-provider local-vs-cloud request counts (requires auth) |
 | `marbor activity` | show unified fleet activity feed (drain, agent, runtime, node, warmup, schedule, predictive, config) (requires auth) |
 | `marbor requests` | inspect routing decisions for past requests (requires auth) |
