@@ -57,6 +57,18 @@ func Run(args []string, version string) {
 	runAgent(args, version, nil)
 }
 
+// validateCertKeyFlags rejects a foreground --cert/--key pair where exactly
+// one is set. Mirrors service.validateCertKeyConfig's install-time check for
+// the foreground code path (B1 AGENT-01) - both empty is the documented
+// intentional-plaintext case, both set is the documented TLS case, and
+// exactly one set is never intentional.
+func validateCertKeyFlags(cert, key string) error {
+	if (cert == "") != (key == "") {
+		return fmt.Errorf("exactly one of --cert/--key is set (cert=%q key=%q) - both or neither is required", cert, key)
+	}
+	return nil
+}
+
 // runAgent runs the agent's HTTP server and background scheduler in the
 // foreground. stop is non-nil only when running as a Windows service
 // (svc_windows.go's Execute): closing it cancels the scheduler context and
@@ -99,6 +111,18 @@ func runAgent(args []string, version string, stop <-chan struct{}) {
 	}
 	if *refreshInterval <= 0 {
 		winexit.Fatal("marboragent: --refresh-interval must be positive")
+	}
+	// B1 AGENT-01: "agent service install" always sets both --cert and --key
+	// or neither (service.Config.args()), and that path is additionally
+	// guarded by validateCertKeyConfig before install. This foreground path
+	// is reachable directly by a hand-typed or scripted command line, where
+	// exactly one of the two being set is never intentional - it used to
+	// fall through to the plaintext branch below with only a log line, so
+	// the bearer token (which unlocks destructive actions) could silently
+	// traverse the network unencrypted on a partial-flag typo. Fail closed
+	// instead, mirroring validateCertKeyConfig's message.
+	if err := validateCertKeyFlags(*certFlag, *keyFlag); err != nil {
+		winexit.Fatalf("marboragent: %v", err)
 	}
 
 	// Start the HTTP server before building/seeding the scheduler so the
