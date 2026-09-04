@@ -15,6 +15,7 @@ Commands:
   node       node control driver operations
   key        per-API-key local/cloud routing overrides (masked list, plaintext-once on create)
   schedules  manage time-of-day warmup/unload/drain/undrain automations (P-A2-03)
+  routing    manage routing rules and global routing strategy (P-A2-04)
   spill      show per-key, per-provider local-vs-cloud request counts
   activity   show unified fleet activity feed (drain, agent, runtime, node, warmup, schedule, predictive, config)
   requests   inspect routing decisions for past requests

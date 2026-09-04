@@ -1471,6 +1471,86 @@ func (c *Client) DeleteSchedule(id string) error {
 	return nil
 }
 
+// RoutingRule mirrors config.RoutingRule (P-A2-04).
+type RoutingRule struct {
+	ID         string `json:"id"`
+	Priority   int    `json:"priority"`
+	Condition  string `json:"condition"`
+	TargetNode string `json:"targetNode"`
+	Strategy   string `json:"strategy,omitempty"`
+	Enabled    bool   `json:"enabled"`
+}
+
+// RoutingRules calls GET /admin/routing/rules.
+func (c *Client) RoutingRules() ([]RoutingRule, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/routing/rules", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out []RoutingRule
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse routing rules response: %v", err)
+	}
+	return out, nil
+}
+
+// AddRoutingRule calls POST /admin/routing/rules.
+func (c *Client) AddRoutingRule(rule RoutingRule) error {
+	resp, err := c.doRequestBody(http.MethodPost, "/admin/routing/rules", rule)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
+// RemoveRoutingRule calls DELETE /admin/routing/rules/{id}.
+func (c *Client) RemoveRoutingRule(id string) error {
+	resp, err := c.doRequestBody(http.MethodDelete, "/admin/routing/rules/"+urlPathEscape(id), nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
+// ToggleRoutingRule calls PUT /admin/routing/rules/{id}/toggle.
+func (c *Client) ToggleRoutingRule(id string) error {
+	resp, err := c.doRequestBody(http.MethodPut, "/admin/routing/rules/"+urlPathEscape(id)+"/toggle", nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
+// RoutingStrategy calls GET /admin/routing/strategy.
+func (c *Client) RoutingStrategy() (string, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/routing/strategy", true)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Strategy string `json:"strategy"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return "", serverErrorf("could not parse routing strategy response: %v", err)
+	}
+	return out.Strategy, nil
+}
+
+// SetRoutingStrategy calls PUT /admin/routing/strategy.
+func (c *Client) SetRoutingStrategy(strategy string) error {
+	resp, err := c.doRequestBody(http.MethodPut, "/admin/routing/strategy", map[string]string{"strategy": strategy})
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
 // savedSessionHint returns a suffix clarifying that a 401/403 came from a
 // saved-session token specifically (as opposed to an explicit --token the
 // operator just typed), which is the case where "run it again" is the right

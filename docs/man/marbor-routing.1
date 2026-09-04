@@ -1,0 +1,68 @@
+.TH MARBOR\-ROUTING 1 "2026-08-17" "marbor dev" "Marbor Manual"
+.SH NAME
+marbor\-routing \- manage routing rules and global routing strategy (P\-A2-04)
+.SH SYNOPSIS
+.B marbor routing
+[action] [args] [\fIflags\fR]
+.SH DESCRIPTION
+manage routing rules and global routing strategy (P\-A2-04)
+.SH COMMANDS
+.TP
+.B rules
+list/add/remove/toggle routing rules
+.TP
+.B rules list
+list routing rules
+.TP
+.B rules add
+add a routing rule
+.RS
+.TP
+.B \-\-id string
+rule id (required) (required)
+.TP
+.B \-\-condition string
+match condition (required) (required)
+.TP
+.B \-\-target string
+target node name
+.TP
+.B \-\-strategy string
+per\-rule strategy override
+.TP
+.B \-\-priority int
+rule priority (higher wins)
+.TP
+.B \-\-enabled
+enable immediately
+.RE
+.TP
+.B rules remove <id>
+remove a routing rule
+.TP
+.B rules toggle <id>
+toggle a routing rule's enabled state
+.TP
+.B strategy
+get/set the global routing strategy
+.TP
+.B strategy get
+show the global routing strategy
+.TP
+.B strategy set <strategy>
+set the global routing strategy
+.SH FLAGS
+.TP
+.B \-\-server
+Admin API base URL (default "http://localhost:8080", env MARBOR_SERVER)
+.TP
+.B \-\-json
+output machine\-readable JSON instead of a human table
+.TP
+.B \-\-username
+admin username, used to log in (env MARBOR_USERNAME)
+.TP
+.B \-\-password
+admin password, used to log in (env MARBOR_PASSWORD)
+.SH SEE ALSO
+\fBmarbor\fR(1)
