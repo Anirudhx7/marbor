@@ -169,6 +169,12 @@ Flags:
 
 - `--disabled` - disable predictive prewarm for this node
 
+#### `fit`
+
+show per-node VRAM fit analysis for resident/warm models (P-A2-06b)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
 ### `models`
 
 fleet-wide list, or pull/delete/unload/list on one node
@@ -606,6 +612,63 @@ Requires authentication - see the root README's CLI auth section, or run `marbor
 #### `remove <model-id>`
 
 unstar a model
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+### `model-config`
+
+manage per-node model parameter profiles (P-A2-06b)
+
+store.ModelConfig has ~40 optional per-runtime sampling/load-time fields, so
+"set" takes a JSON body via --from-json (a literal JSON string or
+@path/to/file.json) rather than dozens of individual flags - see
+internal/cli/modelconfig.go for the full field list and rationale.
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).
+
+#### `get`
+
+get a model's parameter profile on one node
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--model string` - model name (required) (required)
+- `--node string` - node name (required) (required)
+
+#### `set`
+
+create/update a model's parameter profile (full JSON body)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--from-json string` - JSON body (literal string, or @path/to/file.json) - must include "model" and "node" (required) (required)
+
+#### `delete`
+
+reset a model on a node to backend defaults
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--model string` - model name (required) (required)
+- `--node string` - node name (required) (required)
+
+#### `list`
+
+list every configured model parameter profile
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+#### `capabilities`
+
+show which parameter fields take effect per runtime
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 

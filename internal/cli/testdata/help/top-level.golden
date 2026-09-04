@@ -4,25 +4,26 @@ Usage:
   marbor <command> [flags]
 
 Commands:
-  version    print CLI and (if reachable) server version
-  status     print marbor health/status summary
-  login      authenticate once and save the session locally (recommended)
-  logout     remove the saved session
-  whoami     show the CLI's saved identity (live-verified)
-  nodes      list nodes known to marbor
-  models     fleet-wide list, or pull/delete/unload/list on one node
-  runtime    start/stop/restart/logs/drain/undrain/health on one node
-  node       node control driver operations
-  key        per-API-key local/cloud routing overrides (masked list, plaintext-once on create)
-  schedules  manage time-of-day warmup/unload/drain/undrain automations (P-A2-03)
-  routing    manage routing rules and global routing strategy (P-A2-04)
-  cloud      manage cloud overflow providers and view budget status (P-A2-05)
-  favorites  manage your starred model list (P-A2-06a)
-  spill      show per-key, per-provider local-vs-cloud request counts
-  activity   show unified fleet activity feed (drain, agent, runtime, node, warmup, schedule, predictive, config)
-  requests   inspect routing decisions for past requests
-  audit      inspect the persisted, filterable request audit log (P-A2-08a)
-  users      manage dashboard users
+  version       print CLI and (if reachable) server version
+  status        print marbor health/status summary
+  login         authenticate once and save the session locally (recommended)
+  logout        remove the saved session
+  whoami        show the CLI's saved identity (live-verified)
+  nodes         list nodes known to marbor
+  models        fleet-wide list, or pull/delete/unload/list on one node
+  runtime       start/stop/restart/logs/drain/undrain/health on one node
+  node          node control driver operations
+  key           per-API-key local/cloud routing overrides (masked list, plaintext-once on create)
+  schedules     manage time-of-day warmup/unload/drain/undrain automations (P-A2-03)
+  routing       manage routing rules and global routing strategy (P-A2-04)
+  cloud         manage cloud overflow providers and view budget status (P-A2-05)
+  favorites     manage your starred model list (P-A2-06a)
+  model-config  manage per-node model parameter profiles (P-A2-06b)
+  spill         show per-key, per-provider local-vs-cloud request counts
+  activity      show unified fleet activity feed (drain, agent, runtime, node, warmup, schedule, predictive, config)
+  requests      inspect routing decisions for past requests
+  audit         inspect the persisted, filterable request audit log (P-A2-08a)
+  users         manage dashboard users
 
 Run "marbor <command> --help" for the full list of actions and flags for
 that command.
