@@ -113,3 +113,79 @@ Either way, the container must be **stopped** first, since SQLite's WAL sidecar 
 
 **Kubernetes:** scale the deployment to 0 replicas, copy the backup file onto the PVC (e.g. via a
 temporary debug pod with the same PVC mounted, or `kubectl cp` into that pod), then scale back to 1.
+
+---
+
+## The encryption key - back it up like the database
+
+Secrets stored in `marbor.db` (cloud provider API keys, marbor-issued runtime API keys,
+marbor-agent enrollment tokens, LiteLLM/HuggingFace/webhook credentials) are encrypted at rest
+with AES-256-GCM under a 32-byte master key. That key is **not stored in the database** - it lives
+either in the `MARBOR_ENCRYPTION_KEY` environment variable or, if that's unset, in a sibling file
+next to the database named `<db path>.key` (e.g. `marbor.db.key`), generated automatically on
+first boot. A `.db` backup without its matching key is a backup of unreadable ciphertext for every
+secret field.
+
+**Back up `marbor.db.key` with the same discipline as `marbor.db` itself** - alongside it in the
+same backup, not left behind on the original host. If you set `MARBOR_ENCRYPTION_KEY` instead of
+relying on the auto-generated file, that variable's value is the thing to store safely (a secrets
+manager, a password vault) - it is exactly as sensitive as the plaintext secrets it protects, and
+losing it is exactly as final as losing the key file.
+
+### What happens if the key is lost
+
+There is no recovery. AES-256-GCM with a lost key is unrecoverable by design - that's what
+"encrypted at rest" means. If you have lost both `marbor.db.key` and never had `MARBOR_ENCRYPTION_KEY`
+set to a saved value, every previously-encrypted secret in that database is gone permanently. There
+is no backdoor, no re-derivation, no support path that gets it back.
+
+What actually happens at the next boot depends on how the key went missing:
+
+- **The key file was deleted, or an env-var-only deployment lost the env var, and no `.db.key` file
+  ever existed** - marbor currently does **not** detect this and refuse to start. It generates a
+  brand-new random key and writes it to `marbor.db.key`, then boots normally with no warning. Every
+  secret encrypted under the old key becomes permanently unreadable under the new one, one field at
+  a time, the next time each is used:
+  - A single-value read (e.g. the LiteLLM API key setting) fails outright with a decrypt error.
+  - A list read (marbor agents, runtime API keys, cloud provider keys, other settings) does not fail
+    the whole list - the specific row with the undecryptable secret is silently dropped from the
+    result and logged (`store: AllX: dropping ...: wrong key or corrupt data ...`), while every other
+    row keeps working. A dropped marbor agent or cloud provider effectively disappears from its list
+    until you re-enter its credential; a dropped runtime API key stops authenticating.
+  - **marbor itself still boots and keeps routing/proxying traffic** - key loss degrades specific
+    secret-bearing features, it does not brick the process or the database.
+  - This silent-regeneration path is a confirmed gap, not intended behavior - see
+    "Known gap" below.
+- **The key file exists but is corrupted or truncated** (not exactly 32 bytes) - marbor refuses to
+  start and exits with an explicit error naming the file and its wrong size. This is the safe
+  behavior; it exists today.
+
+### Known gap - silent key regeneration on loss
+
+Verified in `internal/store/secretbox.go`'s `loadOrCreateSecretKey`: on a missing key file (deleted,
+or never written because `MARBOR_ENCRYPTION_KEY` was previously used and is now unset), the function
+cannot distinguish "this is a fresh install with nothing encrypted yet" from "the real key was lost
+and the database already holds ciphertext" - it treats both cases identically and silently generates
+a new key. The corrupted-key-file case already refuses to start instead; the missing-key case should
+arguably do the same whenever the database already contains encrypted rows, but doing so needs a
+schema-aware check across every secret-bearing table before the key is finalized, which is more than
+a one-line fix. This is filed as a confirmed follow-up, not fixed in this pass - the answer above
+describes the codebase's actual current behavior, not the behavior it should ideally have.
+
+### Prevention
+
+- Treat `marbor.db.key` as part of the database for backup purposes - same schedule, same target
+  directory, same restore drill. The scheduled/manual backup flows above copy `marbor.db` only; back
+  up `marbor.db.key` yourself alongside it (it's a static 32-byte file, no `VACUUM INTO` needed - a
+  plain file copy is safe at any time).
+  - Docker: it lives in the same volume as `marbor.db` unless you've relocated `MARBOR_DB_PATH` -
+    include it in whatever backs up that volume.
+  - systemd/bare metal: it sits next to `marbor.db` on disk - a filesystem-level backup of that
+    directory already includes it.
+- If you use `MARBOR_ENCRYPTION_KEY` instead, record its value in a secrets manager or password
+  vault with the same durability guarantees you'd want for any other production credential - it
+  never touches disk, so a filesystem backup will not save it for you.
+- When restoring a `marbor.db` backup onto a new host, restore `marbor.db.key` (or set
+  `MARBOR_ENCRYPTION_KEY` to the matching value) to the same directory *before* starting marbor -
+  otherwise the missing-key path above kicks in and the restored secrets are immediately orphaned
+  under a freshly generated key.
