@@ -3,7 +3,7 @@ Usage: marbor node control [action] [args] [flags]
 Actions:
   probe <node>   show a node's control-driver status (configured + discovered)
   accept <node>  accept a control driver + identifier for a node
-  clear <node>   clear the accepted control driver for a node (P-A2-09c)
+  clear <node>   clear the accepted control driver for a node
 
 Flags:
   --server string    Admin API base URL (default "http://localhost:8080", env MARBOR_SERVER)

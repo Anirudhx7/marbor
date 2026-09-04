@@ -76,7 +76,7 @@ Flags:
 
 #### `patch <node>`
 
-set deployment parallelism or per-model VRAM overrides for a node (P397, P411)
+set deployment parallelism or per-model VRAM overrides for a node
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
@@ -88,7 +88,7 @@ Flags:
 
 #### `add <name> <url>`
 
-add (or update, by name) a node in the fleet (P-A2-01)
+add (or update, by name) a node in the fleet
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
@@ -100,7 +100,7 @@ Flags:
 
 #### `remove <node>`
 
-remove a node from the fleet (P-A2-01)
+remove a node from the fleet
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
@@ -110,7 +110,7 @@ Flags:
 
 #### `warmup`
 
-get or set a node's proactive warmup config (P-A2-02)
+get or set a node's proactive warmup config
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
@@ -133,7 +133,7 @@ Flags:
 
 #### `pinned`
 
-get or set a node's never-evict (pinned) model list (P-A2-02)
+get or set a node's never-evict (pinned) model list
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
@@ -155,7 +155,7 @@ Flags:
 
 #### `prewarm`
 
-disable or re-enable predictive prewarm for a node (P-A2-02)
+disable or re-enable predictive prewarm for a node
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
@@ -171,7 +171,7 @@ Flags:
 
 #### `fit`
 
-show per-node VRAM fit analysis for resident/warm models (P-A2-06b)
+show per-node VRAM fit analysis for resident/warm models
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
@@ -219,7 +219,7 @@ Flags:
 
 #### `search`
 
-search Hugging Face models (P-A2-06c)
+search Hugging Face models
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
@@ -231,7 +231,7 @@ Flags:
 
 #### `repo <owner/name>`
 
-show Hugging Face repo detail with per-node fit (P-A2-06c)
+show Hugging Face repo detail with per-node fit
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
@@ -243,13 +243,13 @@ Flags:
 
 #### `pull-progress <node> <model>`
 
-show a point-in-time snapshot of an active pull (P-A2-08b)
+show a point-in-time snapshot of an active pull
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
 #### `cancel-pull <node> <model>`
 
-cancel an in-flight pull (P-A2-08b)
+cancel an in-flight pull
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
@@ -345,7 +345,7 @@ Flags:
 
 ##### `clear <node>`
 
-clear the accepted control driver for a node (P-A2-09c)
+clear the accepted control driver for a node
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
@@ -355,7 +355,7 @@ Flags:
 
 #### `agent`
 
-manage marbor agent lifecycle for a node (P-A2-09b)
+manage marbor agent lifecycle for a node
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
@@ -363,7 +363,7 @@ requires credentials: run "marbor login" once (recommended), or pass --username+
 
 ##### `get <node>`
 
-show a node's marbor agent config (never the token - R8)
+show a node's marbor agent config (does not display the auth token)
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
@@ -468,7 +468,7 @@ Requires authentication - see the root README's CLI auth section, or run `marbor
 
 ### `schedules`
 
-manage time-of-day warmup/unload/drain/undrain automations (P-A2-03)
+manage time-of-day warmup/unload/drain/undrain automations
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
@@ -522,7 +522,7 @@ Flags:
 
 ### `routing`
 
-manage routing rules and global routing strategy (P-A2-04)
+manage routing rules and global routing strategy
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
@@ -591,7 +591,7 @@ Requires authentication - see the root README's CLI auth section, or run `marbor
 
 ### `cloud`
 
-manage cloud overflow providers and view budget status (P-A2-05)
+manage cloud overflow providers and view budget status
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
@@ -605,7 +605,7 @@ Requires authentication - see the root README's CLI auth section, or run `marbor
 
 ##### `list`
 
-list cloud providers (never shows the API key - R8)
+list cloud providers (does not display the API key)
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
@@ -628,7 +628,7 @@ Flags:
 
 ##### `update <name>`
 
-update a cloud provider (omit --api-key to keep the stored key - R8)
+update a cloud provider (omit --api-key to keep the stored key)
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
@@ -678,7 +678,7 @@ Requires authentication - see the root README's CLI auth section, or run `marbor
 
 ### `favorites`
 
-manage your starred model list (P-A2-06a)
+manage your starred model list
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
@@ -704,7 +704,7 @@ Requires authentication - see the root README's CLI auth section, or run `marbor
 
 ### `model-config`
 
-manage per-node model parameter profiles (P-A2-06b)
+manage per-node model parameter profiles
 
 store.ModelConfig has ~40 optional per-runtime sampling/load-time fields, so
 "set" takes a JSON body via --from-json (a literal JSON string or
@@ -761,7 +761,7 @@ Requires authentication - see the root README's CLI auth section, or run `marbor
 
 ### `catalog`
 
-show the fleet-aware HF/local model catalog with per-node fit (P-A2-06c)
+show the fleet-aware HF/local model catalog with per-node fit
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
@@ -769,7 +769,7 @@ requires credentials: run "marbor login" once (recommended), or pass --username+
 
 ### `backup`
 
-manage marbor.db backups (P-A2-07)
+manage marbor.db backups
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
@@ -813,7 +813,7 @@ Flags:
 
 ### `analytics`
 
-hourly analytics + per-model stats (P-A2-07)
+hourly analytics + per-model stats
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
@@ -839,7 +839,7 @@ Flags:
 
 ### `savings`
 
-show cloud-vs-local savings summary (P-A2-07)
+show cloud-vs-local savings summary
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
@@ -847,7 +847,7 @@ requires credentials: run "marbor login" once (recommended), or pass --username+
 
 ### `metrics`
 
-dashboard metrics (P-A2-07)
+dashboard metrics
 
 #### `summary`
 
@@ -857,7 +857,7 @@ Requires authentication - see the root README's CLI auth section, or run `marbor
 
 ### `pulls`
 
-list every active model pull job across the fleet (P-A2-08b)
+list every active model pull job across the fleet
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
@@ -865,7 +865,7 @@ requires credentials: run "marbor login" once (recommended), or pass --username+
 
 ### `warmup`
 
-global warmup engine status and manual controls (P-A2-08c)
+global warmup engine status and manual controls
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
@@ -901,7 +901,7 @@ Requires authentication - see the root README's CLI auth section, or run `marbor
 
 ### `predictive`
 
-show recent predictive prewarm decisions (P-A2-08c)
+show recent predictive prewarm decisions
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
@@ -915,7 +915,7 @@ Requires authentication - see the root README's CLI auth section, or run `marbor
 
 ### `system-info`
 
-show control-plane host system info and per-node GPU summary (P-A2-08c)
+show control-plane host system info and per-node GPU summary
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
@@ -923,7 +923,7 @@ requires credentials: run "marbor login" once (recommended), or pass --username+
 
 ### `config`
 
-control-plane configuration operations (P-A2-08c)
+control-plane configuration operations
 
 #### `reload`
 
@@ -933,7 +933,7 @@ Requires authentication - see the root README's CLI auth section, or run `marbor
 
 ### `benchmark`
 
-run/inspect in-dashboard hardware benchmark jobs (P-A2-09a)
+run/inspect in-dashboard hardware benchmark jobs
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
@@ -1011,19 +1011,19 @@ Requires authentication - see the root README's CLI auth section, or run `marbor
 
 #### `list`
 
-show the in-memory request log, newest first (P-A2-08a)
+show the in-memory request log, newest first
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
 #### `live`
 
-show the same bounded request ring in its raw live-widget shape (P-A2-08a)
+show the same bounded request ring in its raw live-widget shape
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
 ### `audit`
 
-inspect the persisted, filterable request audit log (P-A2-08a)
+inspect the persisted, filterable request audit log
 
 Distinct from "activity", which covers operator actions (drain/agent/runtime/node/warmup); "audit" covers individual proxied requests.
 
@@ -1120,19 +1120,19 @@ Flags:
 
 #### `pending-count`
 
-show the number of users awaiting approval (P-A2-08d)
+show the number of users awaiting approval
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
 #### `change-password`
 
-change your own password (interactive, masked prompts) (P-A2-09d)
+change your own password (interactive, masked prompts)
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
 #### `skip-password-change`
 
-dismiss the forced-password-change prompt for this session only (P-A2-09d)
+dismiss the forced-password-change prompt for this session only
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 

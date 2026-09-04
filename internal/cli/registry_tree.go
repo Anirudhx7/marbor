@@ -121,7 +121,7 @@ func buildRoot() *Command {
 					},
 					{
 						Name:      "patch",
-						Short:     "set deployment parallelism or per-model VRAM overrides for a node (P397, P411)",
+						Short:     "set deployment parallelism or per-model VRAM overrides for a node",
 						NeedsAuth: true,
 						Args:      []ArgSpec{{Name: "node"}},
 						Flags: []FlagSpec{
@@ -135,7 +135,7 @@ func buildRoot() *Command {
 					},
 					{
 						Name:      "add",
-						Short:     "add (or update, by name) a node in the fleet (P-A2-01)",
+						Short:     "add (or update, by name) a node in the fleet",
 						NeedsAuth: true,
 						Args:      []ArgSpec{{Name: "name"}, {Name: "url"}},
 						Flags: []FlagSpec{
@@ -149,7 +149,7 @@ func buildRoot() *Command {
 					},
 					{
 						Name:      "remove",
-						Short:     "remove a node from the fleet (P-A2-01)",
+						Short:     "remove a node from the fleet",
 						NeedsAuth: true,
 						Args:      []ArgSpec{{Name: "node"}},
 						Flags: []FlagSpec{
@@ -161,7 +161,7 @@ func buildRoot() *Command {
 					},
 					{
 						Name:      "warmup",
-						Short:     "get or set a node's proactive warmup config (P-A2-02)",
+						Short:     "get or set a node's proactive warmup config",
 						NeedsAuth: true,
 						Sub: []*Command{
 							{
@@ -188,7 +188,7 @@ func buildRoot() *Command {
 					},
 					{
 						Name:      "pinned",
-						Short:     "get or set a node's never-evict (pinned) model list (P-A2-02)",
+						Short:     "get or set a node's never-evict (pinned) model list",
 						NeedsAuth: true,
 						Sub: []*Command{
 							{
@@ -214,7 +214,7 @@ func buildRoot() *Command {
 					},
 					{
 						Name:      "prewarm",
-						Short:     "disable or re-enable predictive prewarm for a node (P-A2-02)",
+						Short:     "disable or re-enable predictive prewarm for a node",
 						NeedsAuth: true,
 						Sub: []*Command{
 							{
@@ -233,7 +233,7 @@ func buildRoot() *Command {
 					},
 					{
 						Name:      "fit",
-						Short:     "show per-node VRAM fit analysis for resident/warm models (P-A2-06b)",
+						Short:     "show per-node VRAM fit analysis for resident/warm models",
 						NeedsAuth: true,
 						Run:       func(ctx *RunCtx) int { return runNodesFit(ctx.Flags, ctx.Stdout, ctx.Stderr) },
 					},
@@ -293,7 +293,7 @@ func buildRoot() *Command {
 					},
 					{
 						Name:      "search",
-						Short:     "search Hugging Face models (P-A2-06c)",
+						Short:     "search Hugging Face models",
 						NeedsAuth: true,
 						Flags: []FlagSpec{
 							{Name: "q", Kind: FlagString, DefString: "", Usage: "search query"},
@@ -306,7 +306,7 @@ func buildRoot() *Command {
 					},
 					{
 						Name:      "repo",
-						Short:     "show Hugging Face repo detail with per-node fit (P-A2-06c)",
+						Short:     "show Hugging Face repo detail with per-node fit",
 						NeedsAuth: true,
 						Args:      []ArgSpec{{Name: "owner/name"}},
 						Flags: []FlagSpec{
@@ -320,7 +320,7 @@ func buildRoot() *Command {
 					},
 					{
 						Name:      "pull-progress",
-						Short:     "show a point-in-time snapshot of an active pull (P-A2-08b)",
+						Short:     "show a point-in-time snapshot of an active pull",
 						NeedsAuth: true,
 						Args:      []ArgSpec{{Name: "node"}, {Name: "model"}},
 						Run: func(ctx *RunCtx) int {
@@ -329,7 +329,7 @@ func buildRoot() *Command {
 					},
 					{
 						Name:      "cancel-pull",
-						Short:     "cancel an in-flight pull (P-A2-08b)",
+						Short:     "cancel an in-flight pull",
 						NeedsAuth: true,
 						Args:      []ArgSpec{{Name: "node"}, {Name: "model"}},
 						Run: func(ctx *RunCtx) int {
@@ -442,7 +442,7 @@ func buildRoot() *Command {
 							},
 							{
 								Name:      "clear",
-								Short:     "clear the accepted control driver for a node (P-A2-09c)",
+								Short:     "clear the accepted control driver for a node",
 								NeedsAuth: true,
 								Args:      []ArgSpec{{Name: "node"}},
 								Flags: []FlagSpec{
@@ -463,13 +463,13 @@ func buildRoot() *Command {
 						// caught this the first time (P-A2-09b). Nested here as a sibling of
 						// "control" instead, matching the existing "node control ..." shape.
 						Name:      "agent",
-						Short:     "manage marbor agent lifecycle for a node (P-A2-09b)",
+						Short:     "manage marbor agent lifecycle for a node",
 						NeedsAuth: true,
 						Footer:    authFlags,
 						Sub: []*Command{
 							{
 								Name:      "get",
-								Short:     "show a node's marbor agent config (never the token - R8)",
+								Short:     "show a node's marbor agent config (does not display the auth token)",
 								NeedsAuth: true,
 								Args:      []ArgSpec{{Name: "node"}},
 								Run:       func(ctx *RunCtx) int { return runAgentGet(ctx.Flags, ctx.Args[0], ctx.Stdout, ctx.Stderr) },
@@ -601,7 +601,7 @@ func buildRoot() *Command {
 			},
 			{
 				Name:      "schedules",
-				Short:     "manage time-of-day warmup/unload/drain/undrain automations (P-A2-03)",
+				Short:     "manage time-of-day warmup/unload/drain/undrain automations",
 				NeedsAuth: true,
 				Footer:    authFlags,
 				Sub: []*Command{
@@ -658,7 +658,7 @@ func buildRoot() *Command {
 			},
 			{
 				Name:      "routing",
-				Short:     "manage routing rules and global routing strategy (P-A2-04)",
+				Short:     "manage routing rules and global routing strategy",
 				NeedsAuth: true,
 				Footer:    authFlags,
 				Sub: []*Command{
@@ -734,7 +734,7 @@ func buildRoot() *Command {
 			},
 			{
 				Name:      "cloud",
-				Short:     "manage cloud overflow providers and view budget status (P-A2-05)",
+				Short:     "manage cloud overflow providers and view budget status",
 				NeedsAuth: true,
 				Footer:    authFlags,
 				Sub: []*Command{
@@ -745,7 +745,7 @@ func buildRoot() *Command {
 						Sub: []*Command{
 							{
 								Name:      "list",
-								Short:     "list cloud providers (never shows the API key - R8)",
+								Short:     "list cloud providers (does not display the API key)",
 								NeedsAuth: true,
 								Run:       func(ctx *RunCtx) int { return runCloudProvidersList(ctx.Flags, ctx.Stdout, ctx.Stderr) },
 							},
@@ -769,7 +769,7 @@ func buildRoot() *Command {
 							},
 							{
 								Name:      "update",
-								Short:     "update a cloud provider (omit --api-key to keep the stored key - R8)",
+								Short:     "update a cloud provider (omit --api-key to keep the stored key)",
 								NeedsAuth: true,
 								Args:      []ArgSpec{{Name: "name"}},
 								Flags: []FlagSpec{
@@ -831,7 +831,7 @@ func buildRoot() *Command {
 			},
 			{
 				Name:      "favorites",
-				Short:     "manage your starred model list (P-A2-06a)",
+				Short:     "manage your starred model list",
 				NeedsAuth: true,
 				Footer:    authFlags,
 				Sub: []*Command{
@@ -859,7 +859,7 @@ func buildRoot() *Command {
 			},
 			{
 				Name:  "model-config",
-				Short: "manage per-node model parameter profiles (P-A2-06b)",
+				Short: "manage per-node model parameter profiles",
 				Long: "store.ModelConfig has ~40 optional per-runtime sampling/load-time fields, so\n" +
 					"\"set\" takes a JSON body via --from-json (a literal JSON string or\n" +
 					"@path/to/file.json) rather than dozens of individual flags - see\n" +
@@ -918,14 +918,14 @@ func buildRoot() *Command {
 			},
 			{
 				Name:      "catalog",
-				Short:     "show the fleet-aware HF/local model catalog with per-node fit (P-A2-06c)",
+				Short:     "show the fleet-aware HF/local model catalog with per-node fit",
 				NeedsAuth: true,
 				Footer:    authFlags,
 				Run:       func(ctx *RunCtx) int { return runCatalog(ctx.Flags, ctx.Stdout, ctx.Stderr) },
 			},
 			{
 				Name:      "backup",
-				Short:     "manage marbor.db backups (P-A2-07)",
+				Short:     "manage marbor.db backups",
 				NeedsAuth: true,
 				Footer:    authFlags,
 				Sub: []*Command{
@@ -969,7 +969,7 @@ func buildRoot() *Command {
 			},
 			{
 				Name:      "analytics",
-				Short:     "hourly analytics + per-model stats (P-A2-07)",
+				Short:     "hourly analytics + per-model stats",
 				NeedsAuth: true,
 				Footer:    authFlags,
 				Sub: []*Command{
@@ -996,14 +996,14 @@ func buildRoot() *Command {
 			},
 			{
 				Name:      "savings",
-				Short:     "show cloud-vs-local savings summary (P-A2-07)",
+				Short:     "show cloud-vs-local savings summary",
 				NeedsAuth: true,
 				Footer:    authFlags,
 				Run:       func(ctx *RunCtx) int { return runSavings(ctx.Flags, ctx.Stdout, ctx.Stderr) },
 			},
 			{
 				Name:  "metrics",
-				Short: "dashboard metrics (P-A2-07)",
+				Short: "dashboard metrics",
 				Sub: []*Command{
 					{
 						Name:      "summary",
@@ -1015,14 +1015,14 @@ func buildRoot() *Command {
 			},
 			{
 				Name:      "pulls",
-				Short:     "list every active model pull job across the fleet (P-A2-08b)",
+				Short:     "list every active model pull job across the fleet",
 				NeedsAuth: true,
 				Footer:    authFlags,
 				Run:       func(ctx *RunCtx) int { return runPulls(ctx.Flags, ctx.Stdout, ctx.Stderr) },
 			},
 			{
 				Name:      "warmup",
-				Short:     "global warmup engine status and manual controls (P-A2-08c)",
+				Short:     "global warmup engine status and manual controls",
 				NeedsAuth: true,
 				Footer:    authFlags,
 				Sub: []*Command{
@@ -1060,7 +1060,7 @@ func buildRoot() *Command {
 			},
 			{
 				Name:      "predictive",
-				Short:     "show recent predictive prewarm decisions (P-A2-08c)",
+				Short:     "show recent predictive prewarm decisions",
 				NeedsAuth: true,
 				Footer:    authFlags,
 				Sub: []*Command{
@@ -1074,14 +1074,14 @@ func buildRoot() *Command {
 			},
 			{
 				Name:      "system-info",
-				Short:     "show control-plane host system info and per-node GPU summary (P-A2-08c)",
+				Short:     "show control-plane host system info and per-node GPU summary",
 				NeedsAuth: true,
 				Footer:    authFlags,
 				Run:       func(ctx *RunCtx) int { return runSystemInfo(ctx.Flags, ctx.Stdout, ctx.Stderr) },
 			},
 			{
 				Name:  "config",
-				Short: "control-plane configuration operations (P-A2-08c)",
+				Short: "control-plane configuration operations",
 				Sub: []*Command{
 					{
 						Name:      "reload",
@@ -1093,7 +1093,7 @@ func buildRoot() *Command {
 			},
 			{
 				Name:      "benchmark",
-				Short:     "run/inspect in-dashboard hardware benchmark jobs (P-A2-09a)",
+				Short:     "run/inspect in-dashboard hardware benchmark jobs",
 				NeedsAuth: true,
 				Footer:    authFlags,
 				Sub: []*Command{
@@ -1176,13 +1176,13 @@ func buildRoot() *Command {
 					},
 					{
 						Name:      "list",
-						Short:     "show the in-memory request log, newest first (P-A2-08a)",
+						Short:     "show the in-memory request log, newest first",
 						NeedsAuth: true,
 						Run:       func(ctx *RunCtx) int { return runRequestsList(ctx.Flags, ctx.Stdout, ctx.Stderr) },
 					},
 					{
 						Name:      "live",
-						Short:     "show the same bounded request ring in its raw live-widget shape (P-A2-08a)",
+						Short:     "show the same bounded request ring in its raw live-widget shape",
 						NeedsAuth: true,
 						Run:       func(ctx *RunCtx) int { return runRequestsLive(ctx.Flags, ctx.Stdout, ctx.Stderr) },
 					},
@@ -1190,7 +1190,7 @@ func buildRoot() *Command {
 			},
 			{
 				Name:      "audit",
-				Short:     "inspect the persisted, filterable request audit log (P-A2-08a)",
+				Short:     "inspect the persisted, filterable request audit log",
 				Long:      "Distinct from \"activity\", which covers operator actions (drain/agent/runtime/node/warmup); \"audit\" covers individual proxied requests.",
 				NeedsAuth: true,
 				Footer:    authFlags,
@@ -1299,19 +1299,19 @@ func buildRoot() *Command {
 					},
 					{
 						Name:      "pending-count",
-						Short:     "show the number of users awaiting approval (P-A2-08d)",
+						Short:     "show the number of users awaiting approval",
 						NeedsAuth: true,
 						Run:       func(ctx *RunCtx) int { return runUsersPendingCount(ctx.Flags, ctx.Stdout, ctx.Stderr) },
 					},
 					{
 						Name:      "change-password",
-						Short:     "change your own password (interactive, masked prompts) (P-A2-09d)",
+						Short:     "change your own password (interactive, masked prompts)",
 						NeedsAuth: true,
 						Run:       func(ctx *RunCtx) int { return runUsersChangePassword(ctx.Flags, ctx.Stdout, ctx.Stderr) },
 					},
 					{
 						Name:      "skip-password-change",
-						Short:     "dismiss the forced-password-change prompt for this session only (P-A2-09d)",
+						Short:     "dismiss the forced-password-change prompt for this session only",
 						NeedsAuth: true,
 						Run:       func(ctx *RunCtx) int { return runUsersSkipPasswordChange(ctx.Flags, ctx.Stdout, ctx.Stderr) },
 					},
