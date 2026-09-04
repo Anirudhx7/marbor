@@ -1898,6 +1898,7 @@ func (s *Server) handleWarmupStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSetPredictiveEngine(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var body struct {
 		Enabled bool `json:"enabled"`
 	}
@@ -2039,6 +2040,7 @@ func (s *Server) handleConfigReload(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAddNode(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var cfg config.NodeConfig
 	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -2242,6 +2244,7 @@ func (s *Server) handleGetMarborAgent(w http.ResponseWriter, r *http.Request) {
 // A caller that wants to actually change the scheme must say so explicitly.
 // POST /admin/nodes/{name}/agent  body: {"port": <int>, "scheme"?: "http"|"https"}
 func (s *Server) handleEnableMarborAgent(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	name := r.PathValue("name")
 	host, found := s.router.NodeHost(name)
 	if !found {
@@ -2496,6 +2499,7 @@ func (s *Server) handleGetNodeControl(w http.ResponseWriter, r *http.Request) {
 // the Process driver's PID file path is often not auto-discoverable).
 // POST /admin/nodes/{name}/control/accept  body: {"driver","identifier"}
 func (s *Server) handleAcceptNodeControl(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	name := r.PathValue("name")
 	if s.router.FindNode(name) == nil {
 		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
@@ -2822,6 +2826,7 @@ func (s *Server) newEnrollmentCode(node, token string) (string, error) {
 // replay: the second racer's lookup simply misses.
 // POST /admin/agent/enroll  body: {"code": "<enrollment code>"}
 func (s *Server) handleEnrollMarborAgent(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var body struct {
 		Code string `json:"code"`
 	}
@@ -2871,6 +2876,7 @@ func (s *Server) syncCloudProvidersToRouter() ([]config.CloudProvider, error) {
 // handleAddCloudProvider adds (or, on name collision, replaces) a cloud
 // fallback provider. POST /admin/cloud/providers.
 func (s *Server) handleAddCloudProvider(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var cp store.CloudProviderRecord
 	if err := json.NewDecoder(r.Body).Decode(&cp); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
@@ -2905,6 +2911,7 @@ func (s *Server) handleAddCloudProvider(w http.ResponseWriter, r *http.Request) 
 // handleUpdateCloudProvider updates an existing cloud provider by name.
 // PUT /admin/cloud/providers/{name}.
 func (s *Server) handleUpdateCloudProvider(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	name := r.PathValue("name")
 	if name == "" {
 		writeJSONError(w, http.StatusBadRequest, "name is required")
@@ -2969,6 +2976,7 @@ const cloudProviderTestTimeout = 8 * time.Second
 //
 // POST /admin/cloud/providers/test.
 func (s *Server) handleTestCloudProvider(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var body struct {
 		Provider string `json:"provider"`
 		BaseURL  string `json:"base_url"`
@@ -3074,6 +3082,7 @@ func (s *Server) handleFavorites(w http.ResponseWriter, r *http.Request) {
 // handleAddFavorite stars a model for the calling user.
 // POST /admin/favorites.
 func (s *Server) handleAddFavorite(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	userID, ok := r.Context().Value(ctxKeyUserID).(int64)
 	if !ok || userID <= 0 {
 		writeJSONError(w, http.StatusUnauthorized, "unauthorized")
@@ -3121,6 +3130,7 @@ func (s *Server) handleRemoveFavorite(w http.ResponseWriter, r *http.Request) {
 // immediately - same immediate-effect pattern as add/update/delete.
 // PUT /admin/cloud/providers/reorder.
 func (s *Server) handleReorderCloudProviders(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var body struct {
 		Order []string `json:"order"`
 	}
@@ -3159,6 +3169,7 @@ func (s *Server) handleGetNodeWarmup(w http.ResponseWriter, r *http.Request) {
 // which models to keep resident. Persisted to the KV store and applied live; an
 // immediate warm cycle fires so the change takes effect now, not next tick.
 func (s *Server) handleSetNodeWarmup(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	name := r.PathValue("name")
 	var body struct {
 		Enabled bool     `json:"enabled"`
@@ -3193,6 +3204,7 @@ func (s *Server) handleGetPinned(w http.ResponseWriter, r *http.Request) {
 
 // handleSetPinned sets the node's never-evict model list (persisted + applied live).
 func (s *Server) handleSetPinned(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	name := r.PathValue("name")
 	var body struct {
 		Models []string `json:"models"`
@@ -3223,6 +3235,7 @@ func (s *Server) handleSetPinned(w http.ResponseWriter, r *http.Request) {
 // no-op-ing (R1) - see actions.go's unloadCommands for exactly which
 // runtimes that currently covers.
 func (s *Server) handleUnloadModel(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	name := r.PathValue("name")
 	var body struct {
 		Model string `json:"model"`
@@ -3364,6 +3377,7 @@ func (s *Server) handleListSchedules(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateSchedule(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var sc router.Schedule
 	if err := json.NewDecoder(r.Body).Decode(&sc); err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -3404,6 +3418,7 @@ func (s *Server) handleCreateSchedule(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePatchSchedule(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	id := r.PathValue("id")
 	var patch struct {
 		Enabled *bool     `json:"enabled"`
@@ -3504,6 +3519,7 @@ func (s *Server) handleDeleteSchedule(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDrainNode(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	name := r.PathValue("name")
 	var body struct {
 		Reason string `json:"reason"`
@@ -3543,6 +3559,7 @@ func (s *Server) handleUndrainNode(w http.ResponseWriter, r *http.Request) {
 // - unlike drain, this is never persisted to SQLite and always reverts to
 // enabled (false) on restart.
 func (s *Server) handleSetNodePrewarm(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	name := r.PathValue("name")
 	var body struct {
 		Disabled bool `json:"disabled"`
@@ -3577,6 +3594,7 @@ func isValidRuntime(runtime string) bool {
 // handlePatchNode applies runtime metadata overrides to a node.
 // PATCH /admin/nodes/{name} - accepts {"vram_total_mb":N,"gpu_model":"...","runtime":"..."}
 func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	name := r.PathValue("name")
 	var patch router.NodePatch
 	if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
@@ -3967,6 +3985,7 @@ func validateModelConfig(cfg store.ModelConfig) string {
 // handleSetModelConfig upserts a model's default parameter profile.
 // PUT /admin/model-config, body = full store.ModelConfig JSON (model field required).
 func (s *Server) handleSetModelConfig(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var cfg store.ModelConfig
 	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid JSON")
@@ -4167,6 +4186,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleLoginForRole(w http.ResponseWriter, r *http.Request, requiredRole string) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -4317,6 +4337,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req struct {
 		CurrentPassword string `json:"current_password"`
 		NewPassword     string `json:"new_password"`
@@ -4505,6 +4526,7 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req struct {
 		Username string `json:"username"`
 		Email    string `json:"email"`
@@ -4565,6 +4587,7 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleApproveUser(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -4751,6 +4774,7 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePatchUser(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -4991,6 +5015,7 @@ func validateExpiresAt(s string) error {
 }
 
 func (s *Server) handleAddKey(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var k config.KeyConfig
 	if err := json.NewDecoder(r.Body).Decode(&k); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
@@ -5057,6 +5082,7 @@ func (s *Server) handleRevokeKey(w http.ResponseWriter, r *http.Request) {
 // monthly_limit, models) without rotating the token or resetting counters.
 // PATCH /admin/keys/{name}
 func (s *Server) handlePatchKey(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	name := r.PathValue("name")
 	var patch auth.KeyPatch
 	if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
@@ -5129,6 +5155,7 @@ func (s *Server) handleRoutingRules(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAddRoutingRule(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var rule config.RoutingRule
 	if err := json.NewDecoder(r.Body).Decode(&rule); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
@@ -5190,6 +5217,7 @@ func (s *Server) handleGetRoutingStrategy(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) handleSetRoutingStrategy(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req struct {
 		Strategy string `json:"strategy"`
 	}
@@ -6496,6 +6524,7 @@ func (s *Server) handleListActivePulls(w http.ResponseWriter, r *http.Request) {
 // Accepts: {"model": "llama3:8b"}. Returns 202 immediately - the pull runs
 // in the background; progress is polled via GET .../pull/progress (SSE).
 func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	if r.Method != http.MethodPost {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -7916,6 +7945,7 @@ func (s *Server) handleListBackups(w http.ResponseWriter, r *http.Request) {
 // hands the full path off to main.go via restoreCh - it never touches the
 // live database or exits the process itself (see SetRestoreChannel).
 func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	if s.restoreCh == nil {
 		writeJSONError(w, http.StatusNotImplemented, "restore is not available in this run mode")
 		return
