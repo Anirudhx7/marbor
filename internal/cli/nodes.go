@@ -124,6 +124,62 @@ func runNodes(flags *globalFlags, stdout, stderr io.Writer) int {
 	return ExitOK
 }
 
+// runNodesAdd implements `marbor nodes add <name> <url> [--runtime x]
+// [--gpu-model x] [--vram-total-mb n]` - POST /admin/nodes (P-A2-01).
+func runNodesAdd(flags *globalFlags, name, url, gpuModel, runtime string, vramTotalMB int64, stdout, stderr io.Writer) int {
+	client, err := authenticatedClient(flags)
+	if err != nil {
+		return reportError(err, stderr)
+	}
+	created, err := client.AddNode(NodeAddRequest{
+		Name:        name,
+		URL:         url,
+		GPUModel:    gpuModel,
+		VRAMTotalMB: vramTotalMB,
+		Runtime:     runtime,
+	})
+	if err != nil {
+		return reportError(err, stderr)
+	}
+
+	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, map[string]interface{}{
+		"ok": true, "node": name, "created": created,
+	}); handled {
+		return code
+	}
+	if created {
+		fmt.Fprintf(stdout, "node %q added\n", name)
+	} else {
+		fmt.Fprintf(stdout, "node %q updated\n", name)
+	}
+	return ExitOK
+}
+
+// runNodesRemove implements `marbor nodes remove <name> [--yes]` - DELETE
+// /admin/nodes/{name} (P-A2-01). Destructive per R10: requires --yes or an
+// interactive TTY confirmation, matching the "key revoke"/"users delete"
+// pattern (confirm.go).
+func runNodesRemove(flags *globalFlags, name string, yes bool, stdout, stderr io.Writer) int {
+	if err := requireConfirm("remove node", name, yes, stderr); err != nil {
+		return reportError(err, stderr)
+	}
+	client, err := authenticatedClient(flags)
+	if err != nil {
+		return reportError(err, stderr)
+	}
+	if err := client.DeleteNode(name); err != nil {
+		return reportError(err, stderr)
+	}
+
+	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, map[string]interface{}{
+		"ok": true, "node": name, "removed": true,
+	}); handled {
+		return code
+	}
+	fmt.Fprintf(stdout, "node %q removed\n", name)
+	return ExitOK
+}
+
 // runNodesPatchWithCtx implements `marbor nodes patch <node> --parallelism-type tp --parallelism-width 8` (P397)
 // and `marbor nodes patch <node> --vram-override model=mb[,model2=mb2]` (P411).
 func runNodesPatchWithCtx(ctx *RunCtx, name string) int {

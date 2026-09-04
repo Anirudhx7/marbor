@@ -29,6 +29,28 @@ parallelism width 1..64 (0 to clear)
 .B \-\-vram-override string
 per\-model VRAM size overrides in MB, comma\-separated model=mb pairs - REPLACES the whole declared list, dropping any entry not listed here (empty to clear all)
 .RE
+.TP
+.B add <name> <url>
+add (or update, by name) a node in the fleet (P\-A2-01)
+.RS
+.TP
+.B \-\-runtime string
+runtime: ollama (default), vllm, tgi, llamacpp, mlx
+.TP
+.B \-\-gpu-model string
+GPU model label (informational)
+.TP
+.B \-\-vram-total-mb int
+declared total VRAM in MB (0 = unknown)
+.RE
+.TP
+.B remove <node>
+remove a node from the fleet (P\-A2-01)
+.RS
+.TP
+.B \-\-yes
+confirm removal without prompting
+.RE
 .SH FLAGS
 .TP
 .B \-\-server
