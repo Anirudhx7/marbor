@@ -1,9 +1,9 @@
 package cli
 
 // backup.go - `marbor backup now/list/restore/upload`, `marbor analytics
-// show/export`, `marbor savings`, and `marbor metrics summary` (from the
-// three-surface-parity audit: all 8 endpoints had full UI coverage in
-// Settings.tsx/Analytics.tsx/Dashboard.tsx but no CLI).
+// show/export`, `marbor savings`, and `marbor metrics summary` (all 8
+// endpoints had full UI coverage in Settings.tsx/Analytics.tsx/Dashboard.tsx
+// but no CLI).
 
 import (
 	"fmt"

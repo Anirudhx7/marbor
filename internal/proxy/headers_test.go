@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-// TestSecurityHeaders_SetsBaselineHeaders verifies the 2026-07-14 audit's
-// Priority 3 baseline security headers are present on every response.
+// TestSecurityHeaders_SetsBaselineHeaders verifies baseline security
+// headers are present on every response.
 func TestSecurityHeaders_SetsBaselineHeaders(t *testing.T) {
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

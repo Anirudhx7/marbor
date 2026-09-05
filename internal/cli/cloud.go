@@ -1,9 +1,8 @@
 package cli
 
 // cloud.go - `marbor cloud providers list/add/update/delete/reorder/test`
-// and `marbor cloud budget-status` (from the three-surface-parity audit:
-// all 7 cloud-provider/budget endpoints had full UI coverage in Settings.tsx
-// but no CLI). The provider's API key is write-only - never printed back
+// and `marbor cloud budget-status` (all 7 cloud-provider/budget endpoints
+// had full UI coverage in Settings.tsx but no CLI). The provider's API key is write-only - never printed back
 // by "list", and an "update" with no --api-key leaves the stored key
 // unchanged server-side (handleUpdateCloudProvider).
 

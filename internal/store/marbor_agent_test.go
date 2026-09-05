@@ -119,9 +119,8 @@ func TestMarborAgentRowPredatingScopeColumnDefaultsToAdmin(t *testing.T) {
 }
 
 // TestMigrateMarborAgentRekeyByHostPreservesScopeAndScheme is a regression
-// test for B1 finding STORE-06: migrateMarborAgentRekeyByHost's rekey INSERT
-// used to name only (name, enabled, port, token), silently dropping scope
-// and scheme when a legacy-name-keyed row was moved onto its node's shared
+// test: migrateMarborAgentRekeyByHost's rekey INSERT used to name only
+// (name, enabled, port, token), silently dropping scope and scheme when a legacy-name-keyed row was moved onto its node's shared
 // host key. On a fleet upgrading from v0.19.x with a readonly-scoped or
 // https-scheme row, that omission meant the migrated row silently fell back
 // to the column defaults ('admin' scope, 'http' scheme) - a privilege

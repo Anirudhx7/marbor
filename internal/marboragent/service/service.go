@@ -1,9 +1,8 @@
 // Package service registers the Marbor Agent as a persistent,
 // auto-restarting OS service (systemd on Linux, launchd on macOS, native
 // Windows Service via sc.exe on Windows) - so an operator never manually
-// writes a unit file, plist, or runs sc.exe themselves. See
-// the node-agent design doc for the full design and why this
-// shells out to each OS's own always-present service-manager tool instead of
+// writes a unit file, plist, or runs sc.exe themselves - it shells out to
+// each OS's own always-present service-manager tool instead of
 // adding a Go dependency (golang.org/x/sys/windows/svc was considered and
 // rejected for the same "zero new dependencies when the OS already provides
 // this for free" reason gopsutil was rejected for host stats).
@@ -126,9 +125,8 @@ type Manager interface {
 }
 
 // New returns the Manager for the current GOOS, or an error naming the
-// unsupported platform - never a partial/best-effort Manager. Per
-// the node-agent design doc: promise the architecture (any OS
-// can get a Manager implementation), not universal day-one coverage.
+// unsupported platform - never a partial/best-effort Manager. Any OS can
+// get a Manager implementation later; day-one coverage is not universal.
 //
 // New() itself is defined once per platform (service_linux.go,
 // service_darwin.go, service_windows.go, service_unsupported.go), each

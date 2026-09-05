@@ -270,7 +270,7 @@ func runServiceStatus(args []string) {
 
 	// Print the TLS certificate's fingerprint if one exists, so the
 	// operator can compare it against what the marbor's tls-probe endpoint
-	// shows before confirming a pin (spec section 1 step 3). Silent (not a
+	// shows before confirming a pin. Silent (not a
 	// fatal error) when no cert exists yet - most nodes are plaintext and
 	// this is a status display, not a requirement.
 	//
@@ -291,7 +291,7 @@ func runServiceStatus(args []string) {
 // planned operator-driven rotation, never automatic). This deliberately
 // invalidates whatever fingerprint the marbor currently has pinned for this
 // node: the operator must re-run the marbor-side confirm-and-pin flow
-// afterward (spec sections 1/2/6) - regenerating here does not, and must
+// afterward - regenerating here does not, and must
 // not, notify or update marbor itself.
 func runServiceRegenCert(args []string) {
 	for _, a := range args {

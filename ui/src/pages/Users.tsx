@@ -334,8 +334,7 @@ function CreateUserModal({ onClose, onDone }: CreateUserModalProps) {
 
 // ── Edit User Modal ───────────────────────────────────────────────────────────
 // PATCH /admin/v1/users/{id} (handlePatchUser) has had a CLI command (marbor
-// users patch) for a while but no UI surface until now - the one clear UI gap
-// found by a three-surface-parity audit (2026-09-04).
+// users patch) for a while but no UI surface until now.
 
 interface EditUserModalProps {
   user: UserRecord;

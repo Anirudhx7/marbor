@@ -63,8 +63,8 @@ func isValidTLSFingerprintArg(s string) bool {
 }
 
 // runNodesConfirmTLS implements `marbor nodes confirm-tls <node-name>
-// --fingerprint=SHA256:...` (spec section 11's headless-enrollment
-// exception - the only CLI surface this item adds). fingerprint must come
+// --fingerprint=SHA256:...` (a headless-enrollment exception - the only CLI
+// surface that confirms a fingerprint). fingerprint must come
 // from the operator's own flag value; this command never probes the node or
 // otherwise infers/accepts a certificate on its own - the caller is
 // expected to have already read the value from "agent service status" on

@@ -128,8 +128,7 @@ var authFlagsRows = [][2]string{
 
 // printModelsUsage, printRuntimeUsage, printLoginUsage, and
 // printNodeControlUsage are thin wrappers over the registry-backed
-// writeHelp (help.go), from the CLI hardening plan's registry migration.
-// The registry node they render is looked up by name/path via findCommand;
+// writeHelp (help.go). The registry node they render is looked up by name/path via findCommand;
 // the actual help text lives as data in registry_tree.go, not here.
 //
 // Known, reviewed diffs from the pre-refactor hand-written versions of these
@@ -232,8 +231,7 @@ func reportError(err error, stderr io.Writer) int {
 
 // Run parses args and dispatches to the requested subcommand, returning the
 // process exit code (0 ok, 1 user error, 2 server error, 4 auth error). It delegates
-// entirely to the registry-driven dispatcher (dispatch.go), from the CLI
-// hardening plan's registry migration. The old hand-rolled switch statement
+// entirely to the registry-driven dispatcher (dispatch.go). The old hand-rolled switch statement
 // that used to live here has been deleted now that every leaf command's Run
 // is wired to its real implementation. Behavioral equivalence with that old
 // switch was verified during the migration via a differential test
@@ -241,7 +239,7 @@ func reportError(err error, stderr io.Writer) int {
 // the legacy switch across ~190 argument vectors; that test was deleted once
 // this function started delegating directly to dispatch() (comparing the
 // dispatcher against itself would have been tautological). Current coverage
-// is dispatch_p83_test.go's registry-wide trailing-argument test plus the
+// is the registry-wide trailing-argument test plus the
 // full internal/cli test suite.
 func Run(args []string, stdout, stderr io.Writer) int {
 	return dispatchAndRun(root(), args, stdout, stderr)

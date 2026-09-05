@@ -10,7 +10,7 @@ import (
 )
 
 // printRequestsUsage is a thin wrapper over the registry-backed writeHelp
-// (help.go), from the CLI hardening plan's registry migration.
+// (help.go).
 func printRequestsUsage(w io.Writer) { writeHelp(w, findCommand(root(), "requests")) }
 
 // runRequestsList implements `marbor requests list` - GET /admin/requests,

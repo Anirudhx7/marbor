@@ -7,8 +7,7 @@ import (
 )
 
 // completion_test.go tests the "marbor completion bash|zsh|fish"
-// command (completion.go, registry_tree.go's completionCmd()), from the
-// CLI hardening plan.
+// command (completion.go, registry_tree.go's completionCmd()).
 
 func runCLI(args ...string) (stdout, stderr string, code int) {
 	var outBuf, errBuf bytes.Buffer

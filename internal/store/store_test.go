@@ -599,7 +599,7 @@ func TestNodeOverrides_TLSFingerprint(t *testing.T) {
 	}
 
 	// Explicit clear (non-nil empty string) resets the pin to nil/NULL - this
-	// is the "reset pin" path (spec section 2), distinct from "never declared".
+	// is the "reset pin" path, distinct from "never declared".
 	empty := ""
 	if err := s.UpsertNodeOverride("node1", nil, nil, nil, nil, nil, &empty, nil, nil, nil); err != nil {
 		t.Fatalf("UpsertNodeOverride (clear): %v", err)

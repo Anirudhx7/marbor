@@ -4,11 +4,10 @@
 // poll cycle) plus the first mutating resource (model pull) - future
 // versions add more node-local resources (runtime restart/drain, more model
 // lifecycle, diagnostics) behind the same protocol, versioned and
-// capability-gated rather than as a parallel surface. See
-// the node-agent design doc for the full design (pull-only transport,
-// versioned JSON protocol, per-node opaque bearer token) and
-// the telemetry and node-agent capabilities design docs for the
-// resource envelope this file implements.
+// capability-gated rather than as a parallel surface. The protocol is
+// pull-only transport with a versioned JSON protocol and per-node opaque
+// bearer tokens; this file implements the resource envelope
+// (status/host/GPU/runtime/control/health).
 package marboragent
 
 import "time"
@@ -18,9 +17,8 @@ import "time"
 // RuntimeInfo must be optional (nil/omitted means "unknown", never
 // fabricated) so an older agent talking to a newer marbor, or vice versa,
 // never breaks (the same additive-only wire-compatibility discipline
-// extended to this protocol). A bump is
-// reserved for a genuinely breaking change - see
-// the node-agent design doc.
+// extended to this protocol). A bump is reserved for a genuinely breaking
+// change.
 const ProtocolVersion = 1
 
 // capabilities lists what this agent build actually does, so the marbor (and
@@ -39,7 +37,7 @@ const ProtocolVersion = 1
 // binary is CAPABLE of (it has the TLS listener code and can be enrolled),
 // not current connection state. An agent can be capable and still be dialed
 // over plain http:// if the node hasn't been migrated yet (opt-in,
-// node-by-node - see the node-agent TLS design doc).
+// node-by-node).
 var capabilities = []string{"status", "models.pull", "models.list", "models.delete", "models.unload", "runtime.health_check", "runtime.start", "runtime.stop", "runtime.restart", "runtime.logs", "runtime.disk", "transport.tls"}
 
 // Telemetry is the canonical, versioned JSON payload served at
@@ -135,8 +133,7 @@ type GPUInfo struct {
 // (Vendor - which GPUCollector was selected; DriverVersion/CUDAVersion -
 // properties of the host's driver stack, not any one card) plus one GPUInfo
 // per physical device. One agent process always reports every GPU on the
-// host as this single array - never one agent per GPU (see
-// the telemetry design doc's decision record). Vendor is
+// host as this single array - never one agent per GPU. Vendor is
 // reported whenever a GPU backend is selected on this host, even on a cycle
 // where Collect() itself fails (Devices/Count then empty) - "which backend
 // is selected" is a static fact about the process, not a live reading that
@@ -169,8 +166,7 @@ type HostTelemetry struct {
 // never becomes vLLM- or Ollama-shaped. A runtime-specific detail (e.g.
 // vLLM's tensor-parallel degree, a future ROCm/TensorRT version) belongs in
 // a future runtime-specific resource, never a field here - this is a binding
-// design rule, not a v1-only convenience (marbor-agent-capabilities.md's
-// design review).
+// design rule, not a v1-only convenience.
 type RuntimeInfo struct {
 	// Name is the locally-detected inference runtime ("ollama", "vllm",
 	// "tgi", "llamacpp", "mlx"). This entire RuntimeInfo is omitted from
@@ -204,14 +200,13 @@ type RuntimeInfo struct {
 	QueueDepth int `json:"queue_depth,omitempty"`
 }
 
-// ControlInfo is the Marbor Agent Protocol's "control" resource (see the
-// node-agent capabilities design doc) - descriptive telemetry of the
-// node's configured ControlDriver, additive and sibling to Runtime/Health.
-// An unconfigured node reports Driver="" (omitted), Configured=false,
-// Capabilities=nil (omitted) - never a fabricated driver name.
-// Discovered carries what the agent's most recent probe found, purely
-// informational for the admin API's probe/accept UI - never substituted
-// for Driver/Configured by any lifecycle action (section 5.6).
+// ControlInfo is the Marbor Agent Protocol's "control" resource -
+// descriptive telemetry of the node's configured ControlDriver, additive
+// and sibling to Runtime/Health. An unconfigured node reports Driver=""
+// (omitted), Configured=false, Capabilities=nil (omitted) - never a
+// fabricated driver name. Discovered carries what the agent's most recent
+// probe found, purely informational for the admin API's probe/accept UI -
+// never substituted for Driver/Configured by any lifecycle action.
 type ControlInfo struct {
 	Driver       string            `json:"driver,omitempty"`
 	Configured   bool              `json:"configured"`
@@ -220,7 +215,7 @@ type ControlInfo struct {
 }
 
 // ControlDiscovery is what the agent's most recent ControlDriver probe
-// found - evidence strings, never a bare confidence label (section 5.5).
+// found - evidence strings, never a bare confidence label.
 type ControlDiscovery struct {
 	Driver     string   `json:"driver,omitempty"`
 	Identifier string   `json:"identifier,omitempty"`

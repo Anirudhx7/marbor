@@ -41,7 +41,7 @@ func runNodeControlProbe(flags *globalFlags, node string, stdout, stderr io.Writ
 // runNodeControlAccept implements `marbor node control accept <node>
 // --driver X --identifier Y [--start-command Z]` - POST /admin/nodes/{name}
 // /control/accept, the operator's explicit confirmation of a control driver
-// (never automatic - marbor-agent-capabilities.md section 5.6). Flag parsing
+// (never automatic). Flag parsing
 // happens in cli.go's dispatcher (same fs.Parse call that handles the
 // global flags), so this function receives already-validated values.
 func runNodeControlAccept(flags *globalFlags, node, driver, identifier, startCommand string, stdout, stderr io.Writer) int {

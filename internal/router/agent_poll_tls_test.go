@@ -117,11 +117,10 @@ func TestPollAgentHost_SuccessClearsAgentTLSMismatch(t *testing.T) {
 }
 
 // TestMixedTLSAndPlaintextFleet_BothPollCorrectly is the mixed-fleet smoke
-// coverage the frozen spec requires (section 5: migration is opt-in,
-// node-by-node - one node moving to https:// must never affect any other
-// node's plaintext polling in the same marbor, and vice versa). Two separate
-// NodeState entries on two separate hosts, one pinned https, one plain
-// http, polled together in a single pollAgentHosts() cycle.
+// coverage for the opt-in, node-by-node migration rule: one node moving to
+// https:// must never affect any other node's plaintext polling in the same
+// marbor, and vice versa. Two separate NodeState entries on two separate
+// hosts, one pinned https, one plain http, polled together in a single pollAgentHosts() cycle.
 func TestMixedTLSAndPlaintextFleet_BothPollCorrectly(t *testing.T) {
 	tlsPsSrv := nodePSServer()
 	defer tlsPsSrv.Close()

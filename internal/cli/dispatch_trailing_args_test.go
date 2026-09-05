@@ -8,16 +8,15 @@ import (
 	"testing"
 )
 
-// dispatch_p83_test.go is the permanent regression net for a bug where
+// This file is the permanent regression net for a bug where
 // "marbor whoami status" and "marbor whoami dead" both silently ignored the
 // extra argument and printed normal whoami output. It walks the live
-// registry - the real cli.Run entrypoint, now fully wired to the registry-
-// driven dispatcher via the CLI hardening plan's registry migration -
-// and asserts that EVERY runnable leaf command rejects one trailing garbage
-// positional argument with ExitUserError, and that it does so before ever
-// making a real HTTP request to the Admin API. Because this walks the
-// registry generically rather than hand-listing commands, any leaf added in
-// the future is covered automatically.
+// registry - the real cli.Run entrypoint, wired to the registry-driven
+// dispatcher - and asserts that EVERY runnable leaf command rejects one
+// trailing garbage positional argument with ExitUserError, and that it does
+// so before ever making a real HTTP request to the Admin API. Because this
+// walks the registry generically rather than hand-listing commands, any leaf
+// added in the future is covered automatically.
 
 // leafCommands returns every runnable leaf in the tree (Run != nil, no Sub) -
 // pure groups (Run == nil) and bare-executable groups that also have
@@ -68,7 +67,7 @@ func minimalValidArgsWithGarbage(leaf *Command) []string {
 	return args
 }
 
-func TestP83_AllLeavesRejectTrailingGarbage(t *testing.T) {
+func TestAllLeavesRejectTrailingGarbage(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("server should never be contacted for a trailing-garbage invocation, but got %s %s", r.Method, r.URL.Path)
 	}))
@@ -140,10 +139,10 @@ func TestIsZeroFlagValue_StringLiteralsNotTreatedAsUnset(t *testing.T) {
 	}
 }
 
-// TestP83_OriginalReport pins the exact two invocations from the original
-// bug report byte-for-byte: both used to print normal whoami output as if
-// the extra argument did not exist.
-func TestP83_OriginalReport(t *testing.T) {
+// TestTrailingGarbageOriginalReport pins the exact two invocations that
+// first exposed this bug, byte-for-byte: both used to print normal whoami
+// output as if the extra argument did not exist.
+func TestTrailingGarbageOriginalReport(t *testing.T) {
 	for _, extra := range []string{"dead", "status"} {
 		extra := extra
 		t.Run(extra, func(t *testing.T) {

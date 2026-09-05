@@ -19,7 +19,7 @@ import (
 // Tests for the 2026-07-14 security audit fixes.
 
 // TestEnsureAdminUser_DefaultCredentials verifies a fresh install creates a
-// well-known admin/admin account (Priority 1: no generated secret to leak)
+// well-known admin/admin account (no generated secret to leak)
 // with MustChangePassword forced, instead of a random logged password.
 func TestEnsureAdminUser_DefaultCredentials(t *testing.T) {
 	tmpDB := filepath.Join(t.TempDir(), "fresh.db")
@@ -44,7 +44,7 @@ func TestEnsureAdminUser_DefaultCredentials(t *testing.T) {
 	}
 }
 
-// TestLogin_SetsHttpOnlyCookie_NoTokenInBody verifies Priority 2: the session
+// TestLogin_SetsHttpOnlyCookie_NoTokenInBody verifies the session
 // token is delivered only via an httpOnly cookie, never in the JSON body or
 // localStorage-bound field.
 func TestLogin_SetsHttpOnlyCookie_NoTokenInBody(t *testing.T) {
@@ -153,7 +153,7 @@ func TestLogout_ClearsCookieAndInvalidatesSession(t *testing.T) {
 }
 
 // fakeErrorStore wraps NopStore and forces AllModelConfigs to fail with an
-// error containing details that must never reach the client (Priority 4).
+// error containing details that must never reach the client.
 type fakeErrorStore struct {
 	store.NopStore
 }
@@ -191,7 +191,7 @@ func TestModelConfigsError_NoRawLeak(t *testing.T) {
 	}
 }
 
-// TestLoginRateLimiter_TripsAtFivePerMinute verifies Priority 5's "5 attempts
+// TestLoginRateLimiter_TripsAtFivePerMinute verifies the "5 attempts
 // per minute per IP" login throttle.
 func TestLoginRateLimiter_TripsAtFivePerMinute(t *testing.T) {
 	l := newLoginRateLimiter()
@@ -211,7 +211,7 @@ func TestLoginRateLimiter_TripsAtFivePerMinute(t *testing.T) {
 	}
 }
 
-// TestResetPasswordRateLimiter_TripsAtThreePerHour verifies Priority 5's "3
+// TestResetPasswordRateLimiter_TripsAtThreePerHour verifies the "3
 // per hour per IP" password-reset throttle.
 func TestResetPasswordRateLimiter_TripsAtThreePerHour(t *testing.T) {
 	l := newResetPasswordRateLimiter()

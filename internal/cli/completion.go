@@ -8,8 +8,7 @@ import (
 
 // completion.go generates static shell completion scripts (bash, zsh, fish)
 // for the "marbor completion <shell>" command (registry_tree.go's
-// completionCmd()), from the CLI hardening plan. Every
-// script is built by walking the CURRENT command registry tree
+// completionCmd()). Every script is built by walking the CURRENT command registry tree
 // (registry.go/registry_tree.go) at generation time and baking command,
 // subcommand, and flag names into plain shell text.
 //

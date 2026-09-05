@@ -82,7 +82,7 @@ func TestHandlePatchNode_RejectsInvalidTLSFingerprintFormat(t *testing.T) {
 }
 
 // TestHandlePatchNode_URLSchemeAloneDoesNotAffectAgentPin verifies the core
-// behavior this fix's decoupling was built for: section 7's no-downgrade
+// behavior this fix's decoupling was built for: the no-downgrade
 // rule is keyed off the Marbor Agent's OWN scheme for the resulting host, not
 // the node's runtime URL scheme. Before this fix, the pinned fingerprint was
 // (incorrectly) tied to the runtime URL's own https-ness, so flipping the
@@ -162,7 +162,7 @@ func TestHandlePatchNode_AllowsDowngradeWhenClearingFingerprintInSameRequest(t *
 }
 
 // TestHandlePatchNode_ClearsExistingFingerprint verifies the plain reset
-// path (spec section 2): an explicit empty string clears a pin while the
+// path: an explicit empty string clears a pin while the
 // URL stays https://.
 func TestHandlePatchNode_ClearsExistingFingerprint(t *testing.T) {
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
@@ -189,9 +189,9 @@ func TestHandlePatchNode_ClearsExistingFingerprint(t *testing.T) {
 	}
 }
 
-// TestHandlePatchNode_JSONNullIsNoOpNotClear verifies spec section 16's
-// amendment: a PATCH body containing tls_fingerprint: null (JSON null, not
-// an explicit empty string) must NOT clear an existing pin. Go's
+// TestHandlePatchNode_JSONNullIsNoOpNotClear verifies that a PATCH body
+// containing tls_fingerprint: null (JSON null, not an explicit empty
+// string) must NOT clear an existing pin. Go's
 // encoding/json decodes both "field omitted" and "field explicitly null"
 // to the same nil *string, so a NodePatch.TLSFingerprint of nil is - and
 // must be treated as - "no change," exactly like every other NodePatch
@@ -218,12 +218,12 @@ func TestHandlePatchNode_JSONNullIsNoOpNotClear(t *testing.T) {
 	fp := nodes[0].TLSFingerprint
 	nodes[0].RUnlock()
 	if fp != validFP1 {
-		t.Errorf("TLSFingerprint after tls_fingerprint:null = %q, want unchanged %q (null is a no-op, not a clear - see spec section 16)", fp, validFP1)
+		t.Errorf("TLSFingerprint after tls_fingerprint:null = %q, want unchanged %q (null is a no-op, not a clear)", fp, validFP1)
 	}
 }
 
-// TestHandlePatchNode_RejectsSiblingFingerprintConflict verifies section 15:
-// two NodeState entries sharing one physical Host (same hostname, different
+// TestHandlePatchNode_RejectsSiblingFingerprintConflict verifies that two
+// NodeState entries sharing one physical Host (same hostname, different
 // ports - a multi-GPU-per-host box) must not be allowed to carry two
 // different non-empty pinned fingerprints for what is physically one Node
 // Agent certificate.
@@ -266,8 +266,8 @@ func TestHandlePatchNode_RejectsSiblingFingerprintConflict(t *testing.T) {
 	}
 }
 
-// TestHandlePatchNode_AllowsIdenticalSiblingFingerprint verifies section 15
-// does not reject the correct, expected case: siblings sharing one Host
+// TestHandlePatchNode_AllowsIdenticalSiblingFingerprint verifies the
+// correct, expected case is not rejected: siblings sharing one Host
 // pinned to the SAME fingerprint (which is physically accurate - one cert,
 // one agent) must succeed, not be treated as a conflict.
 func TestHandlePatchNode_AllowsIdenticalSiblingFingerprint(t *testing.T) {
@@ -297,9 +297,8 @@ func TestHandlePatchNode_AllowsIdenticalSiblingFingerprint(t *testing.T) {
 	}
 }
 
-// TestHandleNodeTLSProbe_WithoutPin verifies the probe endpoint (spec
-// section 2 step 2-3): it retrieves the presented certificate's fingerprint
-// from a real TLS listener without pinning anything - a subsequent read of
+// TestHandleNodeTLSProbe_WithoutPin verifies the probe endpoint retrieves
+// the presented certificate's fingerprint from a real TLS listener without pinning anything - a subsequent read of
 // the node's state must still show no pin.
 func TestHandleNodeTLSProbe_WithoutPin(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -402,8 +401,8 @@ func mustPortForTest(t *testing.T, rawURL string) int {
 // only ran the sibling check when the patch itself set tls_fingerprint, so
 // this URL-only move slipped through, silently carrying gpu-0's existing
 // fingerprint onto shared-host and producing two NodeState entries sharing a
-// Host with two different pinned fingerprints - the exact state section 15
-// exists to prevent.
+// Host with two different pinned fingerprints - the exact conflict this
+// check exists to prevent.
 func TestHandlePatchNode_RejectsURLOnlyMoveOntoConflictingSiblingHost(t *testing.T) {
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "https://solo-host:9091"},

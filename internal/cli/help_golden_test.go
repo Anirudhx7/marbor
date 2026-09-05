@@ -2,8 +2,7 @@ package cli
 
 // help_golden_test.go captures byte-for-byte output of the CLI's help/usage
 // surfaces so a later refactor (routing help through the registry-backed
-// writeHelp, see help.go) can be verified against pre-refactor behavior, as
-// part of the CLI hardening plan's registry migration.
+// writeHelp, see help.go) can be verified against pre-refactor behavior.
 //
 // Run with -update to (re)write the golden files under testdata/help/:
 //

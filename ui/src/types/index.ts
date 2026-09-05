@@ -89,7 +89,7 @@ export interface GPUNode {
   // True when the most recent agent poll failed specifically because the
   // presented certificate didn't match tlsFingerprint - distinct from
   // generic unreachability, so the dashboard can show its own status
-  // instead of "unreachable" (spec section 6).
+  // instead of "unreachable".
   tlsFingerprintMismatch?: boolean;
   // Deployment topology - type tp|pp|ep|dp, width 1..64, derived
   // effectiveRequiredGPUs = max(len(gpuIndices), width). Empty/0 means

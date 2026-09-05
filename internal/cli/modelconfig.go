@@ -1,9 +1,9 @@
 package cli
 
 // modelconfig.go - `marbor model-config get/set/delete/list/capabilities`
-// and `marbor nodes fit` (from the three-surface-parity audit: all 5
-// model-config endpoints plus GET /admin/nodes/model-fit had full UI
-// coverage in GPUNodes.tsx's ModelConfigModal / fit drawer but no CLI).
+// and `marbor nodes fit` (all 5 model-config endpoints plus GET
+// /admin/nodes/model-fit had full UI coverage in GPUNodes.tsx's
+// ModelConfigModal / fit drawer but no CLI).
 //
 // store.ModelConfig has ~40 optional per-runtime sampling/load-time fields
 // (temperature, top_p, num_ctx, mirostat, dry_*, xtc_*, rpm/tpm, ...). This

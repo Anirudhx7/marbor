@@ -296,7 +296,7 @@ point new entries for that table are dropped (and logged) rather than blocking r
 
 _Originally measured 2026-08-13 with `bench/loadtest` (see `bench/README.md`) against a single
 marbor process, a single `cmd/mocknode` backend (warm model, `LATENCY_MS=20`), on a Windows dev
-workstation - not production server hardware. **Re-measured 2026-09-05** (B.6) after enough
+workstation - not production server hardware. **Re-measured 2026-09-05** after enough
 write-path-adjacent code had landed since (the activity/audit merge, several `internal/store`
 correctness fixes) to warrant re-checking rather than trusting the original numbers as-is._
 
@@ -316,7 +316,7 @@ zero-latency synthetic write-only path, several concurrent mock nodes so no sing
 service time can be the constraint, or a dedicated (non-shared) test host to remove the
 concurrent-session confound noted above.
 
-### Node-count sensitivity (measured 2026-09-05, B.6)
+### Node-count sensitivity (measured 2026-09-05)
 
 Same `bench/loadtest` sweep methodology, same single marbor process, run against 2 and then 4
 real `cmd/mocknode` backend instances (each warm, `LATENCY_MS=20`), all registered simultaneously

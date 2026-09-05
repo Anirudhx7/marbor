@@ -2,8 +2,8 @@ package proxy
 
 import "net/http"
 
-// SecurityHeaders sets baseline security response headers on every request
-// (2026-07-14 audit, Priority 3). Applied to both the proxy and admin HTTP
+// SecurityHeaders sets baseline security response headers on every request.
+// Applied to both the proxy and admin HTTP
 // servers in main.go, since they're two independent http.Server instances
 // with no other shared middleware point besides RecoverMiddleware.
 func SecurityHeaders(next http.Handler) http.Handler {

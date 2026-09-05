@@ -18,8 +18,7 @@ var lookPath = exec.LookPath
 // nvidia-smi. First (and, in v1, only) implementation of GPUCollector - see
 // gpu.go for the interface and how future vendors (ROCm, Apple Metal, Intel)
 // plug in alongside it. One agent process reports every NVIDIA GPU on the
-// host as a single GPUBlock - never one agent per GPU (see
-// the telemetry design doc's decision record).
+// host as a single GPUBlock - never one agent per GPU.
 type nvidiaCollector struct{}
 
 func (nvidiaCollector) Name() string { return "nvidia" }

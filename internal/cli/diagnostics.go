@@ -1,7 +1,6 @@
 package cli
 
-// diagnostics.go - from the three-surface-parity audit: pull
-// triage (`marbor pulls`, `marbor models pull-progress/cancel-pull`),
+// diagnostics.go - pull triage (`marbor pulls`, `marbor models pull-progress/cancel-pull`),
 // predictive/warmup/system-info/config-reload helpers (`marbor warmup
 // status/predictive/ping`, `marbor system-info`, `marbor predictive
 // decisions`, `marbor config reload`), and `marbor users pending-count`.

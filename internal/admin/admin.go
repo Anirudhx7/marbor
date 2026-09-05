@@ -53,9 +53,8 @@ const ctxKeyUsername ctxKey = "username"
 const ctxKeyUserID ctxKey = "user_id"
 
 // sessionCookieName is the httpOnly cookie holding the admin session token.
-// The token itself never reaches client-side JS or localStorage (Priority 2,
-// 2026-07-14 audit) - only this cookie carries it, and only the server reads
-// it back.
+// The token itself never reaches client-side JS or localStorage - only this
+// cookie carries it, and only the server reads it back.
 const sessionCookieName = "marbor_session"
 
 // sessionTokenFromRequest reads the session token from the httpOnly cookie.
@@ -131,7 +130,7 @@ func writeJSONError(w http.ResponseWriter, status int, msg string) {
 
 // newCorrelationID returns a short request-scoped ID for tying a generic
 // client-facing error to the detailed server log line, without ever putting
-// the real error text on the wire (2026-07-14 audit, Priority 4).
+// the real error text on the wire.
 func newCorrelationID() string {
 	b := make([]byte, 8)
 	if _, err := rand.Read(b); err != nil {
@@ -142,9 +141,8 @@ func newCorrelationID() string {
 
 // writeServerError logs the real error server-side with a correlation ID and
 // writes only a generic message + that ID to the client (HTTP 500) - never
-// err.Error(), which can leak DB/file/library internals (2026-07-14 audit,
-// Priority 4). Use this for any failure that isn't pure request-shape
-// validation (DB errors, marshal errors, hashing errors, etc).
+// err.Error(), which can leak DB/file/library internals. Use this for any
+// failure that isn't pure request-shape validation (DB errors, marshal errors, hashing errors, etc).
 func writeServerError(w http.ResponseWriter, r *http.Request, err error) {
 	writeCorrelatedError(w, r, http.StatusInternalServerError, "internal error", err)
 }
@@ -2456,7 +2454,7 @@ var validControlDrivers = map[string]bool{
 // handleGetNodeControl returns the node's operator-accepted ControlDriver
 // config (from the store) alongside the most recent discovery result (from
 // the router's live agent-poll cache) - discovered is never substituted for
-// the accepted value (marbor-agent-capabilities.md section 5.6).
+// the accepted value.
 // GET /admin/nodes/{name}/control
 func (s *Server) handleGetNodeControl(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
@@ -2490,7 +2488,7 @@ func (s *Server) handleGetNodeControl(w http.ResponseWriter, r *http.Request) {
 
 // handleAcceptNodeControl persists an operator's explicit Accept of a
 // control driver + identifier - the only place `configured` ever changes
-// (never as a side effect of a re-scan, section 5.6). driver/identifier are
+// (never as a side effect of a re-scan). driver/identifier are
 // typically copied from the discovered block returned by
 // handleGetNodeControl, but an operator may type a different value (e.g.
 // the Process driver's PID file path is often not auto-discoverable).
@@ -2506,7 +2504,7 @@ func (s *Server) handleAcceptNodeControl(w http.ResponseWriter, r *http.Request)
 		Driver     string `json:"driver"`
 		Identifier string `json:"identifier"`
 		// StartCommand is only meaningful for the Process driver's Start
-		// action (Step 3) - a bare PID-file convention alone gives no way to
+		// action - a bare PID-file convention alone gives no way to
 		// know how to launch the process fresh. Ignored for every other
 		// driver.
 		StartCommand string `json:"start_command,omitempty"`
@@ -2563,7 +2561,7 @@ var nodeRuntimeActionTimeout = 30 * time.Second
 // POST /admin/nodes/{name}/runtime/{start,stop,restart}. Each follows the
 // same template as handleNodeDeleteModel/handleNodeHealthCheck: health
 // check -> capability check -> read the operator-accepted ControlDriver
-// config from the router (never re-discovered - section 5.6) -> dispatch to
+// config from the router (never re-discovered) -> dispatch to
 // the agent -> audit log on success.
 func (s *Server) handleNodeRuntimeStart(w http.ResponseWriter, r *http.Request) {
 	s.handleNodeRuntimeAction(w, r, "start")
@@ -2632,8 +2630,8 @@ func (s *Server) handleNodeRuntimeAction(w http.ResponseWriter, r *http.Request,
 // runtimeActionViaAgent dispatches action ("start"/"stop"/"restart") to
 // nodeURL's Marbor Agent (POST /v1/runtime/{action}, capability
 // "runtime.{action}"). start_command is only included for the Process
-// driver's Start action (Step 2 never persisted a StartCommand for any
-// other driver - it stays empty and is simply omitted).
+// driver's Start action - no other driver persists one, so it stays empty
+// and is simply omitted.
 func (s *Server) runtimeActionViaAgent(ctx context.Context, nodeURL string, agentCfg router.MarborAgentConfig, action string, ctrl router.ControlConfig) error {
 	actionURL, err := buildAgentURL(nodeURL, agentCfg.Port, agentCfg.Scheme, "/v1/runtime/"+action)
 	if err != nil {
@@ -3814,7 +3812,7 @@ func (s *Server) validateTLSPatch(name string, patch router.NodePatch) error {
 	// host - see MarborAgentSettingByHost's doc comment).
 	resultingHost := router.ResultingHost(host, currentURL, resultingURL)
 
-	// No-downgrade (section 7): once a fingerprint is pinned, marbor must
+	// No-downgrade: once a fingerprint is pinned, marbor must
 	// never end up treating the Marbor Agent as plaintext without an explicit
 	// clear (tls_fingerprint: null/""). This checks the AGENT's own
 	// configured scheme for the RESULTING host (POST /admin/nodes/{name}/agent's
@@ -3830,14 +3828,13 @@ func (s *Server) validateTLSPatch(name string, patch router.NodePatch) error {
 		}
 	}
 
-	// Section 15: multi-GPU-per-host sibling consistency. Every NodeState
+	// Multi-GPU-per-host sibling consistency. Every NodeState
 	// sharing this node's Host talks to the exact same physical Marbor Agent
 	// process/certificate, so they may only ever agree on one pinned
 	// fingerprint (or none) - never disagree. Identical pins across siblings
 	// are fine and expected; this rejects only a genuine conflict. Storage
-	// stays per-node-name exactly as the frozen spec's sections 3/4
-	// specify - this check does not redesign it to host-level storage, it
-	// only prevents siblings from drifting apart.
+	// stays per-node-name - this check does not redesign it to host-level
+	// storage, it only prevents siblings from drifting apart.
 	//
 	// Gated on resultingFP/resultingHost (the state this patch would
 	// actually produce), not on the raw patch fields: a URL-only PATCH
@@ -3943,7 +3940,7 @@ func modelConfigRange(name string, v *float64, min, max float64) string {
 }
 
 // validateModelConfig rejects out-of-range values instead of silently
-// clamping them (Audit & Triage Protocol: server-side validation, clear 400).
+// clamping them - server-side validation with a clear 400.
 func validateModelConfig(cfg store.ModelConfig) string {
 	if cfg.Model == "" {
 		return "model is required"
@@ -4070,7 +4067,7 @@ type loginAttemptState struct {
 
 // newRateLimiter builds an IP-keyed sliding-window limiter with the given
 // parameters - shared constructor for both the login and reset-password
-// limiters below (2026-07-14 audit, Priority 5).
+// limiters below.
 func newRateLimiter(maxAttempts int, window, lockDuration time.Duration) *loginRateLimiter {
 	return &loginRateLimiter{
 		attempts:     make(map[string]*loginAttemptState),

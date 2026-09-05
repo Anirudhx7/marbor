@@ -164,9 +164,8 @@ func seedHistoricalData(t *testing.T, db *sql.DB, tag string) {
 	// value) meaningful; migrateEncryptSecrets picks up any plaintext it
 	// finds regardless of tag, so this still proves the row (and its
 	// non-default fields) survive migration. It is never seeded empty: an
-	// empty runtime_keys.key is not a state a real row is ever in (F-C2-01,
-	// C.2 security review) - AllKeys() now deliberately drops such a row as
-	// an auth-bypass guard (a client sending "Authorization: Bearer " with
+	// empty runtime_keys.key is not a state a real row is ever in - AllKeys()
+	// now deliberately drops such a row as an auth-bypass guard (a client sending "Authorization: Bearer " with
 	// no token must never match a stored key), so seeding "" here would make
 	// this test assert the wrong thing about that guard rather than about
 	// schema migration.

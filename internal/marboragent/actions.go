@@ -1,8 +1,7 @@
 package marboragent
 
-// actions.go implements the Marbor Agent Protocol's first mutating resource
-// (see the node-agent design docs, Group 2): POST /v1/models, capability
-// "models.pull". The agent runs the
+// actions.go implements the Marbor Agent Protocol's first mutating
+// ("Operate") resource: POST /v1/models, capability "models.pull". The agent runs the
 // locally-detected runtime's own model-download mechanism directly on the
 // node, rather than marbor reaching the node's runtime HTTP API itself
 // (admin.go's handleNodePull, the pre-existing path kept for nodes without
@@ -990,8 +989,8 @@ var healthCheckCommands = map[string]func(ctx context.Context, runtimeURL string
 // other route. Always returns 200 with a real ok/error/latency_ms result -
 // even a failed probe is a successful health check (the answer is "down"),
 // so unlike the mutating actions this never uses the 4xx/5xx status to carry
-// the failure; the body's ok field does that, matching the Group 2 wire
-// doc's { "ok": true } / { "ok": false, "error": "..." } shape.
+// the failure; the body's ok field does that, matching the protocol's
+// { "ok": true } / { "ok": false, "error": "..." } envelope shape.
 func (s *Server) handleHealthCheck(w http.ResponseWriter, r *http.Request) {
 	name, url := s.runtimeTarget()
 	fn, ok := healthCheckCommands[name]

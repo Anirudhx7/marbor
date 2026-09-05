@@ -1,8 +1,8 @@
 package cli
 
-// benchmark.go - `marbor benchmark run/progress/cancel/runs` (from the
-// three-surface-parity audit: all 4 benchmark endpoints had full UI
-// coverage in Benchmark.tsx but no CLI). Not to be confused with the
+// benchmark.go - `marbor benchmark run/progress/cancel/runs` (all 4
+// benchmark endpoints had full UI coverage in Benchmark.tsx but no CLI). Not
+// to be confused with the
 // separate standalone `cmd/bench` tool - this hits the Admin API's
 // in-dashboard benchmark job, matching what the UI's "Run Benchmark" button
 // does.

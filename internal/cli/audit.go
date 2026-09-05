@@ -3,8 +3,8 @@ package cli
 // audit.go - `marbor audit`, the request audit log's own CLI surface
 // (GET /admin/audit, internal/audit.Entry), distinct from `marbor activity`
 // which covers GET /admin/system-audit (operator actions like drain/agent/
-// runtime). Added for the three-surface-parity audit: the UI's
-// Requests.tsx audit view had no CLI equivalent.
+// runtime). Added because the UI's Requests.tsx audit view had no CLI
+// equivalent.
 
 import (
 	"fmt"

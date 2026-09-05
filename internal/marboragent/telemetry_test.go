@@ -163,7 +163,7 @@ func TestTelemetryMarshalSchema(t *testing.T) {
 
 	// No "marbor" block anywhere - the agent never reports marbor-owned
 	// scheduler metrics (prefix/session-affinity hit rate, warm-residency
-	// confidence). See marbor-agent.md's protocol v1 design notes.
+	// confidence).
 	if _, present := decoded["marbor"]; present {
 		t.Errorf("unexpected marbor block: %v", decoded["marbor"])
 	}

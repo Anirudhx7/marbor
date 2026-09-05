@@ -1,9 +1,8 @@
 package cli
 
 // schedules.go - `marbor schedules list/create/patch/delete`, time-of-day
-// warmup/unload/drain/undrain automation (from the three-surface-parity
-// audit: GET/POST/PATCH/DELETE /admin/schedules had full UI coverage in
-// Warmup.tsx but no CLI).
+// warmup/unload/drain/undrain automation (GET/POST/PATCH/DELETE
+// /admin/schedules had full UI coverage in Warmup.tsx but no CLI).
 
 import (
 	"fmt"

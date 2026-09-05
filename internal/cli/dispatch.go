@@ -7,8 +7,7 @@ import (
 	"strings"
 )
 
-// dispatch.go implements the generic, registry-driven command dispatcher -
-// built as part of the CLI hardening plan's registry migration.
+// dispatch.go implements the generic, registry-driven command dispatcher.
 // cli.go's Run now delegates directly to dispatchAndRun, which is the real,
 // only dispatch path in production - the old hand-rolled switch this
 // replaced has been deleted.
@@ -22,8 +21,8 @@ import (
 // invoking a leaf's Run, each of which was still a notYetMigrated stub that
 // panicked. That test was removed once cli.Run started delegating directly
 // to this dispatcher, since comparing the dispatcher against itself would
-// have been tautological. Current coverage is dispatch_p83_test.go's
-// registry-wide trailing-argument test plus the full internal/cli test
+// have been tautological. Current coverage is the registry-wide
+// trailing-argument test plus the full internal/cli test
 // suite.
 
 // dispatchResult describes what dispatch() decided to do for one argument
@@ -135,8 +134,8 @@ func oxfordJoin(items []string) string {
 // plain group help with no "unknown ..." line at all), this dispatcher
 // deliberately now emits the same unified message. That is an intentional
 // generalization, not a bug: it is the entire point of replacing four
-// independently hand-rolled behaviors with one dispatch path (plan section 2,
-// "all 14 sites now produce that string from one code path"). This was
+// independently hand-rolled behaviors with one dispatch path (all 14 sites
+// now produce that string from one code path). This was
 // documented and pinned as an intentional difference during migration via a
 // differential test comparing this dispatcher against the legacy switch
 // across ~190 argument vectors, since deleted once cli.Run started
@@ -144,9 +143,8 @@ func oxfordJoin(items []string) string {
 // tautological) - see dispatch.go's top-of-file comment.
 //
 // The "Did you mean %q?" suggestion line is new for every group (old cli.go
-// had none at all) - explicitly one of the plan's called-out intentional
-// additions (Implementation section 2: "Suggestions come from a ~25-line
-// two-row stdlib Levenshtein...").
+// had none at all) - an intentional addition ("Suggestions come from a
+// ~25-line two-row stdlib Levenshtein...").
 func reportUnknownToken(root, cur *Command, tok string, stdout, stderr io.Writer) dispatchResult {
 	names := siblingNamesOf(cur)
 	if cur == root {
@@ -300,9 +298,9 @@ func dispatchRun(cur *Command, rest []string, stdout, stderr io.Writer) dispatch
 // dispatch walks root by consuming leading non-dash tokens that match a
 // child (Command.lookup), then decides between: printing help, reporting an
 // unknown command/subcommand, reporting a bare pure-group invocation as an
-// error, or handing off to dispatchRun for arity/flag validation. See the
-// plan's Implementation section 2 for the full error contract this
-// implements.
+// error, or handing off to dispatchRun for arity/flag validation. The exact
+// error strings are pinned by the help-golden tests and the registry-wide
+// trailing-argument test.
 func dispatch(root *Command, args []string, stdout, stderr io.Writer) dispatchResult {
 	if len(args) == 0 {
 		// Matches cli.go's old bare-invocation behavior: root help to
@@ -328,9 +326,7 @@ func dispatch(root *Command, args []string, stdout, stderr io.Writer) dispatchRe
 		if strings.HasPrefix(tok, "-") {
 			// Dash-guard: a token that looks like a flag is never treated
 			// as an attempted subcommand match, so e.g. "models --json"
-			// cannot be misread as looking for a subcommand named
-			// "--json" (plan Implementation section 2, "Dash-guard
-			// semantics" risk item).
+			// cannot be misread as looking for a subcommand named "--json".
 			break
 		}
 		child := cur.lookup(tok)
@@ -412,13 +408,8 @@ func dispatch(root *Command, args []string, stdout, stderr io.Writer) dispatchRe
 	return dispatchRun(cur, rest, stdout, stderr)
 }
 
-// dispatchAndRun is the convenience wrapper a later migration step will wire
-// into cli.Run in place of (part of) its switch statement - see the plan's
-// migration order, step 6. It is dead code as of this step: nothing calls
-// it from cli.Run yet, and it only exists so dispatch's validation layer can
-// be exercised end-to-end (including the actual matched.Run call) once a
-// command's Run is no longer the notYetMigrated stub, e.g. from a future
-// test that stubs a single command's Run deliberately.
+// dispatchAndRun is the convenience wrapper cli.Run calls: dispatch's
+// validation layer end-to-end, including the actual matched.Run call.
 func dispatchAndRun(root *Command, args []string, stdout, stderr io.Writer) int {
 	result := dispatch(root, args, stdout, stderr)
 	if result.handled {

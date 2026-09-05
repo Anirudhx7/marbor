@@ -2,9 +2,8 @@ package router
 
 // interfaces.go - Clean interfaces for routing decomposition.
 //
-// Defines empty interface shells for PredictiveEngine and PolicyEngine,
-// paving the way for future steps (e.g. step 4 weighted placement scoring
-// and step 5 predictive prewarming).
+// Defines empty interface shells for PredictiveEngine and PolicyEngine -
+// extension points for later routing stages.
 
 // PredictiveEngine will handle predictive prewarming of models based on
 // past patterns, request history, and usage schedules.

@@ -504,8 +504,8 @@ func (c AuthConfig) IsEnabled() bool {
 func BoolPtr(b bool) *bool { return &b }
 
 // warnIfAdminBindsAllInterfaces logs a one-time startup warning when the
-// admin dashboard/API listens on every network interface (2026-07-14 audit,
-// Priority 6). The default is intentionally kept at ":8080" for Docker port
+// admin dashboard/API listens on every network interface. The default is
+// intentionally kept at ":8080" for Docker port
 // mapping compatibility (`-p 8080:8080` requires the process inside the
 // container to listen on 0.0.0.0, not 127.0.0.1) - changing the default
 // would break the project's own docker-compose.yml. Surfacing this via a
