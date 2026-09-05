@@ -210,8 +210,7 @@ func TestRun_Nodes_NoTokenFlag_IsUnknownFlag(t *testing.T) {
 	// --token was removed entirely (no deprecation period) since login/
 	// logout/whoami plus --username/--password already cover every
 	// credential path, and a CLI-argv token has no legitimate use left to
-	// preserve - see the "Deprecate plaintext --token for the admin CLI"
-	// queue item.
+	// preserve.
 	var stdout, stderr bytes.Buffer
 	code := Run([]string{"nodes", "--token", "anything"}, &stdout, &stderr)
 	if code != ExitUserError {

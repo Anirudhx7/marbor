@@ -115,8 +115,8 @@ func CertKeyPaths() (certPath, keyPath string) { return agentCertKeyPaths() }
 // no new Go dependency" pattern as sc.exe/powershell.exe elsewhere in this
 // file) to restrict dir to SYSTEM and Administrators only, removing
 // inherited permissions first - the Windows-native ACL equivalent of the
-// 0600 POSIX perms Linux/macOS use for the same private key file (Anirudh's
-// 2026-08-14 decision: native ACLs, not DPAPI). Well-known SIDs (S-1-5-18
+// 0600 POSIX perms Linux/macOS use for the same private key file (2026-08-14
+// decision: native ACLs, not DPAPI). Well-known SIDs (S-1-5-18
 // for SYSTEM, S-1-5-32-544 for Administrators) are used instead of the
 // localized account names "SYSTEM"/"Administrators", which icacls also
 // accepts but which differ on non-English Windows installs.

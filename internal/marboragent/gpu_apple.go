@@ -1,8 +1,8 @@
 package marboragent
 
 // Apple Metal (Apple Silicon / macOS) GPUCollector, via `system_profiler
-// SPDisplaysDataType -json`. UNVERIFIED ON REAL HARDWARE (Anirudh's explicit
-// call, 2026-07-20 - no Mac available in this environment): built against
+// SPDisplaysDataType -json`. UNVERIFIED ON REAL HARDWARE (no Mac available
+// in this environment, 2026-07-20): built against
 // system_profiler's publicly documented JSON shape, same caveat as
 // gpu_rocm.go/gpu_intel.go.
 //

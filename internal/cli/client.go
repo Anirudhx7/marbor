@@ -67,8 +67,8 @@ type Client struct {
 	// the persisted session file (internal/cli/session.go), not a --token
 	// flag/env or a fresh --username/--password login. doRequest and
 	// doRequestBody use it to append a "run marbor login again" hint
-	// to a 401/403 - the exact "clear message" the CLI persistent-auth
-	// queue item calls for, produced from a real server response rather
+	// to a 401/403 for an expired saved session, produced from a real
+	// server response rather
 	// than a local expiry guess (the saved session intentionally carries no
 	// expiry timestamp - the server is the sole source of truth for that).
 	usingSavedSession bool

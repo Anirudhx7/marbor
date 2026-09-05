@@ -4,8 +4,8 @@ package marboragent
 // the closest Intel equivalent to nvidia-smi/rocm-smi in design: a one-shot
 // scriptable query tool, unlike intel_gpu_top which is built for a live
 // interactive/streaming view and is a worse fit for one-shot collection).
-// UNVERIFIED ON REAL HARDWARE (Anirudh's explicit call, 2026-07-20 - no
-// Intel GPU available in this environment): built against xpu-smi's publicly
+// UNVERIFIED ON REAL HARDWARE (no Intel GPU available in this environment,
+// 2026-07-20): built against xpu-smi's publicly
 // documented `discovery -j` / `stats -d <id> -j` output shapes. Treat this as
 // needing a real-hardware validation pass before being fully trusted, same
 // caveat as gpu_rocm.go.
