@@ -187,11 +187,11 @@ var internalIDPattern = regexp.MustCompile(
 // IDs to the regex above but are real, legitimate product terms. Add an
 // entry here (with a one-line reason) rather than weakening the pattern -
 // the pattern is the guard; this list is the documented, reviewable escape
-// hatch for the rare true false-positive (e.g. a GPU model number).
-var internalIDExceptions = map[string]string{
-	"P40":  "NVIDIA Tesla P40 GPU model name",
-	"P100": "NVIDIA Tesla P100 GPU model name",
-}
+// hatch for the rare true false-positive (e.g. a GPU model number). Entries
+// with no occurrence in any help string are removed outright (dormant
+// entries can only hide a future genuine cite) - re-add with a reason if a
+// real use ever lands. Currently empty: no help string needs an exception.
+var internalIDExceptions = map[string]string{}
 
 // checkInternalLeak fails t if s contains an internal-only reference not
 // covered by internalIDExceptions. path/field identify where s came from so
