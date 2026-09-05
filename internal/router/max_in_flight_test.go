@@ -3,7 +3,7 @@ package router
 // max_in_flight_test.go -- locks in the per-node in-flight cap: a node at
 // or over its effective cap (per-node override, or the global
 // RoutingConfig.MaxInFlightPerNode default) is a hard-ineligible routing
-// candidate (Routing Hierarchy step 1, same tier as isEligibleForModel),
+// candidate (same eligibility tier as isEligibleForModel),
 // shed immediately rather than queued, with failover handled entirely by the
 // existing RouteExcluding/retry chain.
 

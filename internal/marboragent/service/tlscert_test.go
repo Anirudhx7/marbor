@@ -12,8 +12,8 @@ import (
 
 // TestEnsureAgentCert_GeneratesParsableMatchingPair verifies a fresh
 // EnsureAgentCert call produces a certificate that parses, and whose public
-// key actually matches the generated private key - the core TLS design doc
-// requirement ("certificate is parseable and matches its own key").
+// key actually matches the generated private key - the core requirement
+// ("certificate is parseable and matches its own key").
 func TestEnsureAgentCert_GeneratesParsableMatchingPair(t *testing.T) {
 	dir := t.TempDir()
 	certPath := filepath.Join(dir, "agent.crt")
@@ -71,7 +71,7 @@ func TestEnsureAgentCert_GeneratesParsableMatchingPair(t *testing.T) {
 // EnsureAgentCert (force=false) against an already-valid cert/key pair is a
 // no-op - the exact requirement that keeps "agent service install" re-runs
 // (upgrades, reinstalls) from silently invalidating a fingerprint the marbor
-// already has pinned (spec section 3/7).
+// already has pinned.
 func TestEnsureAgentCert_IdempotentOnValidExistingPair(t *testing.T) {
 	dir := t.TempDir()
 	certPath := filepath.Join(dir, "agent.crt")
@@ -110,7 +110,7 @@ func TestEnsureAgentCert_IdempotentOnValidExistingPair(t *testing.T) {
 }
 
 // TestEnsureAgentCert_ForceRegeneratesExistingPair verifies force=true (the
-// regen-cert subcommand's path, spec section 4) always produces a new
+// regen-cert subcommand's path) always produces a new
 // key/cert even when a valid pair already exists.
 func TestEnsureAgentCert_ForceRegeneratesExistingPair(t *testing.T) {
 	dir := t.TempDir()
@@ -163,7 +163,7 @@ func TestEnsureAgentCert_RegeneratesOnCorruptExistingFiles(t *testing.T) {
 }
 
 // TestEnsureAgentCert_KeyFilePermissions verifies the private key file is
-// written 0600 on POSIX (spec section 13's explicit requirement) - skipped
+// written 0600 on POSIX - skipped
 // on Windows, where os.Chmod cannot express POSIX mode bits and protection
 // instead comes from the directory ACL (service_windows.go).
 func TestEnsureAgentCert_KeyFilePermissions(t *testing.T) {

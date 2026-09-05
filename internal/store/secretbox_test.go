@@ -340,8 +340,8 @@ func TestAllKeysDropsUndecryptableRowWithoutBreakingOthers(t *testing.T) {
 	}
 }
 
-// TestUpsertKeyRejectsEmptyKey is the regression guard for F-C2-01 (C.2
-// security review): encryptSecret/decryptSecret both treat "" as "unset" and
+// TestUpsertKeyRejectsEmptyKey is the regression guard against empty-key
+// persistence: encryptSecret/decryptSecret both treat "" as "unset" and
 // round-trip it with no error, so an empty runtime_keys.key would otherwise
 // persist silently and reappear from AllKeys as Key="" - the same auth-bypass
 // shape as TestAllKeysDropsUndecryptableRowWithoutBreakingOthers, but via a

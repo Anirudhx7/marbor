@@ -8,9 +8,8 @@ import (
 
 // help.go generates CLI help/usage text from the command registry
 // (registry.go, registry_tree.go), instead of the hand-written print*Usage
-// functions and hand-aligned `usage` const in cli.go, part of the CLI
-// hardening plan's registry migration -
-// alignment goes through the same renderTable/tabwriter helper the six
+// functions and hand-aligned `usage` const in cli.go.
+// Alignment goes through the same renderTable/tabwriter helper the six
 // print*Usage functions already used, so it can no longer drift the way the
 // hand-spaced `usage` const in cli.go has.
 //

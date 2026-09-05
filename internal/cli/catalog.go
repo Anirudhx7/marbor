@@ -1,9 +1,8 @@
 package cli
 
 // catalog.go - `marbor catalog`, `marbor models search`, `marbor models repo`
-// (from the three-surface-parity audit: GET /admin/models/catalog,
-// /admin/models/search, /admin/models/repo had full UI coverage in
-// ModelAdvisor.tsx but no CLI). All three print the raw server JSON rather
+// (GET /admin/models/catalog, /admin/models/search, /admin/models/repo had
+// full UI coverage in ModelAdvisor.tsx but no CLI). All three print the raw server JSON rather
 // than a hand-mirrored type - see Client.ModelCatalog's doc comment.
 
 import (

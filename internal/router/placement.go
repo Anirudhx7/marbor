@@ -3,8 +3,8 @@ package router
 // placement.go - Placement and routing-decision logic.
 //
 // Contains the core weighted scoring and selection logic that Route and
-// RouteExcluding delegate to. Extracted from router.go and updated in Step 4
-// to support multi-factor placement scoring, model pinning, and node cooldown.
+// RouteExcluding delegate to. Extracted from router.go; supports
+// multi-factor placement scoring, model pinning, and node cooldown.
 
 import (
 	"log"

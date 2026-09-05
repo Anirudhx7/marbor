@@ -1,8 +1,7 @@
 package cli
 
-// favorites.go - `marbor favorites list/add/remove` (from the
-// three-surface-parity audit: GET/POST/DELETE /admin/favorites had full UI
-// coverage in ModelAdvisor.tsx but no CLI).
+// favorites.go - `marbor favorites list/add/remove` (GET/POST/DELETE
+// /admin/favorites had full UI coverage in ModelAdvisor.tsx but no CLI).
 
 import (
 	"fmt"

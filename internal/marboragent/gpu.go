@@ -13,8 +13,7 @@ var errNoGPUBackend = errors.New("marboragent: no supported GPU backend detected
 // GPUCollector abstracts a single GPU-vendor telemetry source: nvidia-smi
 // (gpu_nvidia.go), rocm-smi (gpu_rocm.go), xpu-smi (gpu_intel.go), and
 // system_profiler (gpu_apple.go) each implement it independently without
-// Scheduler, Server, or the wire schema needing to change - see
-// the node-agent design doc's evolution notes. Mirrors how
+// Scheduler, Server, or the wire schema needing to change - mirroring how
 // internal/runtime/probe.go already lets router.go support multiple
 // inference backends (Ollama/vLLM/TGI/llama.cpp) behind one interface.
 type GPUCollector interface {

@@ -10,9 +10,8 @@ import (
 // DockerDriver controls a runtime process running as a Docker container,
 // identified by its exact container name or ID. Requires docker.sock access
 // - a real privilege escalation for what is otherwise a lightweight
-// telemetry/action daemon (marbor-agent-capabilities.md section 5.4 note),
-// scoped separately from Systemd/Process control at the authorization layer
-// once that is built (section 7).
+// telemetry/action daemon - authorized separately from Systemd/Process
+// control once per-driver authorization scopes exist.
 type DockerDriver struct {
 	Container string
 }
@@ -49,8 +48,8 @@ func (d *DockerDriver) Logs(ctx context.Context, lines int) ([]string, error) {
 	return splitLines(out), nil
 }
 
-// Validate confirms the container still exists (catches the exact drift
-// scenario the design doc calls out: a container renamed after setup).
+// Validate confirms the container still exists (catches a container
+// renamed after setup).
 func (d *DockerDriver) Validate(ctx context.Context) error {
 	out, err := runCommand(ctx, "docker", "inspect", d.Container)
 	if err != nil {

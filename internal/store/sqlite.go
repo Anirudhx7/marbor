@@ -1573,7 +1573,7 @@ func (s *sqliteStore) DeleteMarborAgent(name string) error {
 // UpsertNodeControlDiscovered records what the most recent probe found,
 // without touching the operator-accepted configured/driver/identifier
 // columns - a re-scan must never silently change what lifecycle actions
-// read (marbor-agent-capabilities.md section 5.6).
+// read.
 func (s *sqliteStore) UpsertNodeControlDiscovered(name, driver, identifier string, evidence []string) error {
 	evJSON, err := json.Marshal(evidence)
 	if err != nil {
@@ -1596,7 +1596,7 @@ func (s *sqliteStore) UpsertNodeControlDiscovered(name, driver, identifier strin
 // UpsertNodeControlConfigured persists an operator's explicit Accept - the
 // only writer of the configured/driver/identifier/start_command columns.
 // startCommand is only meaningful for the Process driver's Start action
-// (5.6/Step 3) but is accepted unconditionally here - the store has no
+// but is accepted unconditionally here - the store has no
 // opinion on which driver a given node uses.
 func (s *sqliteStore) UpsertNodeControlConfigured(name, driver, identifier, startCommand string) error {
 	_, err := s.db.Exec(`

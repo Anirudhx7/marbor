@@ -662,8 +662,7 @@ func TestHandleNodePull_SurfacesUpstreamErrorBody(t *testing.T) {
 // TestHandleNodePull_DispatchesToAgentWhenCapable verifies marbor routes a
 // pull to the node's Marbor Agent (not the direct Ollama /api/pull path) when
 // the node has an agent enabled and reporting "models.pull" - and that the
-// marbor's configured Hugging Face token is forwarded per-request (marbor-agent
-// spec section 16). The direct-to-Ollama mock is never hit in this
+// marbor's configured Hugging Face token is forwarded per-request. The direct-to-Ollama mock is never hit in this
 // scenario, proving dispatch actually took the agent branch.
 func TestHandleNodePull_DispatchesToAgentWhenCapable(t *testing.T) {
 	ollamaHit := false

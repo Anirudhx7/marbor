@@ -35,7 +35,7 @@ func checkToken(authHeader, expectedToken string) bool {
 // deliberately the ceiling for every route today - no current route
 // requires it, it exists only so a future Group 3 ("Maintain") action can
 // require it and be correctly refused by every token that predates that
-// action, per the node-agent capabilities design doc.
+// action.
 type tier int
 
 const (

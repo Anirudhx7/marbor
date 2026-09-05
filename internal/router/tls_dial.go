@@ -60,7 +60,7 @@ func (r *Router) HTTPClientForNode(timeout time.Duration) *http.Client {
 //
 // Target-to-NodeState mapping (verified against the current codebase before
 // this was written, since agent_poll.go groups multiple NodeState entries
-// under one shared physical Host/agent - section 15's amendment):
+// under one shared physical Host/agent):
 //
 //   - The dial address Go's http.Transport passes here is always the
 //     request URL's host:port - net.SplitHostPort parses both IPv4 and the
@@ -95,11 +95,11 @@ func (r *Router) HTTPClientForNode(timeout time.Duration) *http.Client {
 //     match this same lookup as long as the test registers a NodeState with
 //     Host="127.0.0.1" and a MarborAgentConfig{Port: <that port>} - no special
 //     casing needed for tests.
-//   - Section 15's multi-GPU-per-host case: today, nothing prevents two
+//   - Multi-GPU-per-host case: today, nothing prevents two
 //     NodeState entries sharing one Host from carrying different pinned
-//     fingerprints for what is physically one certificate (task #4's
-//     admin-layer sibling-consistency check is what will prevent this from
-//     arising going forward - not yet implemented as of this file). This
+//     fingerprints for what is physically one certificate (an admin-layer
+//     sibling-consistency check will prevent this from arising going
+//     forward - not yet implemented as of this file). This
 //     function must never silently pick one of several disagreeing answers,
 //     so pinnedFingerprintFor reports that case as ambiguous and the dial is
 //     refused outright (fail closed) rather than guessed.
@@ -150,7 +150,7 @@ func (r *Router) dialTLSContext(ctx context.Context, network, addr string) (net.
 
 	tlsConn := tls.Client(rawConn, &tls.Config{
 		// Pinning replaces PKI trust entirely for a pinned node - no CA
-		// chain is checked (spec section 1); VerifyPeerCertificate below is
+		// chain is checked; VerifyPeerCertificate below is
 		// the only trust decision made.
 		InsecureSkipVerify: true,
 		VerifyPeerCertificate: func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
@@ -192,8 +192,8 @@ var ErrTLSFingerprintMismatch = errors.New("tls fingerprint mismatch")
 // same client/Transport) and pinning must not apply to it.
 //
 // ambiguous is true when two or more NodeState entries sharing that Host
-// (section 15's multi-GPU-per-host case) carry different non-empty pinned
-// fingerprints for what is physically one certificate - a state task #4's
+// (the multi-GPU-per-host case) carry different non-empty pinned
+// fingerprints for what is physically one certificate - a state the
 // admin-layer sibling-consistency check is meant to prevent from arising,
 // but this dial-time check must never silently pick one of several
 // disagreeing answers.

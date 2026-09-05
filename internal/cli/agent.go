@@ -3,7 +3,7 @@ package cli
 // agent.go - `marbor agent get/enable/disable/regenerate`,
 // `marbor node control clear`, and `marbor users change-password`
 // / `marbor users skip-password-change`. All had full UI
-// coverage but no CLI per the three-surface-parity audit.
+// coverage but no CLI when these commands were added.
 
 import (
 	"bufio"

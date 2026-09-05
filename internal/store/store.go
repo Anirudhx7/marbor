@@ -83,7 +83,7 @@ type Store interface {
 	// Configured changes only via UpsertNodeControlConfigured, the operator
 	// Accept action - never as a side effect of a discovery re-run.
 	UpsertNodeControlDiscovered(name, driver, identifier string, evidence []string) error
-	// startCommand is the Process driver's launch command (Step 3) - only
+	// startCommand is the Process driver's launch command - only
 	// meaningful when driver=="process", but accepted unconditionally since
 	// the store has no opinion on which driver a given node uses.
 	UpsertNodeControlConfigured(name, driver, identifier, startCommand string) error
@@ -396,7 +396,7 @@ type MarborAgentRecord struct {
 // NodeControlRecord is the per-node ControlDriver configuration - how
 // the Marbor Agent starts/stops/restarts the inference runtime process on
 // this node. Discovered* is what the most recent probe found (evidence, not
-// a bare confidence label - marbor-agent-capabilities.md section 5.5);
+// a bare confidence label);
 // Driver/Identifier/Configured is what an operator has explicitly accepted
 // and the only value lifecycle actions ever read. Configured is false
 // until an operator accepts a value - a node with no ControlDriver
@@ -411,7 +411,7 @@ type NodeControlRecord struct {
 	DiscoveredIdentifier string   `json:"discovered_identifier,omitempty"`
 	DiscoveredEvidence   []string `json:"discovered_evidence,omitempty"`
 
-	// StartCommand is the Process driver's launch command (Step 3) - the
+	// StartCommand is the Process driver's launch command - the
 	// bare PID-file convention alone gives no way to know how to launch the
 	// process fresh, so an operator configures it explicitly at Accept time.
 	// Only meaningful when Driver=="process"; empty for every other driver.

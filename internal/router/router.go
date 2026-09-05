@@ -303,7 +303,7 @@ type NodeState struct {
 	// for the admin API's probe/accept UI. The operator-accepted value
 	// lifecycle actions actually read lives in ControlConfig (SetNodeControl/
 	// NodeControlSetting below), never here - this is never substituted in
-	// as a fallback (marbor-agent-capabilities.md section 5.6).
+	// as a fallback.
 	AgentControlDiscoveredDriver     string
 	AgentControlDiscoveredIdentifier string
 	AgentControlDiscoveredEvidence   []string
@@ -596,7 +596,7 @@ type Router struct {
 	// disables all warm-state persistence (the default for tests). Guarded by r.mu.
 	store store.Store
 
-	// Predictive prewarming fields (Step 5)
+	// Predictive prewarming fields
 	predictiveMu             sync.Mutex
 	predictiveHistory        []TransitionEntry
 	lastModelRequested       string
@@ -931,12 +931,12 @@ func (r *Router) hostOfLocked(name string) (string, bool) {
 // ControlConfig is the router's in-memory view of a node's accepted
 // ControlDriver configuration - Driver/Identifier are the operator-
 // accepted values lifecycle actions read; Configured is false until an
-// operator explicitly accepts one (marbor-agent-capabilities.md section 5.6).
+// operator explicitly accepts one.
 type ControlConfig struct {
 	Driver     string
 	Identifier string
 	Configured bool
-	// StartCommand is the Process driver's launch command (Step 3) - only
+	// StartCommand is the Process driver's launch command - only
 	// meaningful when Driver=="process", carried alongside Driver/Identifier
 	// so a lifecycle dispatch never has to re-read the store mid-request.
 	StartCommand string

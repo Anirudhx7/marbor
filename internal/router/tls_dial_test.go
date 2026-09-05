@@ -134,7 +134,7 @@ func TestHTTPClientForNode_PinnedFingerprintMatch(t *testing.T) {
 }
 
 // TestHTTPClientForNode_PinnedFingerprintMismatch proves the fail-closed
-// path (spec section 6/7): a node pinned to the WRONG fingerprint for its
+// path: a node pinned to the WRONG fingerprint for its
 // Marbor Agent's host:port must have every request over that transport
 // refused at the TLS handshake, never silently trusted or downgraded to
 // plaintext.
@@ -170,10 +170,10 @@ func TestHTTPClientForNode_PinnedFingerprintMismatch(t *testing.T) {
 	}
 }
 
-// TestHTTPClientForNode_AmbiguousSiblingFingerprints proves section 15's
-// dial-time safeguard: two NodeState entries sharing one Host with two
+// TestHTTPClientForNode_AmbiguousSiblingFingerprints proves the dial-time
+// safeguard: two NodeState entries sharing one Host with two
 // different non-empty pinned fingerprints must refuse the dial outright
-// rather than silently picking one - task #4's admin-layer check is meant
+// rather than silently picking one - an admin-layer check is meant
 // to prevent this state from arising, but the dial-time code must never
 // guess if it does.
 func TestHTTPClientForNode_AmbiguousSiblingFingerprints(t *testing.T) {
@@ -204,7 +204,7 @@ func TestHTTPClientForNode_AmbiguousSiblingFingerprints(t *testing.T) {
 }
 
 // TestHTTPClientForNode_UnpinnedMarborAgentFailsClosed proves the "no pin
-// recorded but URL is https://" case (spec section 6): with no fingerprint
+// recorded but URL is https://" case: with no fingerprint
 // pinned at all, a self-signed cert fails ordinary certificate verification
 // and the dial errors out as unreachable - the correct fail-safe default,
 // requiring no special-case code.

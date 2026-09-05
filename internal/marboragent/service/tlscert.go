@@ -2,9 +2,7 @@
 // certificate generation. This file is platform-agnostic - stdlib
 // crypto/tls/crypto/x509/crypto/ecdsa only, per the project's zero
 // external dependency architecture rule - deliberately placed in package
-// service rather than package
-// marboragent (as the original TLS design doc
-// suggested): each platform's Install (service_linux.go/service_darwin.go/
+// service rather than package marboragent: each platform's Install (service_linux.go/service_darwin.go/
 // service_windows.go) must call this at install time, and package marboragent
 // already imports package service, so package service importing back from
 // marboragent would be a compile-time cycle. This file never imports
@@ -29,8 +27,7 @@ import (
 	"time"
 )
 
-// certValidity is 10 years: this is TOFU pinning (see
-// the node-agent TLS design doc), not PKI, so there is no
+// certValidity is 10 years: this is TOFU pinning, not PKI, so there is no
 // meaningfully-short expiry to force rotation against - a long validity
 // avoids background rotation-before-expiry complexity this design
 // deliberately does not need. Rotation, when wanted, is the operator-driven
@@ -41,9 +38,9 @@ const certValidity = 10 * 365 * 24 * time.Hour
 // at certPath/keyPath if they don't already exist as a valid, matching
 // pair, and is a no-op (returns nil immediately) otherwise - so re-running
 // "agent service install" (upgrades, reinstalls) never silently regenerates
-// a cert and invalidates a fingerprint marbor already has pinned (spec
-// section 3's idempotency requirement). Pass force=true (the regen-cert
-// subcommand's forced-regeneration path, spec section 4) to always
+// a cert and invalidates a fingerprint marbor already has pinned (an
+// idempotency requirement). Pass force=true (the regen-cert subcommand's
+// forced-regeneration path) to always
 // (re)generate regardless of what's currently on disk.
 //
 // The certificate file is written 0644 (it is not secret - only the private

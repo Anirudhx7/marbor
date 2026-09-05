@@ -173,9 +173,9 @@ func TestHandleRuntimeAction_ConfiguredSuccess(t *testing.T) {
 	}
 }
 
-// TestHandleRuntimeAction_Unconfigured verifies the exact error
-// marbor-agent-capabilities.md section 5.6 mandates when marbor sends no
-// driver (nothing configured for this node) - never a guess.
+// TestHandleRuntimeAction_Unconfigured verifies the exact "Runtime control
+// unavailable" error when marbor sends no driver (nothing configured for
+// this node) - never a guess.
 func TestHandleRuntimeAction_Unconfigured(t *testing.T) {
 	s := newControlActionTestServer()
 

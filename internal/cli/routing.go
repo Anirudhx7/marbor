@@ -1,9 +1,9 @@
 package cli
 
 // routing.go - `marbor routing rules list/add/remove/toggle` and
-// `marbor routing strategy get/set` (from the three-surface-parity
-// audit: GET/POST/DELETE/PUT /admin/routing/rules and GET/PUT
-// /admin/routing/strategy had full UI coverage in Routing.tsx but no CLI).
+// `marbor routing strategy get/set` (GET/POST/DELETE/PUT
+// /admin/routing/rules and GET/PUT /admin/routing/strategy had full UI
+// coverage in Routing.tsx but no CLI).
 
 import (
 	"fmt"

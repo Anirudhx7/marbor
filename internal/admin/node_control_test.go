@@ -103,7 +103,7 @@ func TestHandleAcceptNodeControlRejectsUnknownDriver(t *testing.T) {
 // TestHandleAcceptNodeControlThenRescanDoesNotChangeConfigured is the admin
 // API-level version of the store-layer invariant test: accepting a driver,
 // then a discovery re-scan reporting something different, must never change
-// what handleGetNodeControl reports as configured (section 5.6).
+// what handleGetNodeControl reports as configured.
 func TestHandleAcceptNodeControlThenRescanDoesNotChangeConfigured(t *testing.T) {
 	s := newTestServerWithNodeAndStore(t)
 

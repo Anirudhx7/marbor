@@ -50,8 +50,8 @@ type DeploymentReport struct {
 }
 
 // parallelArgsREs matches runtime-specific parallelism flags in a process
-// command line. Keep minimal - only flags actually used in real fleets
-// per deployment_routing_pain_research.md. No new flags without evidence.
+// command line. Keep minimal - only flags actually observed in real fleets.
+// No new flags without evidence.
 var (
 	vllmTPRE            = regexp.MustCompile(`--tensor-parallel-size[ =]+(\d+)`)
 	sglangTPRE          = regexp.MustCompile(`--tp[ =]+(\d+)|--tensor-parallel-size[ =]+(\d+)`)

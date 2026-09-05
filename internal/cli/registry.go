@@ -9,12 +9,7 @@ import (
 
 // This file defines the CLI command registry: a data-driven description of
 // the command tree (names, aliases, positional arity, flags, help text).
-// It was built as the first step of the CLI hardening plan's registry
-// migration - the tree built in
-// registry_tree.go is currently UNUSED. Nothing in cli.go, main.go, or any
-// dispatcher reads from this yet; that wiring happens in later steps so each
-// step can be verified independently against the existing switch-based
-// dispatcher before it is replaced.
+// The tree built in registry_tree.go is what the dispatcher reads today.
 
 // FlagKind identifies the Go type backing a FlagSpec.
 type FlagKind int
@@ -27,8 +22,7 @@ const (
 
 // FlagSpec describes one command-specific flag. Global flags (--server,
 // --json, --username, --password) are not represented here - they are added
-// by the dispatcher via newFlagSet for every command, per operational-
-// interfaces.md 5.1/5.2.
+// by the dispatcher via newFlagSet for every command.
 type FlagSpec struct {
 	Name  string
 	Kind  FlagKind

@@ -737,8 +737,7 @@ func TestHandleUnloadModel_RequiresBearerToken(t *testing.T) {
 }
 
 // TestPOSTModelsRouteShape_PullVsUnloadDisambiguation is a regression guard
-// for the route-shape decision recorded in the node-agent design doc: POST
-// /v1/models (no trailing segment) must always mean "pull" and POST
+// for the route-shape decision: POST /v1/models (no trailing segment) must always mean "pull" and POST
 // /v1/models/{name...} must always mean "unload" - both are POST, on
 // deliberately different path shapes, and a future change that makes them
 // collide would silently misroute pulls as unloads or vice versa.

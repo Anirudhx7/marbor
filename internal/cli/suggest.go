@@ -2,10 +2,8 @@ package cli
 
 import "sort"
 
-// This file adds a standalone "did you mean" suggestion helper, added as
-// part of the CLI hardening plan's registry migration
-// - it is NOT wired into the dispatcher yet; that happens once the dispatcher
-// itself exists in a later step.
+// This file adds a standalone "did you mean" suggestion helper, used by the
+// dispatcher's unknown-token path.
 
 // levenshtein computes the classic edit distance between a and b (insertions,
 // deletions, substitutions each cost 1). It is case-sensitive; callers that

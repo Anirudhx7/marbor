@@ -12,8 +12,7 @@ import (
 // convention), and the "models" resource - POST /v1/models (pull), GET
 // /v1/models (list), DELETE /v1/models/{name...} (delete), POST
 // /v1/models/{name...} (unload) - all gated by an exact-match bearer token
-// (see auth.go), polled/dispatched by the marbor's existing router poll cycle -
-// see the node-agent design doc.
+// (see auth.go), polled/dispatched by the marbor's existing router poll cycle.
 //
 // GET /v1/status and GET /metrics serve Scheduler's cached snapshot rather
 // than collecting on every request - see scheduler.go. Scheduler is normally
@@ -60,7 +59,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /metrics", requireScope(s.Token, tierReadonly, s.handleMetrics))
 	// Group 2 "Operate" - the rest of the routes below all require
 	// tierOperator (per-action token scoping). See
-	// the node-agent capabilities design doc and
 	// internal/marboragent/auth.go's tier documentation for why tierAdmin is
 	// reserved rather than used by anything here.
 	mux.HandleFunc("POST /v1/models", requireScope(s.Token, tierOperator, s.handlePullModel))

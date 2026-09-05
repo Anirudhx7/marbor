@@ -458,8 +458,8 @@ func buildRoot() *Command {
 						// Deliberately NOT a bare top-level "agent" command: main.go's
 						// resolveCommand special-cases the literal word "agent" to mean
 						// "removed" (the marbor agent binary split, v0.19.2) before it ever
-						// consults this registry - see CLAUDE.md's "marbor agent ... no
-						// longer exists" note and TestResolveCommand_MatchesRegistry, which
+						// consults this registry - that subcommand no longer
+						// exists, so see TestResolveCommand_MatchesRegistry, which
 						// caught this the first time. Nested here as a sibling of
 						// "control" instead, matching the existing "node control ..." shape.
 						Name:      "agent",
@@ -1332,7 +1332,7 @@ func buildRoot() *Command {
 // other command - Hidden means "not advertised", never "unreachable". Its
 // Run (runCompletion, completion.go) is pure and local: the generated script
 // is baked from the current registry tree at generation time, so it never
-// contacts marbor or requires credentials (plan Implementation section 7).
+// contacts marbor or requires credentials.
 func completionCmd() *Command {
 	return &Command{
 		Name:  "completion",
