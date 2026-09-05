@@ -12,7 +12,7 @@ import (
 
 // recoverWriter wraps http.ResponseWriter to track whether the response has
 // started (WriteHeader or Write called). It delegates Flush to the underlying
-// writer when it implements http.Flusher, preserving streaming (R2).
+// writer when it implements http.Flusher, preserving streaming.
 type recoverWriter struct {
 	http.ResponseWriter
 	wroteHeader bool
@@ -29,7 +29,7 @@ func (rw *recoverWriter) Write(b []byte) (int, error) {
 }
 
 // Flush delegates to the underlying writer when it satisfies http.Flusher.
-// This keeps SSE / NDJSON streaming intact (project rule R2).
+// This keeps SSE / NDJSON streaming intact.
 func (rw *recoverWriter) Flush() {
 	if f, ok := rw.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
@@ -40,7 +40,7 @@ func (rw *recoverWriter) Flush() {
 //
 // CRITICAL re-panic rule: if the recovered value is http.ErrAbortHandler the
 // panic is re-raised immediately so net/http's streaming-abort machinery can
-// handle it. Swallowing it would break mid-stream delivery (R2).
+// handle it. Swallowing it would break mid-stream delivery.
 //
 // For every other non-nil panic value the middleware:
 //  1. Calls metrics.Panic() to increment the counter.
@@ -56,7 +56,7 @@ func RecoverMiddleware(next http.Handler) http.Handler {
 				return
 			}
 
-			// Re-panic for abort handler - do not swallow (R2).
+			// Re-panic for abort handler - do not swallow.
 			if p == http.ErrAbortHandler {
 				panic(p)
 			}

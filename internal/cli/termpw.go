@@ -31,7 +31,7 @@ func readPassword(stdinFd uintptr, r *bufio.Reader) (string, error) {
 		return readLine(r)
 	}
 
-	// P291: echo restoration otherwise only happens via the deferred
+	// Echo restoration otherwise only happens via the deferred
 	// restore() below, which a fatal signal/Ctrl+C during the blocked
 	// ReadString call skips entirely - neither the kernel (Unix) nor
 	// Windows reverts console echo mode automatically once the owning

@@ -31,7 +31,7 @@ func TestKVCacheBytesPerToken_ZeroAttnHeads(t *testing.T) {
 
 // TestComputeContextFeasibility_EstimatedFallback verifies that with arch
 // nil, the total byte count matches the pre-existing linear formula exactly
-// (unchanged by P71) and Confidence is "estimated" - never "derived".
+// (unchanged by this feature) and Confidence is "estimated" - never "derived".
 func TestComputeContextFeasibility_EstimatedFallback(t *testing.T) {
 	sizeMB := int64(4000)
 	ctxLen := int64(8192)

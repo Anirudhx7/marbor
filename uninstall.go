@@ -36,8 +36,8 @@ const marborPidfile = "marbor.pid"
 // split, marbor has no code path into the agent's runtime/service-manager
 // logic - cmd/marbor-agent is the only entry point for it, so there is no
 // Manager here to drive even if it wanted to; internal/admin does still use
-// marboragent's shared R9 wire types and scope constants, which is a frozen
-// protocol boundary, not an agent-runtime capability). Never touches
+// marboragent's shared frozen wire types and scope constants, which is a
+// frozen protocol boundary, not an agent-runtime capability). Never touches
 // marbor.db - matches
 // uninstall.sh's default of always asking before deleting real state, and
 // this subcommand has no interactive prompt to ask with, so the safe default
@@ -88,14 +88,14 @@ func runUninstall(args []string) {
 	}
 
 	if pid, ok := readRunningPidfile(marborPidfile); ok {
-		// PID-reuse hazard (P172): readRunningPidfile only confirms pid is
+		// PID-reuse hazard: readRunningPidfile only confirms pid is
 		// alive, not that it's still the marbor process the pidfile
 		// originally named - on a long-lived host, PID recycling can point
 		// a stale pidfile at an unrelated process. Verify identity via
 		// /proc/<pid>/cmdline before signaling; skip the signal (with a
 		// warning) if identity can't be confirmed, rather than SIGTERMing
 		// whatever currently owns that PID. Only implemented on Linux -
-		// other platforms have no /proc to check, matching the pre-P172
+		// other platforms have no /proc to check, matching the older
 		// signal-unconditionally behavior there.
 		identityConfirmed := true
 		if runtime.GOOS == "linux" {
@@ -197,7 +197,7 @@ func waitForProcessExit(pid int, deadline time.Duration) bool {
 }
 
 // pidCmdlineNamesMarbor reports whether pid's argv[0] (read from
-// /proc/<pid>/cmdline) names the marbor binary (P172), guarding against a
+// /proc/<pid>/cmdline) names the marbor binary, guarding against a
 // stale pidfile whose PID has since been recycled by the OS for an
 // unrelated process. Linux-only - there is no /proc on other platforms.
 func pidCmdlineNamesMarbor(pid int) (bool, error) {

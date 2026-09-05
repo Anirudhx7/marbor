@@ -160,7 +160,7 @@ func TestMixedFleetAPIChatMisroutesVLLMModelToOllamaNode(t *testing.T) {
 }
 
 // TestMixedFleetEmbeddingsDoesNotMisrouteToWrongModelNode reproduces the
-// req-af404f8a incident (P79, EXECUTION-QUEUE.md): before the P79 hard
+// req-af404f8a incident: before the hard
 // eligibility filter, a request naming a model that only the (now-draining)
 // Ollama node has could still land on a healthy non-Ollama node whose
 // LoadedModels contains a completely different model - model presence was a
@@ -205,7 +205,7 @@ func TestMixedFleetEmbeddingsDoesNotMisrouteToWrongModelNode(t *testing.T) {
 }
 
 // TestMixedFleetStickySessionDoesNotBypassModelEligibility verifies the
-// sticky-session shortcut in Route (P79 audit: "sticky routing was
+// sticky-session shortcut in Route ("sticky routing was
 // specifically identified as another possible bypass") also honors the hard
 // eligibility filter - a session pinned to a non-Ollama node must not be
 // allowed to reuse that node for a model the node doesn't actually have.

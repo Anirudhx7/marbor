@@ -1,9 +1,9 @@
 package cli
 
 // cloud.go - `marbor cloud providers list/add/update/delete/reorder/test`
-// and `marbor cloud budget-status` (P-A2-05, A2 three-surface-parity audit:
+// and `marbor cloud budget-status` (from the three-surface-parity audit:
 // all 7 cloud-provider/budget endpoints had full UI coverage in Settings.tsx
-// but no CLI). R8: the provider's API key is write-only - never printed back
+// but no CLI). The provider's API key is write-only - never printed back
 // by "list", and an "update" with no --api-key leaves the stored key
 // unchanged server-side (handleUpdateCloudProvider).
 
@@ -79,13 +79,13 @@ func runCloudProvidersAdd(flags *globalFlags, name, provider, baseURL, apiKey, d
 // runCloudProvidersUpdate implements `marbor cloud providers update <name>
 // [--provider --base-url --api-key --default-model --cost-per-1k --priority
 // --enabled]`. handleUpdateCloudProvider is a whole-object PUT with no
-// partial-patch semantics beyond api_key's own "" / "***" special case (R8)
+// partial-patch semantics beyond api_key's own "" / "***" special case
 // - any other field the operator doesn't repeat would otherwise silently
 // revert to its Go zero-value (e.g. an omitted --enabled would silently
 // disable a previously-enabled provider). To give this command real
-// patch-like behavior without inventing new Admin API surface (Law 6), any
+// patch-like behavior without inventing new Admin API surface, any
 // flag NOT explicitly passed is filled in from the provider's current state
-// (one extra GET) before the PUT - same fix as L43 (nodes warmup set).
+// (one extra GET) before the PUT - same fix applied to nodes warmup set.
 func runCloudProvidersUpdate(ctx *RunCtx, name string) int {
 	client, err := authenticatedClient(ctx.Flags)
 	if err != nil {
@@ -149,7 +149,7 @@ func runCloudProvidersUpdate(ctx *RunCtx, name string) int {
 }
 
 // runCloudProvidersDelete implements `marbor cloud providers delete <name>
-// [--yes]`. Destructive per R10: requires --yes or an interactive TTY
+// [--yes]`. Destructive: requires --yes or an interactive TTY
 // confirmation, matching the "key revoke"/"nodes remove" pattern.
 func runCloudProvidersDelete(flags *globalFlags, name string, yes bool, stdout, stderr io.Writer) int {
 	if err := requireConfirm("delete cloud provider", name, yes, stderr); err != nil {
@@ -189,7 +189,7 @@ func runCloudProvidersReorder(flags *globalFlags, order string, stdout, stderr i
 
 // runCloudProvidersTest implements `marbor cloud providers test --provider
 // --base-url --api-key`. The key is sent for this one-shot probe only -
-// never persisted or echoed back (R8).
+// never persisted or echoed back.
 func runCloudProvidersTest(flags *globalFlags, provider, baseURL, apiKey string, stdout, stderr io.Writer) int {
 	client, err := authenticatedClient(flags)
 	if err != nil {

@@ -1,7 +1,7 @@
 package cli
 
 // schedules.go - `marbor schedules list/create/patch/delete`, time-of-day
-// warmup/unload/drain/undrain automation (P-A2-03, A2 three-surface-parity
+// warmup/unload/drain/undrain automation (from the three-surface-parity
 // audit: GET/POST/PATCH/DELETE /admin/schedules had full UI coverage in
 // Warmup.tsx but no CLI).
 
@@ -140,7 +140,7 @@ func runSchedulesPatch(ctx *RunCtx, id string) int {
 }
 
 // runSchedulesDelete implements `marbor schedules delete <id> [--yes]`.
-// Destructive per R10 (irreversible): requires --yes or an interactive TTY
+// Destructive (irreversible): requires --yes or an interactive TTY
 // confirmation, matching the "key revoke"/"users delete" pattern (code
 // review finding - this was originally missing).
 func runSchedulesDelete(flags *globalFlags, id string, yes bool, stdout, stderr io.Writer) int {

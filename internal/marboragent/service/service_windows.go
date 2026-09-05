@@ -88,7 +88,7 @@ func runSC(args ...string) (string, error) {
 }
 
 // agentDataDir/agentCertPath/agentKeyPath are the Marbor Agent's TLS
-// certificate/key file locations on Windows (P24). %ProgramData% is always
+// certificate/key file locations on Windows. %ProgramData% is always
 // set on every supported Windows version; falling back to a literal
 // C:\ProgramData only guards against the pathological case of it being
 // unset in the process environment, not an actual differently-located
@@ -201,7 +201,7 @@ func (windowsManager) Install(cfg Config) error {
 		return fmt.Errorf("service: installing requires Administrator - re-run this command from an elevated (Run as Administrator) terminal")
 	}
 
-	// P24: idempotent - a re-install/upgrade never regenerates an existing
+	// Idempotent - a re-install/upgrade never regenerates an existing
 	// cert (which would invalidate a fingerprint marbor already pinned).
 	dataDir := agentDataDir()
 	if err := os.MkdirAll(dataDir, 0700); err != nil {
@@ -292,7 +292,7 @@ func (windowsManager) Uninstall(purge bool) error {
 		}
 	}
 
-	// P284: purge also best-effort removes the agent's TLS cert/key -
+	// purge also best-effort removes the agent's TLS cert/key -
 	// otherwise an orphaned private key survives decommissioning, enabling
 	// agent impersonation on a repurposed box.
 	if purge {

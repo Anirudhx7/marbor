@@ -35,7 +35,7 @@ func (r *Router) recordModelDigest(name, digest string) {
 }
 
 // reconcileModelDigests re-syncs the stored reference digest for every model
-// name once per full poll cycle (P99), fixing the permanent warm-detection
+// name once per full poll cycle, fixing the permanent warm-detection
 // loss recordModelDigest's first-observation-wins policy otherwise leaves
 // behind: without this, once any node reports a second digest for a name,
 // digestMismatch returns true forever, even after the entire fleet later
@@ -99,7 +99,7 @@ func (r *Router) reconcileModelDigests(nodes []*NodeState) {
 // first-observed digest recorded for name. Always false when either side is
 // empty - a runtime that doesn't report a digest (anything but Ollama today,
 // per ModelInfo.Digest) or a name with no digest recorded yet is never
-// flagged, matching R1 (never fabricate a comparison from missing data).
+// flagged - this never fabricates a comparison from missing data.
 func (r *Router) digestMismatch(name, digest string) bool {
 	if name == "" || digest == "" {
 		return false
@@ -115,7 +115,7 @@ func (r *Router) digestMismatch(name, digest string) bool {
 // same name. A loaded model whose digest mismatches the first-observed
 // digest for modelName is NOT counted as warm here - crediting it as an
 // interchangeable warm hit would silently mix two different sets of weights
-// under one model name (see .local/audit-fixes-2026-08-03.md #4).
+// under one model name.
 func (r *Router) isModelWarm(n *NodeState, modelName string) bool {
 	if modelName == "" {
 		return false
@@ -131,14 +131,13 @@ func (r *Router) isModelWarm(n *NodeState, modelName string) bool {
 }
 
 // isEligibleForModel reports whether n may be a routing candidate for
-// modelName at all (P79 hard eligibility filter, Routing Hierarchy step 1).
+// modelName at all - a hard eligibility filter applied before scoring.
 // Ollama is exempt: its runtime can load/pull a requested model on demand, so
 // absence from LoadedModels does not disqualify it (existing cold-start
 // behavior, unchanged). Every other runtime has no such on-demand load path
 // from the marbor's perspective, so a non-Ollama node must already report
 // modelName in LoadedModels - otherwise a healthy-but-wrong-model node could
-// silently serve output from a different model than the one requested (see
-// req-af404f8a, P79 filing in EXECUTION-QUEUE.md).
+// silently serve output from a different model than the one requested.
 func (r *Router) isEligibleForModel(n *NodeState, modelName string) bool {
 	if modelName == "" {
 		return true
@@ -157,15 +156,15 @@ func (r *Router) isEligibleForModel(n *NodeState, modelName string) bool {
 }
 
 // isUnderCapacity reports whether n may be a routing candidate at all under
-// the per-node in-flight cap (P64 eligibility filter, Routing Hierarchy step 1
-// "capacity limits"). A node at or over its effective cap is excluded from
+// the per-node in-flight cap - an eligibility filter based on capacity limits.
+// A node at or over its effective cap is excluded from
 // candidacy this call - never queued - so the existing RouteExcluding/retry/
 // cloud-fallback chain in proxy.go picks the next candidate instead.
 //
 // Effective cap resolution: NodeState.MaxInFlight (per-node override, set via
 // PatchNode/node_overrides) wins if > 0; otherwise Router.maxInFlightPerNode
 // (the global RoutingConfig.MaxInFlightPerNode default) applies. An effective
-// cap <= 0 means uncapped (no behavior change from pre-P64), matching how
+// cap <= 0 means uncapped, matching how
 // QueueMaxDepth/QueueTimeoutMs treat 0 as "disabled" elsewhere in this package.
 //
 // NOT an atomic reservation: this reads ActiveConns at routing-decision time,
@@ -176,7 +175,7 @@ func (r *Router) isEligibleForModel(n *NodeState, modelName string) bool {
 // select the same node, overshooting the cap by up to N. This is a best-
 // effort/approximate cap, not a hard atomic concurrency guarantee - closing
 // that gap would need per-node reservation accounting, deliberately out of
-// scope for P64 (see EXECUTION-QUEUE.md P64).
+// scope for the per-node in-flight cap feature.
 func (r *Router) isUnderCapacity(n *NodeState) bool {
 	n.mu.RLock()
 	effectiveCap := n.MaxInFlight
@@ -191,10 +190,10 @@ func (r *Router) isUnderCapacity(n *NodeState) bool {
 }
 
 // isGPUGroupSufficient reports whether n's effective GPU group can satisfy its
-// derived placement requirement (P397). A node with required==0 (no parallelism
+// derived placement requirement. A node with required==0 (no parallelism
 // declared and no gpu_indices) is always sufficient - existing fleet unaffected.
 // When AgentGPUs is unknown (avail 0), fail open (true) rather than failing
-// closed and 503 the fleet on agent outage - same as gpuCountUnknown R1.
+// closed and 503 the fleet on agent outage - same as the gpuCountUnknown fail-open behavior.
 func (r *Router) isGPUGroupSufficient(n *NodeState) bool {
 	req := n.EffectiveRequiredGPUs()
 	if req == 0 {
@@ -224,7 +223,7 @@ func (r *Router) effectiveAvailableGPUs(n *NodeState) int {
 		}
 		return len(scoped)
 	}
-	// No declared - P397b fallback to detected group for honest per-runtime
+	// No declared - fallback to detected group for honest per-runtime
 	// scoping when a host runs two runtimes on different GPU subsets via
 	// CUDA_VISIBLE_DEVICES (e.g. 0..3 vs 4..7). If no detected group, fall
 	// back to host inventory count (original behavior, fail-open).
@@ -282,8 +281,7 @@ func (r *Router) sweepAffinity() {
 
 // FlushAffinity snapshots the current in-memory affinity map to the store, so
 // a restart doesn't drop every in-flight sticky session and force a cold
-// KV-cache round-trip on the next request for each of them (see
-// .local/audit-fixes-2026-08-03.md #7). Called on the same periodic cadence
+// KV-cache round-trip on the next request for each of them. Called on the same periodic cadence
 // as sweepAffinity and once more at shutdown, alongside FlushWarmState. A nil
 // store (tests, or persistence disabled) makes this a no-op. Best-effort - a
 // store error is logged and swallowed, matching every other warm/affinity
@@ -426,18 +424,18 @@ func (r *Router) stickyNode(sessionID string) (*NodeState, bool) {
 
 // staticVRAMReservation reports whether runtime statically pre-allocates
 // GPU memory at startup (weights + KV cache), making VRAMUsedMB a
-// by-design constant rather than a live pressure signal (P62). Confirmed
+// by-design constant rather than a live pressure signal. Confirmed
 // today for vLLM only (gpu-memory-utilization); TGI has a static mode too
 // but that is not yet confirmed against this marbor's telemetry, so it is
 // deliberately NOT included here - narrowing to what's verified, not
-// guessing across the runtime matrix (Architecture Law 5). Ollama,
+// guessing across the runtime matrix. Ollama,
 // llama.cpp, and MLX dynamically allocate and are unaffected.
 func staticVRAMReservation(runtime string) bool {
 	return runtime == "vllm"
 }
 
 // effectiveLoad weights a node's raw active-connection count by its recent
-// observed load shape (P404): Orca-style continuous batching means every
+// observed load shape: Orca-style continuous batching means every
 // connection is not equal work - a prefill-heavy request keeps the node's
 // shared compute busy far longer before its first byte than a decode-light
 // continuation, so counting both as one "slot" (the old inverse_queue_depth
@@ -449,7 +447,7 @@ func staticVRAMReservation(runtime string) bool {
 // visibility into. A node with no TTFT history yet (new/idle) falls back to
 // the raw connection count unchanged - this is a refinement of the existing
 // formula, not a new code path that can diverge from it when data is
-// missing (R1: never fabricate a load signal from nothing).
+// missing - this never fabricates a load signal from nothing.
 //
 // Must be called with n.mu already held (RLock is sufficient) - it reads
 // n.RecentTTFT directly, matching every other per-node field scoreComponents
@@ -502,13 +500,13 @@ func (r *Router) scoreComponents(n *NodeState, model string) []ScoreComponent {
 		// vLLM (gpu-memory-utilization, commonly 0.8-0.9) statically
 		// pre-allocates weights + KV cache at startup, so VRAMUsedMB sits at
 		// ~90%+ by design even when the node is idle and fully able to
-		// serve (P62). Instantaneous free bytes is not a capacity signal for
+		// serve. Instantaneous free bytes is not a capacity signal for
 		// these runtimes - do not credit or penalize the reserved block.
 		// Use the same real, already-tracked in-flight request count that
 		// drives factor 3 (inverse_queue_depth) as the "capacity to accept
 		// another request" signal instead; no runtime today reports a
 		// usable queue-depth or declared-concurrency telemetry field
-		// (marboragent.RuntimeInfo.QueueDepth is never populated - R1).
+		// (marboragent.RuntimeInfo.QueueDepth is never populated).
 		conns := atomic.LoadInt32(&n.ActiveConns)
 		freeVRAM = 1.0 / (1.0 + effectiveLoad(n, conns))
 	} else if n.VRAMTotalMB > 0 {
@@ -522,7 +520,7 @@ func (r *Router) scoreComponents(n *NodeState, model string) []ScoreComponent {
 		// cold-start pick on this node (see reserveColdStartBytes) - without
 		// this, two concurrent requests for two different cold models can
 		// both see the same stale last-poll snapshot and both pick this node
-		// before either load is confirmed by the next poll (P51).
+		// before either load is confirmed by the next poll.
 		if reserved := r.PendingPrewarmBytes(n.Name); reserved > 0 {
 			free -= reserved / (1024 * 1024)
 		}
@@ -590,7 +588,7 @@ func (r *Router) scoreComponents(n *NodeState, model string) []ScoreComponent {
 	// node's poll data is older than the grace window a healthy node's poll
 	// cadence would have refreshed it by, apply the same -50 penalty as the
 	// error cooldown above rather than trusting a snapshot that's actually
-	// gone stale. See .local/audit-fixes-2026-08-03.md #3.
+	// gone stale.
 	staleTriggered := false
 	if !n.LastPollAt.IsZero() && r.interval > 0 {
 		staleAfter := time.Duration(r.healthFailureThreshold) * r.interval
@@ -634,10 +632,10 @@ func (r *Router) computeNodeScore(n *NodeState, model string) float64 {
 // one. This narrows - it does not eliminate - the score-read vs
 // reservation-write race between two concurrent Route() calls for different
 // cold models: previously the reservation for the eventual winner was only
-// written after every candidate had been scored (selectBestNode, post-P51),
+// written after every candidate had been scored (selectBestNode),
 // so a concurrent call scoring the same node saw stale headroom for the
 // entire scoring pass, not just the time after this candidate became the
-// leader. See .local/audit-fixes-2026-08-03.md #2.
+// leader.
 func (r *Router) findBestByScore(nodes []*NodeState, modelName string) (*NodeState, []ScoreComponent) {
 	var bestNode *NodeState
 	var bestScore float64 = -999.0
@@ -745,7 +743,7 @@ func (r *Router) routeInternal(modelName, runtimeFilter string) (*NodeState, boo
 // Route picks the best healthy node for modelName using weighted placement scoring.
 // If sessionID is non-empty and a valid affinity entry exists for it, the
 // previously-used node is preferred (sticky session). The returned
-// RoutingDecision explains why the node was picked (P41); AffinityLost is
+// RoutingDecision explains why the node was picked; AffinityLost is
 // set when a session had an affinity entry that existed but did not
 // validate (expired, target unhealthy/draining/ineligible), so the eventual
 // score_based/pinned_warm decision doesn't silently look like a request that
@@ -765,7 +763,7 @@ func (r *Router) Route(modelName, sessionID, runtimeFilter string) (*NodeState, 
 				if !warm {
 					// Same race guard as selectBestNode's cold-start path -
 					// the sticky-session shortcut bypasses selectBestNode
-					// entirely, so it needs its own reservation write (P51).
+					// entirely, so it needs its own reservation write.
 					r.reserveColdStartBytes(node.URL, node.Name, modelName)
 				}
 				decision := &RoutingDecision{

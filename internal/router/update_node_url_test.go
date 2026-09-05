@@ -33,8 +33,8 @@ func agentTelemetryServer() *httptest.Server {
 	}))
 }
 
-// TestUpdateNodeURLReDerivesImplicitHost covers Case A (P24 prerequisite fix):
-// a node with no explicit config.NodeConfig.Host had its Host derived from
+// TestUpdateNodeURLReDerivesImplicitHost covers Case A (a prerequisite fix
+// for TLS-pinned agent polling): a node with no explicit config.NodeConfig.Host had its Host derived from
 // its URL's hostname. After UpdateNodeURL changes the URL to a different
 // host, Host must re-derive from the new hostname - not stay at the old
 // value or go empty - so pollAgentHosts keeps finding the Marbor Agent

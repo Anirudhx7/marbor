@@ -16,7 +16,7 @@ var startDetached = func(name string, args ...string) (*os.Process, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	// Reap the child once it exits (P157): the long-lived marbor-agent daemon
+	// Reap the child once it exits: the long-lived marbor-agent daemon
 	// is this process's parent, and nothing else ever calls Wait() on it -
 	// every Start/Restart cycle would otherwise leak a zombie once the child
 	// exits. The result is intentionally discarded; the caller tracks the

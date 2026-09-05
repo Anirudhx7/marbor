@@ -296,7 +296,7 @@ func resolveCommand(args []string) string {
 // legitimate source of truth for them. Every OTHER row (version, status,
 // login, key, spill, requests, ... - the real Admin API CLI commands) comes
 // from cli.HelpRows() at print time instead of being hand-duplicated here -
-// see finding #12 of the P83+ CLI hardening review: the previous hand-listed
+// this hardening matters because the previous hand-listed
 // subset went stale (missing key/spill/requests/completion) the moment the
 // registry grew past it. Renders as a two-column, tab-aligned list via
 // text/tabwriter rather than a hand-spaced string literal - alignment is
@@ -698,7 +698,7 @@ func main() {
 
 	// Restore sticky-session affinity so a restart doesn't drop every
 	// in-flight session and force a cold KV-cache round-trip on its next
-	// request (.local/audit-fixes-2026-08-03.md #7). Still only a soft
+	// request. Still only a soft
 	// preference at restore time - Route re-validates health/draining
 	// before honoring any restored entry.
 	if n, err := r.RestoreAffinity(); err != nil {
@@ -797,7 +797,7 @@ func main() {
 	adminSrv.StartPeriodicCleanup(ctx)
 	adminSrv.StartBackupScheduler(ctx)
 
-	// One-click restore (P49 follow-up): admin.go validates a restore
+	// One-click restore: admin.go validates a restore
 	// request and, if valid, sends the full path of the chosen backup file
 	// down this channel - the actual database swap and process exit only
 	// ever happen here in main(), which already owns graceful shutdown and
@@ -909,7 +909,7 @@ func main() {
 		defer close(shutdownDone)
 
 		// Each server gets its own fresh timeout budget at the point of its own
-		// Shutdown call (P171), rather than sharing one context/budget across
+		// Shutdown call, rather than sharing one context/budget across
 		// all three sequential calls - a shared context meant a slow drain on
 		// an earlier server (e.g. proxySrv draining an active long stream)
 		// could leave the later calls an already-expired context, aborting
@@ -961,7 +961,7 @@ func main() {
 		// the router restores its warm set on the next start.
 		r.FlushWarmState()
 		// Same tier for sticky-session affinity, so a graceful restart doesn't
-		// drop in-flight sessions either (.local/audit-fixes-2026-08-03.md #7).
+		// drop in-flight sessions either.
 		r.FlushAffinity()
 
 		if pendingRestorePath != "" {

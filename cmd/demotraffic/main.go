@@ -69,7 +69,7 @@ func sendRequest(client *http.Client, proxyURL, apiKey string, spec requestSpec,
 		return fmt.Errorf("build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	// Marks this as synthetic dashboard-seeding traffic (R1/P165), not
+	// Marks this as synthetic dashboard-seeding traffic, not
 	// genuine usage - without it, a request sent by this dev tool is
 	// byte-for-byte indistinguishable from real traffic in dashboards,
 	// analytics, and the audit log if pointed at a live instance.
@@ -149,7 +149,7 @@ func main() {
 	proxyURL := strings.TrimRight(envOrDefault("PROXY_URL", "http://localhost:11434"), "/")
 	apiKey := envOrDefault("API_KEY", "demo-api-key")
 
-	// R1/P165: this tool exists to seed a local dev/demo instance's
+	// This tool exists to seed a local dev/demo instance's
 	// dashboard with plausible-looking traffic - pointed at a live
 	// instance, it would populate real dashboards/analytics/audit with
 	// synthetic requests indistinguishable from genuine usage. Require an

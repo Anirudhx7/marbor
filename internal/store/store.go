@@ -29,7 +29,7 @@ type Store interface {
 	// Request log
 	AppendRequest(r RequestRecord) error
 	LastRequests(n int) ([]RequestRecord, error)
-	// GetRequest looks up one request_log row by id (P41 explain endpoint
+	// GetRequest looks up one request_log row by id (the explain endpoint's
 	// fallback beyond the bounded in-memory ring). ok is false if no row
 	// with that id exists (already trimmed, or never persisted).
 	GetRequest(id string) (rec RequestRecord, ok bool, err error)
@@ -56,10 +56,10 @@ type Store interface {
 	AllNodes() ([]NodeRecord, error)
 	UpdateNodeURL(name string, url string) error
 
-	// Node overrides (vram, gpu_model, declared gpu_indices - P75 Gap B/C;
-	// max_in_flight - P64 per-node in-flight cap override; tls_fingerprint -
-	// P24 TOFU-pinned Marbor agent cert fingerprint; parallelism_type/width -
-	// P397 deployment-aware placement tp|pp|ep|dp)
+	// Node overrides (vram, gpu_model, declared gpu_indices;
+	// max_in_flight - per-node in-flight cap override; tls_fingerprint -
+	// TOFU-pinned Marbor agent cert fingerprint; parallelism_type/width -
+	// deployment-aware placement tp|pp|ep|dp)
 	UpsertNodeOverride(name string, vramTotalMB *int64, gpuModel *string, runtime *string, gpuIndices *[]int, maxInFlight *int, tlsFingerprint *string, parallelismType *string, parallelismWidth *int, vramOverrides *map[string]int64) error
 	NodeOverrides() (map[string]NodeOverride, error)
 
@@ -68,7 +68,7 @@ type Store interface {
 	NodeDrainStates() (map[string]NodeDrainState, error)
 
 	// Marbor Agent (per-node opaque bearer token + enable/port, encrypted at
-	// rest - see internal/marboragent and .local/specs/node-agent.md section 5).
+	// rest - see internal/marboragent for the protocol this encodes).
 	// GetMarborAgent's error may be returned as-is by callers (single-node
 	// lookup, blast radius is that one node's telemetry falling back to "-");
 	// AllMarborAgents must never fail the whole list on one bad row (drop and
@@ -79,8 +79,7 @@ type Store interface {
 	DeleteMarborAgent(name string) error
 
 	// Node ControlDriver config (per-node, how the agent controls the
-	// runtime process - P43, .local/specs/node-agent-capabilities.md
-	// section 5.5). Discovered is freely overwritten by a re-scan;
+	// runtime process). Discovered is freely overwritten by a re-scan;
 	// Configured changes only via UpsertNodeControlConfigured, the operator
 	// Accept action - never as a side effect of a discovery re-run.
 	UpsertNodeControlDiscovered(name, driver, identifier string, evidence []string) error
@@ -264,7 +263,7 @@ type RequestRecord struct {
 	CostUSD    float64 `json:"cost_usd"`
 	RoutedTo   string  `json:"routed_to"`
 	IsCloud    bool    `json:"is_cloud"`
-	// RoutingReason/RoutingDetail are P41 explainability fields - empty for
+	// RoutingReason/RoutingDetail are explainability fields - empty for
 	// rows predating this feature or for cloud-fallback requests, which have
 	// no router.RoutingDecision. RoutingDetail is the JSON-encoded score
 	// breakdown, not a human string.
@@ -335,28 +334,28 @@ type NodeOverride struct {
 	GPUModel    *string `json:"gpu_model,omitempty"`
 	Runtime     *string `json:"runtime,omitempty"`
 	// GPUIndices is the operator-declared set of physical GPU indices this
-	// specific node/runtime instance actually uses (P75 Gap B/C) - host-scoped
+	// specific node/runtime instance actually uses - host-scoped
 	// agent telemetry reports every physical GPU identically to every node
 	// sharing a Host, so a node pinned to one GPU (e.g. CUDA_VISIBLE_DEVICES)
 	// needs this to avoid being sized against hardware it cannot reach. nil
 	// means "nothing declared" (the default - unchanged host-level sizing);
 	// a non-nil empty slice explicitly clears a prior declaration.
 	GPUIndices *[]int `json:"gpu_indices,omitempty"`
-	// MaxInFlight is the operator-declared per-node in-flight cap override
-	// (P64) - nil means "nothing declared" (use RoutingConfig.MaxInFlightPerNode).
+	// MaxInFlight is the operator-declared per-node in-flight cap override -
+	// nil means "nothing declared" (use RoutingConfig.MaxInFlightPerNode).
 	MaxInFlight *int `json:"max_in_flight,omitempty"`
 	// TLSFingerprint is the TOFU-pinned SHA-256 fingerprint ("SHA256:...") of
-	// this node's agent TLS certificate (P24) - nil means "no pin, plaintext
-	// or not yet TLS-enrolled". See .local/specs/node-agent-tls.md.
+	// this node's agent TLS certificate - nil means "no pin, plaintext
+	// or not yet TLS-enrolled".
 	TLSFingerprint *string `json:"tls_fingerprint,omitempty"`
-	// ParallelismType is the deployment topology type (P397) - "" means
+	// ParallelismType is the deployment topology type - "" means
 	// unconstrained (existing fleet), otherwise "tp"|"pp"|"ep"|"dp".
 	// ParallelismWidth is the width for that type - nil means unconstrained.
 	// Validated: for tp, len(gpu_indices) >= width when both declared, else 422.
 	ParallelismType  *string `json:"parallelism_type,omitempty"`
 	ParallelismWidth *int    `json:"parallelism_width,omitempty"`
 	// VRAMOverrides declares, per model name, how much VRAM (MB) that model
-	// consumes on this node (P411) - nil means "nothing declared" (the
+	// consumes on this node - nil means "nothing declared" (the
 	// default); a non-nil empty map explicitly clears a prior declaration.
 	// See config.NodeConfig.VRAMOverrides for the consumption side.
 	VRAMOverrides *map[string]int64 `json:"vram_overrides,omitempty"`
@@ -366,7 +365,7 @@ type NodeOverride struct {
 // agent is enabled for this node, which port it listens on, and the opaque
 // bearer token marbor presents when polling it. Token is encrypted at
 // rest by the sqliteStore implementation (AES-256-GCM, same primitive as
-// secretbox.go) - see .local/specs/node-agent.md section 5 for why this is
+// secretbox.go) - this is intentionally
 // a distinct protocol/table from the client-facing API-key mechanism, not a
 // reuse of it.
 type MarborAgentRecord struct {
@@ -375,7 +374,7 @@ type MarborAgentRecord struct {
 	Port    int    `json:"port"`
 	Token   string `json:"-"`
 	// Scope is the tier (marboragent.ScopeReadonly/ScopeOperator/ScopeAdmin)
-	// embedded in Token's prefix (P54: per-action token scoping). Stored
+	// embedded in Token's prefix (per-action token scoping). Stored
 	// alongside Token purely for observability/API responses - the agent
 	// enforces scope by parsing its own configured Token directly
 	// (marboragent.TokenScope), not by trusting this column, so a mismatch
@@ -394,7 +393,7 @@ type MarborAgentRecord struct {
 	Scheme string `json:"scheme"`
 }
 
-// NodeControlRecord is the per-node ControlDriver configuration (P43) - how
+// NodeControlRecord is the per-node ControlDriver configuration - how
 // the Marbor Agent starts/stops/restarts the inference runtime process on
 // this node. Discovered* is what the most recent probe found (evidence, not
 // a bare confidence label - marbor-agent-capabilities.md section 5.5);
@@ -590,8 +589,7 @@ type WarmStateRecord struct {
 // AffinityRecord is one persisted sticky-session entry: which node a session
 // was last pinned to and when it was last seen. Persisted so a marbor restart
 // doesn't drop every in-flight sticky session and force a cold KV-cache
-// round-trip on the next request (see .local/audit-fixes-2026-08-03.md #7).
-// Still only ever a soft preference at restore time - Route always
+// round-trip on the next request. Still only ever a soft preference at restore time - Route always
 // re-validates health/draining before honoring a restored entry, exactly as
 // it does for one created during normal operation.
 type AffinityRecord struct {
@@ -606,7 +604,7 @@ type AffinityRecord struct {
 // per-model rate caps). Every field is nilable/nullable: nil (or an absent
 // key in the persisted JSON) means "not configured, inherit the backend's own
 // default" - this struct must never carry a value the operator didn't
-// explicitly set (R1: no fabricated defaults masquerading as configuration).
+// explicitly set (no fabricated defaults masquerading as configuration).
 type ModelConfig struct {
 	Model string `json:"model"`
 	// Node is the specific node this profile applies to (required - a
@@ -625,7 +623,7 @@ type ModelConfig struct {
 	// from this struct because they are not real per-request parameters on ANY
 	// of the four runtimes (they're process-launch CLI flags at best, or never
 	// existed at all) - keeping them would have been exactly the kind of
-	// control that looks functional but isn't (R1).
+	// control that looks functional but isn't.
 	NumCtx          *int  `json:"num_ctx,omitempty"`
 	NumGPU          *int  `json:"num_gpu,omitempty"`
 	MainGPU         *int  `json:"main_gpu,omitempty"`
@@ -699,12 +697,12 @@ type ModelConfig struct {
 // samples (model evicted before each) and N warm samples (model resident
 // throughout) measured via the marbor's own /v1/chat/completions, same
 // methodology as bench/ttft.go and bench/cold-loop.sh.
-// ColdP95Ms/ColdP99Ms/WarmP95Ms/WarmP99Ms extend the original P50/min/max with
-// tail latency (P408) - nullable, like ColdTPOTP50Ms/WarmTPOTP50Ms below: nil
+// ColdP95Ms/ColdP99Ms/WarmP95Ms/WarmP99Ms extend the original p50/min/max with
+// tail latency - nullable, like ColdTPOTP50Ms/WarmTPOTP50Ms below: nil
 // means "not computed" (a row persisted before this migration added these
 // columns has no real p95/p99 sample data to backfill from), never a
 // fabricated 0 - a run that went through the current aggregateSamples always
-// gets a real, non-nil value here (R1).
+// gets a real, non-nil value here.
 type BenchmarkRun struct {
 	ID            int64     `json:"id"`
 	Node          string    `json:"node"`

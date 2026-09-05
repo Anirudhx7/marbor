@@ -119,13 +119,12 @@ func (r *Router) pollAgentHost(host string, cfg MarborAgentConfig, members []*No
 	// r.client's Transport is the Router's single shared, TLS-pinning-aware
 	// Transport (see tls_dial.go, HTTPClientForNode) - an https:// agentURL
 	// here is verified against this host's pinned fingerprint exactly like
-	// every admin/eviction action-path client, no separate wiring needed
-	// (P24, .local/specs/node-agent-tls.md section 6).
+	// every admin/eviction action-path client, no separate wiring needed.
 	resp, err := r.client.Do(req)
 	if err != nil {
-		// P24: distinguish a fingerprint mismatch from any other dial/network
+		// Distinguish a fingerprint mismatch from any other dial/network
 		// failure so the dashboard can surface it as its own status instead
-		// of generic "unreachable" (spec section 6).
+		// of generic "unreachable".
 		mismatch := errors.Is(err, ErrTLSFingerprintMismatch)
 		for _, n := range members {
 			r.setAgentTLSMismatch(n, mismatch)
@@ -277,7 +276,7 @@ func (r *Router) applyAgentTelemetry(n *NodeState, t marboragent.Telemetry) {
 			// permanent "no GPU" state. Clear every per-cycle reading derived
 			// from a device, the same way clearAgentTelemetry's wasAgentSourced
 			// branch does, so a stale VRAM/temperature/power figure from the
-			// last good poll never keeps displaying as current (R1) just
+			// last good poll never keeps displaying as current just
 			// because AgentPresent is still true.
 			n.FanPercent = nil
 			if !hasGPU {
@@ -314,7 +313,7 @@ func (r *Router) applyAgentTelemetry(n *NodeState, t marboragent.Telemetry) {
 		n.RuntimeStatus = ""
 		n.AgentRuntimeID = ""
 	}
-	// P397b: per-runtime deployment auto-discovery (port/ID matched, not Host).
+	// Per-runtime deployment auto-discovery (port/ID matched, not Host).
 	// One deployment report per runtime instance means two vLLM on same host
 	// with different TP widths do not fan the wrong 8 GPUs to both nodes.
 	if dep := matchDeployment(t.Deployments, pinnedID, nodePort); dep != nil {
@@ -334,7 +333,7 @@ func (r *Router) applyAgentTelemetry(n *NodeState, t marboragent.Telemetry) {
 		n.DetectedSource = dep.Source
 		n.DetectedCaps = dep.Caps
 	} else {
-		// No deployment report for this runtime instance - keep honest unknown (R1),
+		// No deployment report for this runtime instance - keep honest unknown,
 		// never fabricated. Cleared so a stale TP=8 from a prior poll does not linger
 		// when the runtime moves ports or the ps becomes invisible (pid ns).
 		n.DetectedParallelismType = ""
@@ -353,7 +352,7 @@ func (r *Router) applyAgentTelemetry(n *NodeState, t marboragent.Telemetry) {
 		n.AgentControlDiscoveredIdentifier = ""
 		n.AgentControlDiscoveredEvidence = nil
 	}
-	// P406: an agent-reported GPU device VRAM reading is a real, non-Ollama
+	// An agent-reported GPU device VRAM reading is a real, non-Ollama
 	// signal for node-level VRAMUsedMB (set above) - attributeSoleModelVRAM
 	// (health.go) additionally attributes it to the node's sole loaded
 	// model's own SizeVRAM when that model's size is otherwise unknown,
@@ -379,7 +378,7 @@ func (r *Router) applyAgentTelemetry(n *NodeState, t marboragent.Telemetry) {
 //  2. No pin yet (first contact, or a marbor restart) -> bootstrap by port
 //     against this node's own configured URL port.
 //  3. t.Runtimes is empty -> fall back to the legacy singular t.Runtime
-//     field (an agent build older than this change - R9).
+//     field (an agent build older than this change).
 //  4. No match at all -> nil, this node's runtime-specific fields get
 //     cleared while the shared host fields (still reachable) stay populated.
 func matchRuntime(t marboragent.Telemetry, pinnedID string, nodePort int) (*marboragent.RuntimeInfo, string) {
@@ -404,7 +403,7 @@ func matchRuntime(t marboragent.Telemetry, pinnedID string, nodePort int) (*marb
 }
 
 // matchDeployment picks the DeploymentReport for one node row by the same
-// pinnedID/port discipline as matchRuntime (P397b). A host with two vLLM on
+// pinnedID/port discipline as matchRuntime. A host with two vLLM on
 // :8000 TP=8 and :8001 TP=4 must not fan a single host-level report to both
 // nodes blind - each node gets the report keyed by its own port/ID.
 func matchDeployment(deployments []marboragent.DeploymentReport, pinnedID string, nodePort int) *marboragent.DeploymentReport {
@@ -427,7 +426,7 @@ func matchDeployment(deployments []marboragent.DeploymentReport, pinnedID string
 	// known port that does not match this node's port - that would
 	// misattribute a vLLM TP=8 on :8000 to an Ollama node on :11434 on the
 	// same host (e.g. host with Ollama :11434 + vLLM :8000 but ps only saw
-	// vLLM). Port-specific reports must stay port-specific (R1).
+	// vLLM). Port-specific reports must stay port-specific.
 	if len(deployments) == 1 && deployments[0].Port == 0 {
 		return &deployments[0]
 	}
@@ -564,7 +563,7 @@ func clearAgentTelemetry(n *NodeState) {
 	n.Hostname = ""
 	n.UptimeSeconds = 0
 	n.BootTime = 0
-	// P397b: clear auto-discovered deployment (R1 honest unknown, not stale).
+	// Clear auto-discovered deployment (honest unknown, not stale).
 	n.DetectedParallelismType = ""
 	n.DetectedParallelismWidth = 0
 	n.DetectedGPUGroup = nil
@@ -574,7 +573,7 @@ func clearAgentTelemetry(n *NodeState) {
 	// CPUPercent (applyAgentTelemetry's success path, above) is the only
 	// writer of NodeState.CPUPercent anywhere in the codebase - reset it
 	// here too, or a disabled/unreachable agent's last-reported CPU reading
-	// would linger forever with nothing to mark it stale (R1).
+	// would linger forever with nothing to mark it stale.
 	n.CPUPercent = 0
 	if wasAgentSourced {
 		// Fall back to whatever the node's declared/API-derived VRAM would
@@ -594,7 +593,7 @@ func clearAgentTelemetry(n *NodeState) {
 
 // buildAgentURL derives a host's /v1/status URL from its bare hostname, the
 // configured agent port, and a scheme (derived by the caller from one member
-// node's own URL, per R5 - never arithmetic port derivation).
+// node's own URL, via url.Parse - never arithmetic port derivation).
 func buildAgentURL(host string, port int, scheme string) (string, error) {
 	// host is normally already a bare hostname (NodeState.Host), but a
 	// config file or the admin API's optional host field isn't guaranteed

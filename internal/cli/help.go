@@ -8,8 +8,8 @@ import (
 
 // help.go generates CLI help/usage text from the command registry
 // (registry.go, registry_tree.go), instead of the hand-written print*Usage
-// functions and hand-aligned `usage` const in cli.go. This is step 4 of the
-// P83+ CLI hardening plan (see .local/plans/reflective-pondering-acorn.md) -
+// functions and hand-aligned `usage` const in cli.go, part of the CLI
+// hardening plan's registry migration -
 // alignment goes through the same renderTable/tabwriter helper the six
 // print*Usage functions already used, so it can no longer drift the way the
 // hand-spaced `usage` const in cli.go has.
@@ -138,7 +138,7 @@ func leafFlagRows(c *Command) [][2]string {
 // childRows(c.Sub) below), exposed so main.go's top-level --help/bare-command
 // output can fold the real Admin API CLI command list into its own combined
 // table instead of hand-maintaining a second, independently-drifting copy of
-// this same data (see finding #12 of the P83+ CLI hardening review: main.go
+// this same data (see the CLI hardening review's findings: main.go
 // previously hand-listed a stale subset of these names). Hidden commands
 // (e.g. "completion") are intentionally omitted here, matching childRows'
 // own Hidden check - main.go should not advertise them either. Reusing

@@ -7,7 +7,7 @@ package marboragent
 // gpu_rocm.go/gpu_intel.go.
 //
 // Deliberately reports Model only, every numeric reading left unset rather
-// than guessed (R1): system_profiler runs unprivileged and exposes no
+// than guessed: system_profiler runs unprivileged and exposes no
 // temperature/fan/power/utilization for the GPU at all, and unlike a
 // discrete card, Apple Silicon's GPU shares the host's unified memory rather
 // than owning a separate VRAM pool - there is no real "VRAM used/total"

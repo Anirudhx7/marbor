@@ -199,7 +199,7 @@ function subscribeToProgress(jobId: string): void {
       // The raw EventSource never runs through apiFetch, so a 401 (session
       // expired) mid-stream just looks like a generic connection loss here.
       // Fire one lightweight authenticated GET so apiFetch's own 401 handling
-      // (clearSession + reload) fires when that's the actual cause (P360).
+      // (clearSession + reload) fires when that's the actual cause.
       fetchBenchmarkRuns().catch(() => {});
       setState({ phase: 'error', error: 'Lost connection to the progress stream.' });
     }

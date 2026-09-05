@@ -863,7 +863,7 @@ func TestHandlePatchNode_RejectsNonPositiveVRAMOverride(t *testing.T) {
 	}
 }
 
-// TestHandlePatchNode_SetsVRAMOverrides verifies P411's admin API wiring:
+// TestHandlePatchNode_SetsVRAMOverrides verifies the VRAM-override admin API wiring:
 // PATCH /admin/nodes/{name} accepts "vram_overrides" and applies it to the
 // live node, mirroring TestHandlePatchNode_SetsGPUIndices.
 func TestHandlePatchNode_SetsVRAMOverrides(t *testing.T) {
@@ -893,7 +893,7 @@ func TestHandlePatchNode_SetsVRAMOverrides(t *testing.T) {
 	}
 }
 
-// TestHandlePatchNode_SetsGPUIndices verifies the P75 Gap B/C admin API
+// TestHandlePatchNode_SetsGPUIndices verifies the declared-GPU-indices admin API
 // wiring: PATCH /admin/nodes/{name} accepts "gpu_indices" and applies it to
 // the live NodeState via router.PatchNode, mirroring TestHandlePatchNode_SetsRuntime.
 func TestHandlePatchNode_SetsGPUIndices(t *testing.T) {
@@ -1276,7 +1276,7 @@ func TestHandleModelConfigCapabilities(t *testing.T) {
 	}
 }
 
-// TestHandleExplainRequest covers P41's explain endpoint: 200 with the full
+// TestHandleExplainRequest covers the routing-explain endpoint: 200 with the full
 // RoutingDecision for a logged request, the routingReason surfacing on the
 // list endpoint too, and 404 for an unknown id.
 func TestHandleExplainRequest(t *testing.T) {
@@ -1360,7 +1360,7 @@ func TestHandleExplainRequest(t *testing.T) {
 
 // TestHandleAuditRoutingReason verifies routing_reason survives the real
 // production path: audit.Logger.Log -> async write -> SQLite audit_log ->
-// QueryAuditLog -> handleAudit's JSON response (P41 code-review fix: this is
+// QueryAuditLog -> handleAudit's JSON response (a code-review fix: this is
 // the endpoint Requests.tsx actually reads for its list, not /admin/requests).
 func TestHandleAuditRoutingReason(t *testing.T) {
 	dir := t.TempDir()

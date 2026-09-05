@@ -1,6 +1,6 @@
 package proxy
 
-// status_logging_test.go -- P82 regression coverage: the request log (both
+// status_logging_test.go -- regression coverage: the request log (both
 // the persisted SQLite request_log table and the live /admin/requests API)
 // used to record status:200 for every real non-200 backend response.
 //
@@ -32,7 +32,7 @@ import (
 )
 
 // requestLogEntry mirrors the fields of handleRequests' int-status entry
-// type that the P82 bug affected.
+// type that the fixed bug affected.
 type requestLogEntry struct {
 	Model  string `json:"model"`
 	Node   string `json:"node"`
@@ -165,7 +165,7 @@ func TestCloudNonOKStatusPreserved(t *testing.T) {
 // full handler wired to a real on-disk SQLite store (not just the in-memory
 // s.requests slice /admin/requests reads from) and confirms the persisted
 // request_log row's status_code column holds the real 500, not 200. This is
-// the "persisted SQLite request history" half of P82 - handleRequests only
+// the "persisted SQLite request history" half of the fix - handleRequests only
 // exercises the in-memory copy, which shares the bug but not the same code
 // path (admin.go's separate strconv.Atoi() at the LogRequest->store.RequestRecord
 // boundary).

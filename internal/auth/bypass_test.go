@@ -8,8 +8,8 @@ import (
 	"github.com/Anirudhx7/marbor/internal/config"
 )
 
-// TestAuthBypassRejection is a regression test for R4: auth must be exact-match
-// only. A superstring, substring, or prefix of a valid key must all be rejected
+// TestAuthBypassRejection is a regression test guarding that auth must be
+// exact-match only. A superstring, substring, or prefix of a valid key must all be rejected
 // with 401. There was a historical bug where substring matching let attackers
 // through - this test suite ensures it can never regress.
 func TestAuthBypassRejection(t *testing.T) {

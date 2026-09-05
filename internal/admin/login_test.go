@@ -145,9 +145,9 @@ func TestClientIP_FallsBackOnMalformedAddr(t *testing.T) {
 	}
 }
 
-// TestAdminV1Login_MatchesLegacyLoginRoute is a P56 regression test: /admin/login
+// TestAdminV1Login_MatchesLegacyLoginRoute is a regression test: /admin/login
 // was registered directly (not via the reg helper), so it had no /admin/v1/login
-// twin - the one gap the P56 admin-API-v1 audit found. A CLI/SDK targeting
+// twin - the one gap the admin-API-v1 audit found. A CLI/SDK targeting
 // /admin/v1/* uniformly must be able to log in through the v1 surface too.
 func TestAdminV1Login_MatchesLegacyLoginRoute(t *testing.T) {
 	s := newTestServer()

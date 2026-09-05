@@ -110,7 +110,7 @@ func TestHandleModelFit_HappyPath(t *testing.T) {
 	if !m0.Loaded {
 		t.Error("models[0].loaded = false, want true (it is in LoadedModels)")
 	}
-	// Regression for P47: this node has consumed its entire reported free
+	// Regression: this node has consumed its entire reported free
 	// VRAM loading llama3:8b itself (4GB used of 8GB total, 4GB free), and
 	// llama3:8b's own estimate (4GB * 1.15 = ~4.6GB) exceeds that transient
 	// free figure. Classifying against free VRAM would wrongly report "red"

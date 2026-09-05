@@ -9,8 +9,8 @@ import (
 
 // This file defines the CLI command registry: a data-driven description of
 // the command tree (names, aliases, positional arity, flags, help text).
-// It is step 1 of the P83+ CLI hardening plan (see
-// .local/plans/reflective-pondering-acorn.md) - the tree built in
+// It was built as the first step of the CLI hardening plan's registry
+// migration - the tree built in
 // registry_tree.go is currently UNUSED. Nothing in cli.go, main.go, or any
 // dispatcher reads from this yet; that wiring happens in later steps so each
 // step can be verified independently against the existing switch-based
@@ -282,8 +282,8 @@ func (c *Command) boolFlagNames() map[string]bool {
 // the set of bare words that main.go's resolveCommand must route to "cli".
 // Backed by the same registry that the dispatcher, help writer, and
 // man/completion generators read, so main.go's whitelist cannot drift out of
-// sync with the commands actually implemented in cli.Run (see registry_tree.go
-// buildRoot and the P83+ plan item 2 - this is what makes "key", "spill", and
+// sync with the commands actually implemented in cli.Run (see registry_tree.go's
+// buildRoot - this is what makes "key", "spill", and
 // "requests" reachable from the real binary).
 //
 // Deliberately includes Hidden commands (e.g. "completion") - Hidden only

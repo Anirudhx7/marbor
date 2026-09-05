@@ -32,7 +32,7 @@ export function Login({ onSuccess, mode = 'admin' }: LoginProps) {
         mustChangePassword: data.must_change_password,
       });
     } catch (err) {
-      // Branch on the failure (P176): a bare catch{} previously showed
+      // Branch on the failure: a bare catch{} previously showed
       // "Invalid username or password" for every failure mode, including
       // network errors and server-side bugs, giving an operator no way to
       // tell a real credentials mistake from marbor being unreachable.

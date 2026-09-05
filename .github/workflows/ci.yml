@@ -58,7 +58,7 @@ jobs:
 
       - name: Docs drift check (man pages, docs/cli.md, README CLI table)
         # cmd/gen-docs derives docs/man/*.1, docs/cli.md, and README.md's CLI
-        # table from internal/cli's command registry (P83+ plan). Required,
+        # table from internal/cli's command registry. Required,
         # not advisory - committed generated docs can otherwise go stale
         # silently, and this is the only thing that catches it.
         run: |

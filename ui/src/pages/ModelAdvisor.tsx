@@ -28,11 +28,11 @@ import { CustomDatePicker } from '../components/DateTimePicker';
 // the identical constant in GPUNodes.tsx for the full reasoning.
 const LIVE_VRAM_TOOL_SOURCES = new Set(['nvidia-smi', 'rocm-smi', 'xpu-smi', 'system_profiler', 'agent', 'api']);
 
-// ContextFeasibilityNote renders P71's context-length feasibility advice for
+// ContextFeasibilityNote renders the context-length feasibility advice for
 // one variant. confidence is always shown (derived vs. estimated) so an
 // operator never mistakes a rough linear guess for a real architecture-
 // derived answer - a fabricated/overconfident number is exactly what this
-// feature exists to avoid (R1).
+// feature exists to avoid.
 function ContextFeasibilityNote({ cf, fit }: { cf: ModelVariantFit['context_feasibility']; fit: 'green' | 'yellow' | 'red' | 'unknown' }) {
   if (!cf) return null;
   const isDerived = cf.confidence === 'derived';
@@ -97,7 +97,7 @@ function FitBadge({ fit }: { fit: 'green' | 'yellow' | 'red' | 'unknown' }) {
 // NodeVramCard shows the active node's VRAM headroom. Extracted so it can be
 // rendered in both tabs (Favourites keeps its original position; Browse
 // moves it below the search/filter controls so HF Browse itself reads as
-// the primary surface - see P77).
+// the primary surface).
 function NodeVramCard({ node }: { node: any }) {
   return (
     <div className="bg-card border border-border rounded-xl p-5 shadow-sm">

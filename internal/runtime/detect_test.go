@@ -31,7 +31,8 @@ func TestDetectRuntime_Ollama(t *testing.T) {
 	}
 }
 
-// TestDetectRuntime_OllamaShapeMismatch is P260's regression case: a bare
+// TestDetectRuntime_OllamaShapeMismatch is the shape-validation regression
+// case: a bare
 // HTTP 200 on /api/ps with no {"models": [...]} body is not a real Ollama
 // signature - any non-Ollama server answering 200 on that exact path must
 // not be permanently misclassified "ollama" on the strength of the status
@@ -129,8 +130,8 @@ func TestDetectRuntime_LlamaCpp(t *testing.T) {
 }
 
 // TestDetectRuntime_MLXMisdetectedAsLlamaCpp documents the known, permanent
-// limitation P409 addresses the symptom of (not the detection itself, which
-// is not fixable from /v1/models alone - see detect.go's own comment above
+// limitation whose symptom is addressed elsewhere (not the detection itself,
+// which is not fixable from /v1/models alone - see detect.go's own comment above
 // probeV1Models's call site): an MLX (mlx_lm.server) node's /v1/models
 // response is byte-for-byte identical in shape to llama.cpp's, so runtime:
 // auto always resolves it to "llamacpp". This locks in that documented

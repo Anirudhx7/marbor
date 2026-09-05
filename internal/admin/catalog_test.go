@@ -250,7 +250,7 @@ func TestHandleModelCatalog_HappyPath(t *testing.T) {
 	if got := fitByName["llama3.1:70b"]; got != "red" {
 		t.Errorf("llama3.1:70b fit = %q, want red (needs 40GB)", got)
 	}
-	// Regression for P47: node has 8GB total, only ~4GB currently free (4GB
+	// Regression: node has 8GB total, only ~4GB currently free (4GB
 	// loaded by llama3:8b). llama3.1:8b needs ~4.7GB - more than the transient
 	// free VRAM, but well within the node's 8GB total capacity. Classifying
 	// against free VRAM would wrongly report "red" here.
@@ -288,7 +288,7 @@ func TestHandleModelCatalog_Downloaded(t *testing.T) {
 	}
 }
 
-// TestHandleModelCatalog_GPUCountUnknown verifies P75 Gap D: a node with no
+// TestHandleModelCatalog_GPUCountUnknown verifies the GPU-count-unknown disclosure: a node with no
 // agent (or a "declared" whole-node VRAM total, i.e. no per-device reading)
 // must be flagged gpu_count_unknown, distinct from an agent-confirmed
 // reading (even a confirmed single-GPU one), which must not be flagged.
@@ -419,7 +419,7 @@ func TestNodeVRAMCapacity(t *testing.T) {
 		{"multi-GPU mlx uses largest device only", 24000, []marboragent.GPUInfo{{VRAMTotalMB: 16000, VRAMUsedMB: 4000}, {VRAMTotalMB: 8000, VRAMUsedMB: 8000}}, "mlx", nil, 16000, 4000, 2, "largest"},
 		{"multi-GPU devices report zero VRAM falls back to aggregate", 24000, []marboragent.GPUInfo{{}, {}}, "ollama", nil, 24000, -1, 2, ""},
 
-		// P75 Gap B: two host-scoped ollama nodes, each pinned to one of the
+		// Gap B: two host-scoped ollama nodes, each pinned to one of the
 		// host's two GPUs (index 0 and index 1 respectively) via a declared
 		// scope. Without scoping, ggufOnlyRuntime("ollama") would sum both
 		// physical GPUs for EACH node - double-counting one pool of VRAM.
@@ -432,7 +432,7 @@ func TestNodeVRAMCapacity(t *testing.T) {
 			[]marboragent.GPUInfo{{Index: 0, VRAMTotalMB: 24000, VRAMUsedMB: 5000}, {Index: 1, VRAMTotalMB: 24000, VRAMUsedMB: 9000}},
 			"ollama", []int{1}, 24000, 9000, 1, ""},
 
-		// P75 Gap C: vLLM would default to "largest" (single-device) sizing
+		// Gap C: vLLM would default to "largest" (single-device) sizing
 		// for any undeclared multi-GPU set, even when tensor-parallel is
 		// actually configured. A declared multi-index scope is itself the
 		// operator's confirmation that this instance spans those GPUs, so it
@@ -495,7 +495,7 @@ func TestClassifyDiskFit(t *testing.T) {
 	}
 }
 
-// TestClassifyUnknownSizeDiskFit covers the P73 fix: a pull with no known
+// TestClassifyUnknownSizeDiskFit covers the unknown-size disk-fit fix: a pull with no known
 // download size (any tag outside the curated catalog) has its own
 // classification path, since classifyDiskFit's size-vs-free-space test has
 // nothing to compare against. It must mirror classifyDiskFit's
@@ -553,7 +553,7 @@ func TestFindCatalogVariantSizeMB(t *testing.T) {
 	}
 }
 
-// TestGPUCountUnknown covers the P75 Gap D disclosure helper directly,
+// TestGPUCountUnknown covers the GPU-count-unknown disclosure helper directly,
 // including the case a code-review pass found missing: an agent that is
 // present and polling successfully but has not (yet) reported any GPU
 // devices must still be flagged unknown, not shown as a confirmed reading.
@@ -760,7 +760,8 @@ func TestPullFormatIncompatible(t *testing.T) {
 	}
 }
 
-// TestHandleModelCatalog_IncompatibleRuntime is a regression test for P70:
+// TestHandleModelCatalog_IncompatibleRuntime is a regression test for the
+// runtime-compatibility gate:
 // the compiled catalog's tags are all Ollama-library-format, so a node
 // running any other runtime must see "incompatible" (not a capacity-based
 // green/yellow/red) for every variant, regardless of how much VRAM it has.

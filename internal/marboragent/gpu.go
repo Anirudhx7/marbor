@@ -14,7 +14,7 @@ var errNoGPUBackend = errors.New("marboragent: no supported GPU backend detected
 // (gpu_nvidia.go), rocm-smi (gpu_rocm.go), xpu-smi (gpu_intel.go), and
 // system_profiler (gpu_apple.go) each implement it independently without
 // Scheduler, Server, or the wire schema needing to change - see
-// .local/specs/node-agent.md's evolution notes. Mirrors how
+// the node-agent design doc's evolution notes. Mirrors how
 // internal/runtime/probe.go already lets router.go support multiple
 // inference backends (Ollama/vLLM/TGI/llama.cpp) behind one interface.
 type GPUCollector interface {
@@ -31,7 +31,7 @@ type GPUCollector interface {
 	// Collect returns this vendor's full GPU reading for the host - every
 	// device it found, plus any driver/CUDA-stack metadata. An error means
 	// "couldn't read this cycle" - the caller reports the block with an
-	// empty device list rather than fabricating a value (R1), it never
+	// empty device list rather than fabricating a value, it never
 	// means "zero everything."
 	Collect(ctx context.Context) (GPUBlock, error)
 }
@@ -53,7 +53,7 @@ var gpuCandidates = []GPUCollector{
 // backend is available on this host (a CPU-only node, or a GPU vendor this
 // agent doesn't support yet). Collect always errors so refresh() naturally
 // omits the gpu block - avoids nil-GPUCollector checks scattered through the
-// scheduler in favor of one typed "there is no GPU here" value (R1: explicit
+// scheduler in favor of one typed "there is no GPU here" value (explicit
 // unknown, never a guessed zero).
 type noGPUCollector struct{}
 

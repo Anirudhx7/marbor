@@ -1,6 +1,6 @@
 package router
 
-// explain.go - P41 per-request routing explainability.
+// explain.go - per-request routing explainability.
 //
 // RoutingDecision/ScoreComponent surface, per request, the reason a node was
 // selected and (for score-based picks) the exact weighted breakdown that

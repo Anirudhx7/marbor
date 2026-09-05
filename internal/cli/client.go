@@ -266,7 +266,7 @@ func (c *Client) RuntimeAction(node, action string) error {
 }
 
 // RuntimeLogs calls POST /admin/nodes/{name}/runtime/logs?lines=N - a pure
-// read (P58), still a POST since marbor injects driver/identifier into
+// read, still a POST since marbor injects driver/identifier into
 // the agent-side request body, same as start/stop/restart. lines<=0 means
 // "use the server-side default" - omitted from the query string.
 func (c *Client) RuntimeLogs(node string, lines int) ([]string, error) {
@@ -359,7 +359,7 @@ func escapeModelPathSegments(model string) string {
 }
 
 // PullResult mirrors handleNodePull's 202-Accepted response body - the pull
-// itself runs async server-side (P42), so this only confirms the job started,
+// itself runs async server-side, so this only confirms the job started,
 // same "one Admin API request" contract as RuntimeAction.
 type PullResult struct {
 	OK    bool   `json:"ok"`
@@ -553,7 +553,7 @@ type NodeResp struct {
 }
 
 // PatchNodeTLSFingerprint calls PATCH /admin/v1/nodes/{name} with
-// tls_fingerprint (P24 headless enrollment confirmation, spec section 11) -
+// tls_fingerprint (headless enrollment confirmation, spec section 11) -
 // matches router.NodePatch's snake_case JSON tag. fingerprint must be
 // supplied by the caller (ultimately the operator, via the CLI's
 // --fingerprint flag) - this method never probes or infers a value itself.
@@ -568,11 +568,11 @@ func (c *Client) PatchNodeTLSFingerprint(name, fingerprint string) error {
 }
 
 // PatchNodeFieldsWithPtr is the visited-aware variant for `marbor nodes
-// patch` (P397 parallelism, P411 vram-override) - sends every visited field
+// patch` (parallelism, vram-override) - sends every visited field
 // in ONE PATCH request/body, matching how handlePatchNode already applies
 // them together atomically server-side. Splitting these into separate
 // sequential requests would reopen a partial-failure window the single-PATCH
-// admin handler doesn't have (code review finding, P411). nil means "flag
+// admin handler doesn't have (code review finding). nil means "flag
 // not visited, no change"; a non-nil pointer to a zero-value ("" / 0 / an
 // empty map) explicitly clears that field.
 func (c *Client) PatchNodeFieldsWithPtr(name string, pType *string, pWidth *int, vramOverrides *map[string]int64) error {
@@ -663,7 +663,7 @@ type ScoreComponent struct {
 	Value  float64 `json:"value"`
 }
 
-// RoutingDecision mirrors router.RoutingDecision - P41 per-request routing
+// RoutingDecision mirrors router.RoutingDecision for per-request routing
 // explainability. Kept as a local DTO (not an import of internal/router)
 // following this package's existing convention of decoding Admin API JSON
 // into its own response types (see NodeResp) rather than depending on
@@ -719,7 +719,7 @@ func (c *Client) SpillCounters() ([]SpillCounterRow, error) {
 }
 
 // PatchKeyLocalOnly calls PATCH /admin/v1/keys/{name} with local_only, the
-// P66 fail-closed policy toggle - matches auth.KeyPatch's snake_case JSON
+// the fail-closed policy toggle - matches auth.KeyPatch's snake_case JSON
 // tag (handlePatchKey decodes into that struct, unlike handleAddKey which
 // decodes into config.KeyConfig's camelCase tags).
 func (c *Client) PatchKeyLocalOnly(name string, localOnly bool) error {
@@ -733,7 +733,7 @@ func (c *Client) PatchKeyLocalOnly(name string, localOnly bool) error {
 }
 
 // PatchKeyAllowLocalDegradation calls PATCH /admin/v1/keys/{name} with
-// allow_local_degradation, the P67 per-key policy gate on whether this key
+// allow_local_degradation, the per-key policy gate on whether this key
 // may be substituted with an operator-declared local alternate model -
 // matches auth.KeyPatch's snake_case JSON tag, same as PatchKeyLocalOnly.
 func (c *Client) PatchKeyAllowLocalDegradation(name string, allow bool) error {
@@ -746,7 +746,7 @@ func (c *Client) PatchKeyAllowLocalDegradation(name string, allow bool) error {
 	return nil
 }
 
-// --- Keys: list/create/revoke/patch (P84) ---
+// --- Keys: list/create/revoke/patch ---
 
 // KeyResp mirrors admin.go's keyResp for LIST and mirrors config.KeyConfig for CREATE.
 type KeyResp struct {
@@ -849,7 +849,7 @@ func (c *Client) PatchKey(name string, patch KeyPatch) error {
 	return nil
 }
 
-// --- Users (P84) ---
+// --- Users ---
 
 // UserResp mirrors store.User JSON for GET/POST/PATCH users.
 type UserResp struct {
@@ -1176,7 +1176,7 @@ type RequestEntry struct {
 }
 
 // Requests calls GET /admin/requests - the full in-memory request log ring,
-// newest first, mirroring the UI's Dashboard.tsx/Requests.tsx table (P-A2-08a).
+// newest first, mirroring the UI's Dashboard.tsx/Requests.tsx table.
 func (c *Client) Requests() ([]RequestEntry, error) {
 	resp, err := c.doRequest(http.MethodGet, "/admin/requests", true)
 	if err != nil {
@@ -1212,7 +1212,7 @@ type LiveRequestEntry struct {
 
 // LiveRequests calls GET /admin/requests/live - the same bounded in-memory
 // ring as Requests, in its raw (non-dashboard-formatted) shape, mirroring
-// the UI's live-updating request widget (P-A2-08a).
+// the UI's live-updating request widget.
 func (c *Client) LiveRequests() ([]LiveRequestEntry, error) {
 	resp, err := c.doRequest(http.MethodGet, "/admin/requests/live", true)
 	if err != nil {
@@ -1263,7 +1263,7 @@ type AuditResult struct {
 
 // AuditQuery calls GET /admin/audit with the request audit log's own filter
 // set (distinct from SystemAuditFiltered's operator-action filters), mirroring
-// the UI's Requests.tsx audit view (P-A2-08a).
+// the UI's Requests.tsx audit view.
 func (c *Client) AuditQuery(f AuditFilter) (*AuditResult, error) {
 	limit := ""
 	if f.Limit > 0 {
@@ -1300,7 +1300,7 @@ func (c *Client) AuditQuery(f AuditFilter) (*AuditResult, error) {
 }
 
 // NodeWarmupInfo mirrors handleGetNodeWarmup/handleSetNodeWarmup's response
-// shape (GET/PUT /admin/nodes/{name}/warmup) - P-A2-02.
+// shape (GET/PUT /admin/nodes/{name}/warmup).
 type NodeWarmupInfo struct {
 	Enabled bool     `json:"enabled"`
 	Models  []string `json:"models"`
@@ -1345,7 +1345,7 @@ type pinnedModelsResp struct {
 }
 
 // GetPinned calls GET /admin/nodes/{name}/pinned - the node's never-evict
-// model list (P-A2-02).
+// model list.
 func (c *Client) GetPinned(node string) ([]string, error) {
 	resp, err := c.doRequest(http.MethodGet, "/admin/nodes/"+urlPathEscape(node)+"/pinned", true)
 	if err != nil {
@@ -1375,7 +1375,7 @@ func (c *Client) SetPinned(node string, models []string) ([]string, error) {
 }
 
 // SetNodePrewarm calls POST /admin/nodes/{name}/prewarm - disables/re-enables
-// predictive prewarm for one node (P-A2-02).
+// predictive prewarm for one node.
 func (c *Client) SetNodePrewarm(node string, disabled bool) error {
 	resp, err := c.doRequestBody(http.MethodPost, "/admin/nodes/"+urlPathEscape(node)+"/prewarm",
 		map[string]interface{}{"disabled": disabled})
@@ -1387,7 +1387,7 @@ func (c *Client) SetNodePrewarm(node string, disabled bool) error {
 }
 
 // Schedule mirrors router.Schedule - a time-of-day warmup/unload/drain/
-// undrain automation entry (P-A2-03).
+// undrain automation entry.
 type Schedule struct {
 	ID         string   `json:"id"`
 	Action     string   `json:"action"`
@@ -1474,7 +1474,7 @@ func (c *Client) DeleteSchedule(id string) error {
 	return nil
 }
 
-// RoutingRule mirrors config.RoutingRule (P-A2-04).
+// RoutingRule mirrors config.RoutingRule.
 type RoutingRule struct {
 	ID         string `json:"id"`
 	Priority   int    `json:"priority"`
@@ -1556,7 +1556,7 @@ func (c *Client) SetRoutingStrategy(strategy string) error {
 
 // CloudProvider mirrors handleCloudProviders' response shape (GET
 // /admin/cloud/providers) - the API key itself is NEVER returned by the
-// server (R8), so this type deliberately has no APIKey field (P-A2-05).
+// server, so this type deliberately has no APIKey field.
 type CloudProvider struct {
 	Name            string  `json:"name"`
 	Provider        string  `json:"provider"`
@@ -1571,7 +1571,7 @@ type CloudProvider struct {
 // /admin/cloud/providers/{name}. APIKey is write-only: pass "" on an update
 // to leave the currently stored key unchanged (handleUpdateCloudProvider
 // preserves the existing value for both "" and the UI's "***" placeholder -
-// R8, never round-trip the real secret through a read).
+// never round-trip the real secret through a read).
 type CloudProviderRequest struct {
 	Name            string  `json:"name"`
 	Provider        string  `json:"provider"`
@@ -1640,7 +1640,7 @@ func (c *Client) ReorderCloudProviders(order []string) error {
 // TestCloudProvider calls POST /admin/cloud/providers/test - verifies a
 // base_url+api_key pair authenticates against the provider before saving.
 // The api_key is sent once, on the wire, for this one-shot probe only - it
-// is never persisted or echoed back by this call (R8).
+// is never persisted or echoed back by this call.
 func (c *Client) TestCloudProvider(provider, baseURL, apiKey string) error {
 	resp, err := c.doRequestBody(http.MethodPost, "/admin/cloud/providers/test", map[string]string{
 		"provider": provider, "base_url": baseURL, "api_key": apiKey,
@@ -1685,7 +1685,7 @@ func (c *Client) CloudBudgetStatus() (*CloudBudgetStatus, error) {
 }
 
 // Favorites calls GET /admin/favorites - the calling user's starred model
-// ids (P-A2-06a).
+// ids.
 func (c *Client) Favorites() ([]string, error) {
 	resp, err := c.doRequest(http.MethodGet, "/admin/favorites", true)
 	if err != nil {
@@ -1727,7 +1727,7 @@ func (c *Client) RemoveFavorite(modelID string) error {
 // rather than mirrored field-by-field into a CLI-local type, matching this
 // method's read-only "pass through what the server sent" role; SetModelConfig
 // takes the same raw-JSON shape for writes, deliberately not exposing 40
-// individual flags, P-A2-06b).
+// individual flags).
 func (c *Client) GetModelConfig(model, node string) (json.RawMessage, error) {
 	resp, err := c.doRequest(http.MethodGet, "/admin/model-config?model="+url.QueryEscape(model)+"&node="+url.QueryEscape(node), true)
 	if err != nil {
@@ -1828,7 +1828,7 @@ type NodeFitEntry struct {
 }
 
 // ModelFit calls GET /admin/nodes/model-fit - per-node VRAM fit analysis
-// for models (P-A2-06b).
+// for models.
 func (c *Client) ModelFit() ([]NodeFitEntry, error) {
 	resp, err := c.doRequest(http.MethodGet, "/admin/nodes/model-fit", true)
 	if err != nil {
@@ -1850,7 +1850,7 @@ func (c *Client) ModelFit() ([]NodeFitEntry, error) {
 // JSON rather than mirrored field-by-field, same rationale as
 // GetModelConfig: a large, purely-informational discovery response where a
 // hand-mirrored type would only need updating every time the browsing UI
-// gains a field (P-A2-06c).
+// gains a field.
 func (c *Client) ModelCatalog() (json.RawMessage, error) {
 	resp, err := c.doRequest(http.MethodGet, "/admin/models/catalog", true)
 	if err != nil {
@@ -1936,7 +1936,7 @@ func (c *Client) ListBackups() ([]BackupFileInfo, error) {
 }
 
 // RestoreBackup calls POST /admin/backup/restore - restarts marbor onto the
-// named backup file (R10-destructive; the caller is responsible for
+// named backup file (destructive; the caller is responsible for
 // confirming with the operator first).
 func (c *Client) RestoreBackup(filename string) error {
 	resp, err := c.doRequestBody(http.MethodPost, "/admin/backup/restore", map[string]string{"filename": filename})
@@ -2013,7 +2013,7 @@ func (c *Client) UploadBackup(filename string, r io.Reader) error {
 // AnalyticsSummary calls GET /admin/analytics, returning the raw JSON body
 // (hourly analytics + per-model stats - a large, purely-informational
 // dashboard aggregate; see ModelCatalog's doc comment for why this stays
-// raw JSON, P-A2-07).
+// raw JSON).
 func (c *Client) AnalyticsSummary() (json.RawMessage, error) {
 	resp, err := c.doRequest(http.MethodGet, "/admin/analytics", true)
 	if err != nil {
@@ -2053,7 +2053,7 @@ func (c *Client) AnalyticsExport(exportType, format string) (filename string, da
 // CloudSavings mirrors GET /admin/metrics/savings' response shape.
 // CloudSpentUSD and SavedUSD are nullable pointers because the server sends
 // JSON null (not 0.0) when requests exist but no token data was ever parsed -
-// a non-pointer float64 would silently decode that null as a fabricated $0.00 (R1).
+// a non-pointer float64 would silently decode that null as a fabricated $0.00.
 type CloudSavings struct {
 	LocalRequests int64    `json:"local_requests"`
 	CloudRequests int64    `json:"cloud_requests"`
@@ -2114,8 +2114,7 @@ type WarmupStatus struct {
 	PredictiveEngineEnabled bool     `json:"predictive_engine_enabled"`
 }
 
-// GetWarmupStatus calls GET /admin/warmup - global warmup engine status
-// (P-A2-08c).
+// GetWarmupStatus calls GET /admin/warmup - global warmup engine status.
 func (c *Client) GetWarmupStatus() (*WarmupStatus, error) {
 	resp, err := c.doRequest(http.MethodGet, "/admin/warmup", true)
 	if err != nil {
@@ -2151,7 +2150,7 @@ func (c *Client) WarmupPing() error {
 
 // SystemInfo calls GET /admin/system-info, returning the raw JSON body -
 // control-plane host system info plus per-node GPU summary (see
-// ModelCatalog's doc comment for why this stays raw JSON, P-A2-08c).
+// ModelCatalog's doc comment for why this stays raw JSON).
 func (c *Client) SystemInfo() (json.RawMessage, error) {
 	resp, err := c.doRequest(http.MethodGet, "/admin/system-info", true)
 	if err != nil {
@@ -2171,7 +2170,7 @@ type ConfigReloadResult struct {
 }
 
 // ConfigReload calls POST /admin/config/reload - re-syncs live
-// router/auth state from SQLite (P-A2-08c).
+// router/auth state from SQLite.
 func (c *Client) ConfigReload() (*ConfigReloadResult, error) {
 	resp, err := c.doRequestBody(http.MethodPost, "/admin/config/reload", nil)
 	if err != nil {
@@ -2185,7 +2184,7 @@ func (c *Client) ConfigReload() (*ConfigReloadResult, error) {
 	return &out, nil
 }
 
-// PendingUserCount calls GET /admin/v1/users/pending-count (P-A2-08d).
+// PendingUserCount calls GET /admin/v1/users/pending-count.
 func (c *Client) PendingUserCount() (int, error) {
 	resp, err := c.doRequest(http.MethodGet, "/admin/v1/users/pending-count", true)
 	if err != nil {
@@ -2202,7 +2201,7 @@ func (c *Client) PendingUserCount() (int, error) {
 }
 
 // PullJobSnapshot mirrors admin.go's pullJobSnapshot - one active/recent
-// model pull job (P-A2-08b).
+// model pull job.
 type PullJobSnapshot struct {
 	Node           string    `json:"node"`
 	Model          string    `json:"model"`
@@ -2217,7 +2216,7 @@ type PullJobSnapshot struct {
 }
 
 // ActivePulls calls GET /admin/pulls - every currently-active pull job
-// across the fleet, mirroring the UI's pullProgress.ts tracking (P-A2-08b).
+// across the fleet, mirroring the UI's pullProgress.ts tracking.
 // "models pull-progress" (a single node+model) filters this same list
 // client-side rather than following the separate SSE progress stream, per
 // operational-interfaces.md's "the CLI is always exactly one Admin API
@@ -2236,7 +2235,7 @@ func (c *Client) ActivePulls() ([]PullJobSnapshot, error) {
 }
 
 // CancelPull calls DELETE /admin/nodes/{name}/pull?model=X - cancels an
-// in-flight pull (P-A2-08b).
+// in-flight pull.
 func (c *Client) CancelPull(node, model string) (cancelled bool, err error) {
 	resp, err := c.doRequestBody(http.MethodDelete, "/admin/nodes/"+urlPathEscape(node)+"/pull?model="+url.QueryEscape(model), nil)
 	if err != nil {
@@ -2254,7 +2253,7 @@ func (c *Client) CancelPull(node, model string) (cancelled bool, err error) {
 }
 
 // RunBenchmark calls POST /admin/benchmark/run - starts a hardware
-// benchmark job, returning its job id (P-A2-09a).
+// benchmark job, returning its job id.
 func (c *Client) RunBenchmark(node, model string, n int) (jobID string, err error) {
 	resp, err := c.doRequestBody(http.MethodPost, "/admin/benchmark/run", map[string]interface{}{
 		"node": node, "model": model, "n": n,
@@ -2325,7 +2324,7 @@ func (c *Client) BenchmarkRuns() (json.RawMessage, error) {
 }
 
 // MarborAgentInfo mirrors handleGetMarborAgent's response shape - never
-// carries the token (only enable/regenerate return that, once, R8-style).
+// carries the token (only enable/regenerate return that, once).
 type MarborAgentInfo struct {
 	Node    string `json:"node"`
 	Enabled bool   `json:"enabled"`
@@ -2334,7 +2333,7 @@ type MarborAgentInfo struct {
 	Scheme  string `json:"scheme,omitempty"`
 }
 
-// GetMarborAgent calls GET /admin/nodes/{name}/agent (P-A2-09b).
+// GetMarborAgent calls GET /admin/nodes/{name}/agent.
 func (c *Client) GetMarborAgent(node string) (*MarborAgentInfo, error) {
 	resp, err := c.doRequest(http.MethodGet, "/admin/nodes/"+urlPathEscape(node)+"/agent", true)
 	if err != nil {
@@ -2350,8 +2349,8 @@ func (c *Client) GetMarborAgent(node string) (*MarborAgentInfo, error) {
 
 // MarborAgentEnableResult mirrors handleEnableMarborAgent/
 // handleRegenerateMarborAgentToken's response shape - the ONLY response
-// that ever carries the plaintext enrollment install command/token (P50,
-// R8: never persisted or echoed back by GetMarborAgent).
+// that ever carries the plaintext enrollment install command/token -
+// never persisted or echoed back by GetMarborAgent.
 type MarborAgentEnableResult struct {
 	Node                  string `json:"node"`
 	Enabled               bool   `json:"enabled"`
@@ -2414,7 +2413,7 @@ func (c *Client) RegenerateMarborAgentToken(node string) (*MarborAgentEnableResu
 }
 
 // ClearNodeControl calls DELETE /admin/nodes/{name}/control - clears the
-// accepted control driver config (P-A2-09c).
+// accepted control driver config.
 func (c *Client) ClearNodeControl(node string) error {
 	resp, err := c.doRequestBody(http.MethodDelete, "/admin/nodes/"+urlPathEscape(node)+"/control", nil)
 	if err != nil {
@@ -2429,8 +2428,7 @@ func (c *Client) ClearNodeControl(node string) error {
 // empty only on a forced first-login change (MustChangePassword=true) - the
 // server itself enforces that, not this client. The endpoint invalidates
 // every existing session for the user and issues a fresh one, so this
-// updates c.Token in place from the response's Set-Cookie, mirroring Login
-// (P-A2-09d).
+// updates c.Token in place from the response's Set-Cookie, mirroring Login.
 func (c *Client) ChangePassword(currentPassword, newPassword string) error {
 	payload, err := json.Marshal(struct {
 		CurrentPassword string `json:"current_password"`
@@ -2464,8 +2462,7 @@ func (c *Client) ChangePassword(currentPassword, newPassword string) error {
 
 // SkipPasswordChange calls POST /skip-password-change - dismisses the
 // forced-password-change prompt for this session only, up to
-// maxSkipPasswordChanges times server-side. Also rotates the session token
-// (P-A2-09d).
+// maxSkipPasswordChanges times server-side. Also rotates the session token.
 func (c *Client) SkipPasswordChange() error {
 	req, err := http.NewRequest(http.MethodPost, c.BaseURL+"/skip-password-change", nil)
 	if err != nil {

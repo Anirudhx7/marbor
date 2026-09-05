@@ -55,7 +55,7 @@ var (
 	}, []string{"model", "node"})
 
 	// requestTPOT is populated by anything that measures real
-	// time-per-output-token from actual decode-phase chunk timestamps (P408) -
+	// time-per-output-token from actual decode-phase chunk timestamps -
 	// e.g. internal/bench's MeasureChatLatency, wired in wherever a caller
 	// derives a real TPOT sample. As of this metric's introduction nothing in
 	// the live proxy hot path (internal/proxy) observes it yet - see
@@ -164,7 +164,7 @@ func RequestDuration(model, node string, seconds float64) {
 
 // RequestTTFT records real time-to-first-byte. Callers must skip this for
 // requests where no byte was ever written (immediate error, full abort) -
-// there is no real TTFT to report in that case, per R1.
+// there is no real TTFT to report in that case.
 func RequestTTFT(model, node string, seconds float64) {
 	requestTTFT.WithLabelValues(boundModel(model), node).Observe(seconds)
 }
@@ -173,13 +173,13 @@ func RequestTTFT(model, node string, seconds float64) {
 // only call this with a genuinely measured value derived from real
 // decode-phase chunk timestamps (see bench.LatencySample/MeasureChatLatency
 // for the reference calculation: (last content-chunk timestamp - first) /
-// (chunk count - 1)) - never an estimate. As of P408, this is wired into the
+// (chunk count - 1)) - never an estimate. This is wired into the
 // standalone benchmark tool/job (internal/bench, internal/admin/benchmark.go)
 // only; the live streaming proxy path (internal/proxy) does not yet call
-// this - see P408's queue closure note for why live-traffic TPOT was
-// deliberately deferred (parsing every streamed chunk's JSON content in the
-// proxy's hot Write() path is a bigger, separately-risked change than this
-// item's scope, per R2's "streaming must stay streaming" guard).
+// this - live-traffic TPOT was deliberately deferred because parsing every
+// streamed chunk's JSON content in the proxy's hot Write() path is a bigger,
+// separately-risked change than this item's scope, and streaming must stay
+// streaming.
 func RequestTPOT(model, node string, seconds float64) {
 	requestTPOT.WithLabelValues(boundModel(model), node).Observe(seconds)
 }

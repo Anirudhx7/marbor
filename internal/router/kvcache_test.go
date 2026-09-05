@@ -8,8 +8,8 @@ import (
 
 // TestKVCacheBytesPerToken_GQAvsMHA verifies the formula produces a smaller
 // per-token footprint for a GQA model (fewer KV heads than attention heads)
-// than an otherwise-identical MHA model (P405 acceptance criterion: same
-// disk size, different KV-cache footprint).
+// than an otherwise-identical MHA model of the same
+// disk size.
 func TestKVCacheBytesPerToken_GQAvsMHA(t *testing.T) {
 	// Same layers/hiddenSize/attnHeads; GQA groups 4 attention heads per KV head.
 	mha := KVCacheBytesPerToken(32, 32, 4096, 32) // numKVHeads == numAttnHeads
@@ -28,8 +28,8 @@ func TestKVCacheBytesPerToken_ZeroAttnHeadsGuarded(t *testing.T) {
 	}
 }
 
-// TestEstimateContextAwareBytes_ContextLengthMatters covers the P405
-// acceptance criterion that a 1K-token request and a 32K-token request
+// TestEstimateContextAwareBytes_ContextLengthMatters covers the
+// requirement that a 1K-token request and a 32K-token request
 // against the same model produce different size estimates.
 func TestEstimateContextAwareBytes_ContextLengthMatters(t *testing.T) {
 	const sizeMB = 8000 // 8GB weights, e.g. an 8B Q4 model
@@ -40,8 +40,8 @@ func TestEstimateContextAwareBytes_ContextLengthMatters(t *testing.T) {
 	}
 }
 
-// TestEstimateContextAwareBytes_GQAvsMHANoLongerTie covers the P405
-// acceptance criterion that a GQA model and an MHA model of the same disk
+// TestEstimateContextAwareBytes_GQAvsMHANoLongerTie covers the
+// requirement that a GQA model and an MHA model of the same disk
 // size no longer tie in headroom estimates once real architecture facts are
 // available.
 func TestEstimateContextAwareBytes_GQAvsMHANoLongerTie(t *testing.T) {

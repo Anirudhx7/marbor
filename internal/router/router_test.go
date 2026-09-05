@@ -889,7 +889,7 @@ func TestAddNode_UpsertsByNameInsteadOfDuplicating(t *testing.T) {
 }
 
 // TestAddNode_UpsertPreservesLivePatchedVRAMOverrides is a regression test
-// for a P411 code-review finding: AddNode's upsert-by-name branch used to
+// for a code-review finding: AddNode's upsert-by-name branch used to
 // unconditionally overwrite VRAMOverrides from the incoming config.NodeConfig
 // (always empty/nil for a caller like handleAddNode's POST /admin/nodes,
 // which never carries vram_overrides), silently wiping a live operator
@@ -1039,7 +1039,7 @@ func TestPatchNodeMetadata(t *testing.T) {
 	}
 }
 
-// TestPatchNodeGPUIndices verifies P75 Gap B/C's declared-GPU-scope wiring:
+// TestPatchNodeGPUIndices verifies the declared-GPU-scope wiring:
 // PatchNode applies NodePatch.GPUIndices to NodeState.DeclaredGPUIndices, a
 // nil patch field leaves an existing declaration untouched (no-op, matching
 // every other NodePatch field's semantics), and a non-nil empty slice
@@ -1085,7 +1085,7 @@ func TestPatchNodeGPUIndices(t *testing.T) {
 	}
 }
 
-// TestPatchNodeVRAMOverrides verifies P411's whole-map-replace PATCH
+// TestPatchNodeVRAMOverrides verifies the whole-map-replace PATCH
 // semantics: sets, survives an unrelated patch, and can be explicitly
 // cleared with a non-nil empty map - mirroring TestPatchNodeGPUIndices.
 func TestPatchNodeVRAMOverrides(t *testing.T) {

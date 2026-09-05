@@ -66,7 +66,7 @@ func (t *anthropicTransport) RoundTrip(req *http.Request) (*http.Response, error
 	req.ContentLength = int64(len(anthropicBody))
 	req.Header.Set("Content-Type", "application/json")
 	// Anthropic authenticates via x-api-key + anthropic-version, not
-	// Authorization: Bearer. R4 (admin token exact-match) is unaffected -
+	// Authorization: Bearer. The admin token exact-match check is unaffected -
 	// this is the outbound cloud-provider credential, unrelated to marbor
 	// admin auth.
 	req.Header.Del("Authorization")
@@ -332,9 +332,9 @@ type anthropicSSEEvent struct {
 // SSE event stream from src and emits OpenAI-shaped SSE chunks
 // ("data: {...}\n\n" ... "data: [DONE]\n\n"), the exact shape
 // translateSSEToNDJSON (cloudtranslate.go) and any /v1/-passthrough client
-// already expect. The pipe is unbuffered on the write side (R2: no
-// buffering) - each event is translated and written as soon as it is
-// scanned.
+// already expect. The pipe is unbuffered on the write side (streaming stays
+// streaming: no buffering) - each event is translated and written as soon as
+// it is scanned.
 func translateAnthropicSSEToOpenAI(src io.ReadCloser) io.ReadCloser {
 	pr, pw := io.Pipe()
 

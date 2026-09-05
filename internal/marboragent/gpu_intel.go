@@ -91,7 +91,7 @@ func (intelCollector) Collect(ctx context.Context) (GPUBlock, error) {
 		}
 		// A failed per-device stats call still yields a device entry with
 		// its Model (from discovery) and every reading omitted - not
-		// dropped and not zero-filled (R1).
+		// dropped and not zero-filled.
 
 		block.Devices = append(block.Devices, info)
 	}
@@ -160,6 +160,6 @@ func applyXPUStats(info *GPUInfo, statsOut []byte) {
 	}
 	// Intel Data Center GPUs are typically fanless (liquid/chassis-cooled),
 	// and xpu-smi does not document a fan-speed metric at all - FanPercent
-	// is intentionally never set here, not an oversight (R1: no such
+	// is intentionally never set here, not an oversight (no such
 	// measurement exists to report, same as nvidia-smi's own "N/A" case).
 }

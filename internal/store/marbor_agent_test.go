@@ -14,7 +14,7 @@ func TestMarborAgentRecord_TokenNeverMarshaled(t *testing.T) {
 		t.Fatalf("json.Marshal: %v", err)
 	}
 	if strings.Contains(string(b), "secret-value") {
-		t.Fatalf("MarborAgentRecord must never marshal Token (P68 - closes config-dump leak path), got %s", b)
+		t.Fatalf("MarborAgentRecord must never marshal Token (closes a config-dump leak path), got %s", b)
 	}
 }
 
@@ -57,7 +57,7 @@ func TestUpsertAndGetMarborAgent(t *testing.T) {
 	}
 }
 
-// TestUpsertAndGetMarborAgent_Scope is the P54 store-level round-trip: Scope
+// TestUpsertAndGetMarborAgent_Scope is the store-level round-trip: Scope
 // persists alongside Token and comes back unchanged through GetMarborAgent.
 func TestUpsertAndGetMarborAgent_Scope(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
@@ -85,7 +85,7 @@ func TestUpsertAndGetMarborAgent_Scope(t *testing.T) {
 }
 
 // TestMarborAgentRowPredatingScopeColumnDefaultsToAdmin verifies a row
-// inserted before the P54 scope column existed (the exact shape of an
+// inserted before the scope column existed (the exact shape of an
 // existing installation's marbor.db before this migration ran) reads back as
 // "admin" - matching that row's actual token, which has no scope prefix and
 // so parses as tierAdmin via scopeOf's fallback (backward compatible).
@@ -98,7 +98,7 @@ func TestMarborAgentRowPredatingScopeColumnDefaultsToAdmin(t *testing.T) {
 	defer st.Close()
 
 	ss := st.(*sqliteStore)
-	// Deliberately omit the scope column, simulating a pre-P54 row (or the
+	// Deliberately omit the scope column, simulating a row from before the column existed (or the
 	// ALTER TABLE migration's default applying to a row written before it
 	// ran).
 	if _, err := ss.db.Exec(`INSERT INTO marbor_agent (name, enabled, port, token) VALUES (?, ?, ?, ?)`,
@@ -114,7 +114,7 @@ func TestMarborAgentRowPredatingScopeColumnDefaultsToAdmin(t *testing.T) {
 		t.Fatal("GetMarborAgent: found=false, want true")
 	}
 	if got.Scope != "admin" {
-		t.Fatalf("GetMarborAgent.Scope for a pre-P54 row = %q, want %q (column default)", got.Scope, "admin")
+		t.Fatalf("GetMarborAgent.Scope for a row predating the scope column = %q, want %q (column default)", got.Scope, "admin")
 	}
 }
 
@@ -195,7 +195,7 @@ func TestGetMarborAgentNotFound(t *testing.T) {
 }
 
 // TestMarborAgentTokenEncryptedAtRest verifies the token is stored under the
-// enc:v1: prefix on disk, not as plaintext (R8).
+// enc:v1: prefix on disk, not as plaintext.
 func TestMarborAgentTokenEncryptedAtRest(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	st, err := Open(dbPath)
@@ -314,7 +314,7 @@ func TestDeleteMarborAgent(t *testing.T) {
 
 // TestDeleteNodeCascadesMarborAgent verifies that removing a node (DeleteNode)
 // also removes its marbor_agent row - a stale agent token for a deleted node
-// is a dangling-secret concern (R8), even though other per-node aux tables
+// is a dangling-secret concern, even though other per-node aux tables
 // (node_overrides, node_drain) are left behind by the existing pattern.
 func TestDeleteNodeCascadesMarborAgent(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
@@ -343,7 +343,7 @@ func TestDeleteNodeCascadesMarborAgent(t *testing.T) {
 		t.Fatalf("GetMarborAgent after DeleteNode: %v", err)
 	}
 	if found {
-		t.Fatal("DeleteNode did not cascade-delete the marbor_agent row - stale token left behind (R8)")
+		t.Fatal("DeleteNode did not cascade-delete the marbor_agent row - stale token left behind")
 	}
 }
 

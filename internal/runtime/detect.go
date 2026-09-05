@@ -17,18 +17,18 @@ import (
 // (the genuine "unidentifiable -> ollama" case). Kept as the two-value
 // signature the router's own auto-detect caller (health.go) already
 // consumes - DetectRuntimeConfirmed below adds the third state DetectAll
-// needs (P149) on top of P146's already-landed reached=false fix for the
+// needs, on top of an already-landed reached=false fix for the
 // ambiguous empty-/v1/models-data case (which does change what this
 // function returns for that one input, intentionally - see probeV1Models).
-// P149 itself adds no further behavior change beyond that: confirmed is a
-// new derived value, never fed back into runtime/reached above.
+// This addition itself adds no further behavior change beyond that: confirmed
+// is a new derived value, never fed back into runtime/reached above.
 func DetectRuntime(ctx context.Context, nodeURL string, client *http.Client) (runtime string, reached bool) {
 	runtime, reached, _ = DetectRuntimeConfirmed(ctx, nodeURL, client)
 	return runtime, reached
 }
 
 // DetectRuntimeConfirmed is DetectRuntime's underlying implementation, adding
-// a third state (P149): confirmed=true means runtime was identified by an
+// a third state: confirmed=true means runtime was identified by an
 // actual signature match (ollama's /api/ps, tgi's /info model_id, vllm's
 // owned_by field, or llama.cpp's non-empty /v1/models data); confirmed=false
 // with runtime=="ollama" means the node responded (reached=true) but matched
@@ -42,7 +42,7 @@ func DetectRuntime(ctx context.Context, nodeURL string, client *http.Client) (ru
 func DetectRuntimeConfirmed(ctx context.Context, nodeURL string, client *http.Client) (runtime string, reached bool, confirmed bool) {
 	base := strings.TrimRight(nodeURL, "/")
 
-	// Ollama: unique /api/ps endpoint, shape-validated (P260) - a bare HTTP
+	// Ollama: unique /api/ps endpoint, shape-validated - a bare HTTP
 	// 200 alone isn't a real signature (any non-Ollama server that happens
 	// to answer 200 on this path would otherwise be misclassified "ollama"
 	// on first probe, and that label is committed permanently by the
@@ -176,7 +176,7 @@ func probeV1Models(ctx context.Context, url string, client *http.Client) (runtim
 	// /v1/models responded 200 with an empty data array: a genuine vLLM
 	// server always lists its model in data[0], so this isn't a real vLLM
 	// signature match - it's ambiguous (could be either backend mid-startup,
-	// or something else entirely). Return reached=false (P146) so the caller
+	// or something else entirely). Return reached=false so the caller
 	// treats this the same as a transport-level failure - leave autoDetect
 	// pending and retry next poll - rather than committing a guessed "vllm"
 	// permanently.

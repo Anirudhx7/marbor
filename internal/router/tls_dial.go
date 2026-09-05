@@ -19,7 +19,7 @@ import (
 // fingerprint of a raw DER certificate - the exact format dialTLSContext's
 // VerifyPeerCertificate verifies pinned nodes against below, and the format
 // admin.go's tls-probe endpoint must report to the operator for
-// confirmation (P24 section 2). The two call sites must never independently
+// confirmation. The two call sites must never independently
 // reimplement this computation - a silent formatting divergence (e.g. one
 // side adding byte-separator colons) would mean a value the operator copied
 // from a probe response could never actually match at verification time.
@@ -36,10 +36,8 @@ func CertFingerprintSHA256(rawCert []byte) string {
 // unload, runtime start/stop/restart/logs, health checks) - must be built
 // via this helper instead of a bare &http.Client{} literal. That is what
 // makes fingerprint verification apply uniformly rather than only to
-// whichever call sites happened to be updated (P24, see
-// .local/specs/node-agent-tls.md section 6, decision #3 in
-// .local/core/P24-TLS-DESIGN.md: poll and action paths ship together, not
-// staged).
+// whichever call sites happened to be updated: poll and action paths ship
+// together, not staged.
 func (r *Router) HTTPClientForNode(timeout time.Duration) *http.Client {
 	client := &http.Client{Timeout: timeout}
 	if r.tlsTransport != nil {
@@ -58,8 +56,7 @@ func (r *Router) HTTPClientForNode(timeout time.Duration) *http.Client {
 // dialTLSContext is the Router's shared http.Transport.DialTLSContext,
 // installed once in New() (via a closure, since the Transport is built
 // before the Router itself exists - see New()'s rr variable) and reused by
-// every client HTTPClientForNode returns, plus the poll-path client. See
-// .local/specs/node-agent-tls.md section 6.
+// every client HTTPClientForNode returns, plus the poll-path client.
 //
 // Target-to-NodeState mapping (verified against the current codebase before
 // this was written, since agent_poll.go groups multiple NodeState entries
@@ -91,8 +88,8 @@ func (r *Router) HTTPClientForNode(timeout time.Duration) *http.Client {
 //     new host:port a redirect targets, going through this exact same
 //     lookup - if the new target isn't a known marbor-agent endpoint it
 //     naturally falls through to ordinary verification. Marbor Agent
-//     endpoints do not redirect in practice (R9's protocol is plain JSON
-//     GET/POST), so this is a non-issue in practice but the logic handles
+//     endpoints do not redirect in practice (the marbor agent protocol is
+//     plain JSON GET/POST), so this is a non-issue in practice but the logic handles
 //     it safely regardless.
 //   - Test-server addresses (httptest.NewTLSServer, 127.0.0.1:<random>)
 //     match this same lookup as long as the test registers a NodeState with
@@ -126,7 +123,7 @@ func (r *Router) dialTLSContext(ctx context.Context, network, addr string) (net.
 
 	fingerprint, matched, ambiguous := r.pinnedFingerprintFor(host, portStr)
 	if ambiguous {
-		return nil, fmt.Errorf("router: dialTLSContext: host %q has multiple sibling nodes with conflicting pinned TLS fingerprints - refusing to guess which one is correct (see .local/specs/node-agent-tls.md section 15)", host)
+		return nil, fmt.Errorf("router: dialTLSContext: host %q has multiple sibling nodes with conflicting pinned TLS fingerprints - refusing to guess which one is correct", host)
 	}
 
 	dialer := &net.Dialer{}
@@ -141,7 +138,7 @@ func (r *Router) dialTLSContext(ctx context.Context, network, addr string) (net.
 		// Transport would have done for this address. A still-unpinned
 		// self-signed cert simply fails standard verification here and the
 		// dial errors out as "unreachable" - the correct fail-safe default
-		// for "no pin recorded but URL is https://" (section 6) without any
+		// for "no pin recorded but URL is https://" without any
 		// special-case code.
 		tlsConn := tls.Client(rawConn, &tls.Config{ServerName: host})
 		if err := tlsConn.HandshakeContext(ctx); err != nil {
@@ -182,8 +179,7 @@ func (r *Router) dialTLSContext(ctx context.Context, network, addr string) (net.
 // too - so errors.Is(err, ErrTLSFingerprintMismatch) correctly reaches
 // through both layers from a caller holding only the final Do(req) error
 // (agent_poll.go uses this to distinguish a mismatch from any other
-// unreachable-node failure, surfaced to the dashboard as a distinct status
-// per .local/specs/node-agent-tls.md section 6).
+// unreachable-node failure, surfaced to the dashboard as a distinct status).
 var ErrTLSFingerprintMismatch = errors.New("tls fingerprint mismatch")
 
 // pinnedFingerprintFor reports the single pinned TLS fingerprint that

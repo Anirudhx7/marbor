@@ -1,8 +1,8 @@
 package marboragent
 
 // actions.go implements the Marbor Agent Protocol's first mutating resource
-// (see .local/specs/node-agent.md section 16, node-agent-capabilities.md
-// Group 2): POST /v1/models, capability "models.pull". The agent runs the
+// (see the node-agent design docs, Group 2): POST /v1/models, capability
+// "models.pull". The agent runs the
 // locally-detected runtime's own model-download mechanism directly on the
 // node, rather than marbor reaching the node's runtime HTTP API itself
 // (admin.go's handleNodePull, the pre-existing path kept for nodes without
@@ -148,8 +148,8 @@ func pullViaTGI(ctx context.Context, model, hfToken, driver, identifier string) 
 // huggingface_hub package) to already be present on the node - both vLLM
 // and TGI depend on huggingface_hub internally, so it is very likely
 // already installed alongside either; a node genuinely missing it gets a
-// clear, honest error rather than a silent no-op (R1 extended to actions:
-// an action that didn't happen must never report ok:true). Same
+// clear, honest error rather than a silent no-op: an action that didn't
+// happen must never report ok:true. Same
 // docker-driver lookPath skip as pullViaTGI, for the same reason.
 func pullViaHFHub(ctx context.Context, model, hfToken, driver, identifier string) error {
 	if driver != "docker" {
@@ -184,7 +184,7 @@ func hfRepoID(model string) string {
 // inside that container via `docker exec` instead of directly on this host -
 // the runtime's own CLI (ollama, huggingface-cli, ...) lives in the
 // container's filesystem/PATH, not this agent process's, when the runtime is
-// deployed that way (P43's ControlDriver abstraction already knows this for
+// deployed that way (the ControlDriver abstraction already knows this for
 // start/stop/restart/logs; pull/delete/unload need the same awareness).
 // HF_TOKEN is passed via `docker exec -e` in that case, since a container's
 // exec environment is set per-invocation, not by mutating a *exec.Cmd.Env
@@ -281,7 +281,7 @@ func lastMeaningfulLine(s string) string {
 // draws a terminal spinner using exactly these on stderr even when its
 // output is captured rather than attached to a real TTY - uncleaned, they
 // show up as garbled box characters in any error message surfaced to the
-// admin UI (R1: real error text, not real-but-unreadable error text).
+// admin UI (real error text, not real-but-unreadable error text).
 var ansiEscapeSequence = regexp.MustCompile(`\x1b\[[0-9;?]*[a-zA-Z]`)
 
 func stripANSI(s string) string {
@@ -318,7 +318,7 @@ var listModelsTimeout = 30 * time.Second
 
 // modelEntry is one entry in GET /v1/models' response - the Marbor Agent
 // Protocol's "models" resource, capability "models.list". SizeBytes is
-// omitted (never fabricated - R1) when the source can't report a real size.
+// omitted (never fabricated) when the source can't report a real size.
 type modelEntry struct {
 	Name      string `json:"name"`
 	SizeBytes int64  `json:"size_bytes,omitempty"`
@@ -330,7 +330,7 @@ type modelEntry struct {
 	Source string `json:"source"`
 	// Family is Ollama's own architecture classification (e.g. "llama",
 	// "bert"), letting a caller distinguish chat-capable models from
-	// embedding/encoder-only ones. Omitted (never guessed - R1) for sources
+	// embedding/encoder-only ones. Omitted (never guessed) for sources
 	// that can't report it - today only listViaOllamaTags populates this;
 	// listViaHFCache's directory scan has no such metadata available.
 	Family string `json:"family,omitempty"`
@@ -450,7 +450,7 @@ func listViaHFCache(_ context.Context, _ string) ([]modelEntry, error) {
 		}
 		// A WalkDir error partway through (permission change, a file
 		// deleted mid-scan) leaves size holding only a partial sum - never
-		// report that as the real size (R1: an incomplete measurement is
+		// report that as the real size (an incomplete measurement is
 		// not a measurement), so size_bytes is omitted instead.
 		size, err := dirSize(filepath.Join(dir, e.Name()))
 		if err != nil {
@@ -493,7 +493,7 @@ func hfCacheRepoID(dirName string) string {
 }
 
 // dirSize sums the real on-disk size of every regular file under path -
-// never estimated (R1) - so a cached model's reported size reflects what's
+// never estimated - so a cached model's reported size reflects what's
 // actually on the node's disk.
 func dirSize(path string) (int64, error) {
 	var total int64
@@ -690,8 +690,8 @@ var unloadModelTimeout = 30 * time.Second
 // evicts one model from VRAM while leaving the runtime process (and any
 // other loaded models) running, mirroring pullCommands/listCommands/
 // deleteCommands. Takes runtimeURL (unused by the CLI-subprocess entries,
-// required by the HTTP one) for the same reason listCommands does - per
-// .local/specs/node-agent-capabilities.md's verify-before-build note, only
+// required by the HTTP one) for the same reason listCommands does - after
+// verifying against each runtime's actual capabilities, only
 // ollama and llamacpp get entries, deliberately, not an oversight:
 //   - vLLM's sleep-mode (/sleep, /wake_up) is real but process-scoped (it
 //     unloads *the* model in that process, not one of several) and gated
@@ -702,9 +702,10 @@ var unloadModelTimeout = 30 * time.Second
 //   - The official mlx_lm.server has no multi-model or unload endpoint at
 //     all; only third-party wrappers do.
 //   - llama.cpp's router mode has a genuine per-model POST /models/unload
-//     primitive (P32, following up on P31's deferral). The runtime-address
-//     discovery P31 lacked already existed one layer up (RuntimeTarget's url,
-//     the same one listCommands' HTTP entries use) - it just wasn't threaded
+//     primitive, added as a follow-up to an earlier deferral. The
+//     runtime-address discovery that earlier work lacked already existed
+//     one layer up (RuntimeTarget's url, the same one listCommands' HTTP
+//     entries use) - it just wasn't threaded
 //     through unloadCommands yet. The remaining hazard: internal/runtime's
 //     "llamacpp" signature match (GET /v1/models responding non-empty) is
 //     true for both router mode and a plain single-model llama-server, which
@@ -837,7 +838,7 @@ func fetchLlamaCppRouterModels(ctx context.Context, runtimeURL string) (*llamaCp
 //
 // Confirmed 2026-07-28 against a real router-mode instance: the router's
 // "id" is a bare filename stem ("Qwen2.5-0.5B-Instruct-Q4_K_M"), which has
-// no substring relationship to "org/repo" at all - the P34 queue item's
+// no substring relationship to "org/repo" at all - the
 // original assumption that "id" looked like "org/repo:QUANT" was verified
 // INVALID. The only place "org/repo" survives is inside each entry's
 // status.args, in the "--model" flag's value - the on-disk HF cache path
@@ -849,8 +850,8 @@ func fetchLlamaCppRouterModels(ctx context.Context, runtimeURL string) (*llamaCp
 // exact test fixture has two) has multiple router ids whose --model path
 // all fall under the same "models--org--repo" directory. That makes
 // "org/repo" alone genuinely ambiguous among which quant to unload - this
-// deliberately refuses to guess (matching R1's "honest error over a false
-// success" and the queue's "single match = use it, zero or multiple = clear
+// deliberately refuses to guess ("honest error over a false
+// success" and "single match = use it, zero or multiple = clear
 // error, never guess" design constraint) and instead reports the candidate
 // ids so the caller can retry with one.
 func resolveLlamaCppRouterModelID(list *llamaCppRouterModelList, model string) (string, error) {
@@ -901,7 +902,7 @@ func resolveLlamaCppRouterModelID(list *llamaCppRouterModelList, model string) (
 // resolved from marbor's own naming (org/repo, or an already-exact id) to the
 // router's own id via resolveLlamaCppRouterModelID before the real POST -
 // see that function's doc comment for why "org/repo" alone cannot be sent
-// to the router directly (P34).
+// to the router directly.
 func unloadViaLlamaCppRouter(ctx context.Context, runtimeURL, model, _, _ string) error {
 	list, err := fetchLlamaCppRouterModels(ctx, runtimeURL)
 	if err != nil {
@@ -951,7 +952,7 @@ var healthCheckTimeout = 10 * time.Second
 
 // healthCheckResult is GET /v1/runtime/health's response body, capability
 // "runtime.health_check". LatencyMs is a real time.Since measurement around
-// the probe call, never estimated (R1). No omitempty - a genuinely fast
+// the probe call, never estimated. No omitempty - a genuinely fast
 // (0ms) probe is a real measurement, not an absent one, and omitempty on an
 // int64 would silently drop it, indistinguishable from "not reported."
 // LatencyMs is meaningless when OK is false (the probe never completed) and

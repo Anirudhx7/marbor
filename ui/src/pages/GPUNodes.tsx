@@ -16,7 +16,7 @@ import type { GPUNode, ModelFitResponse, NodeFit, FitStatus } from '../types';
 import { formatDurationLong } from '../lib/time';
 
 // vramOverridesToString mirrors the CLI's --vram-override comma-separated
-// "model=mb" convention (P411), same as the editGPUIndices
+// "model=mb" convention, same as the editGPUIndices
 // comma-separated-list pattern used elsewhere in this file. Module-scoped so
 // both NodeCard's summary badge and GPUNodes' edit modal share one format.
 function vramOverridesToString(overrides?: Record<string, number>): string {
@@ -450,7 +450,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
       </div>
 
       {/* marbor agent Telemetry - only ever real values from the agent poll;
-          '--' whenever agentPresent is false, never a fabricated number (R1). */}
+          '--' whenever agentPresent is false, never a fabricated number. */}
       <div className="grid grid-cols-3 gap-2 mb-4 text-xs bg-secondary/30 border border-border/20 rounded-lg p-3">
         <div>
           <span className="text-muted-foreground flex items-center gap-1 text-[10px] uppercase font-semibold tracking-wider">
@@ -588,8 +588,8 @@ export function GPUNodes() {
     port: '11434',
     gpuModel: '',
     runtime: 'auto',
-    // P24: opt-in per node, defaults off - matches every pre-P24 node's
-    // plaintext behavior unchanged.
+    // TLS pinning is opt-in per node, defaults off - matches every existing
+    // node's plaintext behavior unchanged.
     useHttps: false,
   });
   const [modelFit, setModelFit] = useState<ModelFitResponse | null>(null);
@@ -624,7 +624,7 @@ export function GPUNodes() {
   // immediate-apply, same as handleEnableAgent always has been).
   const [pendingAgentReconfigure, setPendingAgentReconfigure] = useState(false);
   // pendingRegenerateToken gates the "Regenerate marbor agent token?" confirm
-  // (R10): handleRegenerateMarborAgentToken swaps the live token in the
+  // (a destructive action): handleRegenerateMarborAgentToken swaps the live token in the
   // router's in-memory state immediately (admin.go SetMarborAgent), so the
   // currently-running agent process - still presenting the old token - is
   // rejected on its very next poll until reinstalled with the new command.
@@ -650,7 +650,7 @@ export function GPUNodes() {
     if (fresh && fresh !== agentNode) setAgentNode(fresh);
   }, [nodes, agentNode]);
 
-  // --- ControlDriver (P43) - registration flow: probe, confirm, persist.
+  // --- ControlDriver - registration flow: probe, confirm, persist.
   // discovered/configured are always shown separately - accepting only
   // ever happens on an explicit operator click, never automatically from a
   // re-scan (node-agent-capabilities.md section 5.6).
@@ -671,15 +671,15 @@ export function GPUNodes() {
   // discipline as Set Manually, since it's an equally consequential
   // one-click action on the same panel.
   const [controlClearConfirm, setControlClearConfirm] = useState(false);
-  // --- Runtime lifecycle actions (P43 Step 3) - only enabled once a
+  // --- Runtime lifecycle actions - only enabled once a
   // control driver is configured; demo mode shows the buttons but never
   // hits a real endpoint (matches the existing demo-banner discipline).
   const [runtimeActionBusy, setRuntimeActionBusy] = useState<'start' | 'stop' | 'restart' | null>(null);
   const [runtimeActionError, setRuntimeActionError] = useState<string | null>(null);
   const [runtimeActionConfirm, setRuntimeActionConfirm] = useState<'start' | 'stop' | 'restart' | null>(null);
   const [runtimeActionNotice, setRuntimeActionNotice] = useState<string | null>(null);
-  // --- Runtime logs (P58) - a pure read, no confirm dialog needed (R10
-  // exemption for non-destructive actions).
+  // --- Runtime logs - a pure read, no confirm dialog needed (destructive-action
+  // confirms don't apply to a non-destructive read).
   const [logsModalOpen, setLogsModalOpen] = useState(false);
   const [logsBusy, setLogsBusy] = useState(false);
   const [logsError, setLogsError] = useState<string | null>(null);
@@ -692,8 +692,8 @@ export function GPUNodes() {
     setAgentCopiedWhich(null);
     setHealthCheckBusy(false);
     setHealthCheckResult(null);
-    // TLS certificate probe/pin state (P90: this modal, not Edit Node, now
-    // owns the Agent's TLS fingerprint - reset it per-node same as the rest.
+    // TLS certificate probe/pin state (this modal, not Edit Node, now
+    // owns the Agent's TLS fingerprint) - reset it per-node same as the rest.
     setTlsProbedFingerprint(null);
     setTlsProbeError('');
     setTlsExpectedFingerprint('');
@@ -811,7 +811,7 @@ export function GPUNodes() {
     }
   };
 
-  // runRuntimeAction dispatches P43 Step 3's start/stop/restart to the
+  // runRuntimeAction dispatches the runtime control step's start/stop/restart to the
   // node's agent via the Admin API - only ever called when controlStatus
   // .configured is true (the buttons are disabled otherwise); demo mode is
   // a no-op so a demo click never hits a real endpoint.
@@ -841,7 +841,7 @@ export function GPUNodes() {
     }
   };
 
-  // viewRuntimeLogs fetches P58's runtime.logs snapshot - only ever called
+  // viewRuntimeLogs fetches the runtime.logs snapshot - only ever called
   // when controlStatus.configured is true (same gate as start/stop/restart);
   // demo mode shows static sample lines without hitting a real endpoint.
   const viewRuntimeLogs = async () => {
@@ -1439,7 +1439,7 @@ export function GPUNodes() {
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
   const [pendingPatch, setPendingPatch] = useState<{ vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; parallelism_type?: string | null; parallelism_width?: number | null; vram_overrides?: Record<string, number> } | null>(null);
-  // P24: TLS fingerprint probe/pin state - probing only ever populates
+  // TLS fingerprint probe/pin state - probing only ever populates
   // tlsProbedFingerprint for display; pinning happens exclusively via the
   // "Confirm & Pin" click (patchNode), never automatically from a probe
   // result.
@@ -1584,8 +1584,8 @@ export function GPUNodes() {
     }
     if (newType !== priorType) patch.parallelism_type = newType || null;
     if (newWidth !== priorWidth) patch.parallelism_width = newWidth || null;
-    // VRAM overrides - comma-separated "model=mb" pairs, whole-map replace
-    // (P411), mirroring gpu_indices' whole-slice-replace convention above.
+    // VRAM overrides - comma-separated "model=mb" pairs, whole-map replace,
+    // mirroring gpu_indices' whole-slice-replace convention above.
     const priorVRAMOverrides = editNode.vramOverrides ?? {};
     const newVRAMOverrides: Record<string, number> = {};
     const vramEntries = editVRAMOverrides.split(',').map(s => s.trim()).filter(s => s !== '');
@@ -1716,12 +1716,12 @@ export function GPUNodes() {
   };
 
   // handleProbeTLS retrieves the node's currently-presented certificate
-  // fingerprint for display only (P24 spec section 2) - it never pins
+  // fingerprint for display only - it never pins
   // anything. Demo mode has no real node to dial, so it surfaces the
   // already-known demo fingerprint (or a clearly-fake placeholder) instead
   // of attempting a network call. Operates on agentNode (Manage marbor agent
   // modal), NOT editNode - TLS pinning secures the Agent connection, not
-  // the runtime URL, so it moved out of the Edit Node (Runtime) modal (P90).
+  // the runtime URL, so it moved out of the Edit Node (Runtime) modal.
   const handleProbeTLS = async () => {
     if (!agentNode) return;
     setTlsProbeError('');
@@ -1780,7 +1780,7 @@ export function GPUNodes() {
   // handleConfirmAndPinTLS is the ONLY code path that ever pins a
   // fingerprint - it only runs when the operator clicks "Confirm & Pin"
   // after reviewing a probed value, never automatically from a probe
-  // result (P24 spec section 1/2).
+  // result.
   const handleConfirmAndPinTLS = async () => {
     if (!agentNode || !tlsProbedFingerprint) return;
     setTlsPinning(true);
@@ -1792,7 +1792,7 @@ export function GPUNodes() {
     setTlsPinning(false);
   };
 
-  // handleResetTLSPin clears an existing pin (R10: destructive - disrupts
+  // handleResetTLSPin clears an existing pin (destructive - disrupts
   // this node's established trust state - gated by the confirm modal below,
   // same pattern as the Disable-Agent/runtime-action confirm modals in this
   // file). Runs only from that modal's confirm click, never directly from
@@ -2244,7 +2244,7 @@ export function GPUNodes() {
               Derived required GPUs: {Math.max((editGPUIndices.trim() ? editGPUIndices.split(',').filter(s=>s.trim()!=='').length : (editNode?.gpuIndices?.length ?? 0)), parseInt(editParallelismWidth,10) || 0)} (atomic placement)
             </p>
           )}
-          {/* P397b: auto-discovered deployment - Adopt one-click honest unknown */}
+          {/* Auto-discovered deployment - Adopt one-click honest unknown */}
           {editNode && editNode.detectedParallelismType && editNode.detectedParallelismWidth ? (
             <div className="bg-secondary/30 border border-border/60 rounded-lg p-3 space-y-2">
               <div className="flex items-start justify-between gap-3">
@@ -2355,7 +2355,7 @@ export function GPUNodes() {
         </div>
       </Modal>
 
-      {/* Reset TLS Pin Confirmation Modal (R10: destructive - disrupts an established trust state) */}
+      {/* Reset TLS Pin Confirmation Modal (destructive - disrupts an established trust state) */}
       <Modal
         isOpen={pendingResetTLSPin}
         onClose={() => setPendingResetTLSPin(false)}
@@ -2485,7 +2485,7 @@ export function GPUNodes() {
         confirmClassName="px-4 py-2 bg-amber-600 hover:bg-amber-600/90 text-white font-medium rounded-lg text-sm transition-colors shadow-sm"
       />
 
-      {/* Undrain Node Confirmation Modal (R10: reverses a safety decision -
+      {/* Undrain Node Confirmation Modal (reverses a safety decision -
           e.g. a thermal-watchdog auto-drain - so gets the same confirm as
           Drain, not a single-click action). */}
       <DrainConfirmModal
@@ -2672,7 +2672,7 @@ export function GPUNodes() {
             <div className="space-y-3">
               {/* Agent Connection - reconfigure port/scheme on an already-enabled
                   agent. Changing this NEVER touches this node's runtime URL
-                  (node.url/scheme) - only this Agent's own port/scheme (P90).
+                  (node.url/scheme) - only this Agent's own port/scheme.
                   The enabled/port/scheme status lives ONLY in this card's
                   header pill + its own editable fields below - no separate
                   "Enabled on port X (scheme)" line, since that was just a
@@ -2742,7 +2742,7 @@ export function GPUNodes() {
               {/* TLS Certificate - pins/probes THIS Agent's own certificate.
                   Reads only agentStatus.scheme (never node.scheme/node.url) so
                   it can never be confused with, or derived from, the Runtime
-                  HTTPS setting in the Edit Node modal (P90 hard invariant).
+                  HTTPS setting in the Edit Node modal (a hard invariant).
                   Same bordered-card treatment as Agent Connection above. */}
               <div className="space-y-2 p-3 bg-secondary/30 border border-border rounded-lg">
                 <label className="block text-sm font-medium text-muted-foreground mb-1.5">
@@ -3144,7 +3144,7 @@ export function GPUNodes() {
       </Modal>
 
       {/* Reconfigure marbor agent Connection Confirmation Modal - only for
-          changing port/scheme on an ALREADY-enabled agent (P90). Text is
+          changing port/scheme on an ALREADY-enabled agent. Text is
           scoped entirely to "Agent connection" and never says "node address"
           so it can't be mistaken for the Runtime "Change Node Address" modal
           above - and confirming here never touches this node's runtime URL. */}
@@ -3192,7 +3192,7 @@ export function GPUNodes() {
         </div>
       </Modal>
 
-      {/* Regenerate marbor agent Token Confirmation Modal (R10: swaps the live
+      {/* Regenerate marbor agent Token Confirmation Modal (swaps the live
           token immediately - the currently-running agent process is
           rejected on its very next poll until reinstalled with the new
           command shown after confirming). */}
@@ -3366,7 +3366,7 @@ export function GPUNodes() {
         </div>
       </Modal>
 
-      {/* Runtime Logs Modal (P58) - a pure read, no confirm needed */}
+      {/* Runtime Logs Modal - a pure read, no confirm needed */}
       <Modal
         isOpen={logsModalOpen}
         onClose={() => setLogsModalOpen(false)}

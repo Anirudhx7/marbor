@@ -35,7 +35,7 @@ func (d *ProcessDriver) Start(ctx context.Context) error {
 	if len(d.StartCommand) == 0 {
 		return errors.New("process: no start command configured for this node")
 	}
-	// Idempotent (P152): a retry during a slow cold start (client timeout,
+	// Idempotent: a retry during a slow cold start (client timeout,
 	// caller retry logic) would otherwise unconditionally overwrite the PID
 	// file and orphan the process it just launched, double-spawning the
 	// runtime. If the existing PID-file entry already names a live process,
@@ -73,11 +73,11 @@ func (d *ProcessDriver) Stop(ctx context.Context) error {
 		return fmt.Errorf("process: kill pid %d: %w", pid, err)
 	}
 	// Wait for the kernel to actually reap the killed process before
-	// returning (code review, post-P152/P157): Kill() only submits the
-	// signal - on Unix the pid stays "alive" to processAlive's signal-0
-	// probe as a zombie until startDetached's background Wait() goroutine
-	// reaps it. Restart() calls Stop() then Start(), and Start()'s new
-	// idempotency check (P152) reads that same PID file - without this
+	// returning (per code review of the idempotency fix above): Kill() only
+	// submits the signal - on Unix the pid stays "alive" to processAlive's
+	// signal-0 probe as a zombie until startDetached's background Wait()
+	// goroutine reaps it. Restart() calls Stop() then Start(), and Start()'s
+	// idempotency check reads that same PID file - without this
 	// wait, Restart could race Start's processAlive check against the
 	// async reap, see the old (now-dead) pid as still alive, and silently
 	// skip spawning a replacement process. SIGKILL is uncatchable, so this

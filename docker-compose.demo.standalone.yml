@@ -148,8 +148,8 @@ services:
       REQUEST_COUNT: "20"
       # See docker-compose.demo.yml's identical setting for why: this
       # targets the "marbor" compose service's Docker DNS name, still the
-      # same self-contained local stack demotraffic's P165 guard exists to
-      # protect against pointing at a real live instance.
+      # same self-contained local stack demotraffic's localhost guard exists
+      # to protect against pointing at a real live instance.
       ALLOW_NON_LOCALHOST: "1"
     restart: "no"
 

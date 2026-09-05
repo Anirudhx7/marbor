@@ -14,7 +14,7 @@ import (
 	"github.com/Anirudhx7/marbor/internal/store"
 )
 
-// TestGenerateMarborAgentTokenEmbedsScope verifies generateMarborAgentToken (P54)
+// TestGenerateMarborAgentTokenEmbedsScope verifies generateMarborAgentToken
 // produces a token whose scope round-trips through marboragent.TokenScope -
 // the same parsing the agent binary itself uses to enforce per-route scope.
 func TestGenerateMarborAgentTokenEmbedsScope(t *testing.T) {
@@ -29,7 +29,7 @@ func TestGenerateMarborAgentTokenEmbedsScope(t *testing.T) {
 	}
 }
 
-// TestEnableMarborAgentPersistsAdminScope is the P54 admin-API regression:
+// TestEnableMarborAgentPersistsAdminScope is the admin-API regression:
 // handleEnableMarborAgent must mint an admin-scope token (today's default -
 // no Group 3 action exists yet to justify a lower tier) and persist that
 // scope alongside the token, and it must round-trip through GetMarborAgent -

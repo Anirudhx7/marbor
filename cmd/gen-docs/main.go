@@ -8,7 +8,7 @@
 // non-stdlib import here would violate the project's zero-dependency law
 // transitively.
 //
-// Determinism (P83+ plan Implementation section 6): running this twice
+// Determinism: running this twice
 // produces byte-identical output. Every walk below iterates cli.Command.Sub
 // in declared order - never map iteration - and the only "date" in the
 // output is docsDate, a hand-bumped constant, never time.Now(). The man

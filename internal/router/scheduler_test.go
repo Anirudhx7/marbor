@@ -167,7 +167,7 @@ func TestRunSchedulesUnloadFires(t *testing.T) {
 }
 
 // TestFireSchedule_ContinuityReflectsRealPerModelFailure guards the
-// continuity-bug class (LESSONS.md L22 / commit 2407d3d): fireSchedule used
+// continuity-bug class (commit 2407d3d): fireSchedule used
 // to record LastStatus "ok" the instant WarmModels dispatched, before any
 // per-model ping had actually run or failed. This verifies a schedule whose
 // target node is unhealthy (so every model ping fails immediately) ends up

@@ -47,7 +47,7 @@ func (s *agentWindowsService) Execute(args []string, r <-chan svc.ChangeRequest,
 			changes <- c.CurrentStatus
 		case svc.Stop, svc.Shutdown:
 			changes <- svc.Status{State: svc.StopPending}
-			// P289: signal runAgent to cancel the scheduler context and
+			// Signal runAgent to cancel the scheduler context and
 			// gracefully Shutdown the HTTP server, instead of letting the
 			// process die mid-flight (e.g. mid-model-pull proxy) the moment
 			// StopPending is reported.

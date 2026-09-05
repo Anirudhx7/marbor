@@ -733,7 +733,7 @@ func handleOpenAICompletion(w http.ResponseWriter, r *http.Request, nodeName, mo
 		flusher.Flush()
 		time.Sleep(15 * time.Millisecond)
 	}
-	// Terminal chunk with finish_reason:"stop" (P167), matching the sibling
+	// Terminal chunk with finish_reason:"stop", matching the sibling
 	// handleOpenAIChatCompletion above and the real OpenAI streaming
 	// contract - this handler previously jumped straight from the last
 	// per-token chunk (finish_reason:nil) to [DONE] with no stop signal.

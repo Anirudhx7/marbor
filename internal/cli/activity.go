@@ -12,7 +12,7 @@ func parseRFC3339(s string) (time.Time, error) {
 }
 
 // activityKind maps a system_audit action to its fleet-operations kind bucket.
-// Taxonomy locked per P389 tweaks, mirrors ui/src/lib/activityKind.ts.
+// Taxonomy is locked, mirrors ui/src/lib/activityKind.ts.
 func activityKind(action string) string {
 	switch action {
 	case "drain_node", "undrain_node", "set_node_prewarm":

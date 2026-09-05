@@ -1,6 +1,6 @@
 package cli
 
-// diagnostics.go - P-A2-08b/c/d (A2 three-surface-parity audit): pull
+// diagnostics.go - from the three-surface-parity audit: pull
 // triage (`marbor pulls`, `marbor models pull-progress/cancel-pull`),
 // predictive/warmup/system-info/config-reload helpers (`marbor warmup
 // status/predictive/ping`, `marbor system-info`, `marbor predictive
@@ -15,7 +15,7 @@ import (
 func printWarmupUsage(w io.Writer) { writeHelp(w, findCommand(root(), "warmup")) }
 
 // runPulls implements `marbor pulls` - GET /admin/pulls, every active pull
-// job across the fleet (P-A2-08b).
+// job across the fleet.
 func runPulls(flags *globalFlags, stdout, stderr io.Writer) int {
 	client, err := authenticatedClient(flags)
 	if err != nil {
@@ -42,7 +42,7 @@ func runPulls(flags *globalFlags, stdout, stderr io.Writer) int {
 
 // runModelsPullProgress implements `marbor models pull-progress <node>
 // <model>` - a single point-in-time snapshot from the active-pulls list
-// (P-A2-08b), not a live SSE follow (operational-interfaces.md: one Admin
+// (a point-in-time read), not a live SSE follow (operational-interfaces.md: one Admin
 // API request per CLI command).
 func runModelsPullProgress(flags *globalFlags, node, model string, stdout, stderr io.Writer) int {
 	client, err := authenticatedClient(flags)
@@ -143,7 +143,7 @@ func runWarmupPing(flags *globalFlags, stdout, stderr io.Writer) int {
 
 // runPredictiveDecisions implements `marbor predictive decisions` - exposes
 // the Client.PredictiveDecisions method that existed with no command
-// wired to it before this item (P-A2-08c).
+// wired to it before this item.
 func runPredictiveDecisions(flags *globalFlags, stdout, stderr io.Writer) int {
 	client, err := authenticatedClient(flags)
 	if err != nil {

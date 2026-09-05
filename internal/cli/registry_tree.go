@@ -52,8 +52,8 @@ func buildRoot() *Command {
 		Name:  "marbor",
 		Short: "CLI client for the Marbor Admin API",
 		// Footer reproduces the credential-requirement note that used to be
-		// hand-written at the bottom of cli.go's `usage` const (see Fix 3 of
-		// the P83+ CLI hardening code review) - writeRootHelp prints it
+		// hand-written at the bottom of cli.go's `usage` const (deleted during
+		// the CLI hardening code review) - writeRootHelp prints it
 		// verbatim below the global flags table, same as any group/leaf's
 		// Footer.
 		Footer: "\"nodes\", \"models\", \"runtime\", and \"node control\" require credentials: run\n" +
@@ -460,7 +460,7 @@ func buildRoot() *Command {
 						// "removed" (the marbor agent binary split, v0.19.2) before it ever
 						// consults this registry - see CLAUDE.md's "marbor agent ... no
 						// longer exists" note and TestResolveCommand_MatchesRegistry, which
-						// caught this the first time (P-A2-09b). Nested here as a sibling of
+						// caught this the first time. Nested here as a sibling of
 						// "control" instead, matching the existing "node control ..." shape.
 						Name:      "agent",
 						Short:     "manage marbor agent lifecycle for a node",

@@ -52,7 +52,7 @@ func (p *VLLMProbe) Probe(ctx context.Context, nodeURL string) (ProbeResult, err
 			// checkpoint) under the identical --served-model-name, in which
 			// case ID is indistinguishable across nodes but Root (the actual
 			// path/repo loaded) still differs. Empty when vLLM's version
-			// doesn't populate it - never fabricated (R1).
+			// doesn't populate it - never fabricated.
 			Root string `json:"root"`
 		} `json:"data"`
 	}

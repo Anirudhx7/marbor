@@ -97,7 +97,8 @@ type Handler struct {
 	// http.DefaultTransport (keeping its connection-pool defaults) and sets
 	// ResponseHeaderTimeout from routing.upstream_timeout_ms so a hung cloud
 	// provider cannot leak goroutines/connections. ResponseHeaderTimeout bounds
-	// only the wait for response headers, never the streaming body, so R2 holds.
+	// only the wait for response headers, never the streaming body, so
+	// streaming stays streaming.
 	cloudTransportOnce sync.Once
 	cloudTransport     *http.Transport
 
@@ -134,7 +135,7 @@ func (h *Handler) cloudRoundTripper() *http.Transport {
 
 // localRoundTripper returns the shared local-node transport, constructing it
 // once. ResponseHeaderTimeout bounds only the wait for response headers
-// (never the streaming body), so R2 holds.
+// (never the streaming body), so streaming stays streaming.
 func (h *Handler) localRoundTripper() *http.Transport {
 	h.localTransportOnce.Do(func() {
 		h.localTransport = &http.Transport{
@@ -318,8 +319,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// and only substitutes an alternate that is already downloaded (never
 	// triggers a fresh multi-GB download on the hot path). Pre-scoring
 	// Hard-Constraint filter - does not touch weighted placement scoring.
-	// P405: same cheap char-count/4 heuristic as the context-window admission
-	// check further down (no tokenizer dependency) - gives the fit check a
+	// Uses the same cheap char-count/4 heuristic as the context-window
+	// admission check further down (no tokenizer dependency) - gives the fit check a
 	// real per-request context-length signal instead of comparing disk size
 	// alone, so a large-context request against a tight-headroom node is no
 	// longer treated identically to a small one.
@@ -367,7 +368,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// absent or empty value means stateless routing (no sticky session).
 	sessionID := strings.TrimSpace(r.Header.Get("X-Session-ID"))
 
-	// Per-key opt-in for local degradation chain substitution (P67). A silent
+	// Per-key opt-in for local degradation chain substitution. A silent
 	// model swap would be a correctness surprise for an API consumer, so a
 	// request is only eligible for chain substitution when the operator has
 	// granted this key that policy - declaring routing.local_degradation_chains
@@ -405,7 +406,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	degradedOnce := false
 
 	if node == nil {
-		// Local degradation chain (P67): opt-in, local-only substitution tried
+		// Local degradation chain: opt-in, local-only substitution tried
 		// before cloud egress - a degraded-but-local answer is strictly better
 		// than cloud for a privacy-motivated operator. Tried before
 		// localOnlyBlocked since a successful substitution never leaves local
@@ -508,12 +509,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Feature 2: custom transport with ResponseHeaderTimeout so a node that
 	// accepts the connection but hangs (model load stall, GPU OOM) does not
 	// block the client or leak goroutines. This covers only the wait for
-	// response headers - NOT the streaming body - so R2 (no buffering) is safe.
+	// response headers - NOT the streaming body - so no buffering happens and
+	// streaming stays streaming.
 	transport := h.localRoundTripper()
 
 	// Feature 1: retry/failover loop. The ErrorHandler fires only when the
 	// upstream failed before sending any response bytes, so retrying a
-	// different node is safe and does not violate R2.
+	// different node is safe and does not break streaming.
 	tried := map[string]bool{node.URL: true}
 	maxRetries := h.router.MaxRetries()
 
@@ -522,7 +524,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		aborted bool
 	)
 
-	// retryCount/lastFailedNode are read-only context for the P41
+	// retryCount/lastFailedNode are read-only context for the retry
 	// explainability Detail annotation applied after the loop - the router
 	// itself stays ignorant of retry semantics (see RouteExcluding's doc
 	// comment); this is purely a proxy-layer string annotation.
@@ -581,7 +583,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			// No alternate nodes for the current model. Try the local
-			// degradation chain (P67, opt-in) before falling through to
+			// degradation chain (opt-in) before falling through to
 			// cloud - gated on !degradedOnce so a request can only ever
 			// substitute once, even across retry-loop iterations (enforces
 			// the single-hop invariant in code, not just in a comment, and
@@ -665,7 +667,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		break
 	}
 
-	// P256: RecordModelUse was only called once, before the retry loop,
+	// RecordModelUse was only called once, before the retry loop,
 	// against the initially selected node/model - on failover or local-
 	// degradation substitution to a different node/model, no follow-up call
 	// updated LRU/warmth state for the node that actually served the
@@ -674,7 +676,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.router.RecordModelUse(node.Name, modelName)
 	}
 
-	// P41: annotate the routing explanation with retry context the router
+	// Annotate the routing explanation with retry context the router
 	// itself never sees - purely a proxy-layer string addition, no change to
 	// Reason/Score/Components.
 	if decision != nil && retryCount > 0 {
@@ -691,7 +693,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if ttft := rec.ttft(); ttft > 0 {
 		metrics.RequestTTFT(modelName, node.Name, ttft.Seconds())
 		// Feed the real observed TTFT into placement scoring's load-shape
-		// weighting (P404) - see Router.RecordTTFT and effectiveLoad.
+		// weighting - see Router.RecordTTFT and effectiveLoad.
 		h.router.RecordTTFT(node.Name, ttft)
 	}
 
@@ -1090,7 +1092,8 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
 	// Bound the cloud header phase with a dedicated transport (shared, built
 	// once) so a hung provider does not leak goroutines/connections. Only the
-	// header wait is bounded - the streaming body is untouched, so R2 holds.
+	// header wait is bounded - the streaming body is untouched, so streaming
+	// stays streaming.
 	cloudTransport := h.cloudRoundTripper()
 	var transport http.RoundTripper = cloudTransport
 	// Anthropic only exposes /v1/messages. Insert the Anthropic translator
@@ -1298,18 +1301,18 @@ type statusRecorder struct {
 // be identified by "final line" at all, so Write does not truncate until it
 // has seen at least one '\n' - see sawNewline. Until then the buffer grows up
 // to embedTailMax. Writes still pass straight through in both cases -
-// streaming to the client is never buffered (R2).
+// streaming to the client is never buffered.
 const tailMax = 8192
 
 // embedTailMax bounds the no-newline retention path (see tailMax doc above).
 // It used to grow all the way to maxRequestBodyBytes (32 MiB) per request -
 // a burst of concurrent /v1/embeddings requests could each hold a 32 MiB
-// tail, OOM-killing the control plane under anonymous traffic (B1 PROXY-01).
+// tail, OOM-killing the control plane under anonymous traffic.
 // 1 MiB is generous headroom for the "model"/"usage" fields that surround a
 // real embedding array while keeping worst-case per-request retention two
 // orders of magnitude below the old bound. A body that exceeds this before
 // finishing is marked truncatedTail so tokenCount reports -1 (unknown)
-// rather than a fake 0 for a body it never fully saw (R1).
+// rather than a fake 0 for a body it never fully saw.
 const embedTailMax = 1 << 20 // 1 MiB
 
 func (r *statusRecorder) Write(b []byte) (int, error) {
@@ -1334,7 +1337,7 @@ func (r *statusRecorder) Write(b []byte) (int, error) {
 				// Align to the next full line boundary after the hard cut,
 				// rather than trimming mid-line - a cut landing inside the
 				// final usage-bearing JSON line would otherwise make the
-				// token-count parser silently see no counts at all (R1).
+				// token-count parser silently see no counts at all.
 				if idx := bytes.IndexByte(cut, '\n'); idx >= 0 {
 					cut = cut[idx+1:]
 				}
@@ -1365,7 +1368,7 @@ func (r *statusRecorder) ttft() time.Duration {
 // skip cost/analytics accumulation for -1 rather than storing it as 0.
 // Also returns -1 for Ollama's legacy /api/embeddings response shape
 // ({"embedding":[...]}, no eval_count/prompt_eval_count/usage field) - that
-// endpoint genuinely reports no token count, so 0 would be a fake zero (R1).
+// endpoint genuinely reports no token count, so 0 would be a fake zero.
 func (r *statusRecorder) tokenCount(aborted bool) int64 {
 	lines := bytes.Split(r.tail, []byte("\n"))
 	for i := len(lines) - 1; i >= 0; i-- {
@@ -1395,7 +1398,7 @@ func (r *statusRecorder) tokenCount(aborted bool) int64 {
 		// {"embedding":[...]} with no eval_count/prompt_eval_count/usage
 		// field at all - there is genuinely no token count available from
 		// this response shape, so this is unavailable (-1), not a real
-		// zero-token measurement (R1: never present a fake zero as real).
+		// zero-token measurement - never present a fake zero as real.
 		if t.Embedding != nil {
 			return -1
 		}

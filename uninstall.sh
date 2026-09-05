@@ -110,7 +110,7 @@ fi
 # install_man_pages). Same write-permission/sudo fallback as the binary
 # above; a missing man dir or missing pages is not an error, just a no-op.
 #
-# install_man_pages (Fix 4/5 of the P83+ CLI hardening code review) drops a
+# install_man_pages drops a
 # local marker file, .marbor-installed-manifest, listing exactly which
 # filenames IT placed in MAN_DIR - uninstall.sh has no source tree and no
 # release manifest of its own, so that marker is the only place this exact

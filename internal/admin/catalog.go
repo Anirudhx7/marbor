@@ -319,8 +319,8 @@ type catalogNodeEntry struct {
 	VRAMFitBasis string `json:"vram_fit_basis,omitempty"`
 	// GPUCountUnknown is true when this node has no agent-confirmed
 	// per-device GPU reading at all (no agent, or VRAMSource=="declared" -
-	// a manually-entered whole-node total with no per-device breakdown) -
-	// P75 Gap D. Without this, such a node's GPUCount==0 looks identical, at
+	// a manually-entered whole-node total with no per-device breakdown).
+	// Without this, such a node's GPUCount==0 looks identical, at
 	// the same apparent confidence, to a confirmed single-GPU node - R1
 	// requires disclosing "unknown" rather than implying a reading that was
 	// never taken.
@@ -382,8 +382,8 @@ func classifyPullTagFormat(model string) string {
 // enough to hard-block on. An empty/undeclared runtime is treated as Ollama,
 // matching ggufOnlyRuntime's existing default elsewhere in this file.
 //
-// Law 5 compatibility matrix, stated explicitly (nothing here silently
-// narrows to Ollama-vs-everything-else):
+// Full runtime x GPU-vendor compatibility matrix, stated explicitly (nothing
+// here silently narrows to Ollama-vs-everything-else):
 //   - "ollama-library" is compatible with {ollama, ""} only - incompatible
 //     with vllm, tgi, llamacpp, and mlx.
 //   - "gguf-hf" is compatible with ggufOnlyRuntime's {"", ollama, llamacpp} -
@@ -471,7 +471,7 @@ func diskTelemetryUnknown(diskTotalGB float64, agentPresent bool) bool {
 }
 
 // unknownSizeMinFreeFraction and unknownSizeMinFreeGB are the conservative
-// disk-headroom floor applied by classifyUnknownSizeDiskFit (P73) - a pull
+// disk-headroom floor applied by classifyUnknownSizeDiskFit - a pull
 // whose real download size cannot be established (findCatalogVariantSizeMB
 // returned ok=false: any tag outside the curated catalog) has no size to
 // compare against free space the way classifyDiskFit does, so it cannot use
@@ -489,7 +489,7 @@ const (
 )
 
 // classifyUnknownSizeDiskFit is the disk-safety decision for a pull whose
-// real download size is unknown (P73: previously such a pull skipped
+// real download size is unknown (previously such a pull skipped
 // handleNodePull's disk-fit gate entirely, letting an arbitrary-size
 // download proceed with zero pre-flight check). It mirrors classifyDiskFit's
 // telemetry-unknown handling exactly - "unknown" whenever the agent hasn't
@@ -603,7 +603,7 @@ func classifyFit(vramEstBytes, vramCapacityBytes int64, vramSource string) strin
 //     would make free VRAM read artificially low (or clamp to zero) even
 //     when the biggest card itself has room.
 //
-// declaredIndices (P75 Gap B/C) is the operator-declared set of physical GPU
+// declaredIndices is the operator-declared set of physical GPU
 // indices this specific node/runtime instance actually uses - see
 // scopeGPUsToDeclared's doc comment for why host-scoped agentGPUs alone
 // cannot answer that question, and how a declaration also settles the
@@ -657,7 +657,7 @@ func nodeVRAMCapacity(vramTotalMB int64, agentGPUs []marboragent.GPUInfo, runtim
 
 // scopeGPUsToDeclared restricts agentGPUs to the operator-declared subset of
 // physical GPU indices this specific node/runtime instance actually uses
-// (P75 Gap B/C). Host-scoped agent telemetry (pollAgentHost in
+// Host-scoped agent telemetry (pollAgentHost in
 // internal/router/agent_poll.go) reports every physical GPU on a Host
 // identically to every node sharing it - two separate runtime processes each
 // pinned to a different GPU (e.g. via CUDA_VISIBLE_DEVICES) still both see
@@ -673,7 +673,7 @@ func nodeVRAMCapacity(vramTotalMB int64, agentGPUs []marboragent.GPUInfo, runtim
 // same "no breakdown available" fallback nodeVRAMCapacity already uses for
 // agentGPUs itself.
 // gpuCountUnknown reports whether a node's GPU-count/capacity reading has no
-// agent-confirmed per-device backing at all (P75 Gap D) - true when there is
+// agent-confirmed per-device backing at all - true when there is
 // no agent, the total is an operator-declared whole-node figure with no
 // per-device breakdown, or an agent is present but reported zero devices
 // (e.g. before its first successful GPU-collector read). See
@@ -895,7 +895,7 @@ func ggufOnlyRuntime(runtime string) bool {
 	}
 }
 
-// ggufAdvisoryRuntimeCaveat returns the P71 runtime caveat for a GGUF-family
+// ggufAdvisoryRuntimeCaveat returns the runtime caveat for a GGUF-family
 // runtime when no real architecture facts could be sourced (see
 // handleModelRepo's GGUF loop). Ollama itself gets no caveat here - when its
 // /api/show fetch succeeds the caller clears this to "", and when it fails
@@ -1060,7 +1060,7 @@ type ModelVariantFit struct {
 	Fit          string `json:"fit"`      // "green", "yellow", "red", "unknown"
 	DiskFit      string `json:"disk_fit"` // "ok", "insufficient", "unknown"
 	Downloaded   bool   `json:"downloaded"`
-	// ContextFeasibility is P71's context-length feasibility advice at the
+	// ContextFeasibility is the context-length feasibility advice at the
 	// requested ctx query-param value. Additive-only field; VRAMEstMB/Fit
 	// above already incorporate whatever total this struct computed (derived
 	// or estimated) so existing consumers see the improved number for free,
@@ -1070,11 +1070,11 @@ type ModelVariantFit struct {
 	ContextFeasibility ContextFeasibility `json:"context_feasibility"`
 }
 
-// ContextFeasibility carries P71's context-length feasibility advice for one
+// ContextFeasibility carries the context-length feasibility advice for one
 // model variant at one requested context length. Confidence is always
 // populated ("derived" or "estimated") so a caller can never mistake a rough
-// linear guess for a real architecture-derived calculation - see the P71
-// design plan's Known/Derived/Estimated/Unknown distinction.
+// linear guess for a real architecture-derived calculation - see the
+// design's Known/Derived/Estimated/Unknown distinction.
 type ContextFeasibility struct {
 	// Confidence is "derived" when real transformer architecture facts were
 	// available (Ollama /api/show for a downloaded model, or an HF repo's
@@ -1109,7 +1109,7 @@ type ContextFeasibility struct {
 	// RuntimeCaveat is a short, static, runtime-family-specific note about
 	// what remains Unknown even when Confidence=="derived" (e.g. a runtime's
 	// own launched context ceiling, which this codebase has no way to
-	// discover - see P71 plan section D). Empty when there's nothing to add.
+	// discover). Empty when there's nothing to add.
 	RuntimeCaveat string `json:"runtime_caveat,omitempty"`
 }
 
@@ -1126,7 +1126,7 @@ type hfArchFacts struct {
 	MaxContext   int64
 }
 
-// Plausibility bounds for hfArchFacts (P131), package-level so both of its
+// Plausibility bounds for hfArchFacts, package-level so both of its
 // sources - fetchHFConfigJSONUncached (HF config.json) and the GGUF/
 // FetchModelShow path in handleModelRepo - and computeContextFeasibility's
 // own defense-in-depth check below share one definition. No real transformer
@@ -1157,7 +1157,7 @@ type hfConfigJSON struct {
 	NumKeyValueHeads      int64 `json:"num_key_value_heads"`
 	HiddenSize            int64 `json:"hidden_size"`
 	MaxPositionEmbeddings int64 `json:"max_position_embeddings"`
-	// Optional generic metadata (P397) - nullable, never required for ok.
+	// Optional generic metadata - nullable, never required for ok.
 	Architecture     *string `json:"model_type"`
 	NumExperts       *int64  `json:"num_experts"`
 	NRoutedExperts   *int64  `json:"n_routed_experts"`
@@ -1303,8 +1303,8 @@ func fetchHFConfigJSONUncached(ctx context.Context, repoID, token string) (hfCon
 	if cfg.NumHiddenLayers <= 0 || cfg.NumAttentionHeads <= 0 || cfg.NumKeyValueHeads <= 0 || cfg.HiddenSize <= 0 || cfg.MaxPositionEmbeddings <= 0 {
 		return hfConfigJSON{}, false
 	}
-	// Bound each field at implausible-but-technically-valid magnitudes (P131,
-	// constants defined package-level alongside hfArchFacts): no real
+	// Bound each field at implausible-but-technically-valid magnitudes
+	// (constants defined package-level alongside hfArchFacts): no real
 	// transformer architecture approaches these limits, but a malformed/
 	// adversarial config.json value in that range can overflow
 	// kvCacheBytesPerToken's int64 multiply chain into a wrapped/negative
@@ -1358,7 +1358,7 @@ func parseInt64Raw(raw json.RawMessage) *int64 {
 // kvCacheBytesPerToken computes the real per-token KV-cache footprint from
 // known transformer architecture facts - the formula itself now lives in
 // internal/router/kvcache.go (router.KVCacheBytesPerToken) so the router's
-// own headroom/eviction hot path (P405) can share it instead of maintaining
+// own headroom/eviction hot path can share it instead of maintaining
 // a second copy; internal/admin already imports internal/router, so this
 // package calls the router's exported version rather than the reverse
 // (router cannot import admin - see kvcache.go's ModelArchFacts doc comment).
@@ -1383,14 +1383,14 @@ const (
 // every runtime family (Ollama GGUF, llama.cpp GGUF, vLLM/TGI/MLX
 // safetensors) - runtimes differ only in which metadata source (if any) they
 // can supply (see FetchModelShow / fetchHFConfigJSON), never in how the math
-// or fit classification works (P71 design plan section D's layered design:
-// one function, runtime-selected inputs, no per-runtime duplication).
+// or fit classification works (one function, runtime-selected inputs, no
+// per-runtime duplication).
 //
 // When arch is non-nil, the real per-token KV-cache formula runs and
 // Confidence is "derived". When nil, the pre-existing linear estimate
 // (sizeMB*overheadMult + ctxLen*perTokenMBFallback, unchanged from before
-// P71) is used instead and Confidence is "estimated" - callers must never
-// present the latter as if it were the former (R1).
+// this feature) is used instead and Confidence is "estimated" - callers must
+// never present the latter as if it were the former.
 func computeContextFeasibility(
 	sizeMB, requestedCtx int64,
 	overheadMult, perTokenMBFallback float64,
@@ -1400,7 +1400,7 @@ func computeContextFeasibility(
 ) (totalEstBytes int64, fit string, cf ContextFeasibility) {
 	cf = ContextFeasibility{RequestedCtx: requestedCtx, RuntimeCaveat: runtimeCaveat}
 
-	// Defense-in-depth (P131 code review): fetchHFConfigJSONUncached already
+	// Defense-in-depth (code review finding): fetchHFConfigJSONUncached already
 	// bounds the HF config.json path, but arch can also arrive from
 	// FetchModelShow's GGUF metadata (handleModelRepo's Ollama branch),
 	// which has no bound of its own - a corrupted GGUF file or a compromised
@@ -1644,7 +1644,7 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 	vramFitBasis := ""
 	rawVramSource := ""
 	// targetNodeURL survives past the `if targetNode != nil` block below
-	// (whose own nodeURL local goes out of scope there) - P71's Ollama
+	// (whose own nodeURL local goes out of scope there) - the Ollama
 	// /api/show fetch needs it further down, in the GGUF variant loop.
 	targetNodeURL := ""
 
@@ -1811,7 +1811,7 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			// P71: for a model already downloaded to an Ollama node (runtime
+			// For a model already downloaded to an Ollama node (runtime
 			// "" or "ollama" - llama.cpp has no /api/show equivalent), fetch
 			// its real GGUF-derived architecture facts so the context
 			// feasibility below can be Derived instead of Estimated. Any
@@ -1829,7 +1829,7 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 						HiddenSize:   info.EmbeddingLength,
 						MaxContext:   info.ContextLength,
 					}
-					// P405: push these real architecture facts into the router's
+					// Push these real architecture facts into the router's
 					// headroom/eviction hot path so it can stop tying a GQA and
 					// an MHA model of the same disk size - opportunistic, not a
 					// guess (R1): only a model an operator has actually looked
@@ -1877,7 +1877,7 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 			sizeMB := totalSize / (1024 * 1024)
 			isDl := downloaded[repo.ID]
 
-			// P71: an HF safetensors repo (vLLM/TGI/MLX) frequently ships a
+			// An HF safetensors repo (vLLM/TGI/MLX) frequently ships a
 			// config.json with real transformer architecture facts, fetchable
 			// whether or not any node has downloaded the model yet. A missing
 			// or incomplete config.json leaves arch nil and
@@ -1892,7 +1892,7 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 					HiddenSize:   cfg.HiddenSize,
 					MaxContext:   cfg.MaxPositionEmbeddings,
 				}
-				// P405: same opportunistic push as the GGUF/Ollama branch
+				// Same opportunistic push as the GGUF/Ollama branch
 				// above, keyed by repo.ID since that's the name this model
 				// would be routed under once pulled onto a vLLM/TGI/MLX node.
 				s.router.SetModelArchFacts(repo.ID, router.ModelArchFacts{
@@ -1904,9 +1904,9 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 			}
 			// The runtime's own launched context ceiling (e.g. vLLM's
 			// --max-model-len) may sit below the model's trained max declared
-			// above - this codebase has no way to discover that today (P71
-			// plan section D), so it's always flagged as a caveat here,
-			// independent of whether arch was found.
+			// above - this codebase has no way to discover that today, so
+			// it's always flagged as a caveat here, independent of whether
+			// arch was found.
 			caveat := "This runtime's own launch configuration may cap context below the model's declared maximum; marbor cannot see that setting."
 
 			estBytes, fitResult, cf := computeContextFeasibility(sizeMB, ctxLen, safetensorsOverheadMult, safetensorsPerTokenMBFallback, vramTotalBytes, vramSource, arch, caveat)

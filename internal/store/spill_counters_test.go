@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// TestUpsertKeyRoundTripsLocalOnly guards the P66 local_only field: a key
+// TestUpsertKeyRoundTripsLocalOnly guards the local_only field: a key
 // created with LocalOnly=true must read back as LocalOnly=true, and default
 // (omitted) keys must remain false, matching the DailyUsdCap/MonthlyUsdCap
 // zero-value convention already in use for this struct.
@@ -84,7 +84,7 @@ func TestIncrSpillCounter(t *testing.T) {
 	}
 }
 
-// TestDeleteKeyPreservesSpillCounters guards the P66 design decision that
+// TestDeleteKeyPreservesSpillCounters guards the design decision that
 // spill_counters is historical telemetry, not derived state: deleting an API
 // key must not delete or rename its prior spill history.
 func TestDeleteKeyPreservesSpillCounters(t *testing.T) {

@@ -1,7 +1,7 @@
 // Package control implements the ControlDriver abstraction: the agent-side
 // answer to "how do I start/stop/restart the inference runtime process on
-// this node's actual deployment" (P43, .local/specs/node-agent-capabilities.md
-// section 5). Orthogonal to runtime detection (internal/marboragent's
+// this node's actual deployment" (see the node-agent capabilities design
+// doc). Orthogonal to runtime detection (internal/marboragent's
 // RuntimeDetector, telemetry.RuntimeInfo) - a ControlDriver never knows
 // whether it's controlling Ollama, vLLM, or any other runtime, and a
 // RuntimeDetector never knows whether the process it found is supervised by
@@ -35,7 +35,7 @@ type ControlDriver interface {
 	// Event Viewer). Lives here, not on a runtime abstraction, because log
 	// retrieval is a property of how the process is supervised, not what
 	// runtime software it is. Returns a real error (never a fabricated
-	// empty result - R1) when this driver has no log-retrieval mechanism.
+	// empty result) when this driver has no log-retrieval mechanism.
 	Logs(ctx context.Context, lines int) ([]string, error)
 
 	// Validate confirms the configured identifier still resolves (unit

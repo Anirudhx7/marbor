@@ -34,7 +34,7 @@ func runModels(flags *globalFlags, stdout, stderr io.Writer) int {
 			totalVRAM = fmtMB(m.TotalVRAMBytes / 1024 / 1024)
 		} else if m.WarmCount > 0 && m.SizeVRAM > 0 {
 			// Fallback for mixed-version server that hasn't yet populated
-			// total_vram_bytes - derive from per-copy size (R1 fallback, not
+			// total_vram_bytes - derive from per-copy size (a real fallback, not
 			// estimate: shown only when warm copies exist and a real per-copy
 			// figure is known).
 			totalVRAM = fmtMB(int64(m.WarmCount) * m.SizeVRAM / 1024 / 1024)
@@ -57,7 +57,7 @@ func runModels(flags *globalFlags, stdout, stderr io.Writer) int {
 // runModelsFleet implements `marbor models fleet [--drifted-only]` - same GET
 // /admin/v1/models fleet aggregation as bare `marbor models`, but with the
 // fleet-first columns and an optional drifted-only filter mirroring the UI's
-// drift toggle. No new Admin API route - one endpoint, same live data (Law 6).
+// drift toggle. No new Admin API route - one endpoint, same live data.
 func runModelsFleet(flags *globalFlags, driftedOnly bool, stdout, stderr io.Writer) int {
 	client, err := authenticatedClient(flags)
 	if err != nil {

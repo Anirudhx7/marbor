@@ -17,7 +17,7 @@ VALUES (1, 'admin', 'admin@local', '$2a$10$P61YB8dFDRNJZumNNZrhgeyziqeHyIJ68Usax
 -- Insert persistent session for smoke test / demo access. The stored token
 -- is SHA-256('demo-admin-token') hex-encoded, not the plaintext value -
 -- sqlite.go's GetUserSession/CreateUserSession hash every session token at
--- rest (P93), so the client-facing token used by smoke.sh (and anyone
+-- rest, so the client-facing token used by smoke.sh (and anyone
 -- hitting the demo stack) stays 'demo-admin-token' in the Bearer header,
 -- while this table stores only its hash.
 INSERT INTO user_sessions (token, user_id, role, username, must_change_password, created_at, expires_at)

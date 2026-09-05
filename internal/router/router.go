@@ -71,7 +71,7 @@ type ModelInfo struct {
 	Name     string `json:"name"`
 	SizeVRAM int64  `json:"sizeVram"`
 	// Digest is the runtime-reported content-identity signal for this loaded model, when the
-	// runtime exposes one: Ollama's own digest, or (P406) vLLM/llama.cpp/MLX's OpenAI-compatible
+	// runtime exposes one: Ollama's own digest, or vLLM/llama.cpp/MLX's OpenAI-compatible
 	// "root" field / TGI's "model_sha", whichever the probe in internal/runtime populated it
 	// from - not necessarily comparable in format across runtime types, only within one. Empty
 	// when unknown - never fabricated.
@@ -92,23 +92,22 @@ type NodeState struct {
 	LoadedModels []ModelInfo
 	ActiveConns  int32
 	// modelInFlight counts, per loaded model name, requests currently routed to
-	// it on this node (P117) - incremented in IncrConn's model-aware counterpart
+	// it on this node - incremented in IncrConn's model-aware counterpart
 	// and decremented on completion. Consulted by EvictForHeadroom's victim
 	// selection so a model actively serving a request (last-used timestamp
 	// stale mid-stream) isn't picked as the coldest candidate and evicted out
 	// from under an in-flight generation. Guarded by mu.
 	modelInFlight map[string]int32
-	// MaxInFlight is this node's resolved per-node in-flight cap override
-	// (P64): 0 means "no override - use Router.maxInFlightPerNode". Set at
+	// MaxInFlight is this node's resolved per-node in-flight cap override:
+	// 0 means "no override - use Router.maxInFlightPerNode". Set at
 	// construction from config.NodeConfig.MaxInFlight and updated live by
 	// PatchNode, same lifecycle as VRAMTotalMBConfig. Guarded by mu.
 	MaxInFlight int
 	// TLSFingerprint is this node's TOFU-pinned SHA-256 fingerprint
-	// ("SHA256:...") of its Marbor Agent's TLS certificate (P24): empty means
+	// ("SHA256:...") of its Marbor Agent's TLS certificate: empty means
 	// "no pin - plaintext or not yet TLS-enrolled". Set at construction from
 	// config/store NodeOverride and updated live by PatchNode, same
-	// lifecycle as MaxInFlight. Guarded by mu. See
-	// .local/specs/node-agent-tls.md, especially section 15 for the
+	// lifecycle as MaxInFlight. Guarded by mu. Note the
 	// multi-GPU-per-host (shared Host) caveat this field does not itself
 	// resolve - see dialTLSContext in tls_dial.go.
 	TLSFingerprint string
@@ -160,14 +159,14 @@ type NodeState struct {
 	// Empty string is treated as "ollama" for backwards compatibility.
 	// "auto" means detection is pending; resolved to a real runtime on first poll.
 	Runtime string
-	// RuntimeMismatchHint is set (P409) when this node's health probe is
+	// RuntimeMismatchHint is set when this node's health probe is
 	// currently running as "llamacpp" and fails specifically because /health
 	// returned 404 - i.e. the server genuinely has no /health route, not a
 	// generic connection/timeout failure. MLX (mlx_lm.server) has this exact
 	// shape and is byte-for-byte indistinguishable from llama.cpp on
 	// /v1/models (see internal/runtime/detect.go), so runtime: auto always
 	// misclassifies an MLX node as llamacpp and it then fails health forever
-	// with no explanation. This does not claim the node IS MLX (R1 - a 404
+	// with no explanation. This does not claim the node IS MLX - a 404
 	// here could also mean a llama.cpp build without /health, or a broken
 	// reverse proxy) - it only reports the real observed fact and suggests
 	// the one actionable fix. Cleared on any successful probe or once
@@ -176,26 +175,26 @@ type NodeState struct {
 	// VRAMOverrides is the operator-declared, per-model VRAM size (MB) from
 	// config (NodeConfig.VRAMOverrides). Used by estimateModelSizeBytes as a
 	// fallback when a node's runtime API can't report a real observed size
-	// (non-Ollama backends). Whole-map-replaced by PatchNode at runtime
-	// (P411, mirroring DeclaredGPUIndices) - reads must go through n.mu like
+	// (non-Ollama backends). Whole-map-replaced by PatchNode at runtime,
+	// mirroring DeclaredGPUIndices - reads must go through n.mu like
 	// any other mutable field, not treated as construction-only.
 	VRAMOverrides map[string]int64
 	// DeclaredGPUIndices is the operator-declared set of physical GPU indices
-	// this specific node/runtime instance actually uses (P75 Gap B/C) - see
+	// this specific node/runtime instance actually uses - see
 	// nodeVRAMCapacity's doc comment in internal/admin/catalog.go for why
 	// host-scoped agent telemetry (AgentGPUs below) alone cannot answer this.
 	// nil/empty means "nothing declared" - existing host-level sizing applies
 	// unchanged. Set via PatchNode/NodePatch.GPUIndices, persisted in
 	// store.NodeOverride.GPUIndices.
 	DeclaredGPUIndices []int
-	// ParallelismType is the deployment topology type (P397) - "" means
+	// ParallelismType is the deployment topology type - "" means
 	// unconstrained (existing fleet), otherwise "tp"|"pp"|"ep"|"dp".
 	// ParallelismWidth is the width for that type - 0 means unconstrained.
 	// Together they derive EffectiveRequiredGPUs via EffectiveRequiredGPUs().
 	// Guarded by mu like DeclaredGPUIndices.
 	ParallelismType  string
 	ParallelismWidth int
-	// P397b: auto-discovered deployment from agent (in-memory only, not
+	// Auto-discovered deployment from agent (in-memory only, not
 	// persisted - derived from agent Deployments report each poll). Declared
 	// above always overrides detected: effectiveRequiredGPUsLocked prefers
 	// declared if non-nil else detected else 0 (fail-open). Guarded by mu.
@@ -210,7 +209,7 @@ type NodeState struct {
 	LastErrorAt              time.Time
 	SuccessHistory           []bool
 	// RecentTTFT holds this node's last few real observed time-to-first-byte
-	// values (seconds), oldest first, capped at recentTTFTCap (P404). Used by
+	// values (seconds), oldest first, capped at recentTTFTCap. Used by
 	// scoreComponents to weight the flat ActiveConns count by how loaded the
 	// node's connections have actually been recently: a node serving a few
 	// prefill-heavy requests keeps its connections busy far longer before the
@@ -221,11 +220,11 @@ type NodeState struct {
 	// must fall back to the raw connection count, never fabricate a value.
 	RecentTTFT []float64
 
-	// Marbor Agent-derived telemetry (see internal/marboragent, .local/specs/node-agent.md).
+	// Marbor Agent-derived telemetry (see internal/marboragent).
 	// AgentPresent is true only after a successful poll of this node's agent
 	// on the most recent poll cycle; it is set back to false on any failure
 	// or when no agent is configured, so a stale AgentVersion/FanPercent
-	// value is never displayed as current (R1). AgentVersion is the agent
+	// value is never displayed as current. AgentVersion is the agent
 	// binary's reported build version. FanPercent/RAMUsedMB/DiskFreeGB are
 	// only meaningful when AgentPresent is true - consumers must check the
 	// flag rather than treating a zero value as a measurement.
@@ -273,7 +272,7 @@ type NodeState struct {
 	// identity.go) - a stable UUID surviving agent binary upgrades and
 	// hostname/IP/DNS changes. Not yet used to re-identify a node across a
 	// URL change (NodeState is still keyed by URL/Name); surfaced for
-	// fleet-debugging/future use, per .local/specs/node-agent.md's protocol
+	// fleet-debugging/future use, per the marbor agent protocol
 	// v1 design notes.
 	AgentNodeID string
 	// AgentGPUCount/AgentGPUs/DriverVersion/CUDAVersion are the multi-GPU
@@ -300,7 +299,7 @@ type NodeState struct {
 	RuntimeVersion string
 	RuntimeStatus  string
 	// AgentControlDiscovered* is what the agent's most recent ControlDriver
-	// probe found (marboragent.ControlDiscovery, P43) - purely informational
+	// probe found (marboragent.ControlDiscovery) - purely informational
 	// for the admin API's probe/accept UI. The operator-accepted value
 	// lifecycle actions actually read lives in ControlConfig (SetNodeControl/
 	// NodeControlSetting below), never here - this is never substituted in
@@ -339,7 +338,7 @@ type NodeState struct {
 	AgentFailures int
 	// AgentTLSMismatch is true when the most recent agent poll failed
 	// specifically because the presented certificate didn't match this
-	// host's pinned fingerprint (P24, see tls_dial.go's
+	// host's pinned fingerprint (see tls_dial.go's
 	// ErrTLSFingerprintMismatch and agent_poll.go's pollAgentHost) - a
 	// distinct condition from a generic network/timeout failure
 	// (AgentFailures alone), surfaced to the dashboard as its own status so
@@ -365,8 +364,8 @@ type TagModel struct {
 		// Family is Ollama's own architecture classification (e.g. "llama",
 		// "gemma3", "bert", "nomic-bert") - used downstream to distinguish
 		// chat-capable models from embedding/encoder-only ones (which have no
-		// chat-completion endpoint) without fabricating that distinction (R1:
-		// this is Ollama's own reported field, not a guess).
+		// chat-completion endpoint) without fabricating that distinction:
+		// this is Ollama's own reported field, not a guess.
 		Family string `json:"family"`
 	} `json:"details"`
 }
@@ -379,7 +378,7 @@ type tagsInflightEntry struct {
 }
 
 // maxShowCacheEntries is the hard cap on the number of live FetchModelShow
-// cache entries (P125), mirroring maxAffinityEntries below: showCache is
+// cache entries, mirroring maxAffinityEntries below: showCache is
 // keyed by "nodeURL|tag" from authenticated callers (Model Advisor), the same
 // unique-keys threat maxAffinityEntries guards against, but unlike
 // tagsCache/affinity it has no purge on RemoveNode/UpdateNodeURL and no sweep
@@ -414,11 +413,11 @@ type Router struct {
 	interval time.Duration
 	client   *http.Client
 	// tlsTransport is the single shared http.Transport backing client and
-	// every HTTPClientForNode(...) client (P24) - its DialTLSContext
+	// every HTTPClientForNode(...) client - its DialTLSContext
 	// (tls_dial.go) is the one place TLS fingerprint pinning is enforced,
 	// for both the poll path and every admin/eviction action-path call site.
 	// Built once in New(), never mutated after - safe to read without a
-	// lock. See .local/specs/node-agent-tls.md section 6.
+	// lock.
 	tlsTransport   *http.Transport
 	mu             sync.RWMutex
 	roundRobin     uint32
@@ -490,18 +489,18 @@ type Router struct {
 	// Used to detect a name collision between two different sets of weights
 	// (a stale re-pull, a mismatched quantization) so warm-residency scoring
 	// doesn't silently treat them as fungible. See recordModelDigest/
-	// digestMismatch in placement.go and .local/audit-fixes-2026-08-03.md #4.
+	// digestMismatch in placement.go.
 	modelDigests map[string]string
 	digestMu     sync.RWMutex
 	// contextWindows mirrors config.Config.ContextWindows (operator-declared
 	// per-model max context, in tokens), pushed by admin via SetContextWindows
-	// at startup and on every settings update (P405). Guarded by r.mu, same as
+	// at startup and on every settings update. Guarded by r.mu, same as
 	// the other admin-pushed config fields (timezone, liteLLM, ...) it lives
 	// alongside. Gives ensureHeadroom a context-length signal on the
 	// router-internal proactive warm paths, which have no live per-request
 	// context length of their own. See kvcache.go.
 	contextWindows map[string]int
-	// modelArchFacts caches real transformer architecture facts (P405) per
+	// modelArchFacts caches real transformer architecture facts per
 	// model, pushed opportunistically by admin/catalog.go's Model Advisor
 	// handlers - see kvcache.go's SetModelArchFacts for the full rationale.
 	// A model never looked up in the Advisor has no entry and falls back to
@@ -514,7 +513,7 @@ type Router struct {
 	queueDepth    int32 // atomic, current waiters in WaitForNode
 	queueMaxDepth int
 	queueTimeout  time.Duration
-	// maxInFlightPerNode is the global default in-flight cap (P64) - 0 means
+	// maxInFlightPerNode is the global default in-flight cap - 0 means
 	// uncapped. Overridable per node via NodeState.MaxInFlight. Set once at
 	// construction (same as queueMaxDepth/overflowSLA); a live change requires
 	// a restart, consistent with the other RoutingConfig numeric knobs above.
@@ -526,7 +525,7 @@ type Router struct {
 	// Guarded by r.mu.
 	nodeWarmup map[string]NodeWarmup
 	// warmupInProgress guards against overlapping pingWarmupModels cycles for
-	// the same node (P97): the periodic ticker, the startup ping, and a
+	// the same node: the periodic ticker, the startup ping, and a
 	// manual TriggerWarmup all fire the same per-node goroutine from
 	// independent, uncoordinated call sites with no other coordination. A
 	// node still mid-cycle when a new cycle starts is skipped rather than
@@ -545,7 +544,7 @@ type Router struct {
 	// node on it is polled for /api/ps as normal but never has its agent
 	// fields (AgentPresent, FanPercent, RAMUsedMB, DiskFreeGB) populated.
 	marborAgents map[string]MarborAgentConfig
-	// nodeControl holds the per-node accepted ControlDriver config (P43),
+	// nodeControl holds the per-node accepted ControlDriver config,
 	// guarded by r.mu same as marborAgents. Absent (or Configured: false)
 	// means lifecycle actions must return the "no control driver
 	// configured" error rather than guessing.
@@ -621,7 +620,7 @@ type Router struct {
 	// pollNvidiaAll/RunPredictionCycle the same way pollInFlight guards pollAll -
 	// each of these calls out to something that can hang (Docker socket,
 	// nvidia-smi subprocess, SQLite), and since Start's select loop now
-	// backgrounds them with `go safeRun(...)` (P127) instead of calling them
+	// backgrounds them with `go safeRun(...)` instead of calling them
 	// synchronously, a hung dependency would otherwise let the ticker stack an
 	// unbounded number of overlapping goroutines instead of the old implicit
 	// single-flight behavior the synchronous call provided for free.
@@ -629,7 +628,7 @@ type Router struct {
 	nvidiaInFlight     atomic.Bool
 	predictiveInFlight atomic.Bool
 	// agentPollInFlight guards pollAgentHosts the same way pollInFlight guards
-	// pollAll (P115): a slow/unreachable agent host can otherwise let 2-3 poll
+	// pollAll: a slow/unreachable agent host can otherwise let 2-3 poll
 	// cycles overlap, each incrementing NodeState.AgentFailures independently.
 	agentPollInFlight atomic.Bool
 }
@@ -657,8 +656,7 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 	// first (client is needed while constructing per-node runtime probes,
 	// further down) so DialTLSContext closes over rr by reference instead
 	// of requiring the Router to already exist. By the time any real dial
-	// happens, New() has returned and rr is set. See tls_dial.go and
-	// .local/specs/node-agent-tls.md section 6.
+	// happens, New() has returned and rr is set. See tls_dial.go.
 	var rr *Router
 	transport := &http.Transport{
 		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -931,7 +929,7 @@ func (r *Router) hostOfLocked(name string) (string, bool) {
 }
 
 // ControlConfig is the router's in-memory view of a node's accepted
-// ControlDriver configuration (P43) - Driver/Identifier are the operator-
+// ControlDriver configuration - Driver/Identifier are the operator-
 // accepted values lifecycle actions read; Configured is false until an
 // operator explicitly accepts one (marbor-agent-capabilities.md section 5.6).
 type ControlConfig struct {
@@ -1293,7 +1291,7 @@ func (r *Router) Start(ctx context.Context) {
 			// Runs alongside pollAll, not nested inside it - one poll per
 			// physical host (see pollAgentHosts), independent of the
 			// per-node /api/ps health poll's own in-flight guard above.
-			// CAS-guarded (P115) so a slow/unreachable agent host can't let
+			// CAS-guarded so a slow/unreachable agent host can't let
 			// overlapping cycles race stale telemetry against a newer one.
 			if r.agentPollInFlight.CompareAndSwap(false, true) {
 				go func() {
@@ -1387,7 +1385,7 @@ func (r *Router) AddNode(n config.NodeConfig) bool {
 	// While walking r.nodes for that check, also look for an existing node
 	// with the SAME name - if found, this call is an upsert, not a fresh add.
 	// Held as a single write lock through both the existence scan and whichever
-	// branch (upsert-in-place or append) is taken (P124): two concurrent
+	// branch (upsert-in-place or append) is taken: two concurrent
 	// AddNode calls for the same new name could otherwise both scan under a
 	// released RLock, both find no match, and both append separate NodeStates
 	// with identical names (a check-then-append TOCTOU). r.mu is always the
@@ -1439,7 +1437,7 @@ func (r *Router) AddNode(n config.NodeConfig) bool {
 		existingByName.Host = hostOrDefault(n.Host, n.URL)
 		existingByName.GPUModel = n.GPUModel
 		existingByName.NvidiaIndex = n.NvidiaIndex
-		// VRAMOverrides is deliberately NOT overwritten here (P411 review) -
+		// VRAMOverrides is deliberately NOT overwritten here -
 		// unlike MaxInFlight, it is now live-mutable via PatchNode/node_overrides,
 		// and config.NodeConfig.VRAMOverrides is never populated by any live
 		// upsert caller (e.g. handleAddNode's POST /admin/nodes body never
@@ -1533,7 +1531,7 @@ func (r *Router) RemoveNode(name string) {
 	st := r.store
 	r.mu.Unlock()
 
-	// P230: the remaining per-node state below is each guarded by its own
+	// The remaining per-node state below is each guarded by its own
 	// mutex, not r.mu, so it's cleaned up after releasing r.mu rather than
 	// nesting a new lock inside r.mu (avoids introducing a new lock-ordering
 	// dependency). Previously RemoveNode left affinity/lastUsed/
@@ -1732,33 +1730,32 @@ type NodePatch struct {
 	GPUModel    *string `json:"gpu_model"`
 	Runtime     *string `json:"runtime"`
 	// GPUIndices declares which physical GPU indices this node/runtime
-	// instance actually uses (P75 Gap B/C) - nil means "not present in this
+	// instance actually uses - nil means "not present in this
 	// PATCH, no change"; a non-nil pointer to an empty slice explicitly
 	// clears a prior declaration. See NodeState.DeclaredGPUIndices.
 	GPUIndices *[]int `json:"gpu_indices"`
 	// URL is handled separately from the other fields - see UpdateNodeURL -
 	// but is decoded here so a single PATCH body can carry it.
 	URL *string `json:"url"`
-	// MaxInFlight declares this node's per-node in-flight cap override (P64) -
+	// MaxInFlight declares this node's per-node in-flight cap override -
 	// nil means "not present in this PATCH, no change"; a non-nil pointer to
 	// 0 explicitly clears any prior override back to "use the global default"
 	// (mirrors GPUIndices' non-nil-empty-slice-clears convention).
 	MaxInFlight *int `json:"max_in_flight"`
 	// TLSFingerprint declares this node's TOFU-pinned Marbor Agent cert
-	// fingerprint (P24) - nil means "not present in this PATCH, no change";
-	// a non-nil pointer to "" explicitly clears a prior pin (reset flow,
-	// see .local/specs/node-agent-tls.md section 2/5). No-downgrade
-	// enforcement (rejecting a patch that would leave this set alongside an
-	// http:// URL) and the section 15 sibling-consistency guard both live in
+	// fingerprint - nil means "not present in this PATCH, no change";
+	// a non-nil pointer to "" explicitly clears a prior pin (reset flow).
+	// No-downgrade enforcement (rejecting a patch that would leave this set
+	// alongside an http:// URL) and the sibling-consistency guard both live in
 	// admin.go's handlePatchNode, not here - PatchNode itself only merges.
 	TLSFingerprint *string `json:"tls_fingerprint"`
-	// ParallelismType declares deployment topology type (P397) - nil means no
+	// ParallelismType declares deployment topology type - nil means no
 	// change, pointer to "" clears. ParallelismWidth declares width - nil
 	// means no change, pointer to 0 clears.
 	ParallelismType  *string `json:"parallelism_type"`
 	ParallelismWidth *int    `json:"parallelism_width"`
 	// VRAMOverrides declares, per model name, how much VRAM (MB) that model
-	// consumes on this node (P411) - nil means "not present in this PATCH,
+	// consumes on this node - nil means "not present in this PATCH,
 	// no change"; a non-nil pointer to an empty map explicitly clears a
 	// prior declaration (mirrors GPUIndices' whole-value-replace
 	// convention above). Key is currently the plain model name - see
@@ -1882,7 +1879,7 @@ func (r *Router) PatchNode(name string, patch NodePatch) bool {
 			}
 			if patch.Runtime != nil {
 				n.Runtime = *patch.Runtime
-				// P409: clear any stale llamacpp/MLX mismatch hint - it no
+				// Clear any stale llamacpp/MLX mismatch hint - it no
 				// longer describes this node's current runtime once the
 				// operator has explicitly changed it (that's the hint's own
 				// suggested fix, in the mlx case).
@@ -1898,8 +1895,8 @@ func (r *Router) PatchNode(name string, patch NodePatch) bool {
 					// autoDetect false with probe still nil - pollNode's
 					// needsDetect guard would then never re-arm detection,
 					// and the next poll dereferences a nil probe and panics
-					// (crashes the whole single-process marbor, R1/architecture
-					// law: one process for the entire marbor).
+					// (crashes the whole single-process marbor - there is only
+					// one process for the entire marbor).
 					n.probe = runtimepkg.NewProbe(*patch.Runtime, r.client)
 				}
 			}
@@ -1937,7 +1934,7 @@ func (r *Router) PatchNode(name string, patch NodePatch) bool {
 // required count is max(len(DeclaredGPUIndices), ParallelismWidth) when
 // both are declared, otherwise whichever is declared. Validated at API
 // layer: tp with len < width is rejected with 422 before it reaches here.
-// P397b extension: when nothing is declared, effective falls back to the
+// When nothing is declared, effective falls back to the
 // auto-detected deployment (per-port Deployments report) so a fresh host
 // with a running vLLM TP=8 is placement-aware without typing. Declared
 // always wins when present (operator override).
@@ -1947,7 +1944,7 @@ func (n *NodeState) EffectiveRequiredGPUs() int {
 	return effectiveRequiredGPUsLocked(n)
 }
 
-// deriveRequiredGPUs is the single source of truth for P397 required-GPU
+// deriveRequiredGPUs is the single source of truth for required-GPU
 // derivation: required = max(width, len(indices)), with an explicit indices
 // list winning when it is longer than the declared width. width<=0 means
 // "use indices only".
@@ -1962,18 +1959,18 @@ func deriveRequiredGPUs(width int, indices []int) int {
 }
 
 func effectiveRequiredGPUsLocked(n *NodeState) int {
-	// Declared wins when present (operator override) - preserve P397 behavior.
+	// Declared wins when present (operator override).
 	if n.ParallelismWidth > 0 || len(n.DeclaredGPUIndices) > 0 {
 		return deriveRequiredGPUs(n.ParallelismWidth, n.DeclaredGPUIndices)
 	}
-	// No declared constraint - fall back to auto-detected deployment (P397b).
+	// No declared constraint - fall back to auto-detected deployment.
 	if n.DetectedParallelismWidth > 0 || len(n.DetectedGPUGroup) > 0 {
 		return deriveRequiredGPUs(n.DetectedParallelismWidth, n.DetectedGPUGroup)
 	}
 	return 0
 }
 
-// EffectiveDeclaredRequiredGPUs is the P397 declared-only derived value
+// EffectiveDeclaredRequiredGPUs is the declared-only derived value
 // (ignores detected) - useful for mismatch warning UI.
 func (n *NodeState) EffectiveDeclaredRequiredGPUs() int {
 	n.mu.RLock()
@@ -1981,7 +1978,7 @@ func (n *NodeState) EffectiveDeclaredRequiredGPUs() int {
 	return deriveRequiredGPUs(n.ParallelismWidth, n.DeclaredGPUIndices)
 }
 
-// EffectiveDetectedRequiredGPUs is the P397b detected-only derived value.
+// EffectiveDetectedRequiredGPUs is the detected-only derived value.
 func (n *NodeState) EffectiveDetectedRequiredGPUs() int {
 	n.mu.RLock()
 	defer n.mu.RUnlock()
@@ -1990,7 +1987,7 @@ func (n *NodeState) EffectiveDetectedRequiredGPUs() int {
 
 // MismatchWarning returns amber warning when declared and detected disagree
 // (e.g. declared 4 vs detected 8) - not a 422 block, just honest visibility
-// so Adopt can fix it in one click (P397b). Empty means no mismatch.
+// so Adopt can fix it in one click. Empty means no mismatch.
 func (n *NodeState) MismatchWarning() string {
 	n.mu.RLock()
 	defer n.mu.RUnlock()
@@ -2176,7 +2173,7 @@ func (r *Router) FetchModelTags(nodeURL string) ([]TagModel, error) {
 }
 
 // ModelShowInfo carries the subset of Ollama's /api/show model_info block
-// that Model Advisor's context-length feasibility advice (P71) needs to run
+// that Model Advisor's context-length feasibility advice needs to run
 // a real per-token KV-cache formula instead of a linear size estimate. Every
 // field here is read verbatim from Ollama's own GGUF-derived metadata -
 // never guessed - which is what makes this the one runtime where a model's
@@ -2200,10 +2197,10 @@ type modelShowCacheEntry struct {
 const modelShowCacheTTL = 30 * time.Second
 
 // FetchModelShow calls a node's Ollama /api/show endpoint for one model tag
-// and extracts the architecture facts P71 needs. Returns ok=false (never an
-// error the caller must handle) whenever the node/model doesn't yield a
-// complete set of facts - a formula missing even one input isn't reliable,
-// so a partial answer is treated the same as no answer (R1). Cached for 30s
+// and extracts the architecture facts Model Advisor needs. Returns ok=false
+// (never an error the caller must handle) whenever the node/model doesn't
+// yield a complete set of facts - a formula missing even one input isn't
+// reliable, so a partial answer is treated the same as no answer. Cached for 30s
 // per (nodeURL, tag) - same TTL as FetchModelTags - since Model Advisor's
 // context-length slider re-triggers this on every tick and the underlying
 // architecture facts never change between requests for the same model.
@@ -2291,7 +2288,7 @@ func (r *Router) fetchModelShowUncached(nodeURL, tag string) (ModelShowInfo, boo
 		// 0 via integer division downstream, silently zeroing the entire
 		// KV-cache term while still being labeled "derived" (high
 		// confidence) - malformed model_info is data this codebase can't
-		// trust, not data it should guess a zero-cost answer from (R1).
+		// trust, not data it should guess a zero-cost answer from.
 		return ModelShowInfo{}, false
 	}
 	return ModelShowInfo{
@@ -2322,14 +2319,14 @@ func (r *Router) RecordRequestOutcome(nodeName string, success bool) {
 }
 
 // recentTTFTCap bounds NodeState.RecentTTFT to a short recency window rather
-// than a long-run average, so scoreComponents' load weighting (P404) reacts
+// than a long-run average, so scoreComponents' load weighting reacts
 // to the node's current load shape, not history from minutes ago.
 const recentTTFTCap = 10
 
 // RecordTTFT stamps a real observed time-to-first-byte for a request served
-// by nodeName, feeding scoreComponents' load-shape weighting of ActiveConns
-// (P404). ttft must be a genuinely measured duration (proxy.go's
-// statusRecorder.ttft(), > 0) - never a synthetic or estimated value (R1).
+// by nodeName, feeding scoreComponents' load-shape weighting of ActiveConns.
+// ttft must be a genuinely measured duration (proxy.go's
+// statusRecorder.ttft(), > 0) - never a synthetic or estimated value.
 func (r *Router) RecordTTFT(nodeName string, ttft time.Duration) {
 	if ttft <= 0 {
 		return

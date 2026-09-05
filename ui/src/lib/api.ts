@@ -800,7 +800,7 @@ export async function fetchAuditLog(filters: AuditLogFilters = {}): Promise<Requ
   }));
 }
 
-// fetchRequestExplain queries GET /admin/requests/{id}/explain (P41) - the
+// fetchRequestExplain queries GET /admin/requests/{id}/explain - the
 // full routing decision for one request, fetched lazily (not part of the
 // audit-log list payload) since it carries the full score breakdown. Throws
 // on 404 (no decision recorded for this id, e.g. it predates this feature).
@@ -938,7 +938,7 @@ export function normalizePullTag(model: string): string {
 
 // fetchModelConfig returns the configured default parameter profile for a
 // (model, node) pair, or null if none is configured (backend returns 404 in
-// that case - R1: the UI must show "not set", never fabricate a value).
+// that case - the UI must show "not set", never fabricate a value).
 // Both model and node are required by the backend.
 export async function fetchModelConfig(model: string, node: string): Promise<ModelConfig | null> {
   const res = await apiFetch(`${BASE}/model-config?model=${encodeURIComponent(model)}&node=${encodeURIComponent(node)}`, { headers: authHeaders() });
@@ -1090,7 +1090,7 @@ export interface HFModel {
   createdAt?: string;
 }
 
-// ContextFeasibility is P71's context-length feasibility advice for one
+// ContextFeasibility is the context-length feasibility advice for one
 // model variant at one requested context length. confidence is always
 // populated ("derived" or "estimated") so the UI can never present a rough
 // linear guess as if it were a real architecture-derived calculation.
@@ -1415,7 +1415,7 @@ export async function disableMarborAgent(name: string): Promise<void> {
   if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to disable marbor agent'); }
 }
 
-// ControlDriver (P43) - how the marbor agent starts/stops/restarts the
+// ControlDriver - how the marbor agent starts/stops/restarts the
 // inference runtime process on this node. `discovered` is a suggestion
 // only, refreshed by the agent's own probe on every poll cycle; `driver`/
 // `identifier`/`configured` is the operator-accepted value, which only
@@ -1456,8 +1456,8 @@ export async function clearNodeControl(name: string): Promise<void> {
   if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to clear control driver'); }
 }
 
-// startNodeRuntime/stopNodeRuntime/restartNodeRuntime dispatch P43 Step 3's
-// runtime.start/runtime.stop/runtime.restart capability - only meaningful
+// startNodeRuntime/stopNodeRuntime/restartNodeRuntime dispatch the runtime
+// control step's runtime.start/runtime.stop/runtime.restart capability - only meaningful
 // once a control driver is configured (controlStatus.configured); the
 // Admin API returns "Runtime control unavailable: no control driver
 // configured" (422) otherwise, surfaced here as a thrown error.
@@ -1486,7 +1486,7 @@ export async function restartNodeRuntime(name: string): Promise<void> {
 }
 
 // getNodeRuntimeLogs fetches a point-in-time snapshot of recent log lines
-// from a node's runtime process (P58) - not a live tail. A node whose
+// from a node's runtime process - not a live tail. A node whose
 // control driver has no real log source (e.g. a bare PID-file process with
 // no supervisor) rejects with that driver's own "not supported" error.
 export async function getNodeRuntimeLogs(name: string, lines?: number): Promise<{ lines: string[] }> {
@@ -1552,7 +1552,7 @@ export async function checkNodeHealth(name: string): Promise<NodeHealthCheckResu
 }
 
 // probeNodeTLS retrieves the certificate fingerprint an https:// node
-// currently presents, WITHOUT pinning it (P24, spec section 2) - callers
+// currently presents, WITHOUT pinning it - callers
 // must display the value for the operator to confirm out of band, then
 // call patchNode(name, { tls_fingerprint }) only on an explicit "Confirm &
 // Pin" click. Never call patchNode automatically from this result.

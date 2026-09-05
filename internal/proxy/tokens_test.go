@@ -88,14 +88,14 @@ func TestTTFTZeroWhenStartUnset(t *testing.T) {
 	}
 }
 
-// TestNoNewlineTailBoundedAtEmbedTailMax is a regression test for B1 finding
-// PROXY-01: a no-newline response body (e.g. /v1/embeddings, whose usage
+// TestNoNewlineTailBoundedAtEmbedTailMax is a regression test for the finding
+// that a no-newline response body (e.g. /v1/embeddings, whose usage
 // field trails a large embedding array with no '\n' anywhere) used to grow
 // the retained tail all the way to maxRequestBodyBytes (32 MiB) per request -
 // a burst of concurrent embeddings requests could each pin 32 MiB, OOM-
 // killing the control plane on anonymous traffic. Retention must now stop at
 // embedTailMax, well below that bound, and mark the tail truncated so
-// tokenCount reports -1 (unknown) instead of a fake 0 (R1) once real usage
+// tokenCount reports -1 (unknown) instead of a fake 0 once real usage
 // data past the cut is unreachable.
 func TestNoNewlineTailBoundedAtEmbedTailMax(t *testing.T) {
 	rec := &statusRecorder{ResponseWriter: httptest.NewRecorder()}

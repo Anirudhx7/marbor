@@ -66,8 +66,8 @@ func doUnloadModel(t *testing.T, srv *Server, model string) *http.Response {
 
 // TestHandlePullModel_UnsupportedRuntimeReturnsClearError verifies an
 // unrecognized/undetected runtime never silently no-ops - it must return a
-// clear, honest error (R1 extended to actions: an action that didn't happen
-// must never report ok:true).
+// clear, honest error: an action that didn't happen
+// must never report ok:true.
 func TestHandlePullModel_UnsupportedRuntimeReturnsClearError(t *testing.T) {
 	srv := newTestServerWithRuntime(t, "")
 	res := doPull(t, srv, `{"model":"hf.co/org/repo:Q4_K_M"}`)
@@ -183,7 +183,7 @@ func TestHandleListModels_OllamaReturnsRealTags(t *testing.T) {
 // mxbai-embed, family "bert") being indistinguishable from chat models in
 // the models.list response - a caller (the marbor's Benchmark page) needs
 // Family to filter them out. A chat model with no family reported must stay
-// empty rather than a fabricated guess (R1).
+// empty rather than a fabricated guess.
 func TestHandleListModels_OllamaCapturesFamily(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -303,7 +303,7 @@ func TestHandleListModels_RequiresBearerToken(t *testing.T) {
 
 // TestHandleDeleteModel_UnsupportedRuntimeReturnsClearError mirrors the pull
 // and list handlers' equivalent - no detected runtime must never silently
-// report ok:true for a delete that never happened (R1 extended to actions).
+// report ok:true for a delete that never happened.
 func TestHandleDeleteModel_UnsupportedRuntimeReturnsClearError(t *testing.T) {
 	srv := newTestServerWithRuntime(t, "")
 	res := doDeleteModel(t, srv, "org/repo")
@@ -374,7 +374,7 @@ func TestHandleDeleteModel_HFCacheRemovesRealDirectory(t *testing.T) {
 
 // TestHandleDeleteModel_HFCacheModelNotFoundReturnsClearError verifies a
 // model that was never downloaded produces an honest "not found" error, not
-// a fabricated success (R1 extended to actions).
+// a fabricated success.
 func TestHandleDeleteModel_HFCacheModelNotFoundReturnsClearError(t *testing.T) {
 	tmp := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(tmp, "hub"), 0o755); err != nil {
@@ -470,8 +470,9 @@ func TestDeleteViaHFCache_SymlinkRejected(t *testing.T) {
 
 // TestHandleUnloadModel_UnsupportedRuntimeReturnsClearError mirrors the
 // pull/list/delete handlers' equivalent - a runtime with no unload
-// primitive in unloadCommands (vLLM/TGI/MLX today, per P31's
-// verify-before-build) must never silently report ok:true. llamacpp is
+// primitive in unloadCommands (vLLM/TGI/MLX today, per the
+// verify-before-build against each runtime's actual capabilities) must
+// never silently report ok:true. llamacpp is
 // covered separately below (TestHandleUnloadModel_LlamaCpp*) since it is in
 // unloadCommands but must still refuse when router mode isn't confirmed.
 func TestHandleUnloadModel_UnsupportedRuntimeReturnsClearError(t *testing.T) {
@@ -611,7 +612,7 @@ func TestHandleUnloadModel_LlamaCppRouterReportsFailure(t *testing.T) {
 	}
 }
 
-// TestHandleUnloadModel_LlamaCppRouterResolvesRepoIDToRouterID covers P34:
+// TestHandleUnloadModel_LlamaCppRouterResolvesRepoIDToRouterID covers the case:
 // marbor callers send the "org/repo" Hugging Face identifier (hfRepoID/
 // hfCacheRepoID's format, used everywhere else HF-cache-sourced models are
 // named), but the router's own "id" is a bare filename stem with no
@@ -656,7 +657,7 @@ func TestHandleUnloadModel_LlamaCppRouterResolvesRepoIDToRouterID(t *testing.T) 
 // TestHandleUnloadModel_LlamaCppRouterAmbiguousRepoIsClearError covers a repo
 // with multiple quant files (the common case for GGUF repos) - "org/repo"
 // alone cannot disambiguate which quant to unload, so this must refuse with
-// a clear, candidate-listing error rather than guessing one (R1).
+// a clear, candidate-listing error rather than guessing one.
 func TestHandleUnloadModel_LlamaCppRouterAmbiguousRepoIsClearError(t *testing.T) {
 	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -736,7 +737,7 @@ func TestHandleUnloadModel_RequiresBearerToken(t *testing.T) {
 }
 
 // TestPOSTModelsRouteShape_PullVsUnloadDisambiguation is a regression guard
-// for the route-shape decision recorded in .local/specs/node-agent.md: POST
+// for the route-shape decision recorded in the node-agent design doc: POST
 // /v1/models (no trailing segment) must always mean "pull" and POST
 // /v1/models/{name...} must always mean "unload" - both are POST, on
 // deliberately different path shapes, and a future change that makes them

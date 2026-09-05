@@ -51,7 +51,7 @@ func TestResolveCommand(t *testing.T) {
 	}
 }
 
-// TestResolveCommand_MatchesRegistry pins the P83+ item 2 fix: main.go's
+// TestResolveCommand_MatchesRegistry pins the fix requiring that main.go's
 // dispatch whitelist must be derived from internal/cli's registry, not a
 // hand-maintained list that can silently omit commands (as it previously did
 // for "key", "spill", and "requests" - see main.go:216 history). It asserts
@@ -283,7 +283,7 @@ func TestAgentBinary_HasNoControlPlaneCapability(t *testing.T) {
 // This deliberately does NOT assert "marbor must not import package
 // internal/marboragent at all" via go list -deps - that's unsatisfiable and
 // would be the wrong target. internal/admin genuinely needs marboragent's
-// frozen R9 wire types (marboragent.GPUInfo/GPUBlock) and its auth-scope
+// frozen protocol wire types (marboragent.GPUInfo/GPUBlock) and its auth-scope
 // constants (marboragent.ScopeAdmin/...) - pre-existing, required, unrelated
 // to this split. Go's dependency graph is package-granular, not
 // symbol-granular: because agent.go/service_cmd.go (the actual runtime/

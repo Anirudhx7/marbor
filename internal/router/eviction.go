@@ -308,7 +308,7 @@ func (r *Router) RecordManualUnload(nodeName, model string) {
 // through its Marbor Agent (enabled + reports capability "models.unload")
 // instead of the direct Ollama keep_alive:0 HTTP call - the single decision
 // shared by the manual unload endpoint (admin.go handleUnloadModel) and the
-// scheduled unload path (UnloadModels below), per P33: a future change to
+// scheduled unload path (UnloadModels below), so a future change to
 // the decision has exactly one place to change instead of two. Reliability
 // requirement: a node with no agent configured/enabled, or one that hasn't
 // reported "models.unload", always gets false here, so the caller's
@@ -375,8 +375,8 @@ func (r *Router) unloadModelViaAgent(ctx context.Context, nodeURL string, cfg Ma
 
 	// HTTPClientForNode (tls_dial.go), not a bare &http.Client{} - this call
 	// site must go through the same TLS-pinning-aware Transport as the poll
-	// path and every admin action-path client (P24, no partially-secured
-	// agent where telemetry is HTTPS and unload stays plaintext).
+	// path and every admin action-path client, so there is no partially-secured
+	// agent where telemetry is HTTPS and unload stays plaintext.
 	resp, err := r.HTTPClientForNode(marborAgentUnloadTimeout).Do(req)
 	if err != nil {
 		return fmt.Errorf("agent unload model failed: %w", err)
@@ -406,7 +406,7 @@ func (r *Router) unloadModelViaAgent(ctx context.Context, nodeURL string, cfg Ma
 const marborAgentUnloadTimeout = 30 * time.Second
 
 // buildAgentUnloadURL derives the agent's POST /v1/models/{name} URL from the
-// node's own URL (same host, via url.Parse per R5 - never arithmetic port
+// node's own URL (same host, via url.Parse - never arithmetic port
 // derivation), the configured agent port, and the agent's OWN scheme
 // (independent of nodeURL's scheme - see store.MarborAgentRecord.Scheme's doc
 // comment). model is percent-escaped per "/"-delimited segment so a name
@@ -489,7 +489,7 @@ func (r *Router) UnloadModel(ctx context.Context, nodeName, model string) (bool,
 //
 // Dispatches through the node's Marbor Agent (capability "models.unload") when
 // ShouldUseAgentForUnload says so - same decision handleUnloadModel makes for
-// the manual path (P33) - so a vLLM/TGI/llama.cpp/MLX node's scheduled unload
+// the manual path - so a vLLM/TGI/llama.cpp/MLX node's scheduled unload
 // works for real instead of silently no-op-ing via the direct
 // Ollama-only keep_alive:0 call below. A node with no agent
 // configured/enabled/capable falls through to that direct call completely
@@ -708,8 +708,8 @@ const evictCooldown = 15 * time.Second
 // proxy for GGUF/safetensors weights before the model has ever been observed
 // loaded) - only consulted when allowFetch is true, since FetchModelTags can
 // perform a live HTTP call on a cache miss and some callers (the streaming
-// request-routing hot path) must never block on I/O (R2). This tier alone
-// runs the disk size through EstimateContextAwareBytes (P410) so a
+// request-routing hot path) must never block on I/O. This tier alone
+// runs the disk size through EstimateContextAwareBytes so a
 // quantization/format overhead multiplier is applied consistently with what
 // the Model Advisor already tells the operator (GGUFOverheadMult/
 // SafetensorsOverheadMult in kvcache.go) - a Q4_K_M and an F16 build of the
@@ -718,7 +718,7 @@ const evictCooldown = 15 * time.Second
 // adds real per-token KV-cache growth on top when available; (3) non-Ollama
 // runtimes (vllm, tgi, llamacpp, mlx) don't expose /api/tags, so
 // FetchModelTags fails or the model is absent from the result - fall back to
-// the operator-declared vram_overrides size for that node+model (R1: an
+// the operator-declared vram_overrides size for that node+model (an
 // explicit operator declaration already accounts for whatever the operator
 // knows, so it too is returned as-is with no overhead multiplier). Returns 0
 // when the size is unknown by any allowed path so callers can decline to
@@ -819,13 +819,13 @@ func (r *Router) reserveWarmBytes(node, model string, estBytes int64) int64 {
 
 // unknownModelReserveBytes is a conservative placeholder reservation used by
 // reserveColdStartBytes when a cold-start model's real size cannot yet be
-// determined. It is deliberately NOT a size estimate or measurement (R1) - it
+// determined. It is deliberately NOT a size estimate or measurement - it
 // is a scheduling guard only, never surfaced as VRAM telemetry anywhere. Its
 // sole purpose is to make PendingPrewarmBytes/free_vram_headroom nonzero for
 // the node holding this reservation, so a burst of concurrent cold-start
 // requests for a never-seen model see each other's pick instead of all
-// reading the same stale "fully free" snapshot and colliding on one node
-// (P402). Once the poller confirms the model resident, clearWarmReservation
+// reading the same stale "fully free" snapshot and colliding on one node.
+// Once the poller confirms the model resident, clearWarmReservation
 // drops this placeholder like any other reservation - it never lingers past
 // warmReservationTTL either way.
 const unknownModelReserveBytes = 2 * 1024 * 1024 * 1024 // 2 GiB
@@ -834,11 +834,11 @@ const unknownModelReserveBytes = 2 * 1024 * 1024 * 1024 // 2 GiB
 // that just picked node for a not-yet-warm model. Used on the streaming
 // request-routing hot path (Route/selectBestNode/RouteExcluding), so it only
 // ever consults already-known, zero-I/O size data (estimateModelSizeBytes with
-// allowFetch=false) - never a blocking fetch (R2). When the real size isn't
+// allowFetch=false) - never a blocking fetch. When the real size isn't
 // already known, this falls back to unknownModelReserveBytes rather than
 // reserving nothing: a silent no-op here is what let concurrent cold starts
 // for the same never-seen model double-book a node, since neither request's
-// pick discounted the other's headroom (P402).
+// pick discounted the other's headroom.
 func (r *Router) reserveColdStartBytes(nodeURL, nodeName, model string) {
 	est := r.estimateModelSizeBytes(nodeURL, model, false, 0)
 	if est <= 0 {
@@ -875,7 +875,7 @@ func (r *Router) LocalDegradationChainFor(model string) []string {
 // least one healthy, non-draining node, using the same real size/headroom
 // data (tags-cache size, live VRAM) as predictive prewarm and eviction.
 //
-// Two distinct "unknown" cases exist here and are handled differently (P403):
+// Two distinct "unknown" cases exist here and are handled differently:
 //   - No healthy node has a known VRAM *capacity* (VRAMTotalMB, i.e. a
 //     marbor-agent report or a manual vram_total_mb override) at all - a
 //     remote fleet with no agent has no real capacity signal whatsoever, so
@@ -884,15 +884,15 @@ func (r *Router) LocalDegradationChainFor(model string) []string {
 //   - Capacity is known on at least one healthy node, but model's *size* is
 //     unknown everywhere (never seen, no tags-cache entry) - there is real
 //     capacity data, just nothing to compare it against. This still fails
-//     open (true), matching the existing R1-safe "never guess a value that
+//     open (true), matching the existing safe "never guess a value that
 //     wasn't observed" behavior for a genuinely novel model.
 //
 // requestedCtx, when > 0, is the caller's best available context-length
 // signal (typically a live per-request token estimate) for the fit check
-// below (P405): the same disk-size model can need materially more VRAM at
+// below: the same disk-size model can need materially more VRAM at
 // 32K context than at 1K, and a size-only comparison can't see that. <= 0
-// means no context-length signal was available, in which case the pre-P405
-// size-only comparison is used unchanged (R1: never fabricate a context
+// means no context-length signal was available, in which case the original
+// size-only comparison is used unchanged (never fabricate a context
 // length that wasn't observed or configured).
 func (r *Router) ModelFitsAnyHealthyNode(model string, requestedCtx int64) bool {
 	r.mu.RLock()
@@ -1044,14 +1044,14 @@ func (r *Router) ensureHeadroom(ctx context.Context, n *NodeState, model string)
 	if resident || totalBytes <= 0 {
 		return
 	}
-	// P405: when the operator has declared a context window for model, size
+	// When the operator has declared a context window for model, size
 	// the disk-size-tier reservation for that context length instead of
 	// weights-only - the same disk size needs materially more real VRAM at a
 	// large declared context than at a small one. No declared window (the
 	// common case for a model nobody has configured a window for) passes 0,
-	// exactly the pre-P405 behavior for the KV-cache-growth term (R1: never
+	// exactly the original behavior for the KV-cache-growth term (never
 	// guess an undeclared context length) - the quantization/format overhead
-	// multiplier (P410) still applies either way, entirely inside
+	// multiplier still applies either way, entirely inside
 	// estimateModelSizeBytes, and only to the disk-size tier (a real observed
 	// lastKnownVRAM or an operator override passes through unmodified).
 	var requestedCtx int64
@@ -1109,7 +1109,7 @@ func (r *Router) ensureHeadroom(ctx context.Context, n *NodeState, model string)
 	r.evictMu.Unlock()
 
 	// Only stamp lastEvictAt (starting the cooldown) once EvictForHeadroom
-	// actually evicted something (P118) - stamping it unconditionally before
+	// actually evicted something - stamping it unconditionally before
 	// the call burns the cooldown even when zero models were evicted (all
 	// pinned/higher-priority/in-flight, or an unload error), blocking further
 	// auto-eviction attempts on this node for the full window while pressure

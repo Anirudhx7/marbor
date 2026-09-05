@@ -7,7 +7,7 @@ package router
 // internal/router - admin importing router is fine, router importing admin
 // would be a cycle. admin/catalog.go pushes facts here (SetModelArchFacts)
 // whenever it resolves them for a model the operator has looked up in the
-// Model Advisor; it never invents them (R1) - a model never looked up simply
+// Model Advisor; it never invents them - a model never looked up simply
 // has no entry here and falls back to the estimated-path formula below.
 type ModelArchFacts struct {
 	NumLayers    int64
@@ -58,7 +58,7 @@ const (
 // ModelFitsAnyHealthyNode, ensureHeadroom; placement.go's computeNodeScore
 // free_vram_headroom factor) to the "used" side of a free = total - used
 // computation, never to the raw health.go VRAMUsedMB measurement itself
-// (R1: that stays a real, unmodified measurement). Distinct from
+// (that stays a real, unmodified measurement). Distinct from
 // GGUFOverheadMult/SafetensorsOverheadMult, which instead correct a
 // *disk-size-to-VRAM* estimate for one specific model being sized - this
 // constant corrects the *already-used* figure for allocator slack regardless
@@ -105,7 +105,7 @@ func runtimeOverheadConstants(runtime string) (overheadMult, perTokenMBFallback 
 // and a 32K-token request no longer tie), just not GQA-aware. requestedCtx
 // <= 0 means no context-length signal was available at all; callers should
 // treat that as "use the pre-existing size-only estimate" rather than call
-// this function (R1: never fabricate a context length that wasn't observed
+// this function (never fabricate a context length that wasn't observed
 // or configured).
 func EstimateContextAwareBytes(sizeMB, requestedCtx int64, runtime string, arch *ModelArchFacts) int64 {
 	overheadMult, perTokenMBFallback := runtimeOverheadConstants(runtime)
@@ -125,7 +125,7 @@ func EstimateContextAwareBytes(sizeMB, requestedCtx int64, runtime string, arch 
 // concurrent use. A model never looked up in the Advisor simply has no entry
 // here - ensureHeadroom/ModelFitsAnyHealthyNode fall back to the
 // non-GQA-aware estimated path for it (see EstimateContextAwareBytes), never
-// a fabricated guess (R1).
+// a fabricated guess.
 func (r *Router) SetModelArchFacts(model string, facts ModelArchFacts) {
 	r.archFactsMu.Lock()
 	defer r.archFactsMu.Unlock()
@@ -150,7 +150,7 @@ func (r *Router) modelArchFactsFor(model string) (ModelArchFacts, bool) {
 // context-length signal to use. Mirrors the existing SetTimezone/SetLiteLLM
 // push pattern. A model absent from this map has no declared window, and
 // ensureHeadroom falls back to the pre-existing size-only estimate for it
-// (R1: never guess an undeclared context length).
+// (never guess an undeclared context length).
 func (r *Router) SetContextWindows(cw map[string]int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

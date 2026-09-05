@@ -19,7 +19,7 @@ var lookPath = exec.LookPath
 // gpu.go for the interface and how future vendors (ROCm, Apple Metal, Intel)
 // plug in alongside it. One agent process reports every NVIDIA GPU on the
 // host as a single GPUBlock - never one agent per GPU (see
-// .local/specs/telemetry-v1-spec.md section 6's decision record).
+// the telemetry design doc's decision record).
 type nvidiaCollector struct{}
 
 func (nvidiaCollector) Name() string { return "nvidia" }
@@ -95,7 +95,7 @@ func parseMiB(s string) int64 {
 // parseCelsius parses a temperature reading like "67 C". Returns ok=false
 // for "N/A" or anything unparseable (a real gap on some cards/drivers where
 // the sensor isn't reported) - callers must omit the field rather than use
-// the zero value as a real 0°C reading (R1).
+// the zero value as a real 0°C reading.
 func parseCelsius(s string) (float64, bool) {
 	s = strings.TrimSpace(s)
 	if s == "" || s == "N/A" {
@@ -110,7 +110,7 @@ func parseCelsius(s string) (float64, bool) {
 }
 
 // parseWatts parses a power reading like "218.00 W". Returns ok=false for
-// "N/A" or anything unparseable, same R1 reasoning as parseCelsius.
+// "N/A" or anything unparseable, same never-fabricate reasoning as parseCelsius.
 func parseWatts(s string) (float64, bool) {
 	s = strings.TrimSpace(s)
 	if s == "" || s == "N/A" {
@@ -171,7 +171,7 @@ func parseNvidiaSMIXML(data []byte) (GPUBlock, bool) {
 		// Power reading falls back from power_readings to gpu_power_readings
 		// when the primary is unavailable ("N/A") - only set PowerWatts if
 		// whichever source is actually used parses successfully; never
-		// fabricate a fallback-of-a-fallback 0 (R1).
+		// fabricate a fallback-of-a-fallback 0.
 		watts, ok := parseWatts(gpu.PowerReadings.PowerDraw)
 		if !ok {
 			watts, ok = parseWatts(gpu.GPUPowerReadings.PowerDraw)

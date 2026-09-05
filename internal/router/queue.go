@@ -36,7 +36,7 @@ func (r *Router) DecrConn(node *NodeState) {
 }
 
 // IncrModelInFlight increments the in-flight request count for a specific
-// model on a node (P117), alongside the per-node IncrConn. Consulted by
+// model on a node, alongside the per-node IncrConn. Consulted by
 // EvictForHeadroom's victim selection to protect an actively-serving model
 // from being picked as the coldest LRU candidate mid-generation.
 func (r *Router) IncrModelInFlight(node *NodeState, model string) {

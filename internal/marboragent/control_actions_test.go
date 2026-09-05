@@ -239,7 +239,7 @@ func doRuntimeActionWithToken(t *testing.T, s *Server, action, bearerToken strin
 	return w
 }
 
-// TestHandleRuntimeAction_StartCommandRequiresAdminTier is the core P151
+// TestHandleRuntimeAction_StartCommandRequiresAdminTier is the core scope
 // regression: start_command reaches control.ProcessDriver.Start, arbitrary
 // process execution - a tierOperator token (the tier every agent is
 // provisioned with by default for routine model/runtime lifecycle actions)

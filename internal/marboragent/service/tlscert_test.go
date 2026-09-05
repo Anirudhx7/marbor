@@ -12,7 +12,7 @@ import (
 
 // TestEnsureAgentCert_GeneratesParsableMatchingPair verifies a fresh
 // EnsureAgentCert call produces a certificate that parses, and whose public
-// key actually matches the generated private key - the core P24 section 13
+// key actually matches the generated private key - the core TLS design doc
 // requirement ("certificate is parseable and matches its own key").
 func TestEnsureAgentCert_GeneratesParsableMatchingPair(t *testing.T) {
 	dir := t.TempDir()

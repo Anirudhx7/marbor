@@ -84,8 +84,8 @@ func TestRenderPrometheusDerivedFromTelemetry(t *testing.T) {
 
 // TestRenderPrometheusOmitsUnknownFields verifies that fields absent from
 // the JSON telemetry (nil GPU/Host/Runtime, or nil sub-fields) are simply
-// not rendered as metric lines, rather than rendered as a fabricated 0 (R1:
-// the Prometheus endpoint must never claim a measurement that wasn't taken).
+// not rendered as metric lines, rather than rendered as a fabricated 0 -
+// the Prometheus endpoint must never claim a measurement that wasn't taken.
 func TestRenderPrometheusOmitsUnknownFields(t *testing.T) {
 	tel := Telemetry{Agent: Agent{Version: "v0.16.0", ProtocolVersion: 1}}
 	out := RenderPrometheus(tel)

@@ -78,7 +78,7 @@ func TestSetServiceTokenEnvCommand_ArgsNeverContainToken(t *testing.T) {
 // TestRestrictDirToSystemAdminsCommand_UsesWellKnownSIDs verifies the icacls
 // invocation removes inherited permissions and grants only the well-known
 // SYSTEM/Administrators SIDs (not the localized account names, which differ
-// on non-English Windows) full control - P24's approved native-ACL approach
+// on non-English Windows) full control - the approved native-ACL approach
 // for the Windows agent TLS key directory.
 func TestRestrictDirToSystemAdminsCommand_UsesWellKnownSIDs(t *testing.T) {
 	cmd := restrictDirToSystemAdminsCommand(`C:\ProgramData\marbor-agent`)

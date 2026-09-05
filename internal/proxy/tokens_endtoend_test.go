@@ -1,7 +1,7 @@
 package proxy
 
-// tokens_endtoend_test.go -- P80 regression coverage: two token-accounting
-// bugs found during P78 Phase 2 real-embedding verification.
+// tokens_endtoend_test.go -- regression coverage: two token-accounting
+// bugs found during real-embedding verification.
 //
 // Bug 1 (parsing): statusRecorder.tail used to cap at tailMax (8KB)
 // unconditionally. A real embeddings response is a single JSON document
@@ -58,7 +58,7 @@ func liveRequestTokens(t *testing.T, a *admin.Server) []int64 {
 func TestTokenCountLargeEmbeddingResponseExceedsOldTailBuffer(t *testing.T) {
 	// A single embedding vector of 2000 floats, formatted verbosely, comfortably
 	// exceeds 8KB on its own - real nomic-embed-text (768 dims) responses hit
-	// the same boundary in production (see req-27ec9ce2 et al. in P80 filing).
+	// the same boundary in production (see req-27ec9ce2 et al.).
 	floats := make([]string, 2000)
 	for i := range floats {
 		floats[i] = "0.123456789"
@@ -80,7 +80,7 @@ func TestTokenCountLargeEmbeddingResponseExceedsOldTailBuffer(t *testing.T) {
 // TestEmbeddingsLargeResponseTokenCountLoggedEndToEnd drives the same
 // oversized embeddings response through the full proxy handler and checks
 // the marbor's own request_log (via /admin/requests/live), not just the
-// tokenCount() unit. This is the exact path P80 was filed against: the
+// tokenCount() unit. This is the exact path the bug was filed against: the
 // backend genuinely reports a token count, but marbor recorded tokens:0.
 func TestEmbeddingsLargeResponseTokenCountLoggedEndToEnd(t *testing.T) {
 	floats := make([]string, 2000)

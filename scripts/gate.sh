@@ -71,8 +71,9 @@ echo "=== [3/6] Go: gofmt check ==="
 # its own gate failure, not get silently swallowed by the blanket `|| true`
 # that used to wrap the whole "gofmt -l . | grep -v ..." pipeline.
 gofmt_out=$(gorun gofmt -l .) || fail "gofmt itself failed to run"
-# Exclude gitignored worktrees/backups (.claude/, .local/) - CI's clean checkout never has
-# them, so scanning them here only surfaces stale local artifacts, not real formatting issues.
+# Exclude gitignored worktrees/backups (the .claude and .local directories) - CI's clean
+# checkout never has them, so scanning them here only surfaces stale local artifacts, not real
+# formatting issues.
 # grep's own "no lines matched" exit (1) is expected and fine to ignore here - it just means
 # zero unformatted files survived the filter, a legitimate empty result, not a tool error.
 unformatted=$(echo "$gofmt_out" | grep -v -e '^\.claude/' -e '^\./\.claude/' -e '^\.local/' -e '^\./\.local/' || true)

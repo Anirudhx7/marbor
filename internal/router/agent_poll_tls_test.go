@@ -13,7 +13,7 @@ import (
 
 // agentTLSTelemetryServer returns a minimal /v1/status TLS server, mirroring
 // TestPollAgentTelemetrySuccess's plain-HTTP agentSrv above but over TLS, for
-// the P24 poll-path tests below.
+// the TLS-pinned poll-path tests below.
 func agentTLSTelemetryServer() *httptest.Server {
 	return httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/status" {

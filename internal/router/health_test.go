@@ -59,8 +59,8 @@ func (p fixedErrProbe) Probe(ctx context.Context, nodeURL string) (runtimepkg.Pr
 	return runtimepkg.ProbeResult{}, p.err
 }
 
-// TestPollNode_SetsRuntimeMismatchHint_LlamaCppHealth404 is the P409
-// regression: a node currently probed as llamacpp whose /health check fails
+// TestPollNode_SetsRuntimeMismatchHint_LlamaCppHealth404 covers the
+// regression where a node currently probed as llamacpp whose /health check fails
 // specifically with a 404 (the exact real-world signature an MLX node
 // auto-detected as llamacpp produces, since mlx_lm.server has no /health
 // route at all) must surface RuntimeMismatchHint instead of just sitting
@@ -88,7 +88,7 @@ func TestPollNode_SetsRuntimeMismatchHint_LlamaCppHealth404(t *testing.T) {
 // TestPollNode_NoRuntimeMismatchHint_GenericFailure guards the false-positive
 // direction: a llamacpp node failing for an ordinary reason (connection
 // refused, timeout, 500, etc.) must NOT get the MLX hint - it's a real,
-// observed-fact hint (R1), not a generic "this node is unhealthy" catch-all.
+// observed-fact hint, not a generic "this node is unhealthy" catch-all.
 func TestPollNode_NoRuntimeMismatchHint_GenericFailure(t *testing.T) {
 	r := New(config.RoutingConfig{}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://gpu-0:8080", Runtime: "llamacpp"},
@@ -135,7 +135,7 @@ func TestPollNode_ClearsRuntimeMismatchHint_OnSuccess(t *testing.T) {
 }
 
 // TestAttributeSoleModelVRAM_SingleModel_UnknownSize fills in the sole
-// loaded model's VRAM size from the node's real VRAMUsedMB (P406): a
+// loaded model's VRAM size from the node's real VRAMUsedMB: a
 // non-Ollama runtime that reports SizeVRAM=0 for its one loaded model
 // should get that model attributed the node's real observed usage once one
 // exists, rather than staying at a fabricated-looking 0 forever.
@@ -170,7 +170,7 @@ func TestAttributeSoleModelVRAM_NeverOverridesRealSize(t *testing.T) {
 // TestAttributeSoleModelVRAM_MultipleModels_StaysUnknown: with more than one
 // model loaded on the node, per-process VRAM correlation is not observable
 // (no PID-to-model correlation over these HTTP probes) - attribution must
-// leave every unknown size at 0 rather than guess a split (R1).
+// leave every unknown size at 0 rather than guess a split.
 func TestAttributeSoleModelVRAM_MultipleModels_StaysUnknown(t *testing.T) {
 	n := &NodeState{
 		LoadedModels: []ModelInfo{
@@ -201,7 +201,7 @@ func TestAttributeSoleModelVRAM_NoVRAMReading_StaysUnknown(t *testing.T) {
 	}
 }
 
-// nonOllamaZeroVRAMProbe simulates a non-Ollama runtime (P406): reports a
+// nonOllamaZeroVRAMProbe simulates a non-Ollama runtime: reports a
 // loaded model but always SizeVRAMBytes=0, exactly like
 // internal/runtime/{vllm,tgi,llamacpp,mlx}.go today.
 type nonOllamaZeroVRAMProbe struct {
@@ -212,7 +212,7 @@ func (p nonOllamaZeroVRAMProbe) Probe(ctx context.Context, nodeURL string) (runt
 	return runtimepkg.ProbeResult{LoadedModels: p.models, VRAMUsedMB: 0}, nil
 }
 
-// TestPollNode_PreservesAgentSourcedVRAM_NonOllama is the P406 regression
+// TestPollNode_PreservesAgentSourcedVRAM_NonOllama covers the regression
 // for the race pollNode and pollAgentHosts run concurrently on the same
 // poll tick (Router.Start): a real, previously agent-reported VRAMUsedMB
 // for a non-Ollama node must not be stomped back to 0 by this poll cycle's
@@ -252,7 +252,7 @@ func TestPollNode_PreservesAgentSourcedVRAM_NonOllama(t *testing.T) {
 // TestPollNode_NoAgent_NonOllama_StaysZero is the explicit "old marbor
 // talking to an old/no agent" regression: a non-Ollama node with no agent
 // telemetry ever applied must behave exactly as it does today - VRAM=0,
-// no crash, no fabricated data - not a side effect of the P406 changes.
+// no crash, no fabricated data - not a side effect of the non-Ollama VRAM-attribution changes.
 func TestPollNode_NoAgent_NonOllama_StaysZero(t *testing.T) {
 	r := New(config.RoutingConfig{}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://gpu-0:8000", Runtime: "vllm"},
@@ -279,7 +279,7 @@ func TestPollNode_NoAgent_NonOllama_StaysZero(t *testing.T) {
 }
 
 // residentProbe simulates a runtime that reports exactly the given models as
-// resident, for testing poll-driven reservation cleanup (P51).
+// resident, for testing poll-driven reservation cleanup.
 type residentProbe struct {
 	models []runtimepkg.LoadedModel
 }
@@ -288,7 +288,7 @@ func (p residentProbe) Probe(ctx context.Context, nodeURL string) (runtimepkg.Pr
 	return runtimepkg.ProbeResult{LoadedModels: p.models}, nil
 }
 
-// TestPollNode_ClearsWarmReservationOnConfirmedResidency is the P51
+// TestPollNode_ClearsWarmReservationOnConfirmedResidency is the
 // reservation-cleanup regression test: once a real poll confirms a model is
 // actually resident, any hot-path or proactive VRAM reservation for that
 // (node, model) must be cleared immediately rather than left to expire after

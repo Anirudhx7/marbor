@@ -97,7 +97,7 @@ func runServiceInstall(args []string, version string) {
 	// An explicit enrollment code always takes precedence over an existing
 	// MARBOR_AGENT_SECRET - an operator running --enroll is deliberately
 	// rotating the token, and silently keeping the old one instead would
-	// burn the single-use code while reporting success (P280).
+	// burn the single-use code while reporting success.
 	if enroll != "" {
 		if server == "" {
 			winexit.Fatal("marboragent: --enroll requires --server=<marbor admin base URL> (or the MARBOR_SERVER environment variable)")
@@ -132,7 +132,7 @@ func runServiceInstall(args []string, version string) {
 
 // exchangeEnrollmentCode calls the marbor's POST /admin/agent/enroll endpoint
 // to trade a short-lived, single-use enrollment code for the node's real,
-// permanent bearer token (P50). This is the agent's first-ever outbound
+// permanent bearer token. This is the agent's first-ever outbound
 // call to the marbor - normally marbor polls the agent, never the reverse -
 // so serverBaseURL must be supplied explicitly by the operator (via --server or
 // the MARBOR_SERVER env var); the agent has no other way to know the marbor's address.
@@ -268,7 +268,7 @@ func runServiceStatus(args []string) {
 	}
 	fmt.Println(status)
 
-	// P24: print the TLS certificate's fingerprint if one exists, so the
+	// Print the TLS certificate's fingerprint if one exists, so the
 	// operator can compare it against what the marbor's tls-probe endpoint
 	// shows before confirming a pin (spec section 1 step 3). Silent (not a
 	// fatal error) when no cert exists yet - most nodes are plaintext and
@@ -287,7 +287,7 @@ func runServiceStatus(args []string) {
 }
 
 // runServiceRegenCert forcibly regenerates the installed service's TLS
-// certificate/key (P24, spec section 4 - suspected key compromise or
+// certificate/key (suspected key compromise or
 // planned operator-driven rotation, never automatic). This deliberately
 // invalidates whatever fingerprint the marbor currently has pinned for this
 // node: the operator must re-run the marbor-side confirm-and-pin flow

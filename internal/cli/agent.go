@@ -1,9 +1,9 @@
 package cli
 
-// agent.go - `marbor agent get/enable/disable/regenerate` (P-A2-09b),
-// `marbor node control clear` (P-A2-09c), and `marbor users change-password`
-// / `marbor users skip-password-change` (P-A2-09d). All had full UI
-// coverage but no CLI per the A2 three-surface-parity audit.
+// agent.go - `marbor agent get/enable/disable/regenerate`,
+// `marbor node control clear`, and `marbor users change-password`
+// / `marbor users skip-password-change`. All had full UI
+// coverage but no CLI per the three-surface-parity audit.
 
 import (
 	"bufio"
@@ -15,7 +15,7 @@ import (
 func printAgentUsage(w io.Writer) { writeHelp(w, findCommand(root(), "node", "agent")) }
 
 // runAgentGet implements `marbor agent get <node>`. Never prints a token -
-// GetMarborAgent's response never carries one (R8).
+// GetMarborAgent's response never carries one.
 func runAgentGet(flags *globalFlags, node string, stdout, stderr io.Writer) int {
 	client, err := authenticatedClient(flags)
 	if err != nil {
@@ -35,7 +35,7 @@ func runAgentGet(flags *globalFlags, node string, stdout, stderr io.Writer) int 
 // runAgentEnable implements `marbor agent enable <node> --port N
 // [--scheme http|https]`. Prints the one-line install command containing a
 // short-lived, single-use enrollment code - never the permanent token
-// itself in this text form (P50); the raw "token" field is also present in
+// itself in this text form; the raw "token" field is also present in
 // --json output for completeness but should not be pasted into shell
 // history / chat any more than the install command should.
 func runAgentEnable(flags *globalFlags, node string, port int, scheme string, stdout, stderr io.Writer) int {
@@ -57,7 +57,7 @@ func runAgentEnable(flags *globalFlags, node string, port int, scheme string, st
 }
 
 // runAgentDisable implements `marbor agent disable <node> [--yes]`.
-// Destructive per R10 (drops the agent config + any pinned TLS fingerprint
+// Destructive (drops the agent config + any pinned TLS fingerprint
 // on the host): requires --yes or an interactive TTY confirmation.
 func runAgentDisable(flags *globalFlags, node string, yes bool, stdout, stderr io.Writer) int {
 	if err := requireConfirm("disable marbor agent for", node, yes, stderr); err != nil {
@@ -97,7 +97,7 @@ func runAgentRegenerate(flags *globalFlags, node string, stdout, stderr io.Write
 }
 
 // runNodeControlClear implements `marbor node control clear <node>
-// [--yes]`. Destructive per R10 (drops the operator-accepted control
+// [--yes]`. Destructive (drops the operator-accepted control
 // driver, disabling runtime start/stop/restart/logs until re-accepted).
 func runNodeControlClear(flags *globalFlags, node string, yes bool, stdout, stderr io.Writer) int {
 	if err := requireConfirm("clear the control driver for", node, yes, stderr); err != nil {

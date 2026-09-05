@@ -1,7 +1,7 @@
 package cli
 
 // modelconfig.go - `marbor model-config get/set/delete/list/capabilities`
-// and `marbor nodes fit` (P-A2-06b, A2 three-surface-parity audit: all 5
+// and `marbor nodes fit` (from the three-surface-parity audit: all 5
 // model-config endpoints plus GET /admin/nodes/model-fit had full UI
 // coverage in GPUNodes.tsx's ModelConfigModal / fit drawer but no CLI).
 //

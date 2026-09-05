@@ -161,7 +161,7 @@ type HuggingFaceConfig struct {
 	Token string `yaml:"token" json:"token"`
 }
 
-// BackupConfig controls the scheduled marbor.db backup job (P49). TargetDir is
+// BackupConfig controls the scheduled marbor.db backup job. TargetDir is
 // seeded from the MARBOR_BACKUP_DIR env var (or a "backups" dir next to the
 // database) before an operator ever opens Settings, so an out-of-the-box
 // Docker deployment backs up correctly with zero configuration - see
@@ -180,7 +180,7 @@ type BackupConfig struct {
 	TargetDir string `yaml:"target_dir" json:"target_dir"`
 	// LastBackupAt/LastBackupError are read-only status populated by the admin
 	// server at GET time (never accepted on PUT, never persisted under these
-	// field names) - R1: the UI shows the real last-run outcome, never a
+	// field names) - the UI shows the real last-run outcome, never a
 	// fabricated "backed up" status.
 	LastBackupAt    string `yaml:"-" json:"last_backup_at,omitempty"`
 	LastBackupError string `yaml:"-" json:"last_backup_error,omitempty"`
@@ -312,19 +312,19 @@ type NodeConfig struct {
 	// expose per-model VRAM/disk size via their APIs, so without this the
 	// router has no way to size a not-yet-loaded model and silently disables
 	// predictive warmup and headroom/eviction checks for that node. Operator-
-	// declared, like vram_total_mb - never guessed (R1). Empty/absent map is a
+	// declared, like vram_total_mb - never guessed. Empty/absent map is a
 	// no-op; only declare sizes you actually know.
 	//
 	// Wired end-to-end (Admin API PATCH /admin/nodes/{name}, CLI "nodes patch
-	// --vram-override", UI GPU Nodes edit modal) as of P411. Key is currently
-	// the plain model name, NOT quant-variant-qualified: as of P411 there is
-	// no operator-facing, design-time quant-identity signal to key on (P406's
-	// LoadedModel.Digest is an opaque runtime-probed value used only for live
+	// --vram-override", UI GPU Nodes edit modal). Key is currently
+	// the plain model name, NOT quant-variant-qualified: there is
+	// no operator-facing, design-time quant-identity signal to key on
+	// (LoadedModel.Digest is an opaque runtime-probed value used only for live
 	// warm/fungibility comparison, not a stable string an operator would type
-	// ahead of time; P412, which would add real HF-repo-based resolution, has
-	// not landed). A correction for one quant variant of a model will apply to
-	// every variant sharing that model name until a real signal exists and
-	// this key format is migrated - deliberate, not an oversight.
+	// ahead of time; a future change that would add real HF-repo-based
+	// resolution has not landed). A correction for one quant variant of a model
+	// will apply to every variant sharing that model name until a real signal
+	// exists and this key format is migrated - deliberate, not an oversight.
 	VRAMOverrides map[string]int64 `yaml:"vram_overrides,omitempty" json:"vram_overrides,omitempty"`
 	// Host groups this node with any other node that lives on the same
 	// physical machine (e.g. Ollama on :11434 and vLLM on :8000 on one box),
@@ -333,7 +333,7 @@ type NodeConfig struct {
 	// Router.AddNode - most operators never need to set this explicitly.
 	Host string `yaml:"host,omitempty" json:"host,omitempty"`
 	// MaxInFlight overrides RoutingConfig.MaxInFlightPerNode for this specific
-	// node only (P64). 0 means "no override - use the global default." Takes
+	// node only. 0 means "no override - use the global default." Takes
 	// effect from either source: at initial node creation (New()/AddNode()
 	// read this field directly, same as VRAMTotalMB's VRAMTotalMBConfig) and
 	// live thereafter via the node_overrides store path (PatchNode).
@@ -434,7 +434,7 @@ type RoutingConfig struct {
 	// waits for local capacity to free up. Default 0 (disabled): the full
 	// queue_timeout_ms applies as before.
 	OverflowSLAMs int `yaml:"overflow_sla_ms" json:"overflow_sla_ms"`
-	// MaxInFlightPerNode is a Tier-1 hard-constraint cap (P64): a node with
+	// MaxInFlightPerNode is a Tier-1 hard-constraint cap: a node with
 	// ActiveConns >= this value is ineligible for routing (immediate
 	// shed/failover to the next candidate or cloud/503), never queued behind.
 	// This is distinct from QueueMaxDepth/QueueTimeoutMs, which only engage
@@ -753,7 +753,7 @@ func (c *Config) Validate() error {
 	}
 
 	for i, cp := range c.CloudProviders {
-		// "local" and "blocked" are reserved served_by sentinels in the P66
+		// "local" and "blocked" are reserved served_by sentinels in the
 		// spill_counters table (see internal/admin's IncrSpill callers) - a
 		// provider using either name would have its real cloud traffic
 		// silently merged into that reserved bucket.

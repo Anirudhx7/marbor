@@ -8,7 +8,7 @@ import (
 
 // The admin-credentials/session persistence layer (GetAdminCreds, SetAdminCreds,
 // CreateSession, ValidateSession, DeleteSession, PruneExpiredSessions) backs the
-// R4 session-token guard but had zero test coverage (B.2 audit, 2026-09-05).
+// exact-match session-token guard but had zero test coverage (audit, 2026-09-05).
 // hashSessionToken means a session is only ever readable/matchable via its
 // digest - these tests confirm the round trip and the expiry/deletion boundaries
 // actually work at the storage layer, not just in auth.go's in-memory checks.
@@ -89,7 +89,7 @@ func TestSession_CreateThenValidateThenDelete(t *testing.T) {
 	}
 
 	// A near-miss token (differs by one character) must never validate - this
-	// is the storage-layer half of the R4 exact-match guard enforced in auth.go.
+	// is the storage-layer half of the exact-match guard enforced in auth.go.
 	nearMiss := "a-real-random-session-tokeX"
 	valid, err = st.ValidateSession(nearMiss)
 	if err != nil {

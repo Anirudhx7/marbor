@@ -155,14 +155,14 @@ func TestServerFallsBackWithoutScheduler(t *testing.T) {
 	}
 }
 
-// TestServerRouteScopeGating is the P54 route-table regression: every
+// TestServerRouteScopeGating is the route-table regression: every
 // registered route is exercised with both a readonly-scoped and an
 // admin-scoped token. It only asserts on the scope GATE (401 for a bad
 // token, 403 for insufficient scope, "neither of those" for sufficient
 // scope) - not on what the underlying handler does with an empty/malformed
 // body, which existing per-handler tests elsewhere already cover using a
-// bare unprefixed token (itself proof that legacy, pre-P54 tokens keep
-// working exactly as before, since scopeOf falls back to tierAdmin for
+// bare unprefixed token (itself proof that legacy tokens minted before
+// scoping existed keep working exactly as before, since scopeOf falls back to tierAdmin for
 // them).
 func TestServerRouteScopeGating(t *testing.T) {
 	const readonlyToken = "readonly.Xk9fA1b2C3d4"

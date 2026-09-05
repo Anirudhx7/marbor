@@ -393,7 +393,7 @@ export function Analytics() {
         )}
       </div>
 
-      {/* Cloud Spill - per-key, per-provider local-vs-cloud request counts (P66) */}
+      {/* Cloud Spill - per-key, per-provider local-vs-cloud request counts */}
       <div className="bg-card border border-border shadow-sm rounded-xl overflow-hidden">
         <div className="px-6 py-4 border-b border-border bg-secondary/30">
           <h3 className="text-sm font-semibold text-foreground">Cloud Spill</h3>

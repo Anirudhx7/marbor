@@ -164,7 +164,7 @@ func TestParseNvidiaSMIXMLMalformed(t *testing.T) {
 
 // TestParseNvidiaSMIXMLMissingFanSpeed verifies a GPU without a reported fan
 // speed (e.g. "N/A", common on some cards/drivers) omits FanPercent rather
-// than reporting a fabricated 0% (R1).
+// than reporting a fabricated 0%.
 func TestParseNvidiaSMIXMLMissingFanSpeed(t *testing.T) {
 	xml := `<?xml version="1.0" ?>
 <nvidia_smi_log>
@@ -193,7 +193,7 @@ func TestParseNvidiaSMIXMLMissingFanSpeed(t *testing.T) {
 // TestParseNvidiaSMIXMLMissingTemperatureAndPower verifies that a card
 // reporting "N/A" for temperature, and "N/A" on BOTH power sources, omits
 // TemperatureC/PowerWatts entirely rather than reporting a fabricated 0°C /
-// 0W (R1).
+// 0W.
 func TestParseNvidiaSMIXMLMissingTemperatureAndPower(t *testing.T) {
 	xml := `<?xml version="1.0" ?>
 <nvidia_smi_log>

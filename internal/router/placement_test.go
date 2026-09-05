@@ -199,8 +199,8 @@ func TestPlacementScoring(t *testing.T) {
 	})
 }
 
-// TestRoute_ColdStartReservationPreventsDoubleBooking is the P51 regression
-// test. Two identically-scored cold nodes both have just enough VRAM for ONE
+// TestRoute_ColdStartReservationPreventsDoubleBooking is the cold-start
+// reservation regression test. Two identically-scored cold nodes both have just enough VRAM for ONE
 // of two same-size models, never both. Without a hot-path reservation, both
 // Route calls independently see the same stale (unreserved) snapshot and the
 // deterministic tiebreak would send BOTH models to node-a - a real
@@ -255,7 +255,8 @@ func TestRoute_ColdStartReservationPreventsDoubleBooking(t *testing.T) {
 	}
 }
 
-// TestRoute_ColdStartReservationPreventsDoubleBooking_UnknownSize covers P402:
+// TestRoute_ColdStartReservationPreventsDoubleBooking_UnknownSize covers the
+// unknown-size cold-start reservation fix:
 // reserveColdStartBytes used to be a no-op when a model's size couldn't be
 // determined (no lastKnownVRAM, no override, no allowed fetch on this hot
 // path), so a burst of concurrent cold starts for a never-seen model all read
@@ -289,7 +290,7 @@ func TestRoute_ColdStartReservationPreventsDoubleBooking_UnknownSize(t *testing.
 	}
 
 	// Second, concurrent-in-spirit request for a DIFFERENT never-seen model:
-	// before the P402 fix, reserveColdStartBytes was a no-op for an
+	// before this fix, reserveColdStartBytes was a no-op for an
 	// unknown-size model, so node-a's headroom would look untouched and this
 	// second request would also tiebreak onto node-a, double-booking it. The
 	// fix's placeholder reservation must discount node-a's headroom so
@@ -303,10 +304,10 @@ func TestRoute_ColdStartReservationPreventsDoubleBooking_UnknownSize(t *testing.
 	}
 }
 
-// TestIsModelWarm_DigestMismatchNotWarm covers audit finding #1/#9
-// (.local/audit-fixes-2026-08-03.md): two nodes serving the same model NAME
-// with different content digests (a stale re-pull, a mismatched
-// quantization) must not be treated as interchangeable warm hits.
+// TestIsModelWarm_DigestMismatchNotWarm covers the case where two nodes
+// serve the same model NAME with different content digests (a stale
+// re-pull, a mismatched quantization) - they must not be treated as
+// interchangeable warm hits.
 func TestIsModelWarm_DigestMismatchNotWarm(t *testing.T) {
 	r := New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
 		{Name: "node-a", URL: "http://node-a:11434", VRAMTotalMB: 8192},
@@ -335,7 +336,7 @@ func TestIsModelWarm_DigestMismatchNotWarm(t *testing.T) {
 	}
 }
 
-// TestIsModelWarm_NonOllamaQuantVariantsNotFungible (P406): a vLLM Q4 build
+// TestIsModelWarm_NonOllamaQuantVariantsNotFungible covers the case where a vLLM Q4 build
 // and a vLLM F16 build of "llama-3-70b" served under the identical name on
 // two different nodes must not be treated as interchangeable warm hits, now
 // that internal/runtime/vllm.go populates Digest from vLLM's own reported
@@ -364,8 +365,8 @@ func TestIsModelWarm_NonOllamaQuantVariantsNotFungible(t *testing.T) {
 	}
 }
 
-// TestIsModelWarm_MissingDigestNeverFlagged covers R1 for the digest check:
-// a runtime that doesn't report a digest (anything but Ollama today) must
+// TestIsModelWarm_MissingDigestNeverFlagged covers the digest check's honesty
+// requirement: a runtime that doesn't report a digest (anything but Ollama today) must
 // never be treated as mismatched just because it reported nothing.
 func TestIsModelWarm_MissingDigestNeverFlagged(t *testing.T) {
 	r := New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
@@ -381,8 +382,8 @@ func TestIsModelWarm_MissingDigestNeverFlagged(t *testing.T) {
 	}
 }
 
-// TestReconcileModelDigests_FleetConvergesOnNewDigest is the P99 regression:
-// once the entire fleet has moved on to a new digest for a model name (e.g.
+// TestReconcileModelDigests_FleetConvergesOnNewDigest is the fleet-convergence
+// regression test: once the entire fleet has moved on to a new digest for a model name (e.g.
 // every node re-pulled it), the stored reference digest must follow, so
 // isModelWarm stops permanently flagging every node as mismatched.
 func TestReconcileModelDigests_FleetConvergesOnNewDigest(t *testing.T) {
@@ -435,7 +436,7 @@ func TestReconcileModelDigests_PartialMigrationKeepsOldReference(t *testing.T) {
 	}
 }
 
-// TestScoreComponentsSumEqualsComputeNodeScore is the P41 hard acceptance
+// TestScoreComponentsSumEqualsComputeNodeScore is a hard acceptance
 // criterion: the exposed component breakdown must sum to exactly the score
 // computeNodeScore actually used to pick a winner, for both unpenalized and
 // penalized nodes (where the floor-at-zero clamp means a penalty's Value is
@@ -515,7 +516,7 @@ func TestScoreComponentsSumEqualsComputeNodeScore(t *testing.T) {
 }
 
 // TestRouteDecisionReasons covers the three RoutingDecision.Reason values
-// plus AffinityLost, per P41's routing-path audit.
+// plus AffinityLost, as part of the routing-path audit.
 func TestRouteDecisionReasons(t *testing.T) {
 	t.Run("session_affinity", func(t *testing.T) {
 		r := New(config.RoutingConfig{Strategy: "warm-first", SessionAffinity: true}, []config.NodeConfig{
@@ -611,7 +612,7 @@ func TestRouteDecisionReasons(t *testing.T) {
 	})
 }
 
-// TestPlacementScoring_TTFTWeightedLoad covers P404: a node serving a few
+// TestPlacementScoring_TTFTWeightedLoad covers the TTFT-weighted load case: a node serving a few
 // prefill-heavy connections (slow real observed TTFT) must score worse than
 // a node serving many decode-light connections (fast TTFT), even though the
 // heavy node has the lower raw ActiveConns count. Before the fix, both nodes
@@ -648,7 +649,7 @@ func TestPlacementScoring_TTFTWeightedLoad(t *testing.T) {
 	}
 
 	// No TTFT history yet -> effectiveLoad falls back to the raw conns count
-	// unchanged, matching the pre-P404 formula exactly (backward compatible).
+	// unchanged, matching the original unweighted formula exactly (backward compatible).
 	nodeC := &NodeState{Name: "node-c", ActiveConns: 3}
 	if got := effectiveLoad(nodeC, atomic.LoadInt32(&nodeC.ActiveConns)); got != 3.0 {
 		t.Errorf("effectiveLoad with no RecentTTFT = %v, want 3.0 (raw conns, unweighted)", got)

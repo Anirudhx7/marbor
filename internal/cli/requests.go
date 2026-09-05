@@ -1,6 +1,6 @@
 package cli
 
-// requests.go - P41 per-request routing explainability CLI surface. First
+// requests.go - per-request routing explainability CLI surface. First
 // command touching the requests/audit surface (see admin's GET /admin/v1/
 // requests and /admin/v1/audit, previously unreached from the CLI).
 
@@ -10,11 +10,11 @@ import (
 )
 
 // printRequestsUsage is a thin wrapper over the registry-backed writeHelp
-// (help.go) - see the P83+ CLI hardening plan, migration step 4.
+// (help.go), from the CLI hardening plan's registry migration.
 func printRequestsUsage(w io.Writer) { writeHelp(w, findCommand(root(), "requests")) }
 
 // runRequestsList implements `marbor requests list` - GET /admin/requests,
-// the full in-memory request log ring, newest first (P-A2-08a).
+// the full in-memory request log ring, newest first.
 func runRequestsList(flags *globalFlags, stdout, stderr io.Writer) int {
 	client, err := authenticatedClient(flags)
 	if err != nil {
@@ -41,7 +41,7 @@ func runRequestsList(flags *globalFlags, stdout, stderr io.Writer) int {
 }
 
 // runRequestsLive implements `marbor requests live` - GET
-// /admin/requests/live, the same bounded ring in its raw shape (P-A2-08a).
+// /admin/requests/live, the same bounded ring in its raw shape.
 func runRequestsLive(flags *globalFlags, stdout, stderr io.Writer) int {
 	client, err := authenticatedClient(flags)
 	if err != nil {

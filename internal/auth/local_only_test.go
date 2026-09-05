@@ -6,7 +6,7 @@ import (
 	"github.com/Anirudhx7/marbor/internal/config"
 )
 
-// TestIsLocalOnly guards the P66 fail-closed policy check: a key configured
+// TestIsLocalOnly guards the local-only fail-closed policy check: a key configured
 // local_only must report true, a normal key must report false, and an
 // unknown key name must fail open (false) rather than block an
 // unrecognized/anonymous request.

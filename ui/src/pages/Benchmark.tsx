@@ -24,8 +24,8 @@ function fmtMs(ms: number): string {
 }
 
 // fmtMsNullable renders a nullable ms value (p95/p99 on a run persisted
-// before P408 added them - no data to backfill from). "-" for absence,
-// never 0 (R1) - unlike fmtMs, which is only ever called on fields that are
+// before this metric existed - no data to backfill from). "-" for absence,
+// never 0 - unlike fmtMs, which is only ever called on fields that are
 // always populated (p50/min/max).
 function fmtMsNullable(ms: number | null | undefined): string {
   if (ms === null || ms === undefined) return '-';
@@ -34,7 +34,7 @@ function fmtMsNullable(ms: number | null | undefined): string {
 
 // fmtTpot renders a nullable TPOT p50 (undefined/null when not one sample in
 // that phase produced a computable TPOT - fewer than 2 content-bearing SSE
-// chunks). Always "-" for absence, never 0 (R1).
+// chunks). Always "-" for absence, never 0.
 function fmtTpot(ms: number | null | undefined): string {
   if (ms === null || ms === undefined || !Number.isFinite(ms)) return '-';
   return `${ms.toLocaleString(undefined, { maximumFractionDigits: 1 })} ms/tok`;
@@ -44,10 +44,10 @@ function fmtTpot(ms: number | null | undefined): string {
 // for known embedding/encoder-only families - these have no chat-completion
 // endpoint, so this benchmark (always a /v1/chat/completions TTFT measurement
 // - see internal/admin/benchmark.go) can never succeed against them. Family
-// is only ever populated from Ollama sources today (Architecture Law 5:
+// is only ever populated from Ollama sources today (multi-runtime by design:
 // vLLM/TGI/llama.cpp/MLX have no equivalent metadata via their HF-cache scan)
 // - a model with no known family is left in the picker rather than guessed
-// at (R1), so this filter is best-effort, not exhaustive.
+// at, so this filter is best-effort, not exhaustive.
 const EMBEDDING_FAMILIES = new Set(['bert', 'nomic-bert', 'clip']);
 
 function isChatCapable(family: string | undefined): boolean {

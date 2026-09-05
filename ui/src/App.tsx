@@ -234,7 +234,7 @@ function App() {
       try {
         const count = await getPendingUserCount();
         // Skip the setState when the count hasn't moved - avoids a spurious
-        // re-render that could interrupt a pending route transition (LESSONS.md L11).
+        // re-render that could interrupt a pending route transition.
         if (active) setPendingCount(prev => prev === count ? prev : count);
       } catch { /* ignore */ }
     };

@@ -2,7 +2,7 @@
 // auto-restarting OS service (systemd on Linux, launchd on macOS, native
 // Windows Service via sc.exe on Windows) - so an operator never manually
 // writes a unit file, plist, or runs sc.exe themselves. See
-// .local/specs/node-agent.md section 12 for the full design and why this
+// the node-agent design doc for the full design and why this
 // shells out to each OS's own always-present service-manager tool instead of
 // adding a Go dependency (golang.org/x/sys/windows/svc was considered and
 // rejected for the same "zero new dependencies when the OS already provides
@@ -37,9 +37,9 @@ type Config struct {
 	// RefreshInterval is optional; the zero value omits --refresh-interval
 	// entirely and the agent falls back to its own built-in default.
 	RefreshInterval time.Duration
-	// CertPath/KeyPath are the agent's TLS certificate/key file paths (P24).
-	// Both empty means "run plaintext" (default, matches every pre-P24
-	// install unchanged). Set by each platform's Install right before
+	// CertPath/KeyPath are the agent's TLS certificate/key file paths.
+	// Both empty means "run plaintext" (default, matches every install that
+	// predates TLS support unchanged). Set by each platform's Install right before
 	// calling args() below, after EnsureAgentCert has confirmed the files
 	// exist - never populated any other way, so a service definition never
 	// points at a cert/key pair that doesn't actually exist on disk. Not
@@ -127,7 +127,7 @@ type Manager interface {
 
 // New returns the Manager for the current GOOS, or an error naming the
 // unsupported platform - never a partial/best-effort Manager. Per
-// .local/specs/node-agent.md section 12: promise the architecture (any OS
+// the node-agent design doc: promise the architecture (any OS
 // can get a Manager implementation), not universal day-one coverage.
 //
 // New() itself is defined once per platform (service_linux.go,

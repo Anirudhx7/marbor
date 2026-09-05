@@ -2,8 +2,8 @@ package cli
 
 import "sort"
 
-// This file adds a standalone "did you mean" suggestion helper. It is step 3
-// of the P83+ CLI hardening plan (see .local/plans/reflective-pondering-acorn.md)
+// This file adds a standalone "did you mean" suggestion helper, added as
+// part of the CLI hardening plan's registry migration
 // - it is NOT wired into the dispatcher yet; that happens once the dispatcher
 // itself exists in a later step.
 

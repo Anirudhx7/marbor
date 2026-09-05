@@ -63,8 +63,9 @@ func writeManExamples(b *strings.Builder, examples []string) {
 }
 
 // manifestName is the release-asset manifest listing exactly which man page
-// filenames this run generated - see Fix 4 of the P83+ CLI hardening code
-// review. install.sh (running on an end user's machine, with no Go toolchain
+// filenames this run generated - part of the CLI hardening work that made
+// man page delivery robust against partial or stale release assets.
+// install.sh (running on an end user's machine, with no Go toolchain
 // and no access to the registry) fetches this file from a release FIRST and,
 // if that succeeds, uses it to know which other man page files to fetch,
 // instead of relying on its own hardcoded MAN_PAGES list. That hardcoded list

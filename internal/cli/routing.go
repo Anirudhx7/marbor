@@ -1,7 +1,7 @@
 package cli
 
 // routing.go - `marbor routing rules list/add/remove/toggle` and
-// `marbor routing strategy get/set` (P-A2-04, A2 three-surface-parity
+// `marbor routing strategy get/set` (from the three-surface-parity
 // audit: GET/POST/DELETE/PUT /admin/routing/rules and GET/PUT
 // /admin/routing/strategy had full UI coverage in Routing.tsx but no CLI).
 
@@ -56,7 +56,7 @@ func runRoutingRulesAdd(flags *globalFlags, id, condition, target, strategy stri
 }
 
 // runRoutingRulesRemove implements `marbor routing rules remove <id>
-// [--yes]`. Destructive per R10 (irreversible): requires --yes or an
+// [--yes]`. Destructive (irreversible): requires --yes or an
 // interactive TTY confirmation, matching the "key revoke"/"users delete"
 // pattern (code review finding - this was originally missing).
 func runRoutingRulesRemove(flags *globalFlags, id string, yes bool, stdout, stderr io.Writer) int {

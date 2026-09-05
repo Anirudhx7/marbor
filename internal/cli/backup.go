@@ -1,8 +1,8 @@
 package cli
 
 // backup.go - `marbor backup now/list/restore/upload`, `marbor analytics
-// show/export`, `marbor savings`, and `marbor metrics summary` (P-A2-07,
-// A2 three-surface-parity audit: all 8 endpoints had full UI coverage in
+// show/export`, `marbor savings`, and `marbor metrics summary` (from the
+// three-surface-parity audit: all 8 endpoints had full UI coverage in
 // Settings.tsx/Analytics.tsx/Dashboard.tsx but no CLI).
 
 import (
@@ -66,7 +66,7 @@ func runBackupList(flags *globalFlags, stdout, stderr io.Writer) int {
 }
 
 // runBackupRestore implements `marbor backup restore <filename> [--yes]`.
-// Destructive per R10 (overwrites mesh.db and restarts marbor): requires
+// Destructive (overwrites mesh.db and restarts marbor): requires
 // --yes or an interactive TTY confirmation, matching the "key revoke"
 // pattern.
 func runBackupRestore(flags *globalFlags, filename string, yes bool, stdout, stderr io.Writer) int {

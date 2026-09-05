@@ -19,7 +19,7 @@ func (d *LaunchdDriver) Name() string       { return "launchd" }
 func (d *LaunchdDriver) Requires() []string { return []string{"launchctl"} }
 
 // resolveTarget probes which launchd domain d.Label is actually loaded
-// under (P154): Start/Stop previously used a bare label (caller-domain) while
+// under: Start/Stop previously used a bare label (caller-domain) while
 // Restart hardcoded "system/<label>" - if the agent's job runs in a
 // user/GUI-domain (not the system LaunchDaemon domain this product's
 // documented root-run install path expects), Start/Stop would silently
@@ -37,7 +37,7 @@ func (d *LaunchdDriver) resolveTarget(ctx context.Context) string {
 	}
 	// Neither probe succeeded (permission issue, or the label genuinely
 	// isn't loaded under either domain) - fall back to the system domain,
-	// preserving the pre-P154 default so the resulting error message is no
+	// preserving the previous default so the resulting error message is no
 	// less informative than before.
 	return systemTarget
 }

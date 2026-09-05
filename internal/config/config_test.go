@@ -60,8 +60,8 @@ func TestDefaults(t *testing.T) {
 	}
 }
 
-// TestValidateRejectsLocalDegradationChainSelfLoop verifies P67's config
-// guard: a chain entry that lists its own key as an alternate is a config
+// TestValidateRejectsLocalDegradationChainSelfLoop verifies the local
+// degradation chain config guard: a chain entry that lists its own key as an alternate is a config
 // error, not a silently-accepted no-op.
 func TestValidateRejectsLocalDegradationChainSelfLoop(t *testing.T) {
 	cfg := Config{
@@ -87,8 +87,8 @@ func TestValidateAcceptsValidLocalDegradationChain(t *testing.T) {
 	}
 }
 
-// TestValidateRejectsLocalDegradationChainDuplicateAlternate verifies P67's
-// config guard: a chain entry that lists the same alternate more than once
+// TestValidateRejectsLocalDegradationChainDuplicateAlternate verifies the
+// local degradation chain config guard: a chain entry that lists the same alternate more than once
 // is a config error, not a silently-accepted no-op.
 func TestValidateRejectsLocalDegradationChainDuplicateAlternate(t *testing.T) {
 	cfg := Config{
@@ -281,7 +281,7 @@ func TestCloudProviderPriorityFieldRoundTrips(t *testing.T) {
 	}
 }
 
-// TestCloudProviderReservedNameRejected guards the P66 spill_counters
+// TestCloudProviderReservedNameRejected guards the spill_counters
 // invariant: "local" and "blocked" are reserved served_by sentinels, so a
 // cloud provider using either name must fail Validate() rather than silently
 // merging its real cloud traffic into the reserved bucket.

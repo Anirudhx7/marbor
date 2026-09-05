@@ -205,9 +205,9 @@ func seedHistoricalData(t *testing.T, db *sql.DB, tag string) {
 
 	// v0.20.0 already has the renamed marbor_agent table directly (no legacy
 	// node_agent row to migrate at this point) and a benchmark_runs table
-	// that predates P408's p95/p99/TPOT columns - seeding a row here proves
-	// those later-added nullable columns get NULL, never a fabricated 0
-	// (R1), on a pre-existing row.
+	// that predates the p95/p99/TPOT columns - seeding a row here proves
+	// those later-added nullable columns get NULL, never a fabricated 0,
+	// on a pre-existing row.
 	if tag == "v0.20.0" {
 		mustExec(t, db,
 			`INSERT INTO benchmark_runs (node, model, n, cold_p50_ms, cold_min_ms, cold_max_ms, warm_p50_ms, warm_min_ms, warm_max_ms, speedup_x, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -226,7 +226,7 @@ func mustExec(t *testing.T, db *sql.DB, query string, args ...any) {
 // store: every row seedHistoricalData inserted is still present with its
 // original values, and every column/table added to migrate() after this
 // historical point now exists with the documented default rather than
-// erroring, vanishing, or fabricating a non-empty value (R1). dbPath is
+// erroring, vanishing, or fabricating a non-empty value. dbPath is
 // passed only so the v0.20.0 benchmark_runs check (no exported getter
 // exists for that table) can re-open the same file read-only, after
 // store.Open() has already migrated it.
@@ -306,7 +306,7 @@ func assertSurvival(t *testing.T, s store.Store, tag string, dbPath string) {
 		// must have picked up the plaintext seed and encrypted it, and
 		// AllKeys() must transparently decrypt it back to the exact
 		// original value - proving the plaintext-to-ciphertext upgrade
-		// path (R8) survives a real historical DB shape, not just a
+		// path survives a real historical DB shape, not just a
 		// same-version round-trip.
 		if key.Key != "sk-hist-plaintext-key" {
 			t.Fatalf("runtime_keys.key did not survive the plaintext->encrypted upgrade: got %q", key.Key)
@@ -361,8 +361,8 @@ func assertSurvival(t *testing.T, s store.Store, tag string, dbPath string) {
 		// v0.20.0 has no exported getter for benchmark_runs, so this one
 		// assertion reaches the raw file directly (read-only, after
 		// store.Open() has already migrated it) purely to check the six
-		// P408 columns' default - proving a pre-existing row gets NULL
-		// ("not computed"), never a fabricated 0 (R1), not to bypass the
+		// six latency-tail-and-TPOT columns' default - proving a pre-existing row gets NULL
+		// ("not computed"), never a fabricated 0, not to bypass the
 		// Store API for anything mutable.
 		raw, err := sql.Open("sqlite", dbPath)
 		if err != nil {
@@ -378,7 +378,7 @@ func assertSurvival(t *testing.T, s store.Store, tag string, dbPath string) {
 			t.Fatalf("query pre-existing benchmark_runs row: %v", err)
 		}
 		if coldP95.Valid || coldP99.Valid || warmP95.Valid || warmP99.Valid || coldTPOT.Valid || warmTPOT.Valid {
-			t.Fatalf("benchmark_runs P408 columns should be NULL on a pre-existing row, got p95=%v p99=%v warm_p95=%v warm_p99=%v cold_tpot=%v warm_tpot=%v",
+			t.Fatalf("benchmark_runs latency-tail-and-TPOT columns should be NULL on a pre-existing row, got p95=%v p99=%v warm_p95=%v warm_p99=%v cold_tpot=%v warm_tpot=%v",
 				coldP95, coldP99, warmP95, warmP99, coldTPOT, warmTPOT)
 		}
 	}

@@ -42,7 +42,7 @@ func TestModelConfigCRUDAndPersistence(t *testing.T) {
 	if len(got.Stop) != 2 || got.Stop[0] != "</s>" {
 		t.Fatalf("Stop = %v", got.Stop)
 	}
-	// A field never set must stay nil, not a fabricated default (R1).
+	// A field never set must stay nil, not a fabricated default.
 	if got.NumGPU != nil {
 		t.Fatalf("NumGPU = %v, want nil (never configured)", got.NumGPU)
 	}

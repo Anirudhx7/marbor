@@ -7,11 +7,11 @@ import (
 
 // runRuntimeAction implements `marbor runtime start|stop|restart <node>` -
 // POST /admin/nodes/{name}/runtime/{action}, the CLI's first mutating
-// command (P43 Step 3). Exit codes: ExitUserError for a bad/missing node
+// command. Exit codes: ExitUserError for a bad/missing node
 // argument or a user-actionable rejection (unconfigured node, unknown node,
 // missing capability), ExitServerError for an agent/network failure,
 // ExitAuthError for a 401/403 - never a silent ExitOK for an action that
-// didn't happen (R1 extended to CLI exit codes).
+// didn't happen (the same honest-data principle extended to CLI exit codes).
 func runRuntimeAction(flags *globalFlags, action, node string, stdout, stderr io.Writer) int {
 	client, err := authenticatedClient(flags)
 	if err != nil {
@@ -33,7 +33,7 @@ func runRuntimeAction(flags *globalFlags, action, node string, stdout, stderr io
 }
 
 // runRuntimeLogs implements `marbor runtime logs <node> [--lines=N]` - POST
-// /admin/nodes/{name}/runtime/logs?lines=N (P58). A pure read, same exit-code
+// /admin/nodes/{name}/runtime/logs?lines=N. A pure read, same exit-code
 // taxonomy as runRuntimeAction. Lines print raw to stdout (no prefix) so
 // output pipes cleanly into grep/less.
 func runRuntimeLogs(flags *globalFlags, node string, lines int, stdout, stderr io.Writer) int {

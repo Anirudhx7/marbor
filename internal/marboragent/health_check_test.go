@@ -19,7 +19,7 @@ func doHealthCheck(t *testing.T, srv *Server) *http.Response {
 
 // TestHandleHealthCheck_UnsupportedRuntimeReturnsClearError mirrors the
 // other actions' equivalent - no detected runtime must never silently
-// report ok:true for a probe that never ran (R1 extended to actions).
+// report ok:true for a probe that never ran.
 func TestHandleHealthCheck_UnsupportedRuntimeReturnsClearError(t *testing.T) {
 	srv := newTestServerWithRuntime(t, "")
 	res := doHealthCheck(t, srv)

@@ -125,7 +125,7 @@ func TestVLLMProbe_HappyPath(t *testing.T) {
 	}
 }
 
-// TestVLLMProbe_RootDigest_DistinguishesSameServedName (P406): two nodes
+// TestVLLMProbe_RootDigest_DistinguishesSameServedName: two nodes
 // serving different underlying weights under the identical served model
 // name are only distinguishable once vLLM's own "root" field (the actual
 // local path/repo loaded) differs - this test locks in that Digest is
@@ -234,7 +234,7 @@ func TestTGIProbe_HappyPath(t *testing.T) {
 	}
 }
 
-// TestTGIProbe_ModelShaDigest (P406): TGI's /info model_sha is a real
+// TestTGIProbe_ModelShaDigest: TGI's /info model_sha is a real
 // content-identity signal (HF revision hash) distinct from model_id -
 // two revisions/quant builds served under the identical model_id must be
 // distinguished by it once present.
@@ -340,7 +340,7 @@ func TestLlamaCppProbe_HappyPath(t *testing.T) {
 	}
 }
 
-// TestLlamaCppProbe_RootDigest_WhenReported (P406): llama.cpp's OpenAI-
+// TestLlamaCppProbe_RootDigest_WhenReported: llama.cpp's OpenAI-
 // compatible /v1/models is hand-rolled and not guaranteed to include a
 // "root" field on every version - this test only locks in that it's parsed
 // opportunistically when present, not that it's universally available.
@@ -419,7 +419,7 @@ func TestMLXProbe_HappyPath(t *testing.T) {
 	}
 }
 
-// TestMLXProbe_RootDigest_WhenReported (P406): mlx_lm.server's minimal
+// TestMLXProbe_RootDigest_WhenReported: mlx_lm.server's minimal
 // OpenAI-compatible surface is not guaranteed to include a "root" field -
 // this only locks in opportunistic parsing when present.
 func TestMLXProbe_RootDigest_WhenReported(t *testing.T) {

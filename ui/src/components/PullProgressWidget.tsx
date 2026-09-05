@@ -46,7 +46,7 @@ function parseLoadError(raw: string): { status: string | null; message: string }
 // genuinely different guidance (an embedding model needs a different model
 // entirely; a VRAM shortage needs freeing space, not a different model), and
 // always attributing failure to "architecture isn't supported" would be
-// false for those cases (R1: never present an unverified guess as fact).
+// false for those cases (never present an unverified guess as fact).
 // Falls back to an honest "cause not identified" message rather than
 // defaulting to architecture when the error text doesn't match a
 // recognized pattern.
