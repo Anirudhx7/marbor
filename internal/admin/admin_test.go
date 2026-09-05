@@ -844,8 +844,8 @@ func TestHandlePatchNode_SetsRuntime(t *testing.T) {
 // vram_overrides value is rejected with 400 before it reaches router.PatchNode
 // or the store override - such a value would otherwise be silently treated
 // as "no override" downstream (estimateModelSizeBytes' map lookup), never
-// actually applying, which R1 requires rejecting explicitly rather than
-// accepting silently.
+// actually applying, which must be rejected explicitly rather than
+// accepted silently.
 func TestHandlePatchNode_RejectsNonPositiveVRAMOverride(t *testing.T) {
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://gpu-0:11434"},

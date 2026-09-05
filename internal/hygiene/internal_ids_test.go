@@ -50,10 +50,19 @@ var internalIDPattern = regexp.MustCompile(
 )
 
 // internalIDExceptions lists exact matched substrings that look like
-// internal IDs to the pattern above but are real product terms. Add an
-// entry here (with a one-line reason) rather than weakening the pattern -
+// internal IDs to the pattern above but are real product terms in EVERY
+// file they appear in (e.g. a GPU model number, a latency percentile). Add
+// an entry here (with a one-line reason) rather than weakening the pattern -
 // it is the documented, reviewable escape hatch for a genuine false
-// positive (e.g. a GPU model number), not a way to silence a real finding.
+// positive, not a way to silence a real finding.
+//
+// A global entry hides that token repo-wide: a genuine citation of the same
+// shape in any other file passes silently. So a token that is a false
+// positive in only SOME files does NOT belong here - it belongs in
+// internalIDFileExceptions below, scoped to exactly those files. (Found
+// 2026-09-05: a global "R1" entry for the DeepSeek-R1 model name was hiding
+// dozens of genuine guard-shorthand citations across internal/admin,
+// which the sweep had stopped flagging because the test was green.)
 var internalIDExceptions = map[string]string{
 	"P40":      "NVIDIA Tesla P40 GPU model name",
 	"P100":     "NVIDIA Tesla P100 GPU model name",
@@ -61,12 +70,23 @@ var internalIDExceptions = map[string]string{
 	"L30":      "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
 	"L50":      "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
 	"L70":      "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
-	"R1":       "DeepSeek-R1 is a real published model family; its name/model-id/tag literally contains \"R1\" (e.g. 'DeepSeek R1 7B', 'bartowski/DeepSeek-R1-Distill-Qwen-8B-GGUF') in ui/src/lib/mockData.ts demo fixtures - not a guard citation",
 	"P50":      "Latency percentile notation (P50/P95/P99) in Grafana dashboard panel titles/legends and docs, not a ticket ID",
 	"P95":      "Latency percentile notation (P50/P95/P99) in Grafana dashboard panel titles/legends and docs, not a ticket ID",
 	"P99":      "Latency percentile notation (P50/P95/P99) in Grafana dashboard panel titles/legends and docs, not a ticket ID",
 	".local/'": "literal gitignored-directory exclusion pattern in scripts/gate.sh's gofmt filter (grep -e '^\\.local/'), functional shell syntax, not a doc citation",
 	"P-256":    "crypto/elliptic P-256 curve, stdlib/NIST curve name, not a ticket (hyphenated variant of the already-exempted P256)",
+}
+
+// internalIDFileExceptions scopes a matched token to the exact tracked files
+// (repo-relative paths, as in `git ls-files`) where it is a genuine false
+// positive. Any occurrence of the token in a file NOT listed here still
+// fails the test. Prefer this over a global entry whenever the false
+// positive is file-specific - a global entry blinds the guard everywhere.
+var internalIDFileExceptions = map[string]map[string]string{
+	"R1": {
+		"internal/admin/catalog.go": "DeepSeek-R1 is a real published model family; the curated catalog's names/tags/descriptions literally contain \"R1\" (e.g. 'deepseek-r1:7b', 'DeepSeek-R1 7B', 'Mid-size R1 distill') - not a guard citation",
+		"ui/src/lib/mockData.ts":    "DeepSeek-R1 model ids in demo fixtures literally contain \"R1\" (e.g. 'DeepSeek R1 7B', 'bartowski/DeepSeek-R1-Distill-Qwen-8B-GGUF') - not a guard citation",
+	},
 }
 
 // scanExtensions are the file extensions this test reads. Anything else
@@ -96,10 +116,10 @@ var selfExemptFiles = map[string]bool{
 	"CHANGELOG.md":                          true,
 }
 
-// gitTrackedFiles returns every file tracked in the repo (absolute paths)
-// via `git ls-files`, restricted to scanExtensions and excluding
-// selfExemptFiles.
-func gitTrackedFiles(t *testing.T) []string {
+// gitTrackedFiles returns the repo root and every file tracked in it
+// (absolute paths) via `git ls-files`, restricted to scanExtensions and
+// excluding selfExemptFiles.
+func gitTrackedFiles(t *testing.T) (string, []string) {
 	t.Helper()
 	root, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
 	if err != nil {
@@ -127,7 +147,7 @@ func gitTrackedFiles(t *testing.T) []string {
 		}
 		files = append(files, rootDir+"/"+p)
 	}
-	return files
+	return rootDir, files
 }
 
 // TestNoInternalIDsRepoWide is the standing guard directed 2026-09-05
@@ -141,7 +161,7 @@ func gitTrackedFiles(t *testing.T) []string {
 // language (or adding a documented exception to internalIDExceptions for a
 // genuine false positive), not touching this test.
 func TestNoInternalIDsRepoWide(t *testing.T) {
-	files := gitTrackedFiles(t)
+	rootDir, files := gitTrackedFiles(t)
 	if len(files) == 0 {
 		t.Fatal("gitTrackedFiles returned nothing - check the git invocation, not the pattern")
 	}
@@ -152,11 +172,17 @@ func TestNoInternalIDsRepoWide(t *testing.T) {
 			t.Errorf("reading %s: %v", path, err)
 			continue
 		}
+		rel := strings.TrimPrefix(path, rootDir+"/")
 		lines := strings.Split(string(data), "\n")
 		for i, line := range lines {
 			for _, m := range internalIDPattern.FindAllString(line, -1) {
 				if _, ok := internalIDExceptions[m]; ok {
 					continue
+				}
+				if scoped, ok := internalIDFileExceptions[m]; ok {
+					if _, ok := scoped[rel]; ok {
+						continue
+					}
 				}
 				t.Errorf("%s:%s: internal-only reference %q in line: %q", path, strconv.Itoa(i+1), m, strings.TrimSpace(line))
 			}

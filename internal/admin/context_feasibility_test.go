@@ -239,7 +239,7 @@ func TestFetchHFConfigJSON_MissingFields(t *testing.T) {
 // hidden_size < num_attention_heads (which would make head_dim truncate to 0
 // via integer division, silently zeroing the entire KV-cache term while
 // still labeled "derived") is rejected as ok=false rather than accepted with
-// a fabricated zero-cost answer (R1).
+// a fabricated zero-cost answer.
 func TestFetchHFConfigJSON_HeadDimTruncationGuard(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{
