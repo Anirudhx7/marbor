@@ -63,16 +63,14 @@ var internalIDPattern = regexp.MustCompile(
 // 2026-09-05: a global "R1" entry for the DeepSeek-R1 model name was hiding
 // dozens of genuine guard-shorthand citations across internal/admin,
 // which the sweep had stopped flagging because the test was green.)
+//
+// An entry with zero occurrences anywhere in the repo is dormant weight,
+// not protection: it can never excuse a present false positive, only hide
+// a future genuine citation. Remove dormant entries outright (re-add scoped
+// if a real use ever lands) - the former "P40"/"P100" GPU-model entries were
+// removed for exactly this reason (no occurrence outside this map).
 var internalIDExceptions = map[string]string{
-	"P40":      "NVIDIA Tesla P40 GPU model name",
-	"P100":     "NVIDIA Tesla P100 GPU model name",
 	"P256":     "crypto/elliptic P-256 curve, a stdlib/NIST curve name, not a ticket",
-	"L30":      "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
-	"L50":      "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
-	"L70":      "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
-	"P50":      "Latency percentile notation (P50/P95/P99) in Grafana dashboard panel titles/legends and docs, not a ticket ID",
-	"P95":      "Latency percentile notation (P50/P95/P99) in Grafana dashboard panel titles/legends and docs, not a ticket ID",
-	"P99":      "Latency percentile notation (P50/P95/P99) in Grafana dashboard panel titles/legends and docs, not a ticket ID",
 	".local/'": "literal gitignored-directory exclusion pattern in scripts/gate.sh's gofmt filter (grep -e '^\\.local/'), functional shell syntax, not a doc citation",
 	"P-256":    "crypto/elliptic P-256 curve, stdlib/NIST curve name, not a ticket (hyphenated variant of the already-exempted P256)",
 }
@@ -86,6 +84,107 @@ var internalIDFileExceptions = map[string]map[string]string{
 	"R1": {
 		"internal/admin/catalog.go": "DeepSeek-R1 is a real published model family; the curated catalog's names/tags/descriptions literally contain \"R1\" (e.g. 'deepseek-r1:7b', 'DeepSeek-R1 7B', 'Mid-size R1 distill') - not a guard citation",
 		"ui/src/lib/mockData.ts":    "DeepSeek-R1 model ids in demo fixtures literally contain \"R1\" (e.g. 'DeepSeek R1 7B', 'bartowski/DeepSeek-R1-Distill-Qwen-8B-GGUF') - not a guard citation",
+	},
+	// Brand-M logo SVG path data (lineto coordinates L30/L50/L70) is copied
+	// into every file below - the markup itself, not a LESSONS ref. Scoped
+	// (not global) so a genuine "see L30" lesson citation anywhere else
+	// still fails: LESSONS.md already numbers past L30.
+	"L30": {
+		"ui/public/favicon.svg":                            "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"ui/src/components/ForceChangePassword.tsx":        "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"ui/src/components/Login.tsx":                      "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"ui/src/components/Sidebar.tsx":                    "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"ui/src/pages/UserPortal.tsx":                      "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/404.html":                                 "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/build-docs.mjs":                           "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/backup.html":                         "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/cli.html":                            "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/deploy/aws-ec2.html":                 "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/deploy/gpu-node-registration.html":   "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/deploy/marbor-agent-enrollment.html": "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/index.html":                          "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/INTEGRATIONS.html":                   "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/integrations/continue.html":          "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/integrations/librechat.html":         "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/integrations/litellm.html":           "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/integrations/open-webui.html":        "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/LIMITATIONS.html":                    "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/PRODUCTION.html":                     "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/SAVINGS-MATH.html":                   "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/USE-CASES.html":                      "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/favicon.svg":                              "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/index.html":                               "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+	},
+	"L50": {
+		"ui/public/favicon.svg":                            "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"ui/src/components/ForceChangePassword.tsx":        "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"ui/src/components/Login.tsx":                      "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"ui/src/components/Sidebar.tsx":                    "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"ui/src/pages/UserPortal.tsx":                      "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/404.html":                                 "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/build-docs.mjs":                           "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/backup.html":                         "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/cli.html":                            "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/deploy/aws-ec2.html":                 "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/deploy/gpu-node-registration.html":   "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/deploy/marbor-agent-enrollment.html": "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/index.html":                          "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/INTEGRATIONS.html":                   "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/integrations/continue.html":          "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/integrations/librechat.html":         "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/integrations/litellm.html":           "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/integrations/open-webui.html":        "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/LIMITATIONS.html":                    "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/PRODUCTION.html":                     "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/SAVINGS-MATH.html":                   "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/USE-CASES.html":                      "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/favicon.svg":                              "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/index.html":                               "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+	},
+	"L70": {
+		"ui/public/favicon.svg":                            "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"ui/src/components/ForceChangePassword.tsx":        "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"ui/src/components/Login.tsx":                      "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"ui/src/components/Sidebar.tsx":                    "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"ui/src/pages/UserPortal.tsx":                      "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/404.html":                                 "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/build-docs.mjs":                           "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/backup.html":                         "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/cli.html":                            "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/deploy/aws-ec2.html":                 "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/deploy/gpu-node-registration.html":   "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/deploy/marbor-agent-enrollment.html": "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/index.html":                          "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/INTEGRATIONS.html":                   "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/integrations/continue.html":          "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/integrations/librechat.html":         "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/integrations/litellm.html":           "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/integrations/open-webui.html":        "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/LIMITATIONS.html":                    "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/PRODUCTION.html":                     "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/SAVINGS-MATH.html":                   "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/docs/USE-CASES.html":                      "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/favicon.svg":                              "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+		"website/index.html":                               "SVG lineto path coordinate in the brand-M logo markup, not a LESSONS ref",
+	},
+	// Latency percentile notation in Grafana dashboard panel titles/legends
+	// (including the demo monitoring overlay's embedded panels) - not a
+	// ticket ID. Scoped (not global) so a genuine same-shaped queue cite
+	// anywhere else still fails.
+	"P50": {
+		"docker-compose.demo.standalone.yml": "Latency percentile notation in Grafana dashboard panel titles/legends, not a ticket ID",
+		"grafana/README.md":                  "Latency percentile notation in Grafana dashboard panel titles/legends, not a ticket ID",
+		"grafana/marbor.json":                "Latency percentile notation in Grafana dashboard panel titles/legends, not a ticket ID",
+	},
+	"P95": {
+		"docker-compose.demo.standalone.yml": "Latency percentile notation in Grafana dashboard panel titles/legends, not a ticket ID",
+		"grafana/README.md":                  "Latency percentile notation in Grafana dashboard panel titles/legends, not a ticket ID",
+		"grafana/marbor.json":                "Latency percentile notation in Grafana dashboard panel titles/legends, not a ticket ID",
+	},
+	"P99": {
+		"docker-compose.demo.standalone.yml": "Latency percentile notation in Grafana dashboard panel titles/legends, not a ticket ID",
+		"grafana/README.md":                  "Latency percentile notation in Grafana dashboard panel titles/legends, not a ticket ID",
+		"grafana/marbor.json":                "Latency percentile notation in Grafana dashboard panel titles/legends, not a ticket ID",
 	},
 }
 
