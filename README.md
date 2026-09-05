@@ -22,10 +22,11 @@
 </p>
 
 <p align="center">
-  <strong>Route every request to the GPU node that already holds the model warm in VRAM.</strong><br>
-  Warm-aware GPU routing, an OpenAI-compatible gateway, bearer-token auth with per-key rate limits,<br>
-  and cost-metered cloud overflow to OpenAI or Anthropic that activates only when local capacity is<br>
-  fully saturated - turning your own hardware into a high-availability alternative to cloud LLM APIs.
+  <strong>Cold model loads kill your time-to-first-token. Marbor keeps hot state ready.</strong><br>
+  43x faster warm vs. cold, measured on real hardware (one consumer GPU, VRAM-constrained -<br>
+  <a href="bench/">see methodology</a>). $200-3,000+/mo saved vs. cloud APIs, from real parsed<br>
+  token counts - never estimated. Bearer-token auth, per-key rate limits, and cost-metered cloud<br>
+  overflow that activates only when local capacity is fully saturated.
 </p>
 
 <p align="center">
