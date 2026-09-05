@@ -718,8 +718,8 @@ func (c *Client) SpillCounters() ([]SpillCounterRow, error) {
 	return out, nil
 }
 
-// PatchKeyLocalOnly calls PATCH /admin/v1/keys/{name} with local_only, the
-// the fail-closed policy toggle - matches auth.KeyPatch's snake_case JSON
+// PatchKeyLocalOnly calls PATCH /admin/v1/keys/{name} with local_only (the
+// fail-closed policy toggle) - matches auth.KeyPatch's snake_case JSON
 // tag (handlePatchKey decodes into that struct, unlike handleAddKey which
 // decodes into config.KeyConfig's camelCase tags).
 func (c *Client) PatchKeyLocalOnly(name string, localOnly bool) error {

@@ -457,8 +457,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.router.IncrConn(node)
 	h.router.IncrModelInFlight(node, modelName)
 	h.router.RecordModelUse(node.Name, modelName) // LRU signal for model eviction
-	// initialNode/initialModel let the post-retry-loop code below (P256)
-	// detect whether the request ended up served by a different node/model
+	// initialNode/initialModel let the post-retry-loop code below detect
+	// whether the request ended up served by a different node/model
 	// than this initial selection (failover retry, or a local-degradation
 	// substitution), so it can refresh the LRU/warmth signal for whichever
 	// node/model actually served the request instead of only the one
