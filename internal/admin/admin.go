@@ -2281,8 +2281,8 @@ func (s *Server) handleEnableMarborAgent(w http.ResponseWriter, r *http.Request)
 	defer s.nodePatchMu.Unlock()
 
 	// The router's live in-memory config, not a store read, is the source
-	// of truth for "existing" here (State Hierarchy: live beats persisted,
-	// guards-detail.md) - it reflects exactly what the poller/action paths
+	// of truth for "existing" here (State Hierarchy: live beats persisted)
+	// - it reflects exactly what the poller/action paths
 	// are using right now, including in tests that call r.SetMarborAgent
 	// directly without a store round-trip.
 	scheme := "http"
@@ -2607,9 +2607,9 @@ func (s *Server) handleNodeRuntimeAction(w http.ResponseWriter, r *http.Request,
 	// Marbor constructs {driver, identifier} from its own store-backed
 	// cache at dispatch time and hands it to the agent fresh on every
 	// request - the agent never persists control config itself, by design.
-	// A node with no operator-accepted driver returns the
-	// exact error marbor-agent-capabilities.md section 5.6 mandates, never a
-	// guess.
+	// A node with no operator-accepted driver returns the exact
+	// "Runtime control unavailable: no control driver configured" error,
+	// never a guess.
 	ctrl, configured := s.router.NodeControlSetting(nodeName)
 	if !configured {
 		writeJSONError(w, http.StatusUnprocessableEntity, "Runtime control unavailable: no control driver configured")
@@ -7434,8 +7434,7 @@ var nodeHealthCheckTimeout = 15 * time.Second
 // handshake, not a transfer.
 var nodeTLSProbeTimeout = 10 * time.Second
 
-// handleNodeTLSProbe performs the TLS enrollment probe (spec section 2,
-// step 2-3): dials the node's Marbor Agent (NOT its runtime URL - the Agent's
+// handleNodeTLSProbe performs the TLS enrollment probe: dials the node's Marbor Agent (NOT its runtime URL - the Agent's
 // own host:port, using the Agent's own configured scheme, which is
 // independent of the runtime endpoint's scheme, see
 // store.MarborAgentRecord.Scheme's doc comment) with a TLS-handshake-only

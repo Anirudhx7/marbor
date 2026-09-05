@@ -653,7 +653,7 @@ export function GPUNodes() {
   // --- ControlDriver - registration flow: probe, confirm, persist.
   // discovered/configured are always shown separately - accepting only
   // ever happens on an explicit operator click, never automatically from a
-  // re-scan (node-agent-capabilities.md section 5.6).
+  // re-scan.
   const [controlStatus, setControlStatus] = useState<NodeControlStatus | null>(null);
   const [controlBusy, setControlBusy] = useState(false);
   const [controlError, setControlError] = useState<string | null>(null);

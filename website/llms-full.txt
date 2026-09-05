@@ -83,4 +83,4 @@ Open WebUI, Continue, LibreChat, AWS EC2, Ansible node registration, LiteLLM as 
 self-hosted LLM inference, self-hosted LLM gateway, on-prem LLM serving, private LLM inference, self-hosted OpenAI API alternative, GPU-aware LLM routing, warm model VRAM routing, LLM inference control plane, multi-runtime inference, Ollama load balancer, vLLM load balancing, llama.cpp, TGI, MLX, LLM cost control, homelab LLM, air-gapped LLM
 
 ## Changelog Pointer
-See https://github.com/Anirudhx7/marbor/blob/main/CHANGELOG.md and .local reflection.
+See https://github.com/Anirudhx7/marbor/blob/main/CHANGELOG.md.

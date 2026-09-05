@@ -8,8 +8,8 @@ import (
 )
 
 // writeJSON encodes v as indented JSON to w. Used by every command's --json
-// path - this is the actual compatibility contract (operational-interfaces.md
-// 5.1), not the human table output below.
+// path - this is the actual compatibility contract, not the human table
+// output below.
 func writeJSON(w io.Writer, v interface{}) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")

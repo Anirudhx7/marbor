@@ -118,7 +118,7 @@ jobs:
     # Real-binary e2e: builds the actual demo stack, sends real HTTP through the proxy,
     # asserts auth/routing/streaming/admin/metrics. Unit tests + race detector don't prove
     # the binary boots and routes - this catches "compiles but doesn't run" before docker-main.
-    # Acceptance bar (EXECUTION-QUEUE.md item 1) is "< 5 min" - a hard timeout keeps a stuck
+    # Acceptance bar: smoke must finish in "< 5 min" - a hard timeout keeps a stuck
     # compose stack from silently burning the 360-minute default instead of failing fast.
     needs: [go-checks, ui-build, govulncheck]
     runs-on: ubuntu-latest

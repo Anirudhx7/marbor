@@ -1,7 +1,7 @@
 package store_test
 
-// V1-RELEASE-GATE B.3: "Schema migration proven from every prior released
-// version." schema_version_test.go only proves that CurrentSchemaVersion
+// "Schema migration proven from every prior released version":
+// schema_version_test.go only proves that CurrentSchemaVersion
 // (which has never incremented past 1) gets stamped and that a *newer*
 // schema_version is refused - it never exercises migrating an *older* real
 // DB shape forward. That is what this file does.

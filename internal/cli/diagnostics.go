@@ -42,8 +42,8 @@ func runPulls(flags *globalFlags, stdout, stderr io.Writer) int {
 
 // runModelsPullProgress implements `marbor models pull-progress <node>
 // <model>` - a single point-in-time snapshot from the active-pulls list
-// (a point-in-time read), not a live SSE follow (operational-interfaces.md: one Admin
-// API request per CLI command).
+// (a point-in-time read), not a live SSE follow (one Admin API request
+// per CLI command).
 func runModelsPullProgress(flags *globalFlags, node, model string, stdout, stderr io.Writer) int {
 	client, err := authenticatedClient(flags)
 	if err != nil {

@@ -171,9 +171,8 @@ func (r *Router) isWarmupSuppressed(node, model string) bool {
 
 // SuppressedWarmupInfo returns a copy of node's suppressed-model set (model ->
 // reason/since), for admin.go to shape into the dashboard-facing WarmupState -
-// never the raw map itself, and never a bare bool (see EXECUTION-QUEUE.md's
-// "Warmup/unload state is invisible on the dashboard" item for why: a second
-// suppression reason was always going to need more than a boolean).
+// never the raw map itself, and never a bare bool (a second suppression
+// reason was always going to need more than a boolean).
 func (r *Router) SuppressedWarmupInfo(node string) map[string]suppressedInfo {
 	r.suppressMu.Lock()
 	defer r.suppressMu.Unlock()
