@@ -143,9 +143,8 @@ type whoamiOutput struct {
 // the ideal choice: the Admin API has no lightweight session-introspection
 // endpoint (no GET /admin/v1/me) today, so whoami pays for a full node-list
 // fetch just to confirm liveness, which is wasteful on a large fleet. Adding
-// a dedicated endpoint is out of scope for this item (it would turn into an
-// admin-API change, which the CLI-persistent-auth queue item's own
-// blast-radius note rules out). If a lightweight /admin/v1/me endpoint is
+// a dedicated endpoint is out of scope here (it would turn into an
+// admin-API change). If a lightweight /admin/v1/me endpoint is
 // ever added, switch this call to that instead.
 func runWhoami(flags *globalFlags, stdout, stderr io.Writer) int {
 	session, err := loadSession()

@@ -1,11 +1,11 @@
 package marboragent
 
 // AMD ROCm GPUCollector, parsing `rocm-smi -a --json` output. UNVERIFIED ON
-// REAL HARDWARE (Anirudh's explicit call, 2026-07-20 - no AMD card available
-// in this environment): field parsing here is built against ROCm's publicly
-// documented `-a --json` key names, not captured from an actual card, and
-// rocm-smi's exact key spelling has genuinely drifted across ROCm releases
-// (e.g. "Card series" vs "Card Series"). rocmField below tries every known
+// REAL HARDWARE (no AMD card available in this environment, 2026-07-20):
+// field parsing here is built against ROCm's publicly documented `-a --json`
+// key names, not captured from an actual card, and rocm-smi's exact key
+// spelling has genuinely drifted across ROCm releases (e.g. "Card series" vs
+// "Card Series"). rocmField below tries every known
 // variant per logical value for that reason. Treat this collector as needing
 // a real-hardware validation pass before being fully trusted - if it never
 // reports a device on a host that clearly has one, that's the first thing to

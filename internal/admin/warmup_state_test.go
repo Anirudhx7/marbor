@@ -12,9 +12,8 @@ import (
 
 // TestHandleNodes_WarmupStateSurfacesSuppression verifies GET /admin/nodes
 // exposes a manually-unloaded model as a "suppressed" warmupState entry with
-// a reason - the queue item's whole point being that this state previously
-// had zero admin/UI surface (only a raw internal bool an operator could
-// never see). It must never leak the raw warmupSuppressed map/bool shape.
+// a reason - the whole point being that this state previously had zero
+// admin/UI surface (only a raw internal bool an operator could never see). It must never leak the raw warmupSuppressed map/bool shape.
 func TestHandleNodes_WarmupStateSurfacesSuppression(t *testing.T) {
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{{Name: "gpu-0", URL: "http://127.0.0.1:19999"}}, nil)
 	r.RecordManualUnload("gpu-0", "llama3.2")
