@@ -129,7 +129,7 @@ func TestRunScheduledBackup_SkipsDuplicateOfUnchangedDB(t *testing.T) {
 }
 
 // TestRunScheduledBackup_NoTargetDirRecordsError verifies a missing
-// TargetDir is a visible, honest failure (R1) - never a silent no-op or a
+// TargetDir is a visible, honest failure - never a silent no-op or a
 // fabricated success.
 func TestRunScheduledBackup_NoTargetDirRecordsError(t *testing.T) {
 	s := newRealStoreTestServer(t)

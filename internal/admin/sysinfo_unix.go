@@ -37,7 +37,7 @@ func readSystemMemory() (totalMB, freeMB int64, ok bool) {
 		// MemAvailable==0 is genuinely ambiguous between "kernel doesn't
 		// report it" and "host is memory-exhausted" - substituting memTotal
 		// in either case fabricated "all RAM free" exactly when memory could
-		// be actually exhausted (R1). MemFree is always reported by the
+		// be actually exhausted. MemFree is always reported by the
 		// kernel, so use it whenever MemAvailable itself is absent from the
 		// file; never substitute memTotal for a genuine 0 value.
 		if !haveMemAvailable {

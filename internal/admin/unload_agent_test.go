@@ -123,7 +123,7 @@ func TestHandleUnloadModel_AgentPinnedRejected(t *testing.T) {
 
 // TestHandleUnloadModel_AgentUnsupportedRuntimeReturnsError verifies a real
 // error from the agent (e.g. a non-Ollama runtime with no unload primitive)
-// surfaces as a bad-gateway error, never a fabricated success (R1) - this is
+// surfaces as a bad-gateway error, never a fabricated success - this is
 // what makes "not supported for this runtime" visible in the UI instead of a
 // silent no-op.
 func TestHandleUnloadModel_AgentUnsupportedRuntimeReturnsError(t *testing.T) {

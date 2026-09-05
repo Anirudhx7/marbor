@@ -228,7 +228,7 @@ func nearestRankIndex(n int, pct float64) int {
 // sample in that phase produced a computable TPOT. Callers pass only the
 // non-nil TPOTMs values collected from bench.LatencySample (see
 // benchmarkJob.addColdSample/addWarmSample below), so an empty slice here
-// means "no data", never "a genuine zero" (R1).
+// means "no data", never "a genuine zero".
 func aggregateTPOTSamples(samples []float64) *float64 {
 	if len(samples) == 0 {
 		return nil

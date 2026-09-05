@@ -56,7 +56,7 @@ func TestHandleNodeHealthCheck_FallsBackToDirectProbeForAgentlessNode(t *testing
 		t.Fatalf("decode response: %v", err)
 	}
 	// Nothing listens on localhost:11434 in this test, so the probe must
-	// report a real failure - never a fabricated success (R1).
+	// report a real failure - never a fabricated success.
 	if result.OK {
 		t.Errorf("expected OK=false (nothing listening on the probed port), got OK=true")
 	}

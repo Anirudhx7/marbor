@@ -296,7 +296,7 @@ type catalogNodeEntry struct {
 	VRAMSource     string  `json:"vram_source"`
 	DiskFreeGB     float64 `json:"disk_free_gb"`
 	DiskTotalGB    float64 `json:"disk_total_gb"`
-	DiskKnown      bool    `json:"disk_known"` // false when the agent has never reported disk telemetry (R1 - never fabricate a reading)
+	DiskKnown      bool    `json:"disk_known"` // false when the agent has never reported disk telemetry (never fabricate a reading)
 	// DockerDeployed flags that DiskFreeGB/DiskTotalGB are this agent's own
 	// *host* filesystem reading (host_linux.go's readDiskStatsGB("/")) while
 	// the runtime itself is Docker-controlled - the container's actual model
@@ -321,7 +321,7 @@ type catalogNodeEntry struct {
 	// per-device GPU reading at all (no agent, or VRAMSource=="declared" -
 	// a manually-entered whole-node total with no per-device breakdown).
 	// Without this, such a node's GPUCount==0 looks identical, at
-	// the same apparent confidence, to a confirmed single-GPU node - R1
+	// the same apparent confidence, to a confirmed single-GPU node - honesty
 	// requires disclosing "unknown" rather than implying a reading that was
 	// never taken.
 	GPUCountUnknown bool `json:"gpu_count_unknown,omitempty"`
@@ -361,7 +361,7 @@ type catalogNodeEntry struct {
 //     nothing in the bare string says whether it's plain-safetensors, an
 //     AWQ/GPTQ quant, or MLX-converted without fetching the repo's own
 //     metadata (which handleModelRepo does, but handleNodePull's tag-only
-//     hard-block gate never has) - R1 forbids fabricating that certainty.
+//     hard-block gate never has) - never fabricate that certainty.
 func classifyPullTagFormat(model string) string {
 	lower := strings.ToLower(model)
 	if strings.HasPrefix(lower, "hf.co/") || strings.HasSuffix(lower, ".gguf") {
@@ -438,7 +438,7 @@ func nodeRuntimeByName(nodes []*router.NodeState, name string) (runtime string, 
 // green/yellow/red gradient. "unknown" (never a fabricated "ok") applies
 // whenever the agent hasn't reported disk telemetry - no agent, an agent
 // build predating disk telemetry, or a non-Linux agent (host_other.go
-// reports no disk stats today, R1) - so the caller must treat "unknown" as
+// reports no disk stats today) - so the caller must treat "unknown" as
 // "cannot verify" and never silently allow-by-default on it for a
 // hard-block decision.
 //
@@ -475,7 +475,7 @@ func diskTelemetryUnknown(diskTotalGB float64, agentPresent bool) bool {
 // whose real download size cannot be established (findCatalogVariantSizeMB
 // returned ok=false: any tag outside the curated catalog) has no size to
 // compare against free space the way classifyDiskFit does, so it cannot use
-// the same size-vs-free-space test. Refusing to guess a size (R1) does not
+// the same size-vs-free-space test. Refusing to guess a size does not
 // mean refusing to apply any safety boundary at all - this is that boundary:
 // an explicit, honest policy decision ("this node's headroom is already too
 // thin to risk an unsized download"), never a fabricated size estimate.
@@ -512,7 +512,7 @@ func classifyUnknownSizeDiskFit(diskFreeGB, diskTotalGB float64, agentPresent bo
 // catalog variant by its pull tag, using the same tag/base-name matching
 // isDownloaded already uses. Returns ok=false for any tag not in the static
 // catalog (e.g. an HF repo tag, or an Ollama registry model not curated
-// here) - callers must skip the disk check rather than guess a size (R1).
+// here) - callers must skip the disk check rather than guess a size.
 func findCatalogVariantSizeMB(model string) (int64, bool) {
 	for _, cm := range catalogModels {
 		for _, v := range cm.Variants {
@@ -596,7 +596,7 @@ func classifyFit(vramEstBytes, vramCapacityBytes int64, vramSource string) strin
 //     ceiling is whichever single card is biggest (basis "largest") - never
 //     the sum. Summing here would turn a genuine "won't fit on one card"
 //     into a false green, which is strictly worse than the false red it
-//     would otherwise show (R1: no dressing up an estimate as more certain,
+//     would otherwise show (no dressing up an estimate as more certain,
 //     or more favorable, than it is). For this basis usedMB is that same
 //     device's own agent-reported VRAMUsedMB, never the whole-node figure -
 //     pairing a single device's capacity with every other GPU's usage too
@@ -1012,8 +1012,7 @@ func sortHFModelsInPlace(models []HFModelInfo, sortField, direction string) {
 // MLX repos are tagged "library:mlx" on HF and carry their own quant format
 // (distinct from AWQ/GPTQ/BNB) - the actual bit-width lives in config.json,
 // not in tags, so it's labeled generically as "MLX" here rather than
-// guessing a specific bit-width from tags alone (R1: no fabricated
-// precision).
+// guessing a specific bit-width from tags alone (no fabricated precision).
 func detectSafetensorsQuant(tags []string) string {
 	isMLX := false
 	for _, t := range tags {
@@ -1066,7 +1065,7 @@ type ModelVariantFit struct {
 	// or estimated) so existing consumers see the improved number for free,
 	// while this field carries the confidence label and explanation that
 	// make it possible to tell a real architecture-derived answer from the
-	// older linear guess (R1: never presented as more certain than it is).
+	// older linear guess (never presented as more certain than it is).
 	ContextFeasibility ContextFeasibility `json:"context_feasibility"`
 }
 
@@ -1134,7 +1133,7 @@ type hfArchFacts struct {
 // kvCacheBytesPerToken's int64 multiply chain (2*layers*kvHeads*headDim*2,
 // then multiplied again by requestedCtx up to maxAdvisorCtxLen=10_000_000 in
 // computeContextFeasibility) from overflowing into a wrapped/negative
-// estimate that classifyFit could label a false "green" fit (R1). Sized so
+// estimate that classifyFit could label a false "green" fit. Sized so
 // 4*maxPlausibleLayers*maxPlausibleHeads*maxPlausibleHiddenDim*maxAdvisorCtxLen
 // (4e11 * 1e7 = 4e18) stays safely under math.MaxInt64 (~9.22e18).
 const (
@@ -1148,7 +1147,7 @@ const (
 // feature needs. Not every repo ships one (pure-GGUF repos rarely do, since
 // GGUF is a self-contained binary format) - fetchHFConfigJSON returns
 // ok=false whenever any required field is absent, and callers must fall back
-// to the existing linear estimate (R1) rather than invent these numbers.
+// to the existing linear estimate rather than inventing these numbers.
 // Optional MoE/deployment hints (architecture, num_experts, etc.) are nullable
 // and never gate ok - missing -> nil -> estimated fallback, never fabricated.
 type hfConfigJSON struct {
@@ -1309,7 +1308,7 @@ func fetchHFConfigJSONUncached(ctx context.Context, repoID, token string) (hfCon
 	// adversarial config.json value in that range can overflow
 	// kvCacheBytesPerToken's int64 multiply chain into a wrapped/negative
 	// estimate that classifyFit can then label a false "green" fit with
-	// Confidence "derived" (R1). Rejecting here and falling back to the
+	// Confidence "derived". Rejecting here and falling back to the
 	// arch==nil estimated path is simpler and more robust than threading
 	// overflow checks through the multiply chain. computeContextFeasibility
 	// applies this same bound to every arch it's given (code review found
@@ -1325,7 +1324,7 @@ func fetchHFConfigJSONUncached(ctx context.Context, repoID, token string) (hfCon
 		// integer division, silently zeroing the entire KV-cache term while
 		// still being labeled "derived" (high confidence) - a malformed
 		// config.json is data this codebase can't trust, not data it should
-		// guess a zero-cost answer from (R1).
+		// guess a zero-cost answer from.
 		return hfConfigJSON{}, false
 	}
 	return cfg, true
@@ -1832,7 +1831,7 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 					// Push these real architecture facts into the router's
 					// headroom/eviction hot path so it can stop tying a GQA and
 					// an MHA model of the same disk size - opportunistic, not a
-					// guess (R1): only a model an operator has actually looked
+					// guess: only a model an operator has actually looked
 					// up here ever gets an entry.
 					s.router.SetModelArchFacts(downloadedName, router.ModelArchFacts{
 						NumLayers:    info.BlockCount,

@@ -88,7 +88,7 @@ func TestHandleNodeDeleteModel_DispatchesToAgentWhenCapable(t *testing.T) {
 
 // TestHandleNodeDeleteModel_NoAgentCapabilityReturns501 verifies a node
 // without the agent capability gets a clear, honest error - never a
-// fabricated success for a delete that never happened (R1).
+// fabricated success for a delete that never happened.
 func TestHandleNodeDeleteModel_NoAgentCapabilityReturns501(t *testing.T) {
 	s := newPullTestServer(t, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://localhost:11434"},

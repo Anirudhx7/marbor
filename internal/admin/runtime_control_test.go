@@ -159,7 +159,7 @@ func TestHandleNodeRuntimeAction_WorksWhileRuntimeUnhealthy(t *testing.T) {
 
 // TestHandleNodeRuntimeAction_NoAgentCapabilityReturns501 verifies a node
 // without the runtime.{action} capability gets a clear, honest error - never
-// a fabricated success for an action that never ran (R1).
+// a fabricated success for an action that never ran.
 func TestHandleNodeRuntimeAction_NoAgentCapabilityReturns501(t *testing.T) {
 	s := newPullTestServer(t, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://localhost:11434"},
@@ -303,7 +303,7 @@ func TestHandleNodeRuntimeLogs_DispatchesToAgentWhenConfigured(t *testing.T) {
 // TestHandleNodeRuntimeLogs_NoAgentCapabilityReturns501 mirrors
 // TestHandleNodeRuntimeAction_NoAgentCapabilityReturns501 for the logs
 // capability - a node without runtime.logs gets a clear, honest error, never
-// a fabricated empty log list (R1).
+// a fabricated empty log list.
 func TestHandleNodeRuntimeLogs_NoAgentCapabilityReturns501(t *testing.T) {
 	s := newPullTestServer(t, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://localhost:11434"},

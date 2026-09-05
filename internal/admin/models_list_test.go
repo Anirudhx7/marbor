@@ -91,7 +91,7 @@ func TestHandleNodeModels_DispatchesToAgentWhenCapable(t *testing.T) {
 
 // TestHandleNodeModels_NoAgentCapabilityReturns501 verifies a node without
 // the agent capability gets a clear, honest error - never a fabricated
-// empty-but-successful list (R1). There is no direct-HTTP fallback for
+// empty-but-successful list. There is no direct-HTTP fallback for
 // listing local models, unlike pull.
 func TestHandleNodeModels_NoAgentCapabilityReturns501(t *testing.T) {
 	s := newPullTestServer(t, []config.NodeConfig{

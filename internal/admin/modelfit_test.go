@@ -194,7 +194,7 @@ func TestHandleModelFit_Unauthorized(t *testing.T) {
 // total (any vendor other than the marbor's own local nvidia-smi) used to fall
 // through to a hardcoded "nvidia-smi" fallback regardless of which tool
 // actually produced the reading - an AMD or Intel node's Model Fit badge
-// would falsely claim "nvidia-smi" as its source (R1: a label is a claim
+// would falsely claim "nvidia-smi" as its source (a label is a claim
 // about provenance).
 func TestVramFitSourceLabel(t *testing.T) {
 	cases := []struct {
