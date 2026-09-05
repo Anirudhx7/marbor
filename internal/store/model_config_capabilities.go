@@ -105,8 +105,8 @@ func SupportedFieldsFor(runtime string) []string {
 	case "vllm", "tgi", "llamacpp", "mlx":
 		// falls through to the OpenAI-compat branch below
 	default:
-		// Built explicitly rather than reusing OpenAICompatBaseFields wholesale
-		// (P136): that slice includes response_format, but Ollama has no
+		// Built explicitly rather than reusing OpenAICompatBaseFields wholesale:
+		// that slice includes response_format, but Ollama has no
 		// native "options" equivalent for it and internal/proxy's Ollama
 		// injection branch deliberately never sets it (see model_config.go's
 		// comment beside its options-building code) - advertising it here

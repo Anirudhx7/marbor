@@ -7,35 +7,35 @@ import (
 )
 
 // checkToken reports whether authHeader (the raw Authorization header value)
-// presents expectedToken as a bearer credential. Mirrors R4's discipline
-// (admin.go's exact-match Bearer check): strings.TrimPrefix + ==, never
+// presents expectedToken as a bearer credential. Mirrors the exact-match
+// discipline admin.go's Bearer check uses: strings.TrimPrefix + ==, never
 // strings.Contains. An empty expectedToken NEVER authenticates any request,
 // including one with an empty bearer value ("Authorization: Bearer ") - an
 // agent started without a configured token must reject everything, not fall
-// open (same "never substitute/accept empty-string secret" lesson R8
-// documents for the marbor side, applied here to the agent side of the same
+// open (same "never substitute/accept empty-string secret" discipline used
+// for the marbor side, applied here to the agent side of the same
 // trust boundary).
 func checkToken(authHeader, expectedToken string) bool {
 	if expectedToken == "" {
 		return false
 	}
 	presented := strings.TrimPrefix(authHeader, "Bearer ")
-	// Constant-time comparison (P148): a plain == short-circuits on the first
+	// Constant-time comparison: a plain == short-circuits on the first
 	// mismatched byte, leaking timing information about how much of the
 	// token an attacker has guessed correctly - the agent-side counterpart
-	// of R4 (control-plane side already uses hashed comparison).
+	// of the control-plane side's already-hashed comparison.
 	// ConstantTimeCompare returns 0 on length mismatch, so an
 	// empty/wrong-length presented token still fails closed exactly as
 	// before.
 	return subtle.ConstantTimeCompare([]byte(presented), []byte(expectedToken)) == 1
 }
 
-// tier is a Marbor Agent token's authorization level (P54). Tiers are ordinal:
+// tier is a Marbor Agent token's authorization level. Tiers are ordinal:
 // a token authorizes its own tier and every tier below it. tierAdmin is
 // deliberately the ceiling for every route today - no current route
 // requires it, it exists only so a future Group 3 ("Maintain") action can
 // require it and be correctly refused by every token that predates that
-// action, per .local/specs/node-agent-capabilities.md section 7.
+// action, per the node-agent capabilities design doc.
 type tier int
 
 const (
@@ -69,7 +69,7 @@ var tierNames = map[string]tier{
 	ScopeAdmin:    tierAdmin,
 }
 
-// scopeOf parses the tier embedded in token's prefix (P54 design: "<tier>."
+// scopeOf parses the tier embedded in token's prefix (design: "<tier>."
 // + random secret, e.g. "operator.Xk9f..."). "." never appears in the
 // base64url alphabet the random suffix is drawn from, so splitting on the
 // first "." is unambiguous.

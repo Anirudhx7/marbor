@@ -47,7 +47,7 @@ func (p *MLXProbe) Probe(ctx context.Context, nodeURL string) (ProbeResult, erro
 			// OpenAI-compatible surface - parsed defensively so it's used
 			// when a build happens to report it and silently ignored
 			// (Digest stays empty, today's behavior) when absent. Never
-			// fabricated (R1).
+			// fabricated.
 			Root string `json:"root"`
 		} `json:"data"`
 	}

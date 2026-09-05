@@ -300,7 +300,7 @@ workstation - not production server hardware. **Re-measured 2026-09-05** (B.6) a
 write-path-adjacent code had landed since (the activity/audit merge, several `internal/store`
 correctness fixes) to warrant re-checking rather than trusting the original numbers as-is._
 
-| Metric | 2026-08-13 (P53) | 2026-09-05 re-measurement |
+| Metric | 2026-08-13 (original measurement) | 2026-09-05 re-measurement |
 |---|---|---|
 | No drops observed | Up to 300 req/s, p50 ~330-380ms flat, zero failures. | Not reproduced at the same level - see "First observed queue-full drop" below; effectively no clean no-drop plateau above ~100-200 req/s in this re-run. |
 | Latency knee | ~400 req/s - p50 jumps from ~380ms to ~1.7s. | **Confirmed, reproduced across two independent isolated single-node runs** - p50 jumps from the 20-40ms baseline to 1.1-1.7s at 400 req/s in both runs. This is the most stable finding across both measurement dates. |
@@ -332,7 +332,7 @@ so requests could land on any of them.
 ceiling in this test - if anything the 4-node run's total realized throughput was lower than the
 1-node baseline's, but that appears to be a load-generator/test-machine artifact rather than a
 marbor-side capacity change, since marbor's own queues logged *fewer* drops (zero) at 4 nodes than
-at 1-2 nodes over the same target-rate range. This is consistent with P53's original framing -
+at 1-2 nodes over the same target-rate range. This is consistent with the original single-node measurement's framing -
 the SQLite write path itself, not per-node backend capacity, is the constraint - but this specific
 run cannot cleanly separate that from CPU contention on the shared test machine (more concurrent
 `cmd/mocknode` processes plus marbor's own per-node `/api/ps` poll loop competing with the load

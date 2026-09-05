@@ -8,8 +8,7 @@ import (
 )
 
 // dispatch.go implements the generic, registry-driven command dispatcher -
-// built as step 5 of the P83+ CLI hardening plan (see
-// .local/plans/reflective-pondering-acorn.md, Implementation section 2).
+// built as part of the CLI hardening plan's registry migration.
 // cli.go's Run now delegates directly to dispatchAndRun, which is the real,
 // only dispatch path in production - the old hand-rolled switch this
 // replaced has been deleted.
@@ -56,7 +55,7 @@ type dispatchResult struct {
 // "node control -h" alike. Every other command renders its own help
 // unchanged.
 //
-// Investigated (Fix 11 of the P83+ CLI hardening code review) whether this
+// Investigated during the CLI hardening code review whether this
 // is really "node"-specific or actually a general "a group with exactly one
 // child and no bare-execution Run of its own redirects --help straight to
 // that child" rule. It is NOT: "requests" (registry_tree.go) is exactly such
@@ -272,10 +271,9 @@ func dispatchRun(cur *Command, rest []string, stdout, stderr io.Writer) dispatch
 
 	min, max := cur.MinArgs(), cur.MaxArgs()
 	if len(positional) < min || (max >= 0 && len(positional) > max) {
-		// Deliberate: no "error:" prefix here - this is the P83 arity
+		// Deliberate: no "error:" prefix here - this is the arity
 		// error, and ~10 existing tests assert the bare "usage: ..." line
-		// with no prefix (see the plan's "Deliberate" note in
-		// Implementation section 2). Missing-required-flag below keeps the
+		// with no prefix. Missing-required-flag below keeps the
 		// "error: " prefix intentionally, for the same reason in reverse.
 		fmt.Fprintln(stderr, cur.UsageLine())
 		return dispatchResult{code: ExitUserError, handled: true}
@@ -348,8 +346,8 @@ func dispatch(root *Command, args []string, stdout, stderr io.Writer) dispatchRe
 		if cur == root {
 			// Root --help now goes through the same registry-driven
 			// writeHelp/writeRootHelp path as every group/leaf, instead of
-			// the old hand-written `usage` const in cli.go (deleted - see
-			// Fix 3 of the P83+ CLI hardening code review). This keeps root
+			// the old hand-written `usage` const in cli.go (deleted during
+			// the CLI hardening code review). This keeps root
 			// help aligned via renderTable's tabwriter and prevents it from
 			// drifting out of sync with the registry as commands are added.
 			writeHelp(stdout, root)

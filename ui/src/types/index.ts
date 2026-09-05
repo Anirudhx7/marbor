@@ -44,11 +44,11 @@ export interface GPUNode {
   host: string;
   // URL scheme this node is configured with ("http" or "https") - not
   // itself a security signal, but needed to know whether TLS pinning even
-  // applies and to correctly pre-populate a scheme toggle when editing (P24).
+  // applies and to correctly pre-populate a scheme toggle when editing.
   scheme?: 'http' | 'https';
   gpuModel: string;
   // Operator-declared physical GPU index list this node/runtime instance
-  // actually uses (P75 Gap B/C) - undefined/empty means nothing declared,
+  // actually uses - undefined/empty means nothing declared,
   // unchanged host-level sizing. Two nodes sharing one host's agent
   // telemetry but each pinned to a different GPU need this so the Model
   // Advisor doesn't size each against the whole host's combined VRAM.
@@ -68,7 +68,7 @@ export interface GPUNode {
   runtime: string;
   // Set only when this node is currently probed as llamacpp and /health is
   // failing with a 404 (route doesn't exist) - the real, observed signature
-  // of an MLX node that runtime: auto misclassified (P409). Never a guess
+  // of an MLX node that runtime: auto misclassified. Never a guess
   // presented as fact - empty whenever this exact condition isn't observed.
   runtimeMismatchHint?: string;
   draining: boolean;
@@ -79,26 +79,25 @@ export interface GPUNode {
   // in-flight requests, only stops routing new ones - this is what lets an
   // operator see when a draining node has actually finished flushing.
   activeConns: number;
-  // Operator-declared per-node in-flight cap override (P64) - 0/undefined
+  // Operator-declared per-node in-flight cap override - 0/undefined
   // means no override is declared, so the global
   // routing.max_in_flight_per_node default applies instead.
   maxInFlight?: number;
-  // TOFU-pinned marbor agent TLS certificate fingerprint (P24) - undefined/
-  // empty means no pin (plaintext or not yet TLS-enrolled). See
-  // .local/specs/node-agent-tls.md.
+  // TOFU-pinned marbor agent TLS certificate fingerprint - undefined/
+  // empty means no pin (plaintext or not yet TLS-enrolled).
   tlsFingerprint?: string;
   // True when the most recent agent poll failed specifically because the
   // presented certificate didn't match tlsFingerprint - distinct from
   // generic unreachability, so the dashboard can show its own status
   // instead of "unreachable" (spec section 6).
   tlsFingerprintMismatch?: boolean;
-  // Deployment topology (P397) - type tp|pp|ep|dp, width 1..64, derived
+  // Deployment topology - type tp|pp|ep|dp, width 1..64, derived
   // effectiveRequiredGPUs = max(len(gpuIndices), width). Empty/0 means
   // unconstrained (existing fleet).
   parallelismType?: string;
   parallelismWidth?: number;
   effectiveRequiredGPUs?: number;
-  // P397b: auto-discovered deployment (additive, honest unknown when agent
+  // Auto-discovered deployment (additive, honest unknown when agent
   // cannot see host pid). Declared above always overrides detected.
   detectedParallelismType?: string;
   detectedParallelismWidth?: number;
@@ -108,7 +107,7 @@ export interface GPUNode {
   detectedEffectiveRequiredGPUs?: number;
   mismatchWarning?: string;
   // Operator-declared per-model VRAM size override (MB), keyed by plain
-  // model name (P411) - undefined/empty means nothing declared. Feeds
+  // model name - undefined/empty means nothing declared. Feeds
   // estimateModelSizeBytes' tier-3 fallback on the router side.
   vramOverrides?: Record<string, number>;
   // Live, admin-toggleable, in-memory-only. Never persisted - reverts to
@@ -145,7 +144,7 @@ export interface GPUNode {
   // whenever no agent is configured for this node, or the most recent agent
   // poll failed - the UI must check agentPresent before displaying
   // cpuPercent/fanPercent/ramUsedMB/diskFreeGB/agentVersion as real
-  // measurements (R1), rendering '-' instead.
+  // measurements, rendering '-' instead.
   agentPresent?: boolean;
   agentVersion?: string;
   // True when an enabled marbor agent IS configured for this node's physical
@@ -226,8 +225,8 @@ export interface LoadedModel {
 // BenchmarkRun mirrors internal/store.BenchmarkRun - a persisted result from
 // the in-dashboard hardware benchmark (Settings -> Benchmark, hidden route
 // /benchmark). All *Ms fields are real measured milliseconds, never
-// estimated (R1). *_p95_ms/*_p99_ms/*_tpot_p50_ms are undefined/null for a
-// run persisted before P408 (no percentile/TPOT data to backfill from) or,
+// estimated. *_p95_ms/*_p99_ms/*_tpot_p50_ms are undefined/null for a
+// run persisted before that metric existed (no percentile/TPOT data to backfill from) or,
 // for TPOT, when not one sample in that phase produced a computable value
 // (fewer than 2 content-bearing SSE chunks) - render as "-", never 0.
 export interface BenchmarkRun {
@@ -389,11 +388,11 @@ export interface Settings {
   contextWindows: Record<string, number>;
 
   // Model name -> ordered list of local alternates to try when no node can
-  // serve it at all (P67). Opt-in twice over: declared here AND the
+  // serve it at all. Opt-in twice over: declared here AND the
   // request's API key must have its allowLocalDegradation policy set to true.
   localDegradationChains: Record<string, string[]>;
 
-// Scheduled marbor.db backup (P49). LastBackupAt/LastBackupError are
+// Scheduled marbor.db backup. LastBackupAt/LastBackupError are
   // read-only status from the server, never sent back on save.
   backupEnabled: boolean;
   backupIntervalHours: number;
@@ -501,7 +500,7 @@ export interface RequestEntry {
   status: number;
   latency_ms: number;
   cloud: boolean;
-  // P41 routing explainability. routingReason is the short top-level
+  // Routing explainability. routingReason is the short top-level
   // explanation, always present when the feature has data for this row;
   // the full breakdown is fetched lazily via GET
   // /admin/requests/{id}/explain, not carried on the list entry.
@@ -515,7 +514,7 @@ export interface ScoreComponent {
   value: number;
 }
 
-// RoutingDecision mirrors router.RoutingDecision (Go) - the P41 explain
+// RoutingDecision mirrors router.RoutingDecision (Go) - the routing-explain
 // endpoint's response shape.
 export interface RoutingDecision {
   node: string;
@@ -629,7 +628,7 @@ export interface CatalogNodeEntry {
   // only, for a runtime that pins a model to one GPU - vLLM, TGI, MLX).
   gpu_count?: number;
   vram_fit_basis?: 'combined' | 'largest';
-  // P75 Gap D: true when this node has no agent-confirmed per-device GPU
+  // Declared-vs-detected GPU gap: true when this node has no agent-confirmed per-device GPU
   // reading at all (no agent, or vram_source=="declared" - a manually
   // entered whole-node total with no per-device breakdown). Distinct from a
   // confirmed single-GPU reading (gpu_count===1 with this false), which is a
@@ -658,7 +657,7 @@ export interface BudgetEntry {
 // with different runtimes (ollama/vllm/tgi/llamacpp/mlx) or VRAM budgets, so a
 // profile is only ever meaningful scoped to one node - `model` and `node`
 // are both required. Every other field is optional - unset means "inherit
-// the backend's own default", never a fabricated value (R1). Field
+// the backend's own default", never a fabricated value. Field
 // names/JSON keys mirror internal/store/store.go 1:1. Verified 2026-07
 // against each runtime's actual current source/API schema (Ollama's
 // api/types.go, llama.cpp's server README, vLLM's OpenAI protocol source,

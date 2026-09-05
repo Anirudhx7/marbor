@@ -23,7 +23,7 @@ import (
 // encrypts them in place on the next boot.
 const secretEncPrefix = "enc:v2:"
 
-// secretEncPrefixV1 marks a pre-P137 blob: AES-256-GCM sealed with nil AAD,
+// secretEncPrefixV1 marks the older-format blob: AES-256-GCM sealed with nil AAD,
 // so any enc:v1: value decrypts successfully wherever placed under the same
 // master key - a copy-paste between two secret-bearing rows/columns
 // (compromised SQL access, buggy migration, restored backup) would succeed
@@ -68,7 +68,7 @@ func loadOrCreateSecretKey(dbPath string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Write to a temp file then rename into place (P138): os.WriteFile writes
+	// Write to a temp file then rename into place: os.WriteFile writes
 	// directly to keyPath, so a crash mid-write leaves a truncated/corrupt
 	// file - the read path above hard-errors on anything that isn't exactly
 	// 32 bytes, with no recovery short of deleting the file, which silently
@@ -96,7 +96,7 @@ func randomKey() ([]byte, error) {
 // encryptSecret encrypts plaintext with AES-256-GCM under key, returning
 // "" for "" (nothing to protect, and keeps empty-means-unset checks working
 // unchanged throughout the codebase). aad binds the ciphertext to its
-// intended location (P137, e.g. "cloud_providers.api_key" or
+// intended location (e.g. "cloud_providers.api_key" or
 // "settings.litellm_api_key") - decryptSecret must be called with the exact
 // same aad string, or GCM authentication fails rather than decrypting a
 // value copy-pasted from a different row/column.
@@ -126,7 +126,7 @@ func encryptSecret(key []byte, aad, plaintext string) (string, error) {
 // has had a chance to re-encrypt it, and is a deliberate never-fail fallback
 // so a missing/rotated key degrades a single secret field rather than
 // breaking store reads. aad must match the value passed to encryptSecret for
-// this same field (P137); an enc:v1: value (pre-P137, no AAD binding) is
+// this same field; an enc:v1: value (the older format, no AAD binding) is
 // still decrypted for backward compatibility - callers upgrade it to the
 // current AAD-bound format via migrateEncryptSecrets, not on read.
 func decryptSecret(key []byte, aad, value string) (string, error) {

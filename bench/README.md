@@ -356,8 +356,8 @@ capacity and inference-capacity claims separate.
    ./bench/loadtest --url http://localhost:11434 --model llama3.2:3b \
      --api-key <your-key> --db marbor.db --rates 5,10,20,40,80,160 --step-duration 30s
    ```
-5. **Establish the single-node baseline first** - one marbor process, one mock backend. P53 is
-   about the SQLite write path itself, which doesn't necessarily scale with inference node count,
+5. **Establish the single-node baseline first** - one marbor process, one mock backend. This sweep
+   is about the SQLite write path itself, which doesn't necessarily scale with inference node count,
    so treating "N nodes" as the primary axis would mislabel what's being measured. Only after the
    single-node baseline is recorded, optionally repeat with more registered mock nodes (e.g. 20)
    as a **secondary** check for whether concurrent request sources from more nodes changes the

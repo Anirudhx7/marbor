@@ -8,11 +8,11 @@ import (
 	"testing"
 )
 
-// dispatch_p83_test.go is the permanent regression net for P83 ("marbor
-// whoami status" and "marbor whoami dead" both silently ignored the
-// extra argument and printed normal whoami output). It walks the live
+// dispatch_p83_test.go is the permanent regression net for a bug where
+// "marbor whoami status" and "marbor whoami dead" both silently ignored the
+// extra argument and printed normal whoami output. It walks the live
 // registry - the real cli.Run entrypoint, now fully wired to the registry-
-// driven dispatcher (see the P83+ CLI hardening plan, migration steps 6-8) -
+// driven dispatcher via the CLI hardening plan's registry migration -
 // and asserts that EVERY runnable leaf command rejects one trailing garbage
 // positional argument with ExitUserError, and that it does so before ever
 // making a real HTTP request to the Admin API. Because this walks the
@@ -23,7 +23,7 @@ import (
 // pure groups (Run == nil) and bare-executable groups that also have
 // subcommands (models, nodes) are excluded: their "extra argument" behavior
 // is "unknown action", a different (and already covered) code path, not the
-// P83 arity bug this test targets.
+// trailing-arity bug this test targets.
 func leafCommands(c *Command) []*Command {
 	var leaves []*Command
 	if c.Run != nil && len(c.Sub) == 0 {
@@ -38,7 +38,7 @@ func leafCommands(c *Command) []*Command {
 // minimalValidArgsWithGarbage builds a valid invocation for leaf (one
 // placeholder positional per required ArgSpec, one placeholder value per
 // required FlagSpec) plus one trailing garbage positional - the exact shape
-// of the original P83 report ("whoami dead", "whoami status").
+// of the original bug report ("whoami dead", "whoami status").
 func minimalValidArgsWithGarbage(leaf *Command) []string {
 	path := strings.Fields(leaf.Path())
 	args := append([]string{}, path[1:]...) // drop the leading "marbor" token
@@ -100,7 +100,7 @@ func TestP83_AllLeavesRejectTrailingGarbage(t *testing.T) {
 }
 
 // TestIsZeroFlagValue_StringLiteralsNotTreatedAsUnset is the regression test
-// for Fix 1 of the P83+ CLI hardening code review: isZeroFlagValue used to
+// from the CLI hardening code review: isZeroFlagValue used to
 // treat a FlagString flag's literal value "0" or "false" as indistinguishable
 // from "not supplied", which wrongly rejected valid values like a container
 // or PID identifier literally named "0" with "error: --identifier is

@@ -158,8 +158,8 @@ func TestHTTPClientForNode_PinnedFingerprintMismatch(t *testing.T) {
 	if err == nil {
 		t.Fatal("Get with mismatched pinned fingerprint succeeded, want fail-closed refusal")
 	}
-	// agent_poll.go's mismatch-vs-generic-unreachable distinction (P24
-	// section 6, AgentTLSMismatch) depends entirely on errors.Is reaching
+	// agent_poll.go's mismatch-vs-generic-unreachable distinction
+	// (AgentTLSMismatch) depends entirely on errors.Is reaching
 	// ErrTLSFingerprintMismatch through however many layers Go's crypto/tls
 	// (which wraps a VerifyPeerCertificate error in its own
 	// *tls.CertificateVerificationError) and this package's own %w wrapping

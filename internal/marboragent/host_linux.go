@@ -14,7 +14,7 @@ import (
 
 // CPU percent needs two /proc/stat samples to compute a delta, so the first
 // call after process start (or after a long gap) reports no CPU figure
-// (unknown, not fabricated - R1) and every call after that reports the
+// (unknown, not fabricated) and every call after that reports the
 // utilization since the previous call. This deliberately avoids sleeping
 // inside a request handler (which would slow every /v1/status poll) -
 // mirrors the marbor's own poll-cycle-driven nvidia-smi cadence.
@@ -147,7 +147,7 @@ func readDiskStatsGB(path string) (float64, float64, bool) {
 
 // readUptimeAndBoot reads /proc/uptime for the seconds-since-boot figure and
 // derives boot_time as now - uptime. A read/parse failure omits both fields
-// (unknown, never fabricated - R1) rather than reporting a guessed uptime.
+// (unknown, never fabricated) rather than reporting a guessed uptime.
 func readUptimeAndBoot() (int64, int64, bool) {
 	data, err := os.ReadFile("/proc/uptime")
 	if err != nil {

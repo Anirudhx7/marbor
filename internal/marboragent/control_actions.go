@@ -1,10 +1,10 @@
-// control_actions.go implements P43 Step 3: the agent-side handlers for
-// runtime.start/runtime.stop/runtime.restart (.local/specs/
-// marbor-agent-capabilities.md section 5). Same map-keyed-by-driver-name style
+// control_actions.go implements the agent-side handlers for
+// runtime.start/runtime.stop/runtime.restart (see the node-agent
+// capabilities design doc). Same map-keyed-by-driver-name style
 // as pullCommands/unloadCommands in actions.go, keyed by ControlDriver name
 // instead of runtime name.
 //
-// The agent never persists control config itself (P43 Step 3 design
+// The agent never persists control config itself (a deliberate design
 // decision): the marbor's Admin API constructs {driver, identifier,
 // start_command} from its own store-backed router.NodeControlSetting cache
 // at dispatch time and includes it in the POST body, and the agent builds
@@ -66,8 +66,9 @@ func writeLogs(w http.ResponseWriter, status int, resp logsResponse) {
 }
 
 // defaultLogLines/maxLogLines bound an unspecified or unreasonable "lines"
-// request - a snapshot fetch (R2's spirit extended to this subsystem: no
-// unbounded journalctl/docker logs invocation).
+// request - a snapshot fetch (the same never-buffer-unbounded-output
+// discipline extended to this subsystem: no unbounded journalctl/docker
+// logs invocation).
 const (
 	defaultLogLines = 200
 	maxLogLines     = 5000
@@ -155,7 +156,7 @@ func (s *Server) handleRuntimeRestart(w http.ResponseWriter, r *http.Request) {
 }
 
 // controlActionLocks serializes Start/Stop/Restart dispatch per
-// driver+identifier (P152): handleRuntimeAction had no locking around driver
+// driver+identifier: handleRuntimeAction had no locking around driver
 // dispatch, so a retry during a slow cold start could race two concurrent
 // calls into ProcessDriver.Start, each overwriting the PID file and
 // orphaning the other's spawned process. Keyed by driver+identifier (not a
@@ -187,7 +188,7 @@ func (s *Server) handleRuntimeAction(w http.ResponseWriter, r *http.Request, act
 	// PID-based Stop, all bounded to fixed commands). "stop" never reads
 	// StartCommand (ProcessDriver.Stop only signals the existing PID), so it's
 	// deliberately excluded here. tierOperator is the tier every agent is
-	// provisioned with by default (P54) for routine model/runtime lifecycle
+	// provisioned with by default for routine model/runtime lifecycle
 	// actions - this route is registered at tierOperator (server.go) so a
 	// caller already cleared that bar; arbitrary command execution is exactly
 	// the reserved-for-Group-3 "Maintain" capability tierAdmin exists for
@@ -213,7 +214,7 @@ func (s *Server) handleRuntimeAction(w http.ResponseWriter, r *http.Request, act
 		return
 	}
 
-	// Acquire the per-driver+identifier lock (P152) before starting
+	// Acquire the per-driver+identifier lock before starting
 	// controlActionTimeout's clock (code review): the timeout used to start
 	// counting before the lock was taken, so a request queued behind a
 	// slow/contended prior action (e.g. Stop's own bounded reap-wait above)
@@ -316,7 +317,7 @@ func writeDiskStats(w http.ResponseWriter, status int, resp diskStatsResponse) {
 // handleRuntimeDisk is the POST /v1/runtime/disk handler, gated by the same
 // per-node bearer token as every other route. Same {driver, identifier}
 // per-request injection as start/stop/restart/logs (control_actions.go) -
-// the agent still persists nothing of its own (P43 Step 3 unchanged); this
+// the agent still persists nothing of its own; this
 // is a plain read triggered fresh by an incoming request, same as those.
 func (s *Server) handleRuntimeDisk(w http.ResponseWriter, r *http.Request) {
 	var req controlActionRequest

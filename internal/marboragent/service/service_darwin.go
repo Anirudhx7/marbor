@@ -35,7 +35,7 @@ const launchdPlistPath = "/Library/LaunchDaemons/" + launchdLabel + ".plist"
 const launchdLogPath = "/var/log/marbor-agent.log"
 
 // agentSupportDir/agentCertPath/agentKeyPath are the Marbor Agent's TLS
-// certificate/key file locations on macOS (P24), matching the design's
+// certificate/key file locations on macOS, matching the design's
 // per-platform table: a dedicated Application Support directory (unlike
 // Linux's flat /etc files) since macOS has no equivalent single
 // world-readable-by-convention config directory for a launchd daemon to
@@ -136,7 +136,7 @@ func (launchdManager) Install(cfg Config) error {
 		return fmt.Errorf("service: launchctl not found on PATH: %w", err)
 	}
 
-	// P24: idempotent - a re-install/upgrade never regenerates an existing
+	// Idempotent - a re-install/upgrade never regenerates an existing
 	// cert (which would invalidate a fingerprint marbor already pinned).
 	// MkdirAll first: unlike Linux's /etc, this directory doesn't already
 	// exist by default on a fresh macOS install.
@@ -188,7 +188,7 @@ func (launchdManager) Uninstall(purge bool) error {
 		}
 	}
 
-	// P284: purge also best-effort removes the agent's TLS cert/key and log
+	// purge also best-effort removes the agent's TLS cert/key and log
 	// file - otherwise an orphaned private key survives decommissioning,
 	// enabling agent impersonation on a repurposed box. Best-effort: these
 	// are cleanup, not the primary uninstall action, so a failure here
@@ -202,7 +202,7 @@ func (launchdManager) Uninstall(purge bool) error {
 }
 
 func (launchdManager) Start() error {
-	// load/unload -w (P158), not the caller-domain start/stop verbs: the
+	// load/unload -w, not the caller-domain start/stop verbs: the
 	// generated plist sets KeepAlive=true, which launchd honors by
 	// immediately respawning a job stopped via "launchctl stop" - only
 	// unloading the job (as Install/Uninstall already do) actually removes

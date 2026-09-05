@@ -8,7 +8,7 @@
 # the marbor admin UI's "marbor agent" panel gives you this exact command with a
 # short-lived, single-use enrollment code (the binary exchanges it for the
 # real token by calling back to MARBOR_SERVER, so the real permanent bearer
-# token never appears in this command / your PowerShell history - P50). The
+# token never appears in this command / your PowerShell history. The
 # agent reads MARBOR_AGENT_SECRET from its environment at startup (no legacy
 # TOKEN env):
 #   $env:ROLE="agent"; $env:MARBOR_SERVER="<marbor admin base URL>"; $env:MARBOR_ENROLL="<code from the marbor admin UI>"

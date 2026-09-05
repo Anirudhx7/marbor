@@ -189,7 +189,7 @@ export function Routing() {
   // same modal, so unconditionally closing it on both outcomes (the modal's
   // own pre-existing behavior) would silently swallow a failure the instant
   // it's set, with no page-level banner to fall back on since this error is
-  // deliberately scoped away from the shared one (P346).
+  // deliberately scoped away from the shared one.
   const handleStrategyChange = async (strategy: string): Promise<boolean> => {
     if (demoMode) {
       setCurrentStrategyState(strategy);

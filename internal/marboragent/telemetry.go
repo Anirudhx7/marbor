@@ -5,9 +5,9 @@
 // versions add more node-local resources (runtime restart/drain, more model
 // lifecycle, diagnostics) behind the same protocol, versioned and
 // capability-gated rather than as a parallel surface. See
-// .local/specs/node-agent.md for the full design (pull-only transport,
+// the node-agent design doc for the full design (pull-only transport,
 // versioned JSON protocol, per-node opaque bearer token) and
-// .local/specs/telemetry-v1-spec.md / node-agent-capabilities.md for the
+// the telemetry and node-agent capabilities design docs for the
 // resource envelope this file implements.
 package marboragent
 
@@ -16,10 +16,11 @@ import "time"
 // ProtocolVersion is the current Marbor Agent Protocol version served at
 // GET /v1/status. New fields added to Telemetry/GPUInfo/HostTelemetry/
 // RuntimeInfo must be optional (nil/omitted means "unknown", never
-// fabricated - R1) so an older agent talking to a newer marbor, or vice versa,
-// never breaks (R7 discipline extended to this wire protocol). A bump is
+// fabricated) so an older agent talking to a newer marbor, or vice versa,
+// never breaks (the same additive-only wire-compatibility discipline
+// extended to this protocol). A bump is
 // reserved for a genuinely breaking change - see
-// .local/specs/node-agent.md section 15.
+// the node-agent design doc.
 const ProtocolVersion = 1
 
 // capabilities lists what this agent build actually does, so the marbor (and
@@ -30,14 +31,15 @@ const ProtocolVersion = 1
 // string always tells you which resource+route it gates. Appended in the
 // same commit that actually implements the feature it names - never
 // speculatively, since an agent claiming a capability it doesn't have would
-// be exactly the kind of fabrication R1 exists to prevent, just applied to
+// be exactly the kind of fabrication the "never fabricate" discipline exists
+// to prevent, just applied to
 // self-description instead of a measurement.
-// "transport.tls" (P24) is unconditional, not gated on whether this
+// "transport.tls" is unconditional, not gated on whether this
 // specific agent is currently running over HTTPS - it describes what this
 // binary is CAPABLE of (it has the TLS listener code and can be enrolled),
 // not current connection state. An agent can be capable and still be dialed
 // over plain http:// if the node hasn't been migrated yet (opt-in,
-// node-by-node - see .local/specs/node-agent-tls.md section 5).
+// node-by-node - see the node-agent TLS design doc).
 var capabilities = []string{"status", "models.pull", "models.list", "models.delete", "models.unload", "runtime.health_check", "runtime.start", "runtime.stop", "runtime.restart", "runtime.logs", "runtime.disk", "transport.tls"}
 
 // Telemetry is the canonical, versioned JSON payload served at
@@ -51,20 +53,20 @@ type Telemetry struct {
 	Host         *HostTelemetry `json:"host,omitempty"`
 	GPU          *GPUBlock      `json:"gpu,omitempty"`
 	// Runtime is the first entry of Runtimes, kept for back-compat with a
-	// marbor binary older than this field's introduction (R9 - additive only,
+	// marbor binary older than this field's introduction (additive only,
 	// never removed). New marbor code should read Runtimes instead.
 	Runtime *RuntimeInfo `json:"runtime,omitempty"`
 	// Runtimes is every inference runtime this host-scoped agent detected
 	// this cycle (see runtime_detect.go's DetectAll) - a host can legitimately
 	// run more than one (e.g. Ollama on :11434 and vLLM on :8000 on the same
-	// box). Omitted/empty means none detected, never guessed (R1).
+	// box). Omitted/empty means none detected, never guessed.
 	Runtimes []RuntimeInfo `json:"runtimes,omitempty"`
 	Control  *ControlInfo  `json:"control,omitempty"`
 	Health   Health        `json:"health"`
-	// Deployments is the P397b auto-discovered deployment report (one entry
-	// per runtime instance keyed by port/runtime_id). Additive R9 - old Marbor
+	// Deployments is the auto-discovered deployment report (one entry
+	// per runtime instance keyed by port/runtime_id). Additive - old Marbor
 	// ignores unknown field, old agent omits it (nil -> unknown, never
-	// fabricated R1). One entry per host is NOT sufficient when a host runs
+	// fabricated). One entry per host is NOT sufficient when a host runs
 	// two vLLM on :8000 and :8001 with different TP widths - hence per-port
 	// keying and port/ID-based fan-out on the server (agent_poll.go:184/343
 	// pattern), not blind Host fan-out.
@@ -100,7 +102,7 @@ type Agent struct {
 	// Build is reserved for a build identifier (commit hash, build date)
 	// beyond the semantic Version - always omitted today since the marbor
 	// binary doesn't currently track a separate build string (only
-	// main.Version, set via ldflags). Never fabricated (R1).
+	// main.Version, set via ldflags). Never fabricated.
 	Build string `json:"build,omitempty"`
 	// Platform/Architecture are runtime.GOOS/runtime.GOARCH - always known,
 	// never omitted.
@@ -109,7 +111,7 @@ type Agent struct {
 }
 
 // GPUInfo describes one physical GPU device on the host. Every field the
-// node can't measure is nil/zero rather than fabricated (R1); consumers must
+// node can't measure is nil/zero rather than fabricated; consumers must
 // treat a nil pointer (or a zero VRAM value) as "unknown", never a real
 // measurement of zero.
 type GPUInfo struct {
@@ -119,7 +121,7 @@ type GPUInfo struct {
 	Vendor string `json:"vendor,omitempty"`
 	// Model is the card's reported product name (e.g. "NVIDIA GeForce RTX
 	// 4090"), straight from the vendor tool - omitted, never guessed, when
-	// the backend doesn't report one (R1).
+	// the backend doesn't report one.
 	Model        string   `json:"model,omitempty"`
 	CorePercent  *float64 `json:"core_percent,omitempty"`
 	TemperatureC *float64 `json:"temperature_c,omitempty"`
@@ -134,7 +136,7 @@ type GPUInfo struct {
 // properties of the host's driver stack, not any one card) plus one GPUInfo
 // per physical device. One agent process always reports every GPU on the
 // host as this single array - never one agent per GPU (see
-// .local/specs/telemetry-v1-spec.md section 6's decision record). Vendor is
+// the telemetry design doc's decision record). Vendor is
 // reported whenever a GPU backend is selected on this host, even on a cycle
 // where Collect() itself fails (Devices/Count then empty) - "which backend
 // is selected" is a static fact about the process, not a live reading that
@@ -150,7 +152,7 @@ type GPUBlock struct {
 // HostTelemetry holds stdlib-only host stats (CPU/RAM/disk) plus host
 // identity (hostname, uptime/boot time). Fields that can't be measured on
 // the current platform without a new dependency are omitted rather than
-// guessed (R1, and Architecture Law: zero external dependencies).
+// guessed (never fabricated, and this project's zero external dependencies rule).
 type HostTelemetry struct {
 	CPUPercent    *float64 `json:"cpu_percent,omitempty"`
 	RAMUsedMB     int64    `json:"ram_used_mb,omitempty"`
@@ -198,15 +200,15 @@ type RuntimeInfo struct {
 	WarmModels []string `json:"warm_models,omitempty"`
 	// QueueDepth is reserved for a future runtime-side queue-depth signal -
 	// no runtime probe this agent uses exposes one today, so this is never
-	// populated yet (0 -> omitted via omitempty, R1: never fabricated).
+	// populated yet (0 -> omitted via omitempty, never fabricated).
 	QueueDepth int `json:"queue_depth,omitempty"`
 }
 
-// ControlInfo is the Marbor Agent Protocol's "control" resource (P43,
-// marbor-agent-capabilities.md section 5.7) - descriptive telemetry of the
+// ControlInfo is the Marbor Agent Protocol's "control" resource (see the
+// node-agent capabilities design doc) - descriptive telemetry of the
 // node's configured ControlDriver, additive and sibling to Runtime/Health.
 // An unconfigured node reports Driver="" (omitted), Configured=false,
-// Capabilities=nil (omitted) - never a fabricated driver name (R1).
+// Capabilities=nil (omitted) - never a fabricated driver name.
 // Discovered carries what the agent's most recent probe found, purely
 // informational for the admin API's probe/accept UI - never substituted
 // for Driver/Configured by any lifecycle action (section 5.6).

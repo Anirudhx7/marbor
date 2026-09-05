@@ -5,8 +5,8 @@ package proxy
 // native path (/api/chat or /api/generate).
 //
 // Only activated when the original path starts with "/api/". Requests that
-// already used /v1/... are passed through unchanged (R2 preserved: no
-// buffering in that path).
+// already used /v1/... are passed through unchanged (streaming stays
+// streaming: no buffering in that path).
 //
 // Translation is done via a custom http.RoundTripper that wraps the real
 // transport. The wrapper intercepts the *http.Response before httputil copies
@@ -122,8 +122,8 @@ func (t *translatingTransport) RoundTrip(req *http.Request) (*http.Response, err
 // line (for /api/chat) or {"model":...,"response":"...","done":false} (for
 // /api/generate). A final {"done":true,...} line is appended with usage when
 // available. The pipe is unbuffered on the write side: each line is written
-// and the scanner advances only when the reader consumes it, so R2 (no
-// buffering) is preserved.
+// and the scanner advances only when the reader consumes it, so streaming
+// stays streaming (no buffering).
 func translateSSEToNDJSON(src io.ReadCloser, origPath, clientModel string) io.ReadCloser {
 	pr, pw := io.Pipe()
 

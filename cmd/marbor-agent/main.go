@@ -5,7 +5,6 @@
 // internal/store, internal/proxy, internal/auth, internal/cli) - a host
 // running only this binary has no code path capable of starting the Marbor
 // control plane, opening marbor.db, or serving the admin API. See
-// .local/specs/node-agent.md for the agent's design and
 // internal/marboragent/service for how it registers itself as a persistent OS
 // service.
 //

@@ -54,7 +54,7 @@ export function useCurrency() {
     // would fire again, forever (two instances ping-ponging the event with
     // no way to settle). Bail out to the same object reference when the
     // value is unchanged so the write effect's [pref] dependency doesn't
-    // see a change and the loop terminates - same fix as LESSONS.md L13.
+    // see a change and the loop terminates.
     const sync = () => {
       const next = readCurrencyPref();
       setPref((prev) =>

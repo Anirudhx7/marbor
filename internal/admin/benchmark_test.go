@@ -173,7 +173,7 @@ func assertKeyFullyDeleted(t *testing.T, s *Server, node, model, keyValue string
 func TestAggregateSamples_p50MinMaxUnchangedByP408(t *testing.T) {
 	// Verifies the pre-existing p50/min/max convention (average of the two
 	// middle values on an even-length slice) still holds after extending the
-	// signature to also return p95/p99 (P408).
+	// signature to also return p95/p99.
 	p50, min, max, _, _ := aggregateSamples([]int64{10, 20, 30, 40})
 	if p50 != 25 {
 		t.Errorf("p50 = %v, want 25 (avg of 20,30)", p50)

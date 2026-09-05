@@ -15,7 +15,7 @@ import (
 )
 
 // TestAdmin_AddKeySetsLocalOnly guards that POST /admin/keys persists the
-// P66 local_only field, the same way daily_usd_cap/monthly_usd_cap already
+// local_only field, the same way daily_usd_cap/monthly_usd_cap already
 // do (see TestAdmin_AddKeyResponseContainsPlaintext above for that pattern).
 func TestAdmin_AddKeySetsLocalOnly(t *testing.T) {
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{}, nil)

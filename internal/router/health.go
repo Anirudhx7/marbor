@@ -21,11 +21,11 @@ import (
 // but the node otherwise has a real, non-zero total VRAM-used reading
 // (n.VRAMUsedMB, from local nvidia-smi or an agent-reported GPU device -
 // see the two call sites, pollNode below and applyAgentTelemetry in
-// agent_poll.go). This targets P406 (non-Ollama runtimes never report a
-// per-model VRAM size): with exactly one model resident anywhere on the
-// node, the node's total used VRAM is genuinely attributable to it - not a
-// per-process measurement, but a legitimate single-model-per-host
-// inference, not a guess (R1). It intentionally never attempts to split
+// agent_poll.go). This handles the common case where a non-Ollama runtime
+// never reports a per-model VRAM size: with exactly one model resident
+// anywhere on the node, the node's total used VRAM is genuinely
+// attributable to it - not a per-process measurement, but a legitimate
+// single-model-per-host inference, not a guess. It intentionally never attempts to split
 // VRAM across more than one simultaneously-loaded model on the same node -
 // correlating a specific runtime process's VRAM share isn't observable from
 // any signal this router or agent collects today (no PID-to-model
@@ -191,7 +191,7 @@ func (r *Router) pollNode(n *NodeState) {
 		// Defense in depth: every path that clears autoDetect must also set
 		// probe (New/AddNode/PatchNode, and the auto-detect branch above).
 		// A nil probe here would otherwise panic and take down the whole
-		// marbor process (single-process architecture - R1/architecture law).
+		// marbor process (single-process architecture).
 		// If this is ever hit, something upstream regressed that invariant;
 		// treat it exactly like an unreachable node instead of crashing.
 		r.markFailure(n)
@@ -200,14 +200,14 @@ func (r *Router) pollNode(n *NodeState) {
 
 	result, err := probe.Probe(ctx, nodeURL)
 	if err != nil {
-		// P409: an auto-detected-as-llamacpp node that fails /health
+		// An auto-detected-as-llamacpp node that fails /health
 		// specifically with a 404 (the route doesn't exist at all, not a
 		// timeout/connection error) is the exact shape MLX's mlx_lm.server
 		// produces - it has no /health route and is otherwise
 		// indistinguishable from llama.cpp on /v1/models (see
 		// internal/runtime/detect.go). Surface that real, observed fact so
 		// the node doesn't just sit silently unhealthy forever; never
-		// claim it IS MLX (R1), only report what was actually seen.
+		// claim it IS MLX, only report what was actually seen.
 		n.mu.Lock()
 		if n.Runtime == "llamacpp" && strings.Contains(err.Error(), "/health returned 404") {
 			n.RuntimeMismatchHint = "currently running as llamacpp, but /health returned 404 (no such route) - this is the exact signature of an MLX (mlx_lm.server) node, which cannot be auto-detected and must be set manually via runtime: mlx (a 404 here could also mean a llama.cpp build without /health, or a broken reverse proxy)"
@@ -287,7 +287,7 @@ func (r *Router) pollNode(n *NodeState) {
 		// Total is operator-declared if present. Temp/power unknown from
 		// this path.
 		//
-		// P406: for a non-Ollama runtime, psUsedMB is always 0 (see
+		// For a non-Ollama runtime, psUsedMB is always 0 (see
 		// internal/runtime/{vllm,tgi,llamacpp,mlx}.go - none of those
 		// probes can observe VRAM). pollNode and pollAgentHosts run
 		// concurrently on the same poll tick (Router.Start runs them
@@ -335,7 +335,7 @@ func (r *Router) pollNode(n *NodeState) {
 		// Residency is now confirmed by real poll data - drop any hot-path or
 		// proactive reservation for this (node, model) so it can't keep
 		// double-counting against the now-real VRAMUsedMB for up to the full
-		// warmReservationTTL (P51).
+		// warm reservation TTL.
 		r.clearWarmReservation(nodeName, m.Name)
 	}
 	if nowHealthy {
@@ -397,7 +397,7 @@ func (r *Router) pollNode(n *NodeState) {
 // (State Hierarchy - this is a diagnostic read, not a new authoritative
 // state write). found is false only if name doesn't match any current
 // node; a found node with a not-yet-detected runtime (autoDetect pending,
-// probe nil) reports a real error rather than a fabricated result (R1).
+// probe nil) reports a real error rather than a fabricated result.
 func (r *Router) ProbeNodeOnDemand(ctx context.Context, name string) (ok bool, errMsg string, latencyMs int64, found bool) {
 	r.mu.RLock()
 	var n *NodeState

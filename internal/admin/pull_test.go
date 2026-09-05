@@ -183,10 +183,10 @@ func TestHandleNodePull_SlotFreedAfterCompletion(t *testing.T) {
 	}
 }
 
-// TestHandleNodePull_DiskHardBlock is P48's regression: a pull of a curated
+// TestHandleNodePull_DiskHardBlock is a regression test: a pull of a curated
 // catalog model whose known download size exceeds the node's agent-reported
 // free disk must be hard-blocked with 507, before ever reaching the mock
-// Ollama server (no confirm-anyway override, unlike VRAM's P47 behavior).
+// Ollama server (no confirm-anyway override, unlike VRAM's soft-confirm behavior).
 func TestHandleNodePull_DiskHardBlock(t *testing.T) {
 	reached := false
 	mockOllama := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -255,7 +255,7 @@ func TestHandleNodePull_DiskHardBlock_GenuinelyFullDisk(t *testing.T) {
 }
 
 // TestHandleNodePull_RejectsOllamaLibraryTagOnIncompatibleRuntime is a
-// regression test for P70: a bare Ollama-library-format tag (e.g. every
+// regression test for the runtime-compatibility gate: a bare Ollama-library-format tag (e.g. every
 // compiled catalog tag) must be rejected up front on a node whose declared
 // runtime cannot possibly pull it, before any download starts - not left to
 // fail deep inside a cryptic huggingface-cli subprocess error.
@@ -284,7 +284,7 @@ func TestHandleNodePull_RejectsOllamaLibraryTagOnIncompatibleRuntime(t *testing.
 }
 
 // TestHandleNodePull_RejectsGGUFTagOnSafetensorsRuntime covers the second
-// P70 compatibility case: an "hf.co/..." GGUF reference (Ollama/llama.cpp's
+// compatibility case: an "hf.co/..." GGUF reference (Ollama/llama.cpp's
 // own HF-pull convention) must be rejected on vLLM/TGI/MLX, which never load
 // GGUF.
 func TestHandleNodePull_RejectsGGUFTagOnSafetensorsRuntime(t *testing.T) {
@@ -381,12 +381,12 @@ func TestHandleNodePull_DiskCheckSkippedWhenUnknown(t *testing.T) {
 }
 
 // TestHandleNodePull_UnresolvableModelHardBlockedOnThinHeadroom is a
-// regression test for P73: a model tag not in the static catalog (e.g. an HF
+// regression test for the unknown-size disk-fit floor: a model tag not in the static catalog (e.g. an HF
 // tag, or an uncurated Ollama registry name) has no known download size, so
 // classifyDiskFit's size-vs-free-space test cannot run - but that must no
 // longer mean the pull sails through unchecked. classifyUnknownSizeDiskFit's
 // conservative floor (10% of total, 5GB absolute minimum) still applies to
-// the node's current headroom. Before the P73 fix this exact case (1GB free
+// the node's current headroom. Before this fix, this exact case (1GB free
 // of 20GB - 5%, under both floors) returned 202 and dispatched the pull;
 // it must now be hard-blocked before dispatch, exactly like a known-size
 // disk overrun.
@@ -422,7 +422,7 @@ func TestHandleNodePull_UnresolvableModelHardBlockedOnThinHeadroom(t *testing.T)
 
 // TestHandleNodePull_UnresolvableModelAllowedWithHealthyHeadroom is the flip
 // side of the hard-block test above: an unresolvable-size tag must still be
-// allowed through when the node has comfortable free disk, proving the P73
+// allowed through when the node has comfortable free disk, proving this
 // fix is a genuine floor (blocks only when headroom is thin) and not a
 // blanket block on every non-catalog pull.
 func TestHandleNodePull_UnresolvableModelAllowedWithHealthyHeadroom(t *testing.T) {
@@ -799,7 +799,7 @@ func TestHandleCancelPull_StopsAnInFlightDownload(t *testing.T) {
 }
 
 // TestHandleListActivePulls_ContinuityRestoresInFlightJobsAfterRefresh guards
-// the continuity-bug class (LESSONS.md L22): GET /admin/pulls (added in
+// the continuity-bug class: GET /admin/pulls (added in
 // f8d8049) must list a still-downloading job so PullProgressWidget.tsx can
 // resubscribe on mount after a browser refresh, instead of losing all
 // progress state because the widget's old in-memory-only tracking had

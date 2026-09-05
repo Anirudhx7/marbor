@@ -25,7 +25,7 @@ func TestMarborAgentConfig_TokenNeverMarshaled(t *testing.T) {
 		t.Fatalf("json.Marshal: %v", err)
 	}
 	if strings.Contains(string(b), "secret-value") {
-		t.Fatalf("MarborAgentConfig must never marshal Token (P68 - closes config-dump leak path), got %s", b)
+		t.Fatalf("MarborAgentConfig must never marshal Token (closes config-dump leak path), got %s", b)
 	}
 }
 
@@ -51,7 +51,7 @@ func nodePSServer() *httptest.Server {
 	}))
 }
 
-// TestPollAgentTelemetryNoAgentConfigured verifies the R1 contract: a node
+// TestPollAgentTelemetryNoAgentConfigured verifies the honest-unknown contract: a node
 // with no Marbor Agent configured must report zero-value/"unknown" telemetry
 // (AgentPresent=false, every agent-derived field cleared), never fabricated
 // data, whether or not it was ever enabled in the past.
@@ -272,7 +272,7 @@ func TestPollAgentTelemetryWrongTokenClearsFields(t *testing.T) {
 // TestPollAgentTelemetryDisabledClearsStaleFields verifies that disabling an
 // agent (SetMarborAgent with enabled=false) clears out previously-reported
 // fields on the next poll rather than leaving them stuck at their last
-// value (R1: never show data that's no longer being measured).
+// value (never show data that's no longer being measured).
 func TestPollAgentTelemetryDisabledClearsStaleFields(t *testing.T) {
 	psSrv := nodePSServer()
 	defer psSrv.Close()
@@ -327,7 +327,7 @@ func TestPollAgentTelemetryDisabledClearsStaleFields(t *testing.T) {
 // not a nil gpu block - marbor must NOT keep showing the previous poll's
 // VRAM/temperature/power as current. AgentPresent stays true (the agent
 // itself is reachable) but every per-device reading must clear, the same way
-// a fully-absent gpu block already does (R1: a stale reading must never
+// a fully-absent gpu block already does (a stale reading must never
 // survive under a "this is live" flag just because the vendor fact didn't
 // change).
 func TestPollAgentTelemetryTransientGPUErrorClearsStaleReadings(t *testing.T) {
@@ -644,7 +644,7 @@ func TestAgentDownUpWebhookFiresOnTransition(t *testing.T) {
 }
 
 // TestPollAgentTelemetry_ContinuityHysteresisKeepsTelemetryBelowThreshold
-// guards the continuity-bug class (LESSONS.md L22 / commit d6012d8):
+// guards the continuity-bug class (commit d6012d8):
 // pollAgentTelemetry used to clear ALL agent-derived telemetry on the very
 // first failed poll. This verifies telemetry survives (is not cleared)
 // through healthFailureThreshold-1 consecutive failures - a single dropped
@@ -719,7 +719,7 @@ func TestPollAgentTelemetry_ContinuityHysteresisKeepsTelemetryBelowThreshold(t *
 }
 
 // TestAgentProtocolWarned_ContinuityWarnsOnceAcrossDownUpCycle guards the
-// continuity-bug class (LESSONS.md L22 / commit d6012d8): agentProtocolWarned
+// continuity-bug class (commit d6012d8): agentProtocolWarned
 // used to reset on every failed poll (inside clearAgentTelemetry), so a
 // flapping agent re-logged the "protocol newer than marbor understands" warning
 // on every recovery instead of once per node for the process lifetime. This

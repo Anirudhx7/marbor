@@ -14,7 +14,7 @@ services:
       - marbor-backups:/backups
     environment:
       - MARBOR_DB_PATH=/data/marbor.db
-      # Scheduled backups (P49, configurable from the Settings dashboard) go
+      # Scheduled backups (configurable from the Settings dashboard) go
       # to a SEPARATE named volume from marbor-data on purpose: a `docker
       # volume rm marbor-data` (or `docker-compose down -v`) then still leaves
       # every backup intact, and vice versa - one accidental wipe can't take

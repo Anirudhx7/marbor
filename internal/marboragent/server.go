@@ -13,7 +13,7 @@ import (
 // /v1/models (list), DELETE /v1/models/{name...} (delete), POST
 // /v1/models/{name...} (unload) - all gated by an exact-match bearer token
 // (see auth.go), polled/dispatched by the marbor's existing router poll cycle -
-// see .local/specs/node-agent.md section 3.
+// see the node-agent design doc.
 //
 // GET /v1/status and GET /metrics serve Scheduler's cached snapshot rather
 // than collecting on every request - see scheduler.go. Scheduler is normally
@@ -59,8 +59,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/status", requireScope(s.Token, tierReadonly, s.handleStatus))
 	mux.HandleFunc("GET /metrics", requireScope(s.Token, tierReadonly, s.handleMetrics))
 	// Group 2 "Operate" - the rest of the routes below all require
-	// tierOperator (P54: per-action token scoping). See
-	// .local/specs/node-agent-capabilities.md section 7 and
+	// tierOperator (per-action token scoping). See
+	// the node-agent capabilities design doc and
 	// internal/marboragent/auth.go's tier documentation for why tierAdmin is
 	// reserved rather than used by anything here.
 	mux.HandleFunc("POST /v1/models", requireScope(s.Token, tierOperator, s.handlePullModel))
@@ -82,7 +82,7 @@ func (s *Server) Handler() http.Handler {
 	// it's still an active probe (Group 2 diagnostics.health), not a passive
 	// read, so it requires tierOperator like the rest of this group.
 	mux.HandleFunc("GET /v1/runtime/health", requireScope(s.Token, tierOperator, s.handleHealthCheck))
-	// The "runtime" resource's lifecycle verbs (P43 Step 3, capabilities
+	// The "runtime" resource's lifecycle verbs (capabilities
 	// "runtime.start"/"runtime.stop"/"runtime.restart") - the agent builds
 	// the ControlDriver fresh per-request from the {driver, identifier,
 	// start_command} the marbor's Admin API supplies in the body; see

@@ -52,7 +52,7 @@ function ReasonBadge({ reason }: { reason?: string }) {
   );
 }
 
-// ExplainPanel renders the P41 routing-decision breakdown for one request,
+// ExplainPanel renders the routing-decision breakdown for one request,
 // lazily fetched (or looked up from static mock data in demo mode) on first
 // expand. State is one of: undefined (not yet fetched), 'loading', 'error',
 // or the resolved RoutingDecision.
@@ -155,7 +155,7 @@ export function Requests() {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  // P41 routing explainability: which row (if any) has its breakdown
+  // Routing explainability: which row (if any) has its breakdown
   // expanded, and a per-id cache of the fetched/looked-up decision so
   // re-expanding a row already viewed this session doesn't re-fetch.
   const [expandedId, setExpandedId] = useState<string | null>(null);

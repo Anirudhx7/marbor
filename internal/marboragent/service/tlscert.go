@@ -1,8 +1,9 @@
 // Package service (see service.go's package doc) also owns Marbor Agent TLS
-// certificate generation (P24). This file is platform-agnostic - stdlib
-// crypto/tls/crypto/x509/crypto/ecdsa only, Law 4 (zero external
-// dependency) - deliberately placed in package service rather than package
-// marboragent (as .local/core/P24-TLS-DESIGN.md section 9 originally
+// certificate generation. This file is platform-agnostic - stdlib
+// crypto/tls/crypto/x509/crypto/ecdsa only, per the project's zero
+// external dependency architecture rule - deliberately placed in package
+// service rather than package
+// marboragent (as the original TLS design doc
 // suggested): each platform's Install (service_linux.go/service_darwin.go/
 // service_windows.go) must call this at install time, and package marboragent
 // already imports package service, so package service importing back from
@@ -29,7 +30,7 @@ import (
 )
 
 // certValidity is 10 years: this is TOFU pinning (see
-// .local/specs/node-agent-tls.md section 1), not PKI, so there is no
+// the node-agent TLS design doc), not PKI, so there is no
 // meaningfully-short expiry to force rotation against - a long validity
 // avoids background rotation-before-expiry complexity this design
 // deliberately does not need. Rotation, when wanted, is the operator-driven

@@ -7,8 +7,8 @@ export const forcedDemo = import.meta.env.VITE_FORCE_DEMO === 'true';
 
 // Router-aware "what path is actually showing right now" check, safe to call
 // from inside any timer/async callback (unlike React Router's useLocation(),
-// this reads the live browser URL directly - see LESSONS.md L11 3rd
-// occurrence for why that distinction matters).
+// this reads the live browser URL directly, which matters because a stale
+// route captured from a closure would silently drift from what's on screen).
 //
 // The public GitHub Pages demo (forcedDemo) runs under HashRouter, where the
 // route lives in the URL hash (e.g. "#/api-keys"), not window.location.pathname

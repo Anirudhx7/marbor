@@ -85,7 +85,7 @@ interface FleetHealth {
 
 // computeFleetHealth derives every figure from the live node list the
 // dashboard already polls (/admin/v1/nodes) - counts of real states, never
-// estimates (R1).
+// estimates.
 function computeFleetHealth(nodes: GPUNode[]): FleetHealth {
   const downNodes = nodes.filter(n => n.health === 'down');
   return {
@@ -209,7 +209,7 @@ const STORAGE_COMPLETED = 'marbor-setup-completed';
 function FleetCapacityCard({ nodes }: { nodes: GPUNode[] }) {
   const reporting = nodes.filter(n => n.vramTotalMB > 0);
   const usedKnown = nodes.filter(n => n.vramSource !== 'none');
-  // Cluster sums over real per-node readings only (R1): used VRAM is each
+  // Cluster sums over real per-node readings only: used VRAM is each
   // node's own live measurement, capacity comes from nodes that report a
   // total. Nodes missing either figure are excluded from that sum and the
   // caption says how many report - never padded with an estimate.
@@ -459,7 +459,7 @@ export function Dashboard() {
   }, [nodes, setupKeys, setupRequests, requests, demoMode, isCompleted]);
 
   const handleDismissSetup = () => {
-    // Immediate hide, no confirm - per R10 only destructive fleet actions need confirm.
+    // Immediate hide, no confirm - only destructive fleet actions need confirm.
     // Dismiss is session-only (not persisted): checklist is only gone for good when
     // completed (enterprise-grade). Hurry-dismiss can be undone via "Show again"
     // or simply reload; completed persists via STORAGE_COMPLETED and never reappears.
@@ -514,7 +514,7 @@ export function Dashboard() {
   const displayQueue = (isLive || demoMode) ? summary.queueDepth : 0;
   const displayWarmHitRatio = (isLive || demoMode) ? summary.warmHitRatio : 0;
 
-  // Setup checklist derived state - 5-step activation (Law 6: no new API)
+  // Setup checklist derived state - 5-step activation (no new API needed)
   const hasNode = demoMode ? true : nodes.length > 0;
   const hasAgent = demoMode ? true : nodes.some((n) => !!n.agentPresent);
   const hasKey = demoMode ? true : setupKeys.some((k) => k.status === 'active');
@@ -637,7 +637,7 @@ export function Dashboard() {
         />
       ) : (
         // Dismissed but not completed - show subtle restore so an accidental/hasty X
-        // does not require manual localStorage clear. No confirm on X (R10: only
+        // does not require manual localStorage clear. No confirm on X (only
         // destructive fleet actions need confirm), immediate hide + one-click restore.
         // Hidden when naturally 5/5 or when marbor-setup-completed is set.
         isDismissed &&

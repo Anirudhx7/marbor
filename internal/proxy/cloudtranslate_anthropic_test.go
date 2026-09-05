@@ -112,7 +112,7 @@ func TestTranslateOpenAIRequestToAnthropic_PromptOnly(t *testing.T) {
 func TestTranslateOpenAIRequestToAnthropic_MultimodalContentErrors(t *testing.T) {
 	// content is an array of typed parts (vision-capable client shape),
 	// which openAIMessage.Content as a plain string can never unmarshal -
-	// this must return a clear local error (P255), not the body unchanged.
+	// this must return a clear local error, not the body unchanged.
 	body := []byte(`{"model":"claude-3-5-sonnet-20241022","messages":[{"role":"user","content":[{"type":"text","text":"hi"}]}]}`)
 	out, err := translateOpenAIRequestToAnthropic(body, false)
 	if err == nil {

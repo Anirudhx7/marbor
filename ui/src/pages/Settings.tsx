@@ -160,7 +160,7 @@ export function SettingsPage() {
   const [newCtxModel, setNewCtxModel] = useState('');
   const [newCtxTokens, setNewCtxTokens] = useState('');
 
-  // Local model fallback chain (P67)
+  // Local model fallback chain
   const [newDegModel, setNewDegModel] = useState('');
   const [newDegAlts, setNewDegAlts] = useState('');
   const [degChainError, setDegChainError] = useState<string | null>(null);
@@ -450,7 +450,7 @@ export function SettingsPage() {
       await updateSettings(payload);
       window.dispatchEvent(new Event('marbor-settings-change'));
       // Wake TimezoneProvider instantly so Activity/etc re-render without waiting
-      // for the 15s poll (P393 instant re-render acceptance).
+      // for the 15s poll (instant re-render is a required behavior here).
       notifyTimezoneChanged();
       // The just-saved values are now the pristine baseline - clear the
       // dirty flag so a subsequent settings reload (e.g. a Demo Mode
@@ -1589,7 +1589,7 @@ export function SettingsPage() {
           </div>
         </div>
 
-        {/* Local Model Fallback Chain (P67) */}
+        {/* Local Model Fallback Chain */}
         <div className="bg-card border border-border shadow-sm rounded-xl p-6">
           <div className="flex items-center gap-3 mb-5">
             <div className="p-2 bg-teal-500/10 rounded-lg">

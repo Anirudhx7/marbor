@@ -9,7 +9,7 @@ const GiB = 1024 * 1024 * 1024;
 // for screenshots instead of a hidden completed state. No new backend behavior.
 
 // mockRuntimeLogLines is the static sample shown by the "View Logs" panel
-// in demo mode (P58) - plausible, not a real capture, matching how other
+// in demo mode - plausible, not a real capture, matching how other
 // demo surfaces show static representative data rather than a live call.
 export const mockRuntimeLogLines: string[] = [
   'Aug 01 00:12:03 gpu-node-01 systemd[1]: Started Ollama Service.',
@@ -101,12 +101,12 @@ export const mockGPUNodes: GPUNode[] = [
     gpuModel: 'NVIDIA A100 80GB',
     port: 8000,
     runtime: 'vllm',
-    // P397 demo: declared 2-GPU TP=2 deployment (1 deployment x 2 GPUs atomically)
+    // Deployment topology demo: declared 2-GPU TP=2 deployment (1 deployment x 2 GPUs atomically)
     gpuIndices: [0, 1],
     parallelismType: 'tp',
     parallelismWidth: 2,
     effectiveRequiredGPUs: 2,
-    // P397b demo: auto-discovered TP=8 on same host via ps (Adopt flow)
+    // Auto-discovered deployment demo: auto-discovered TP=8 on same host via ps (Adopt flow)
     detectedParallelismType: 'tp',
     detectedParallelismWidth: 8,
     detectedGPUGroup: [0, 1, 2, 3, 4, 5, 6, 7],
@@ -114,7 +114,7 @@ export const mockGPUNodes: GPUNode[] = [
     detectedRuntime: 'vllm',
     detectedEffectiveRequiredGPUs: 8,
     mismatchWarning: 'declared 2 GPUs vs detected 8 GPUs',
-    // P411 demo: operator-declared per-model VRAM override - vLLM doesn't
+    // Operator-declared VRAM override demo: vLLM doesn't
     // expose per-model size via its API, so without this the scheduler can't
     // reserve headroom or predictively warm this model on this node.
     vramOverrides: { 'meta-llama/Llama-3.3-8B-Instruct': 16384 },
@@ -154,10 +154,10 @@ export const mockGPUNodes: GPUNode[] = [
     name: 'gpu-node-03',
     host: '10.0.0.13',
     gpuModel: 'NVIDIA RTX 4090 24GB',
-    // P75 Gap B/C demo example: this node is declared to GPU 0 only (shares
+    // Declared-vs-detected GPU gap demo example: this node is declared to GPU 0 only (shares
     // its host with another runtime pinned to a different GPU).
     gpuIndices: [0],
-    // P24 demo example: this node has been migrated to HTTPS and has a
+    // TLS pinning demo example: this node has been migrated to HTTPS and has a
     // pinned marbor agent certificate fingerprint - the healthy/normal case.
     scheme: 'https',
     tlsFingerprint: 'SHA256:' + 'a1b2c3d4e5f6'.repeat(6).slice(0, 64),
@@ -214,7 +214,7 @@ export const mockGPUNodes: GPUNode[] = [
     name: 'gpu-node-04',
     host: '10.0.0.14',
     gpuModel: 'NVIDIA RTX 3090 24GB',
-    // P24 demo example: this node's agent presented a certificate that no
+    // TLS mismatch demo example: this node's agent presented a certificate that no
     // longer matches its pinned fingerprint (e.g. after an unannounced
     // "agent service regen-cert") - demonstrates the distinct TLS MISMATCH
     // badge (NodeCard, GPUNodes.tsx) separately from generic unreachability.
@@ -262,7 +262,7 @@ export const mockGPUNodes: GPUNode[] = [
     gpuModel: 'Apple M3 Max 128GB',
     port: 8080,
     runtime: 'mlx',
-    // P397b demo: detected only, no declared - shows Adopt from zero typing
+    // Auto-discovered deployment demo: detected only, no declared - shows Adopt from zero typing
     detectedParallelismType: 'tp',
     detectedParallelismWidth: 2,
     detectedGPUGroup: [0, 1],
@@ -307,7 +307,7 @@ export const mockGPUNodes: GPUNode[] = [
     gpuModel: 'NVIDIA RTX 3090 24GB',
     port: 11434,
     runtime: 'llamacpp',
-    // P409 demo: this node was actually configured runtime: auto and is a
+    // Runtime misclassification demo: this node was actually configured runtime: auto and is a
     // real MLX host - auto-detect unavoidably guessed llamacpp (MLX's
     // /v1/models is byte-for-byte identical to llama.cpp's), and /health
     // then 404s forever since mlx_lm.server has no such route. Shows the
@@ -316,7 +316,7 @@ export const mockGPUNodes: GPUNode[] = [
     runtimeMismatchHint: 'auto-detected as llamacpp, but /health returned 404 (no such route) - this is the exact signature of an MLX (mlx_lm.server) node, which cannot be auto-detected and must be set manually via runtime: mlx',
     // Capacity was declared at add time, so it still counts toward the Fleet
     // Capacity card's cluster total; usage reads zero because the node is
-    // down and its last live reading was cleared (R1: no stale figures).
+    // down and its last live reading was cleared (no stale figures).
     vramTotalMB: 24 * GB,
     vramUsedMB: 0,
     vramSource: 'declared',
@@ -528,7 +528,7 @@ export const mockModelCatalog: ModelCatalog = {
       size_disk: Math.round(4.7 * 1024 * 1024 * 1024),
       warm_count: 2,
       total_nodes: 4,
-      // Demo parity for P52's digest-mismatch warning: these two nodes
+      // Demo parity for the digest-mismatch warning: these two nodes
       // deliberately report different digests for the same model name, as if
       // the tag was re-pulled with different content mid-rollout.
       digest_mismatch: true,
@@ -705,7 +705,7 @@ export function filterMockRequests(filters: MockRequestFilters): RequestEntry[] 
   });
 }
 
-// mockRoutingDecisions is the P41 demo-parity data for the Requests page's
+// mockRoutingDecisions is the demo-parity data for the Requests page's
 // per-row "explain" panel, keyed by request id. Component values are chosen
 // to sum exactly to score, matching the real invariant the live endpoint
 // guarantees (sum(components) === score).
@@ -799,7 +799,7 @@ export const mockAnalytics: Analytics = {
   ],
 };
 
-// Mock spill_counters rows (P66): one local_only key ("Data Platform")
+// Mock spill_counters rows: one local_only key ("Data Platform")
 // showing its policy actively blocking spill attempts, plus normal
 // local/cloud rows for a key without the policy set.
 export const mockSpillCounters: SpillCounterRow[] = [
@@ -969,7 +969,7 @@ export const mockModelCatalogResponse: ModelCatalogResponse = {
       disk_total_gb: 4000,
       disk_known: true,
       capabilities: ['status', 'models.pull', 'models.list', 'runtime.health_check'],
-      // P75 Gap D: a "declared" whole-node total with no per-device
+      // Declared-vs-detected GPU gap: a "declared" whole-node total with no per-device
       // breakdown - the demo's example of the disclosure banner.
       gpu_count_unknown: true,
       models: [],
@@ -1148,7 +1148,7 @@ export const mockHFRepoDetails: Record<string, any> = {
     tags: ['text-generation', 'gguf', 'llama-3.2', 'conversational'],
     last_modified: '2026-06-15T18:30:00Z',
     variants: [
-      // context_feasibility demonstrates P71's Derived path (this variant is
+      // context_feasibility demonstrates the Derived path (this variant is
       // shown as already downloaded, so a demo /api/show-equivalent fact set
       // is plausible) - the other repos below are left without this field to
       // keep this demo-data change scoped to demonstrating the feature, not
@@ -1179,7 +1179,7 @@ export const mockHFRepoDetails: Record<string, any> = {
     likes: 1845,
     tags: ['text-generation', 'gguf', 'deepseek', 'reasoning'],
     last_modified: '2026-06-18T09:15:00Z',
-    // Deliberately small for demo parity: demonstrates the P48 hard-block
+    // Deliberately small for demo parity: demonstrates the hard-block
     // "No Disk Space" state on the Q8_0 variant (~8.3GB needed, 6GB free).
     disk_free_gb: 6,
     disk_total_gb: 500,
@@ -1275,7 +1275,7 @@ export const mockHFRepoDetails: Record<string, any> = {
 
 // --- Model configuration overrides (demo) ---
 // Plausible static profiles: a realistic MIX of some fields set, most left
-// unconfigured - an all-fields-filled profile would look fabricated (R1).
+// unconfigured - an all-fields-filled profile would look fabricated.
 // Keyed by (model, node) - the same model name can carry a different
 // profile per node/runtime it's resident on (see mockGPUNodes/mockModelCatalog
 // above: gpu-node-01=ollama, gpu-node-02=vllm, gpu-node-03=tgi, gpu-node-04=llamacpp,
@@ -1408,11 +1408,11 @@ export function getMockModelConfigCapabilities(): Record<string, string[]> {
   };
 }
 
-// Demo parity for Activity unified feed (P389): the live Activity page fetches
+// Demo parity for Activity unified feed: the live Activity page fetches
 // via ui/src/lib/api.ts fetchSystemAudit DEMO + fetchPredictiveDecisions DEMO
 // and merges client-side. This static slice is kept here as the honest
 // source-of-truth snapshot for docs and for any future direct mock import,
-// never rendered as measurements in production (R1).
+// never rendered as measurements in production.
 export const mockActivityEntries = [
   { time: new Date(Date.now() - 2 * 60_000).toISOString(), username: 'admin', action: 'drain_node', target: 'gpu-node-04', details: 'Drained: manual', source_ip: '192.168.1.5' },
   { time: new Date(Date.now() - 5 * 60_000).toISOString(), username: 'dana.rao', action: 'unload_model', target: 'gpu-node-01', details: 'Model: qwen2.5:7b', source_ip: '192.168.1.12' },

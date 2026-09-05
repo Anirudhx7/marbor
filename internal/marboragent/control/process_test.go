@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// TestReadPIDFileRejectsNonPositivePID is the P103 regression: pid<=0 has
+// TestReadPIDFileRejectsNonPositivePID is a regression test: pid<=0 has
 // special meaning to the OS's kill/signal syscalls (0 signals the whole
 // process group, -1 signals every process the caller can signal) - a
 // corrupted/misconfigured pid file value must never reach Stop/Restart's

@@ -34,7 +34,7 @@ type modelsListResponse struct {
 	TotalModels int `json:"total_models"`
 }
 
-// TestHandleModels_OllamaOnlyFleetUnchanged verifies P36's new Marbor Agent
+// TestHandleModels_OllamaOnlyFleetUnchanged verifies the Marbor Agent
 // models.list merge is a strict no-op for a fleet with no agent capability -
 // handleModels must fall back to exactly the same two sources (LoadedModels +
 // FetchModelTags) it always has.
@@ -193,7 +193,7 @@ func TestHandleModels_ReportsFamilyFromTags(t *testing.T) {
 	}
 }
 
-// TestHandleModels_DigestMismatch verifies P52's cross-node digest-mismatch
+// TestHandleModels_DigestMismatch verifies the cross-node digest-mismatch
 // detection: two nodes reporting different non-empty digests for the same
 // model name flag digest_mismatch=true; the same digest on both, or fewer
 // than 2 nodes reporting a digest at all, must never produce a false

@@ -158,7 +158,7 @@ func TestSchedulerUsesInjectedGPUBackend(t *testing.T) {
 
 // TestSchedulerReportsGPUVendorOnBackendError proves a GPUCollector error
 // (transient read failure) still reports the gpu block with its Vendor set
-// and an empty device list, never a fabricated/zeroed device reading (R1) -
+// and an empty device list, never a fabricated/zeroed device reading -
 // "which backend is selected" is a static fact about the process, not a live
 // reading that can fail.
 func TestSchedulerReportsGPUVendorOnBackendError(t *testing.T) {
@@ -241,7 +241,7 @@ func TestSchedulerNodeIDStableAcrossConstructions(t *testing.T) {
 
 // TestSchedulerOmitsRuntimeWhenNotDetected verifies "no local runtime found"
 // leaves Runtime nil (and therefore omitted from JSON), never a guessed
-// value (R1).
+// value.
 func TestSchedulerOmitsRuntimeWhenNotDetected(t *testing.T) {
 	s := newSchedulerWithBackends("v-test", fakeGPUCollector{}, fakeHostCollector{telemetry: &HostTelemetry{}}, noRuntimeDetector)
 	s.Seed()
@@ -251,7 +251,7 @@ func TestSchedulerOmitsRuntimeWhenNotDetected(t *testing.T) {
 }
 
 // TestRuntimeDetector_ContinuityRetriesAfterFailedStartupRace guards the
-// continuity-bug class (LESSONS.md L22 / commit 0e0747a): detection used to
+// continuity-bug class (previously fixed in commit 0e0747a): detection used to
 // run exactly once at Scheduler construction, so an agent starting before its
 // local runtime was up and listening permanently omitted RuntimeInfo/
 // warm_models for the rest of the process's life. This verifies a runtime

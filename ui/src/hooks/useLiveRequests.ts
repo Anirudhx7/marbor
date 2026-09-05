@@ -63,7 +63,7 @@ export function useLiveRequests(maxRequests: number = 20) {
 
   // Clear once on the demo-mode rising edge so the poll catch branch below
   // never layers a generated fake row onto real rows still sitting in state
-  // from before demo mode was turned on (P355) - without this, toggling
+  // from before demo mode was turned on - without this, toggling
   // demo mode on mid-session (or a transient network error while demo mode
   // is already on) mixes real and fabricated requests in the same list.
   useEffect(() => {

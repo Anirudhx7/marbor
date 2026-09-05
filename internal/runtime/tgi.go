@@ -47,7 +47,7 @@ func (p *TGIProbe) Probe(ctx context.Context, nodeURL string) (ProbeResult, erro
 		// ModelID: an operator can serve two different revisions/quantized
 		// builds of the same repo under the identical model_id, in which
 		// case ModelSha still differs. Empty when TGI's build doesn't
-		// report one - never fabricated (R1).
+		// report one - never fabricated.
 		ModelSha string `json:"model_sha"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {

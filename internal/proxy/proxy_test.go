@@ -455,8 +455,8 @@ func withKeyName(h *Handler, req *http.Request, keyName string, keys []config.Ke
 	return req.WithContext(ctx)
 }
 
-// TestLocalDegradation_OptInResolvesToHealthyAlt verifies the P67 end-to-end
-// opt-in path: the single node fails the requested (large) model but can
+// TestLocalDegradation_OptInResolvesToHealthyAlt verifies the local degradation
+// end-to-end opt-in path: the single node fails the requested (large) model but can
 // serve the declared local alternate (small) just fine. With the retry
 // budget exhausted for the primary model (RouteExcluding has nothing left to
 // try - only one node, already tried) and the key's policy granting
@@ -532,7 +532,7 @@ func TestLocalDegradation_OptInResolvesToHealthyAlt(t *testing.T) {
 // a key whose policy does NOT grant AllowLocalDegradation must never
 // substitute - even though the legacy header is sent set to "true" - and the
 // request proceeds to cloud fallback (or, with no cloud configured here, a
-// clear upstream error) exactly as it would without P67 at all.
+// clear upstream error) exactly as it would without local degradation at all.
 func TestLocalDegradation_KeyNotAllowedFallsToCloud(t *testing.T) {
 	var gotModel string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -987,8 +987,8 @@ func TestCloudModelNotRewrittenLogsPlainModel(t *testing.T) {
 // newLocalOnlyHandler mirrors newCloudFallbackHandler but additionally wires
 // an auth.Middleware with the given keys, so localOnlyBlocked has a key to
 // look up via auth.KeyNameFromContext. Returns the store too, so tests can
-// assert on spill_counters directly (the P66 admin/CLI/UI read surfaces are
-// exercised separately; this is the enforcement-path test).
+// assert on spill_counters directly (the local-only admin/CLI/UI read surfaces
+// are exercised separately; this is the enforcement-path test).
 func newLocalOnlyHandler(t *testing.T, cloud config.CloudProvider, keys []config.KeyConfig) (*Handler, store.Store) {
 	t.Helper()
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
@@ -1022,7 +1022,7 @@ func requestWithKeyName(keyName string) *http.Request {
 	return req.WithContext(ctx)
 }
 
-// TestLocalOnlyBlockedWhenNoLocalNode guards the P66 fail-closed policy: a
+// TestLocalOnlyBlockedWhenNoLocalNode guards the local-only fail-closed policy: a
 // local_only key with no local node available must get a 503
 // local_only_blocked error and must never reach the cloud provider, even
 // though one is configured and would otherwise serve the request.
@@ -1071,7 +1071,7 @@ func TestLocalOnlyBlockedWhenNoLocalNode(t *testing.T) {
 }
 
 // TestLocalOnlyFalseStillFallsBackToCloud is the regression guard from the
-// P66 verification plan: a key with local_only=false (the default, i.e.
+// local-only verification plan: a key with local_only=false (the default, i.e.
 // every existing key today) must behave exactly as before - falling back to
 // cloud and incrementing the provider's spill counter, never "blocked".
 func TestLocalOnlyFalseStillFallsBackToCloud(t *testing.T) {

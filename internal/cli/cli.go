@@ -128,7 +128,7 @@ var authFlagsRows = [][2]string{
 
 // printModelsUsage, printRuntimeUsage, printLoginUsage, and
 // printNodeControlUsage are thin wrappers over the registry-backed
-// writeHelp (help.go) - see the P83+ CLI hardening plan, migration step 4.
+// writeHelp (help.go), from the CLI hardening plan's registry migration.
 // The registry node they render is looked up by name/path via findCommand;
 // the actual help text lives as data in registry_tree.go, not here.
 //
@@ -232,8 +232,8 @@ func reportError(err error, stderr io.Writer) int {
 
 // Run parses args and dispatches to the requested subcommand, returning the
 // process exit code (0/1/2/4 per operational-interfaces.md 5.2). It delegates
-// entirely to the registry-driven dispatcher (dispatch.go) - see the P83+ CLI
-// hardening plan, migration steps 6-8. The old hand-rolled switch statement
+// entirely to the registry-driven dispatcher (dispatch.go), from the CLI
+// hardening plan's registry migration. The old hand-rolled switch statement
 // that used to live here has been deleted now that every leaf command's Run
 // is wired to its real implementation. Behavioral equivalence with that old
 // switch was verified during the migration via a differential test

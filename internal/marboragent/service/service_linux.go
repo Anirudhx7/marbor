@@ -27,7 +27,7 @@ const systemdUnitDir = "/etc/systemd/system"
 const tokenEnvFilePath = "/etc/marbor-agent.env"
 
 // agentCertPath/agentKeyPath are the Marbor Agent's TLS certificate/key file
-// locations on Linux (P24), mirroring tokenEnvFilePath's precedent exactly:
+// locations on Linux, mirroring tokenEnvFilePath's precedent exactly:
 // same directory, same 0600-secret-file treatment for the key.
 const (
 	agentCertPath = "/etc/marbor-agent.crt"
@@ -127,7 +127,7 @@ func runSystemctl(args ...string) error {
 }
 
 // validateExecStartSafety rejects a BinaryPath/arg that would corrupt or
-// escape the generated unit file (P159): quoteIfNeeded only guards against
+// escape the generated unit file: quoteIfNeeded only guards against
 // unescaped whitespace, but INSTALL_DIR (the source of BinaryPath) is
 // operator-overridable, and an embedded newline/carriage-return/NUL would be
 // written raw into the unit file, letting text after it be parsed as new
@@ -171,7 +171,7 @@ func (systemdManager) Install(cfg Config) error {
 		return fmt.Errorf("service: writing token env file: %w", err)
 	}
 
-	// P24: idempotent - a re-install/upgrade never regenerates an existing
+	// Idempotent - a re-install/upgrade never regenerates an existing
 	// cert (which would invalidate a fingerprint marbor already pinned).
 	if err := EnsureAgentCert(agentCertPath, agentKeyPath, false); err != nil {
 		return fmt.Errorf("service: %w", err)
@@ -226,7 +226,7 @@ func (systemdManager) Uninstall(purge bool) error {
 		}
 	}
 
-	// P284: purge also best-effort removes the agent's TLS cert/key -
+	// purge also best-effort removes the agent's TLS cert/key -
 	// otherwise an orphaned private key survives decommissioning, enabling
 	// agent impersonation on a repurposed box.
 	if purge {

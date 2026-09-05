@@ -27,10 +27,10 @@ import (
 )
 
 // Result holds the measured cold and warm TTFT values, plus TPOT
-// (time-per-output-token) when it was computable (P408). ColdTPOTMs/
+// (time-per-output-token) when it was computable. ColdTPOTMs/
 // WarmTPOTMs are nil when the corresponding sample carried fewer than 2
 // content-bearing SSE chunks - TPOT genuinely can't be computed from a
-// single-token response, so this is absence, not a fabricated 0 (R1).
+// single-token response, so this is absence, not a fabricated 0.
 type Result struct {
 	Model          string   `json:"model"`
 	ColdMs         int64    `json:"cold_ms"`
@@ -175,7 +175,7 @@ func printTable(r Result) {
 }
 
 // fmtTPOT formats a nullable TPOT sample for the human-readable table. "-"
-// when nil (not computable from that sample's stream - R1: absence, never a
+// when nil (not computable from that sample's stream - absence, never a
 // fabricated value), matching this project's honest-data convention.
 func fmtTPOT(ms *float64) string {
 	if ms == nil {
@@ -242,7 +242,7 @@ func detectModel(client *http.Client, target, apiKey string) (string, error) {
 // (time-per-output-token) derived from real decode-phase chunk timestamps.
 // TPOTMs is nil when the stream carried fewer than 2 content-bearing chunks -
 // TPOT is not computable for a single-token (or empty) response, and this is
-// absence, never a fabricated value (R1).
+// absence, never a fabricated value.
 type LatencySample struct {
 	TTFTMs int64
 	TPOTMs *float64
@@ -279,7 +279,7 @@ func MeasureChatTTFT(ctx context.Context, client *http.Client, target, model, ap
 // of first content chunk) / (count of content chunks - 1), all from real
 // wall-clock timestamps on real observed chunks - consistent with the
 // industry ITL/TPOT definition. If fewer than 2 content-bearing chunks
-// arrive, TPOTMs is nil (R1: absence, never a guess).
+// arrive, TPOTMs is nil (absence, never a guess).
 //
 // ctx bounds the whole call, not just a client.Timeout: internal/admin's
 // benchmark job cancels this context immediately on admin cancel, so a

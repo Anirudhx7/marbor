@@ -2,9 +2,8 @@ package cli
 
 // help_golden_test.go captures byte-for-byte output of the CLI's help/usage
 // surfaces so a later refactor (routing help through the registry-backed
-// writeHelp, see help.go) can be verified against pre-refactor behavior. See
-// .local/plans/reflective-pondering-acorn.md, "Implementation" section 3 and
-// migration step 4.
+// writeHelp, see help.go) can be verified against pre-refactor behavior, as
+// part of the CLI hardening plan's registry migration.
 //
 // Run with -update to (re)write the golden files under testdata/help/:
 //
@@ -53,7 +52,7 @@ func checkGolden(t *testing.T, name string, got []byte) {
 // TestHelpGoldens pins the current byte-for-byte output of every help/usage
 // surface in the CLI package: root --help (now rendered by the same
 // registry-backed writeHelp/writeRootHelp path as every group/leaf, since
-// Fix 3 of the P83+ CLI hardening code review deleted the old hand-aligned
+// the CLI hardening code review deleted the old hand-aligned
 // `usage` const in cli.go - the golden below was regenerated for the new,
 // correctly-aligned output, an intentional and reviewed change), all six
 // existing print*Usage functions, and (informationally only - this one is

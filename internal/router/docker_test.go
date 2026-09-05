@@ -97,7 +97,7 @@ func TestContainerHost(t *testing.T) {
 
 func TestParseDockerContainersUsesContainerIP(t *testing.T) {
 	// A container's own IP is only reachable at its private (in-namespace)
-	// port, never the host's NAT-mapped public port (P98) - so even though
+	// port, never the host's NAT-mapped public port - so even though
 	// the host publishes 32100, the discovered URL must use the fixed
 	// private port 11434 once a container IP is known.
 	c := dockerContainer{

@@ -16,11 +16,11 @@ func TestCheckTokenExactMatch(t *testing.T) {
 		{"exact match", "Bearer secret123", "secret123", true},
 		{"wrong token", "Bearer wrong", "secret123", false},
 		// TrimPrefix is a no-op when the prefix isn't present, so a raw token
-		// with no "Bearer " prefix still matches - identical to R4's admin
+		// with no "Bearer " prefix still matches - identical to the admin
 		// auth behavior (strings.TrimPrefix(authHeader, "Bearer ") == token).
-		{"missing Bearer prefix still matches (same as R4)", "secret123", "secret123", true},
+		{"missing Bearer prefix still matches (same as admin auth)", "secret123", "secret123", true},
 		{"empty header", "", "secret123", false},
-		// R8 lesson, applied to the agent side of this trust boundary: an
+		// Applied to the agent side of this trust boundary: an
 		// agent with no configured token must reject EVERY request,
 		// including one whose bearer value happens to be empty (trailing
 		// space, "Authorization: Bearer "), not fall open.
@@ -110,9 +110,10 @@ func TestRequireTokenNeverAuthenticatesEmptyExpected(t *testing.T) {
 	}
 }
 
-// TestScopeOf verifies token scope parsing (P54): recognized "<tier>."
-// prefixes parse to their tier; a token with no "." at all - every pre-P54
-// token, a bare random string - falls back to tierAdmin (full scope, the
+// TestScopeOf verifies token scope parsing: recognized "<tier>."
+// prefixes parse to their tier; a token with no "." at all - every token
+// minted before scoping existed, a bare random string - falls back to
+// tierAdmin (full scope, the
 // deliberate backward-compat path); a token that DOES contain a "." but
 // whose prefix isn't a recognized tier name is a different, less-trusted
 // case and fails CLOSED to tierReadonly instead, since a real legacy token
@@ -158,7 +159,7 @@ func TestTokenScope(t *testing.T) {
 	}
 }
 
-// TestRequireScopeAuthorizesActionAAndRejectsActionB is the core P54
+// TestRequireScopeAuthorizesActionAAndRejectsActionB is the core scope
 // regression: a token issued for one action must succeed for that action
 // (A) and be rejected, not silently pass, for a different action requiring
 // a higher tier (B) - the security invariant the whole feature exists to

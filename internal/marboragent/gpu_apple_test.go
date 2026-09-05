@@ -54,7 +54,7 @@ func TestParseSPDisplaysJSON(t *testing.T) {
 		t.Errorf("Devices[0].Model = %q, want Apple M3 Max", d0.Model)
 	}
 	// No temperature/fan/power/VRAM is ever fabricated for this collector -
-	// system_profiler exposes none of it unprivileged (R1).
+	// system_profiler exposes none of it unprivileged.
 	if d0.TemperatureC != nil || d0.FanPercent != nil || d0.PowerWatts != nil {
 		t.Error("expected TemperatureC/FanPercent/PowerWatts to stay nil - system_profiler reports none of them")
 	}

@@ -14,7 +14,7 @@ import (
 )
 
 func TestHandlePatchNode_ParallelismValidationStill422(t *testing.T) {
-	// P397: explicit typing mismatch len<width must be 422 (hard block)
+	// Explicit typing mismatch len<width must be 422 (hard block)
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{{Name: "n", URL: "http://h:11434"}}, nil)
 	st, _ := store.Open(":memory:")
 	srv := NewServer(r, nil, config.Config{}, st)
@@ -31,7 +31,7 @@ func TestHandlePatchNode_ParallelismValidationStill422(t *testing.T) {
 }
 
 func TestHandlePatchNode_DetectedVsDeclaredIsWarningNot422(t *testing.T) {
-	// P397b: detected 8 vs declared 2 is warning amber, not 422 block.
+	// Detected 8 vs declared 2 is warning amber, not 422 block.
 	// Explicit patch with mismatch should succeed; mismatch is surfaced via GET.
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{{Name: "n", URL: "http://h:11434"}}, nil)
 	st, _ := store.Open(":memory:")

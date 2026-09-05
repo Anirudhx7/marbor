@@ -12,7 +12,7 @@ interface SavingsCardProps {
 // Capacity, above the fold) and on Routing (next to the strategy that drives
 // the local/cloud split). One shared component so the two surfaces never
 // drift. saved_usd is null until real token counts exist - the card shows "-"
-// then, never a guess (R1), and the caption always says "estimated": the
+// then, never a guess, and the caption always says "estimated": the
 // figure is token counts priced at a reference rate, not a billed amount.
 export function SavingsCard({ savings, loading }: SavingsCardProps) {
   const localPct = savings && savings.total_requests > 0

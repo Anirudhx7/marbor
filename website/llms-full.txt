@@ -19,7 +19,7 @@ Marbor routes every LLM request to the GPU node that already holds the model war
 - Proactive warmup: keep_alive pings on schedule keep priority models resident
 - Pre-stream failover: dead node before first byte -> retry alternate -> cloud -> 502
 - Cost-aware cloud overflow: OpenAI/Anthropic only when saturated, off by default, local_only per key fails closed 503, real parsed tokens, per-provider spill counters
-- Deployment-aware placement (P397): derived required_gpus from gpu_indices + parallelism_type/width, validated 422, gate before scoring distinguishes 1x8 vs 8x1
+- Deployment-aware placement: derived required_gpus from gpu_indices + parallelism_type/width, validated 422, gate before scoring distinguishes 1x8 vs 8x1
 - Single static Go binary, zero deps, SQLite only, no distributed state, pull-polled marbor-agent (:9200) per physical host
 
 ## Install

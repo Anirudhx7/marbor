@@ -180,7 +180,7 @@ func (r *Router) RunPredictionCycle(ctx context.Context, now time.Time) {
 	// 3. For each currently-warm model on each healthy node, predict top-3
 	keepAlive := effectiveKeepAlive(warmupCfg.KeepAlive, time.Duration(warmupCfg.IntervalMs)*time.Millisecond)
 
-	// planned dedups warmup triggers within this single cycle (P122): without
+	// planned dedups warmup triggers within this single cycle: without
 	// it, two different trigger models both predicting the same (node, P) pair
 	// each independently fire a warmup goroutine, racing ensureHeadroom/pingNode
 	// against each other and double-counting ActivePrediction entries for one

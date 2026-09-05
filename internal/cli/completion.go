@@ -8,7 +8,7 @@ import (
 
 // completion.go generates static shell completion scripts (bash, zsh, fish)
 // for the "marbor completion <shell>" command (registry_tree.go's
-// completionCmd()) - P83+ CLI hardening plan, Implementation section 7. Every
+// completionCmd()), from the CLI hardening plan. Every
 // script is built by walking the CURRENT command registry tree
 // (registry.go/registry_tree.go) at generation time and baking command,
 // subcommand, and flag names into plain shell text.
@@ -163,7 +163,7 @@ func generateBashCompletion(root *Command) string {
 	}
 
 	// Reduce cmd to the longest registered command path that is a prefix of
-	// it (P164): the loop above joins every non-flag word before the
+	// it: the loop above joins every non-flag word before the
 	// cursor, including positional arguments - once one is typed (e.g.
 	// "nodes confirm-tls mynode"), cmd's full literal join matches no case
 	// arm below and flags (including required ones like --fingerprint)
@@ -192,9 +192,9 @@ func generateBashCompletion(root *Command) string {
 		words = append(words, ownFlagNames(node.cmd)...)
 		words = append(words, globalFlagNames...)
 		// bashCasePattern already appends the case pattern's own closing ")"
-		// - no second one here (P387, pre-existing: the doubled ")" was a
+		// - no second one here (pre-existing: the doubled ")" was a
 		// real bash/zsh syntax error, e.g. "    \"\"))", caught by code
-		// review while verifying P164; TestRun_Completion_Bash/_Zsh only
+		// review while verifying this completion logic; TestRun_Completion_Bash/_Zsh only
 		// did substring checks and never actually sourced the script
 		// through a real shell, so this went undetected).
 		fmt.Fprintf(&b, "    %s\n", bashCasePattern(key))
@@ -280,7 +280,7 @@ func generateZshCompletion(root *Command) string {
 	b.WriteString("        esac\n")
 	b.WriteString("    done\n\n")
 
-	// Same prefix-reduction as the bash generator (P164): strip trailing
+	// Same prefix-reduction as the bash generator: strip trailing
 	// positional-argument words from cmd until what's left matches a
 	// registered command path with children, so sub-command name
 	// completion still works once a positional has been typed.
@@ -305,9 +305,9 @@ func generateZshCompletion(root *Command) string {
 		}
 		key := strings.Join(node.path, " ")
 		// bashCasePattern already appends the case pattern's own closing ")"
-		// - no second one here (P387, pre-existing: the doubled ")" was a
+		// - no second one here (pre-existing: the doubled ")" was a
 		// real bash/zsh syntax error, e.g. "    \"\"))", caught by code
-		// review while verifying P164; TestRun_Completion_Bash/_Zsh only
+		// review while verifying this completion logic; TestRun_Completion_Bash/_Zsh only
 		// did substring checks and never actually sourced the script
 		// through a real shell, so this went undetected).
 		fmt.Fprintf(&b, "    %s\n", bashCasePattern(key))

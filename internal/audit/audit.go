@@ -36,7 +36,7 @@ type Logger struct {
 
 	// writes is a bounded async queue so Log never blocks the proxy's
 	// request-handling goroutine on a SQLite insert (this was a synchronous
-	// per-request write before - see .local/audit-fixes-2026-08-03.md #1).
+	// per-request write before).
 	writes    chan store.AuditEntry
 	done      chan struct{}
 	closeOnce sync.Once

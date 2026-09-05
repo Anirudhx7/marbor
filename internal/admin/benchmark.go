@@ -1,4 +1,4 @@
-// Multi-runtime/multi-GPU coverage (Architecture Law 5): this file's
+// Multi-runtime/multi-GPU coverage: this file's
 // node/model validation, eviction, and TTFT measurement are all
 // runtime-agnostic by construction, not by explicit per-runtime branching -
 // node/model discovery goes through the existing Marbor Agent
@@ -29,7 +29,7 @@ import (
 )
 
 // benchJobSeq is a process-lifetime counter appended to every generated
-// jobID (P130) so two rapid POSTs can never collide on UnixNano() alone.
+// jobID so two rapid POSTs can never collide on UnixNano() alone.
 var benchJobSeq atomic.Int64
 
 // benchmarkJobMaxAge mirrors pullJobMaxAge: how long a finished benchmark job
@@ -187,8 +187,8 @@ func (s *Server) sweepOldBenchmarkJobs() {
 // non-empty sample slice. Callers must not call this with an empty slice.
 //
 // p50 uses the original midpoint convention (average of the two middle
-// values on an even-length slice) - unchanged from before P408 added
-// p95/p99, so existing callers/tests keep seeing identical p50 output.
+// values on an even-length slice) - unchanged from before p95/p99 were added,
+// so existing callers/tests keep seeing identical p50 output.
 //
 // p95/p99 use nearest-rank: index = ceil(pct/100 * n) - 1, clamped to
 // [0, n-1]. This is a standard, simple percentile method that needs no
@@ -305,7 +305,7 @@ func (s *Server) handleRunBenchmark(w http.ResponseWriter, r *http.Request) {
 	// each evicting/reloading the model out from under the other and
 	// corrupting both runs' cold/warm numbers.
 	ctx, cancel := context.WithCancel(context.Background())
-	// A process-lifetime counter suffix makes jobID collision-proof (P130):
+	// A process-lifetime counter suffix makes jobID collision-proof:
 	// UnixNano() alone can repeat across two rapid POSTs (worse on Windows'
 	// coarser clock tick), and a collision silently overwrites a live
 	// benchmarkJob in s.benchJobs, defeating the same-node conflict check

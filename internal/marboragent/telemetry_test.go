@@ -171,7 +171,7 @@ func TestTelemetryMarshalSchema(t *testing.T) {
 
 // TestTelemetryOmitsUnknownFields verifies that a Telemetry with nil
 // GPU/Host/Runtime (nothing measurable/detected on this platform/host)
-// never fabricates zero-valued measurements (R1): the fields must be
+// never fabricates zero-valued measurements: the fields must be
 // entirely absent from the JSON, not present with a 0.
 func TestTelemetryOmitsUnknownFields(t *testing.T) {
 	tel := Telemetry{Agent: Agent{Version: "v0.17.0", ProtocolVersion: ProtocolVersion}}
@@ -206,7 +206,7 @@ func TestTelemetryOmitsUnknownFields(t *testing.T) {
 
 // TestGPUInfoOmitsUnmeasuredFields checks that individual GPU device fields
 // the node couldn't measure (nil pointers) are omitted rather than
-// serialized as 0/null, per R1 - "never fabricate a measurement."
+// serialized as 0/null - never fabricate a measurement.
 func TestGPUInfoOmitsUnmeasuredFields(t *testing.T) {
 	gpu := GPUInfo{Index: 0, VRAMUsedMB: 100, VRAMTotalMB: 200}
 	b, err := json.Marshal(gpu)

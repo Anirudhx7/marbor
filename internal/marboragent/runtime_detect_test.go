@@ -73,7 +73,7 @@ func TestDetectAllAccumulatesMultipleRuntimes(t *testing.T) {
 }
 
 // TestDetectAllOmitsWhenNothingListening verifies "nothing found" stays a
-// true empty result, never a fabricated entry (R1), when every candidate
+// true empty result, never a fabricated entry, when every candidate
 // port is unreachable.
 func TestDetectAllOmitsWhenNothingListening(t *testing.T) {
 	orig := localRuntimePorts

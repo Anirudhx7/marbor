@@ -1,6 +1,6 @@
 package cli
 
-// benchmark.go - `marbor benchmark run/progress/cancel/runs` (P-A2-09a, A2
+// benchmark.go - `marbor benchmark run/progress/cancel/runs` (from the
 // three-surface-parity audit: all 4 benchmark endpoints had full UI
 // coverage in Benchmark.tsx but no CLI). Not to be confused with the
 // separate standalone `cmd/bench` tool - this hits the Admin API's

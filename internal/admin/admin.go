@@ -200,15 +200,15 @@ type Server struct {
 	lastBackupErr  string                    // empty = last attempt (if any) succeeded
 	restoreCh      chan<- string             // nil until SetRestoreChannel is called (main.go only, in a real run)
 	enrollMu       sync.Mutex                // guards enrollCodes
-	enrollCodes    map[string]enrollmentCode // one-time code -> record; ephemeral, never persisted (P50)
+	enrollCodes    map[string]enrollmentCode // one-time code -> record; ephemeral, never persisted
 	// nodePatchMu serializes handlePatchNode's entire validate-then-mutate
 	// transaction (validateTLSPatch through the final PatchNode/
 	// UpdateNodeURL call). Without it, two concurrent PATCH requests to
 	// DIFFERENT node names can each read a pre-mutation node-list snapshot,
 	// both pass validateTLSPatch's sibling-consistency check against that
 	// stale snapshot, and then both mutate - jointly producing two nodes on
-	// one Host with different pinned TLS fingerprints, the exact state P24
-	// section 15 exists to prevent. This does not touch mu (r.router's own
+	// one Host with different pinned TLS fingerprints, the exact state the
+	// pinned-TLS sibling-consistency rule exists to prevent. This does not touch mu (r.router's own
 	// node-list lock already protects individual reads/writes; this mutex
 	// only prevents two full PATCH transactions from interleaving).
 	nodePatchMu sync.Mutex
@@ -233,7 +233,7 @@ type Server struct {
 // enrollmentCode is a short-lived, single-use credential exchanged by a Node
 // Agent (via POST /admin/agent/enroll) for its real, permanent bearer token,
 // so the permanent token never has to travel through a copy-pasted install
-// command, shell history, or CLI argv (P50). node is carried for audit
+// command, shell history, or CLI argv. node is carried for audit
 // logging only - the code itself is what the map is keyed by.
 type enrollmentCode struct {
 	node      string
@@ -448,7 +448,7 @@ type RequestLog struct {
 	Tokens       int64     `json:"tokens"`
 	TokensPerSec float64   `json:"tokensPerSec"`
 	Time         time.Time `json:"time"`
-	// RoutingReason is the P41 top-level explanation (session_affinity |
+	// RoutingReason is the top-level routing explanation (session_affinity |
 	// pinned_warm | score_based); empty for cloud-fallback requests, which
 	// have no router.RoutingDecision. RoutingDetail is the JSON-encoded
 	// router.RoutingDecision, kept off the /admin/requests list response
@@ -466,44 +466,43 @@ type nodeResp struct {
 	Port int    `json:"port"`
 	// Scheme is this node's URL scheme ("http" or "https") - the UI needs
 	// this to know whether TLS pinning is even applicable, and to correctly
-	// pre-populate a scheme toggle when editing (P24; not present before
-	// this - Host/Port alone don't carry it).
+	// pre-populate a scheme toggle when editing; not present before
+	// this - Host/Port alone don't carry it.
 	Scheme   string `json:"scheme"`
 	GPUModel string `json:"gpuModel"`
 	// GPUIndices is the operator-declared set of physical GPU indices this
-	// node/runtime instance actually uses (P75 Gap B/C) - empty/omitted means
+	// node/runtime instance actually uses - empty/omitted means
 	// nothing declared, unchanged host-level sizing. See NodeState.DeclaredGPUIndices.
 	GPUIndices []int `json:"gpuIndices,omitempty"`
 	// MaxInFlight is this node's declared per-node in-flight cap override
-	// (P64) - 0 means no override is declared (the global
+	// - 0 means no override is declared (the global
 	// routing.max_in_flight_per_node default applies instead).
 	MaxInFlight int `json:"maxInFlight,omitempty"`
 	// TLSFingerprint is this node's TOFU-pinned Marbor Agent cert fingerprint
-	// (P24) - empty/omitted means no pin (plaintext or not yet TLS-enrolled).
-	// See .local/specs/node-agent-tls.md.
+	// - empty/omitted means no pin (plaintext or not yet TLS-enrolled).
 	TLSFingerprint string `json:"tlsFingerprint,omitempty"`
 	// TLSFingerprintMismatch is true when the most recent agent poll failed
 	// specifically because the presented certificate didn't match the
-	// pinned fingerprint (P24 section 6) - distinct from generic
+	// pinned fingerprint - distinct from generic
 	// unreachability, so the UI can show its own status instead of
 	// "unreachable" (which would send an operator debugging network
 	// connectivity when the real cause is a stale pin).
 	TLSFingerprintMismatch bool `json:"tlsFingerprintMismatch,omitempty"`
-	// ParallelismType/Width is the deployment topology (P397) - type tp|pp|ep|dp,
+	// ParallelismType/Width is the deployment topology - type tp|pp|ep|dp,
 	// width 1..64, derived EffectiveRequiredGPUs = max(len(gpuIndices), width)
 	// - 0/empty means unconstrained (existing fleet).
 	ParallelismType  string `json:"parallelismType,omitempty"`
 	ParallelismWidth int    `json:"parallelismWidth,omitempty"`
 	// VRAMOverrides is this node's operator-declared per-model VRAM size
-	// override (MB), keyed by plain model name (P411) - empty/omitted means
+	// override (MB), keyed by plain model name - empty/omitted means
 	// nothing declared. See NodeState.VRAMOverrides and
 	// config.NodeConfig.VRAMOverrides for the consumption side.
 	VRAMOverrides         map[string]int64 `json:"vramOverrides,omitempty"`
 	EffectiveRequiredGPUs int              `json:"effectiveRequiredGPUs,omitempty"`
-	// P397b: auto-discovered deployment (additive, per-port). Declared above
+	// Auto-discovered deployment (additive, per-port). Declared above
 	// always overrides detected - effectiveRequiredGPUs already prefers
 	// declared when present. Detected fields are honest "what agent saw"
-	// (R1) via ps/docker/env, not fabricated. MismatchWarning is amber
+	// via ps/docker/env, not fabricated. MismatchWarning is amber
 	// warning when declared 4 vs detected 8 (not a 422 block - Adopt fixes).
 	DetectedParallelismType       string   `json:"detectedParallelismType,omitempty"`
 	DetectedParallelismWidth      int      `json:"detectedParallelismWidth,omitempty"`
@@ -518,11 +517,11 @@ type nodeResp struct {
 	PowerDrawW                    float64  `json:"powerDrawW"`
 	Temperature                   *float64 `json:"temperature"`
 	Runtime                       string   `json:"runtime"`
-	// RuntimeMismatchHint (P409) is set only when this node is currently
+	// RuntimeMismatchHint is set only when this node is currently
 	// probed as llamacpp and its /health check is failing specifically with
 	// a 404 - the real, observed signature of an MLX node auto-detected as
 	// llamacpp (see NodeState.RuntimeMismatchHint's doc comment). Empty
-	// otherwise; never a guess presented as fact (R1).
+	// otherwise; never a guess presented as fact.
 	RuntimeMismatchHint string             `json:"runtimeMismatchHint,omitempty"`
 	Health              string             `json:"health"`
 	Draining            bool               `json:"draining"`
@@ -560,7 +559,7 @@ type nodeResp struct {
 	// (and every other field below zero-value) whenever no agent is
 	// configured for this node, or the most recent agent poll failed - the
 	// UI must check AgentPresent before displaying FanPercent/RAMUsedMB/
-	// DiskFreeGB/AgentVersion, never treat a zero as a real measurement (R1).
+	// DiskFreeGB/AgentVersion, never treat a zero as a real measurement.
 	AgentPresent bool `json:"agentPresent"`
 	// AgentStale is true when an enabled Marbor Agent IS configured for this
 	// node's host but its consecutive poll failures crossed the health
@@ -581,7 +580,7 @@ type nodeResp struct {
 	// GPUVendor/Runtime) - lets the UI gate agent-dependent features on
 	// what this specific node's agent build actually supports, and helps
 	// debug a mixed-version/mixed-vendor/mixed-runtime fleet. Cleared
-	// alongside AgentPresent, same R1 discipline as the fields above.
+	// alongside AgentPresent, same never-fabricate discipline as the fields above.
 	AgentCapabilities []string `json:"agentCapabilities,omitempty"`
 	AgentPlatform     string   `json:"agentPlatform,omitempty"`
 	AgentArchitecture string   `json:"agentArchitecture,omitempty"`
@@ -593,8 +592,8 @@ type nodeResp struct {
 	// multi-GPU array + driver-stack metadata; RAMTotalMB/DiskTotalGB/
 	// Hostname/UptimeSeconds/BootTime are host capacity/identity;
 	// RuntimeVersion/RuntimeStatus are the detected runtime's own reported
-	// version/live reachability. All cleared alongside AgentPresent, same R1
-	// discipline as every other agent-derived field above.
+	// version/live reachability. All cleared alongside AgentPresent, same
+	// never-fabricate discipline as every other agent-derived field above.
 	AgentNodeID    string           `json:"agentNodeId,omitempty"`
 	AgentGPUCount  int              `json:"agentGpuCount,omitempty"`
 	AgentGPUs      []agentGPUDevice `json:"agentGpus,omitempty"`
@@ -666,7 +665,7 @@ type SystemInfo struct {
 	RAMFreeMB  int64  `json:"ram_free_mb"`
 	// RAMKnown is false when readSystemMemory couldn't actually read the
 	// host's memory (as opposed to RAMTotalMB/RAMFreeMB being 0 because
-	// they're genuinely unset) - R1: real data or unknown, never a fake 0
+	// they're genuinely unset) - real data or unknown, never a fake 0
 	// presented as a measurement.
 	RAMKnown   bool          `json:"ram_known"`
 	GPUs       []sysGPUEntry `json:"gpus"`
@@ -928,7 +927,7 @@ func backupFilename(t time.Time) string {
 // so it survives a restart. A successful run (err == nil) advances
 // lastBackupAt and clears the error; a failed run leaves lastBackupAt
 // unchanged (so the next scheduler tick retries) but records the error for
-// the Settings page (R1: real state, never a fabricated "backed up" status).
+// the Settings page - real state, never a fabricated "backed up" status.
 func (s *Server) recordBackupResult(err error) {
 	s.backupMu.Lock()
 	if err == nil {
@@ -1173,9 +1172,8 @@ func (s *Server) Handler() http.Handler {
 	// DELETE /v1/models/{name...} route (server.go).
 	reg("DELETE /admin/nodes/{name}/models/{model...}", s.cors(s.adminAuth(s.handleNodeDeleteModel)))
 	reg("GET /admin/nodes/{name}/health-check", s.cors(s.adminAuth(s.handleNodeHealthCheck)))
-	// P24: TLS enrollment probe - fetches the node's presented cert
-	// fingerprint for operator confirmation, never pins it. See
-	// .local/specs/node-agent-tls.md section 2.
+	// TLS enrollment probe - fetches the node's presented cert
+	// fingerprint for operator confirmation, never pins it.
 	reg("POST /admin/nodes/{name}/tls-probe", s.cors(s.adminAuth(s.handleNodeTLSProbe)))
 	reg("GET /admin/nodes/{name}/pull/progress", s.cors(s.adminAuth(s.handlePullProgress)))
 	reg("GET /admin/pulls", s.cors(s.adminAuth(s.handleListActivePulls)))
@@ -1759,7 +1757,7 @@ func (s *Server) handleRequests(w http.ResponseWriter, r *http.Request) {
 }
 
 // GET /admin/requests/{id}/explain (also /admin/v1/requests/{id}/explain) -
-// P41 per-request routing explainability. Returns the full router.RoutingDecision
+// Per-request routing explainability. Returns the full router.RoutingDecision
 // for one request, checking the bounded in-memory ring first (has the fuller
 // RoutingDetail with no SQLite round-trip) and falling back to the SQLite
 // request_log table for requests that have aged out of the ring but are
@@ -2129,7 +2127,7 @@ func (s *Server) handleRemoveNode(w http.ResponseWriter, r *http.Request) {
 // marborAgentInstallCommand returns the one-line commands an operator runs on
 // the GPU node to download the binary (if not already present) AND register
 // it as a persistent, auto-restarting OS service - install.sh/install.ps1's
-// ROLE=agent path (see .local/specs/node-agent.md section 12), which
+// ROLE=agent path, which
 // downloads the binary then hands off to its own "marbor-agent service
 // install" self-registration subcommand (internal/marboragent/service). unix
 // covers Linux/macOS; windows is the PowerShell equivalent for Windows
@@ -2138,7 +2136,7 @@ func (s *Server) handleRemoveNode(w http.ResponseWriter, r *http.Request) {
 // idempotent.
 //
 // The command carries a short-lived, single-use enrollment code, never the
-// real permanent token (P50) - a copy-pasted command otherwise leaves the
+// real permanent token - a copy-pasted command otherwise leaves the
 // real bearer token in shell history/SSH logs/chat forever. marborBaseURL
 // tells the agent where to exchange the code for the real token via
 // POST /admin/agent/enroll.
@@ -2159,7 +2157,7 @@ func marborAgentInstallCommand(marborBaseURL string, port int, enrollCode string
 // the admin dashboard, which is the best available guess for what a GPU
 // node on the same network can reach back to. Marbor has no separate
 // "public URL" setting; this is the first feature that needs marbor to
-// know its own address (P50's enrollment exchange).
+// know its own address (needed for the agent enrollment exchange).
 func requestBaseURL(r *http.Request) string {
 	scheme := "http"
 	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
@@ -2169,10 +2167,9 @@ func requestBaseURL(r *http.Request) string {
 }
 
 // generateMarborAgentToken returns a 32-random-byte, base64url-encoded opaque
-// token (per .local/specs/node-agent.md section 5 - a distinct protocol
+// token (a distinct protocol
 // from the client-facing API-key mechanism, not a reuse of it), prefixed
-// with "<scope>." (P54: per-action token scoping -
-// .local/specs/node-agent-capabilities.md section 7). The agent has no DB
+// with "<scope>." for per-action token scoping. The agent has no DB
 // access, only the bare token string it's configured with, so the scope
 // travels embedded in the token itself and is parsed agent-side by
 // marboragent.scopeOf/TokenScope. scope must be one of marboragent.ScopeReadonly/
@@ -2186,7 +2183,7 @@ func generateMarborAgentToken(scope string) (string, error) {
 }
 
 // generateEnrollmentCode returns a short, URL-safe, single-use code used to
-// exchange for the real Marbor Agent token via POST /admin/agent/enroll (P50).
+// exchange for the real Marbor Agent token via POST /admin/agent/enroll.
 // Deliberately shorter than generateMarborAgentToken: its value as a secret is
 // bounded by enrollmentCodeTTL and single-use consumption, not by matching a
 // permanent bearer token's entropy - 128 bits is unguessable within a
@@ -2296,7 +2293,7 @@ func (s *Server) handleEnableMarborAgent(w http.ResponseWriter, r *http.Request)
 		scheme = *body.Scheme
 	}
 
-	// P24 no-downgrade (section 7), moved here from validateTLSPatch's old
+	// TLS no-downgrade check, moved here from validateTLSPatch's old
 	// node.URL-based check now that a pinned fingerprint describes the
 	// Agent's own scheme, not the runtime's: reconfiguring the Agent back to
 	// http:// while any node sharing this host still has a pinned
@@ -2450,7 +2447,7 @@ func (s *Server) handleRegenerateMarborAgentToken(w http.ResponseWriter, r *http
 }
 
 // validControlDrivers are the only driver names an operator may Accept
-// (P43 v1 set - marbor-agent-capabilities.md section 5.4). Kept in sync with
+// (the frozen v1 driver set). Kept in sync with
 // internal/marboragent/control's driver Name() constants.
 var validControlDrivers = map[string]bool{
 	"systemd": true, "docker": true, "process": true, "launchd": true, "windows_service": true,
@@ -2562,7 +2559,7 @@ func (s *Server) handleClearNodeControl(w http.ResponseWriter, r *http.Request) 
 var nodeRuntimeActionTimeout = 30 * time.Second
 
 // handleNodeRuntimeStart/Stop/Restart are the Admin API's dispatch points
-// for P43 Step 3's runtime.start/runtime.stop/runtime.restart capabilities -
+// for the runtime.start/runtime.stop/runtime.restart capabilities -
 // POST /admin/nodes/{name}/runtime/{start,stop,restart}. Each follows the
 // same template as handleNodeDeleteModel/handleNodeHealthCheck: health
 // check -> capability check -> read the operator-accepted ControlDriver
@@ -2609,8 +2606,8 @@ func (s *Server) handleNodeRuntimeAction(w http.ResponseWriter, r *http.Request,
 
 	// Marbor constructs {driver, identifier} from its own store-backed
 	// cache at dispatch time and hands it to the agent fresh on every
-	// request - the agent never persists control config itself (P43 Step 3
-	// design decision). A node with no operator-accepted driver returns the
+	// request - the agent never persists control config itself, by design.
+	// A node with no operator-accepted driver returns the
 	// exact error marbor-agent-capabilities.md section 5.6 mandates, never a
 	// guess.
 	ctrl, configured := s.router.NodeControlSetting(nodeName)
@@ -2691,7 +2688,7 @@ const (
 	maxNodeRuntimeLogLines     = 5000
 )
 
-// handleNodeRuntimeLogs is the Admin API's dispatch point for P58's
+// handleNodeRuntimeLogs is the Admin API's dispatch point for the
 // runtime.logs capability - POST /admin/nodes/{name}/runtime/logs?lines=N.
 // Same template as handleNodeRuntimeAction (health check -> capability
 // check -> read the operator-accepted ControlDriver config -> dispatch to
@@ -2802,7 +2799,7 @@ func (s *Server) runtimeLogsViaAgent(ctx context.Context, nodeURL string, agentC
 
 // newEnrollmentCode generates a fresh one-time enrollment code for node,
 // wraps the already-generated real token, and stores it in-memory with an
-// enrollmentCodeTTL expiry (P50). The map holds only ephemeral state and is
+// enrollmentCodeTTL expiry. The map holds only ephemeral state and is
 // never persisted - losing an in-flight code on a marbor restart just means
 // the operator re-generates it from the admin UI.
 func (s *Server) newEnrollmentCode(node, token string) (string, error) {
@@ -2817,7 +2814,7 @@ func (s *Server) newEnrollmentCode(node, token string) (string, error) {
 }
 
 // handleEnrollMarborAgent exchanges a short-lived, single-use enrollment code
-// for the node's real, permanent Marbor Agent bearer token (P50). Called by
+// for the node's real, permanent Marbor Agent bearer token. Called by
 // the Marbor Agent itself during "agent service install --enroll=<code>",
 // never by an authenticated admin browser session - see the route
 // registration comment for why this deliberately skips s.adminAuth. The
@@ -3232,7 +3229,7 @@ func (s *Server) handleSetPinned(w http.ResponseWriter, r *http.Request) {
 // fallback today (Ollama's own keep_alive:0 HTTP trick, via
 // router.UnloadModel) that pull/delete/list never had. The agent path is
 // what makes this work for real on non-Ollama runtimes instead of silently
-// no-op-ing (R1) - see actions.go's unloadCommands for exactly which
+// no-op-ing - see actions.go's unloadCommands for exactly which
 // runtimes that currently covers.
 func (s *Server) handleUnloadModel(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
@@ -3275,8 +3272,9 @@ func (s *Server) handleUnloadModel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Decision shared with the scheduled unload path (router.Router.UnloadModels)
-	// via Router.ShouldUseAgentForUnload, per P33 - not duplicated a second
-	// time here.
+	// via Router.ShouldUseAgentForUnload - a future change to the decision
+	// has exactly one place to change instead of two, not duplicated a
+	// second time here.
 	agentCfg, useAgent := s.router.ShouldUseAgentForUnload(name)
 
 	if useAgent {
@@ -3294,7 +3292,7 @@ func (s *Server) handleUnloadModel(w http.ResponseWriter, r *http.Request) {
 		ctrl, _ := s.router.NodeControlSetting(name)
 		if err := s.unloadModelViaAgent(ctx, nodeURL, agentCfg, body.Model, ctrl); err != nil {
 			// The agent's own error text (e.g. "unsupported: no unload
-			// primitive for runtime \"vllm\"") is the whole point of R1 here -
+			// primitive for runtime \"vllm\"") is exactly what should surface -
 			// it is what turns a non-Ollama runtime into a clear "not
 			// supported" message in the UI instead of a correlation-id-only
 			// generic failure, matching deleteModelViaAgent's/
@@ -3621,7 +3619,7 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "tls_fingerprint must be empty (to clear the pin) or in the form SHA256:<64 hex characters>")
 		return
 	}
-	// P411: an override of 0 or negative MB is nonsensical (it isn't a real
+	// An override of 0 or negative MB is nonsensical (it isn't a real
 	// declared size) and would silently defeat estimateModelSizeBytes' tier-3
 	// fallback (treated as "no override" downstream) - reject explicitly
 	// instead of accepting a value that would never actually apply.
@@ -3637,7 +3635,7 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	// P397: parallelism validation - structured type tp|pp|ep|dp + width 1..64.
+	// Parallelism validation - structured type tp|pp|ep|dp + width 1..64.
 	if patch.ParallelismType != nil && *patch.ParallelismType != "" {
 		switch *patch.ParallelismType {
 		case "tp", "pp", "ep", "dp":
@@ -3679,8 +3677,8 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 	// otherwise each read a pre-mutation node-list snapshot inside
 	// validateTLSPatch, both pass its sibling-consistency check against that
 	// now-stale snapshot, and then both mutate - jointly producing two nodes
-	// on one Host with different pinned TLS fingerprints (P24 section 15's
-	// invariant, reopened via a race instead of a single request). Holding
+	// on one Host with different pinned TLS fingerprints (the same sibling-
+	// consistency invariant, reopened via a race instead of a single request). Holding
 	// one mutex across validation and every mutation this handler performs
 	// (UpdateNodeURL, PatchNode, and their store-persistence calls) makes
 	// the whole transaction atomic with respect to other PATCH requests,
@@ -3689,7 +3687,7 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 		s.nodePatchMu.Lock()
 		defer s.nodePatchMu.Unlock()
 
-		// P397: gpu_indices vs existing parallelism width cross-check when only
+		// gpu_indices vs existing parallelism width cross-check when only
 		// gpu_indices changes (early validation above only covered the case
 		// where parallelism fields were in the patch).
 		if patch.GPUIndices != nil {
@@ -3707,10 +3705,9 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// P24: no-downgrade and section 15 sibling-consistency checks. Must run
+		// TLS no-downgrade and sibling-consistency checks. Must run
 		// before any mutation below (UpdateNodeURL/PatchNode) so a rejected
-		// patch never partially applies. See .local/specs/node-agent-tls.md
-		// sections 5/7/15.
+		// patch never partially applies.
 		if patch.TLSFingerprint != nil || patch.URL != nil {
 			if err := s.validateTLSPatch(name, patch); err != nil {
 				status := http.StatusConflict
@@ -3775,8 +3772,8 @@ func isValidTLSFingerprint(s string) bool {
 	return true
 }
 
-// validateTLSPatch enforces P24's no-downgrade rule (section 7) and section
-// 15's multi-GPU-per-host sibling-consistency invariant, computed against
+// validateTLSPatch enforces the TLS no-downgrade rule and the
+// multi-GPU-per-host sibling-consistency invariant, computed against
 // the RESULTING state a patch would produce (current node state merged with
 // whichever of URL/TLSFingerprint this patch actually sets), before any
 // mutation happens. Returns an error whose message contains "not found" if
@@ -3866,7 +3863,7 @@ func (s *Server) validateTLSPatch(name string, patch router.NodePatch) error {
 			siblingFP := n.TLSFingerprint
 			n.RUnlock()
 			if sameHost && siblingFP != "" && siblingFP != resultingFP {
-				return fmt.Errorf("node %q would share Marbor Agent host %q with node %q, which is already pinned to a different fingerprint - every node sharing one physical Marbor Agent must share the same pin (see .local/specs/node-agent-tls.md section 15)", name, resultingHost, n.Name)
+				return fmt.Errorf("node %q would share Marbor Agent host %q with node %q, which is already pinned to a different fingerprint - every node sharing one physical Marbor Agent must share the same pin", name, resultingHost, n.Name)
 			}
 		}
 	}
@@ -3877,8 +3874,8 @@ func (s *Server) validateTLSPatch(name string, patch router.NodePatch) error {
 // handleGetModelConfig returns the configured default parameter profile for
 // a model on a specific node. GET /admin/model-config?model=X&node=Y. 404 if
 // no profile is configured for that exact pair - the caller sees the
-// backend's own defaults apply (R1: never invents values the operator never
-// set).
+// backend's own defaults apply - never invents values the operator never
+// set.
 func (s *Server) handleGetModelConfig(w http.ResponseWriter, r *http.Request) {
 	model := r.URL.Query().Get("model")
 	node := r.URL.Query().Get("node")
@@ -4257,7 +4254,7 @@ func (s *Server) handleLoginForRole(w http.ResponseWriter, r *http.Request, requ
 	}
 
 	// Password verified before role/status are checked, and every rejection
-	// past this point returns the same generic 401 "invalid credentials" (P128):
+	// past this point returns the same generic 401 "invalid credentials":
 	// an unauthenticated caller must not be able to distinguish "wrong
 	// password" from "right password, wrong role" or "right password, pending/
 	// suspended account" - either distinction is a username/role enumeration
@@ -5473,7 +5470,7 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		"warmup_interval_ms": strconv.Itoa(incoming.Warmup.IntervalMs),
 		"warmup_keep_alive":  incoming.Warmup.KeepAlive,
 
-		// Scheduled backup (P49). LastBackupAt/LastBackupError are
+		// Scheduled backup config. LastBackupAt/LastBackupError are
 		// deliberately excluded here - they're read-only status written only
 		// by recordBackupResult, never accepted from a client PUT.
 		"backup_enabled":         strconv.FormatBool(incoming.Backup.Enabled),
@@ -5586,12 +5583,12 @@ func (s *Server) IncrSpill(keyName, servedBy string) {
 // requestID is the trace ID proxy.go already generates once per request
 // (the same one used for X-Request-ID and audit.Entry.RequestID) - it
 // becomes request_log.id, replacing a previously independently-minted id.
-// This has no external format coupling (verified during P41's
-// verify-before-build pass) and lets request_log rows be correlated with
+// This has no external format coupling (verified during the routing-
+// explainability feature's verify-before-build pass) and lets request_log rows be correlated with
 // audit_log/access-log entries for the same request, which the two
 // separately-minted ID spaces could not before.
 //
-// decision is the P41 routing explanation from the router for this
+// decision is the routing explanation from the router for this
 // request's chosen node; nil for cloud-fallback requests, which have no
 // router.RoutingDecision.
 func (s *Server) LogRequest(requestID, apiKey, sourceIP, model, node, status string, httpStatus int, latencyMs int, tokens int64, decision *router.RoutingDecision) {
@@ -5713,9 +5710,9 @@ func (s *Server) TrackLocalRequestModel(keyName, model string, tokens, genDurati
 	atomic.AddInt64(&s.localTokens, tokens)
 	s.analytics.recordLocal(model, tokens, genDurationMs)
 	s.IncrSpill(keyName, "local")
-	// Persist hourly bucket and model stat for this request, async (see
-	// .local/audit-fixes-2026-08-03.md #1 - these were synchronous SQLite
-	// writes on every single inference request before).
+	// Persist hourly bucket and model stat for this request, async - these
+	// were synchronous SQLite writes on every single inference request
+	// before.
 	now := time.Now().UTC().Truncate(time.Hour)
 	saved := s.refCostPer1K * float64(tokens) / 1000.0
 	s.enqueueStats(statsJob{
@@ -5940,7 +5937,7 @@ func (s *Server) handleCloudBudgetStatus(w http.ResponseWriter, r *http.Request)
 // ContextWindowFor returns the operator-declared context window (in tokens)
 // for model from config.context_windows, and whether one is configured. A
 // model with no declared window means the proxy performs no admission-time
-// context-length check for it (fails open - R1: never guess a value that
+// context-length check for it (fails open - never guess a value that
 // wasn't declared).
 func (s *Server) ContextWindowFor(model string) (int, bool) {
 	window, ok := s.cfg.ContextWindows[model]
@@ -6053,7 +6050,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		Name    string `json:"name"`
 		Healthy bool   `json:"healthy"`
 		// Digest is this node's runtime-reported content digest for the model,
-		// when known (currently only Ollama). Empty/omitted otherwise (R1).
+		// when known (currently only Ollama). Empty/omitted otherwise.
 		Digest    string `json:"digest,omitempty"`
 		Warm      bool   `json:"warm"`
 		VRAMBytes int64  `json:"vram_bytes,omitempty"`
@@ -6065,16 +6062,16 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		// SizeDisk is the model's on-disk size in bytes, as reported by
 		// /api/tags (Ollama) or the Marbor Agent's models.list capability
 		// (vLLM/TGI/llama.cpp/MLX). Zero/omitted when neither source has
-		// reported it yet for this model (R1: never estimated).
+		// reported it yet for this model (never estimated).
 		SizeDisk   int64      `json:"size_disk,omitempty"`
 		Nodes      []nodeInfo `json:"nodes"`
 		WarmCount  int        `json:"warm_count"`
 		TotalNodes int        `json:"total_nodes"`
 		// Family is Ollama's own architecture classification (e.g. "llama",
-		// "bert") when known - omitted (R1) for models only ever seen via
+		// "bert") when known - omitted for models only ever seen via
 		// /api/ps (no family field there) or via a non-Ollama agent's
-		// HF-cache scan (no family metadata available - Architecture Law 5's
-		// stated deferral, not a silent gap).
+		// HF-cache scan (no family metadata available - a stated
+		// deferral, not a silent gap).
 		Family string `json:"family,omitempty"`
 		// DigestMismatch is true when 2+ nodes report different non-empty
 		// digests for this model name - e.g. the same tag re-pulled with
@@ -6082,12 +6079,12 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		// reported a digest at all (never a false positive from partial data).
 		DigestMismatch bool `json:"digest_mismatch,omitempty"`
 		// TotalVRAMBytes is the sum of SizeVRAM across all warm copies of this
-		// model - live, not estimated, 0 when no warm copy reports a size (R1).
+		// model - live, not estimated, 0 when no warm copy reports a size.
 		TotalVRAMBytes int64 `json:"total_vram_bytes,omitempty"`
 		// DriftDetails is a short inline diff of the distinct non-empty digests
 		// for this model, e.g. "a1b2c3 vs c3d4e5" (truncated 6-char hex, "sha256:"
-		// prefix stripped). Empty when fewer than 2 distinct digests (R1 - never
-		// synthesized).
+		// prefix stripped). Empty when fewer than 2 distinct digests - never
+		// synthesized.
 		DriftDetails string `json:"drift_details,omitempty"`
 	}
 
@@ -6193,7 +6190,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 
 	// Also include idle (downloaded, not loaded) models on nodes whose Node
 	// Agent exposes the models.list capability - covers vLLM/TGI/llama.cpp/MLX
-	// nodes, which have no /api/tags equivalent (Architecture Law 5). Reuses
+	// nodes, which have no /api/tags equivalent. Reuses
 	// handleNodeModels' own agent-dispatch path (listModelsViaAgent). Kept
 	// sequential (no goroutines) to stay within this handler's existing
 	// per-request node-loop shape rather than introduce a second concurrency
@@ -6345,13 +6342,13 @@ var pullVerifyTimeout = 5 * time.Minute
 const pullVerifyKeyTTL = 15 * time.Minute
 
 // pullJob tracks one in-flight or recently-finished model pull for the
-// progress UI (GET .../pull/progress). Real numbers only, never fabricated
-// (R1): BytesTotal/BytesCompleted are populated only for the direct-to-
+// progress UI (GET .../pull/progress). Real numbers only, never fabricated:
+// BytesTotal/BytesCompleted are populated only for the direct-to-
 // Ollama streaming path, which is the only path that actually reports byte
 // counts today - Method distinguishes this so the UI knows to show a
 // determinate progress bar (direct) vs an elapsed-time-only indicator
-// (agent - see .local/specs/node-agent.md section 16, agent dispatch is a
-// single blocking call with no incremental progress yet).
+// (agent - agent dispatch is a single blocking call with no incremental
+// progress yet).
 type pullJob struct {
 	mu             sync.Mutex
 	Node           string    `json:"node"`
@@ -6577,7 +6574,7 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 	// Reject a pull whose tag format this node's runtime can never load,
 	// before any bytes move - see catalog.go's classifyPullTagFormat/
 	// pullFormatIncompatible doc comments for the confident-only compatibility
-	// matrix across all 5 runtimes (P70). Without this, an "ollama-library"
+	// matrix across all 5 runtimes. Without this, an "ollama-library"
 	// or "gguf-hf" tag pulled onto an incompatible runtime either fails deep
 	// into a multi-GB huggingface-cli download with a cryptic subprocess
 	// error, or - for a GGUF repo id stripped down to "org/repo" - downloads
@@ -6594,14 +6591,14 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Hard-block a pull that free disk cannot possibly satisfy - unlike VRAM
-	// fit (soft confirm, see P47), a disk overrun is a guaranteed failure
+	// fit (soft confirm), a disk overrun is a guaranteed failure
 	// (partial download, or worst case fills the node's disk and disrupts
 	// the OS/other running models), so there is no confirm-anyway override.
 	// Disk state is fetched once and reused by whichever classification
-	// below applies (P73: previously this fetch, and the entire gate, lived
+	// below applies. Previously this fetch, and the entire gate, lived
 	// only inside the known-size branch below, so any tag outside the
 	// curated catalog skipped the check entirely rather than falling back to
-	// a policy floor - see EXECUTION-QUEUE.md P73).
+	// a policy floor.
 	diskFreeGB, diskTotalGB, agentPresent := nodeDiskState(nodes, nodeName)
 	// For a Docker-controlled node, the host-level reading above can be
 	// wrong: Ollama's actual model storage may live on a separate,
@@ -6634,7 +6631,7 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 		}
 	} else if classifyUnknownSizeDiskFit(diskFreeGB, diskTotalGB, agentPresent) == "insufficient" {
 		// body.Model isn't in the curated catalog, so its real download size
-		// is unknown (P73) - classifyDiskFit's size-vs-free-space test cannot
+		// is unknown - classifyDiskFit's size-vs-free-space test cannot
 		// run. Refuse rather than let an unsized download proceed against a
 		// node that is already low on headroom; see classifyUnknownSizeDiskFit's
 		// doc comment for why this is a policy floor and not a guessed size.
@@ -6725,7 +6722,7 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 
 // runDirectPull streams Ollama's /api/pull (stream:true) and updates job
 // with real byte counts as they arrive - the only path that can report an
-// honest total/completed (R1: never fabricate a progress percentage).
+// honest total/completed - never fabricate a progress percentage.
 func (s *Server) runDirectPull(ctx context.Context, job *pullJob, nodeURL, model string) {
 	pullBody, err := json.Marshal(map[string]interface{}{"model": model, "stream": true})
 	if err != nil {
@@ -6772,7 +6769,7 @@ func (s *Server) runDirectPull(ctx context.Context, job *pullJob, nodeURL, model
 	// new layer starts. Track every layer's own total/completed by digest
 	// and sum them, so the reported progress only ever climbs across the
 	// whole pull (still real, server-reported bytes - just correctly added
-	// up, not fabricated - R1).
+	// up, not fabricated).
 	dec := json.NewDecoder(resp.Body)
 	var lastErr string
 	layerTotal := make(map[string]int64)
@@ -7070,8 +7067,7 @@ type nodeModelEntry struct {
 // node, via its Marbor Agent's GET /v1/models (capability "models.list"). No
 // direct-HTTP fallback exists for this today (unlike handleNodePull) - a
 // node without an agent, or an agent build predating this capability,
-// returns a clear 501 rather than a fabricated empty-but-successful list
-// (R1).
+// returns a clear 501 rather than a fabricated empty-but-successful list.
 func (s *Server) handleNodeModels(w http.ResponseWriter, r *http.Request) {
 	nodeName := r.PathValue("name")
 
@@ -7185,8 +7181,7 @@ func nodeHasAgentCapability(nodes []*router.NodeState, name, capability string) 
 // (POST /v1/models, capability "models.pull") instead of the node's own
 // runtime HTTP API, forwarding the marbor's configured Hugging Face token
 // per-request - never stored on the agent side, only set in the pull
-// subprocess's own environment for its lifetime (see
-// .local/specs/node-agent.md section 16).
+// subprocess's own environment for its lifetime.
 func (s *Server) pullModelViaAgent(ctx context.Context, nodeURL string, agentCfg router.MarborAgentConfig, model string, ctrl router.ControlConfig) error {
 	actionURL, err := buildAgentURL(nodeURL, agentCfg.Port, agentCfg.Scheme, "/v1/models")
 	if err != nil {
@@ -7286,7 +7281,7 @@ func (s *Server) containerDiskStatsViaAgent(ctx context.Context, nodeURL string,
 }
 
 // buildAgentURL derives an agent URL from the node's own URL (same host, via
-// url.Parse per R5 - never arithmetic port derivation), the configured agent
+// url.Parse - never arithmetic port derivation), the configured agent
 // port, a literal path, and the agent's OWN scheme (independent of nodeURL's
 // scheme - see store.MarborAgentRecord.Scheme's doc comment; before this
 // parameter existed, every agent action derived its scheme from the node's
@@ -7320,8 +7315,7 @@ var nodeDeleteModelTimeout = 60 * time.Second
 // "models.delete"). No direct-HTTP fallback exists for this today (same
 // reasoning as handleNodeModels) - a node without an agent, or an agent
 // build predating this capability, returns a clear 501 rather than
-// silently reporting success for a delete that never happened (R1 extended
-// to actions).
+// silently reporting success for a delete that never happened.
 func (s *Server) handleNodeDeleteModel(w http.ResponseWriter, r *http.Request) {
 	nodeName := r.PathValue("name")
 	model := r.PathValue("model")
@@ -7440,7 +7434,7 @@ var nodeHealthCheckTimeout = 15 * time.Second
 // handshake, not a transfer.
 var nodeTLSProbeTimeout = 10 * time.Second
 
-// handleNodeTLSProbe performs the P24 enrollment probe (spec section 2,
+// handleNodeTLSProbe performs the TLS enrollment probe (spec section 2,
 // step 2-3): dials the node's Marbor Agent (NOT its runtime URL - the Agent's
 // own host:port, using the Agent's own configured scheme, which is
 // independent of the runtime endpoint's scheme, see
@@ -7505,7 +7499,7 @@ func (s *Server) handleNodeTLSProbe(w http.ResponseWriter, r *http.Request) {
 
 // nodeHealthCheckResult is this admin API's JSON response for an on-demand
 // health check - relayed verbatim from the agent's own healthCheckResult
-// shape (camelCase field names aside), never re-derived or fabricated (R1).
+// shape (camelCase field names aside), never re-derived or fabricated.
 // LatencyMs has no omitempty - a genuinely fast (0ms) probe is a real
 // measurement, not an absent one (see healthCheckResult's doc comment,
 // internal/marboragent/actions.go, for the same reasoning on the agent side).
@@ -7524,7 +7518,7 @@ type nodeHealthCheckResult struct {
 // uses, read-only) for a node with no agent or an agent build predating
 // this capability, so "check now" works on every node, not just
 // agent-equipped ones. Both paths report a real measurement or a real
-// error - never a fabricated result (R1).
+// error - never a fabricated result.
 func (s *Server) handleNodeHealthCheck(w http.ResponseWriter, r *http.Request) {
 	nodeName := r.PathValue("name")
 
@@ -7669,7 +7663,7 @@ func (s *Server) unloadModelViaAgent(ctx context.Context, nodeURL string, agentC
 }
 
 // buildAgentUnloadURL derives the agent's POST /v1/models/{name...} URL from
-// the node's own URL (same host, via url.Parse per R5 - never arithmetic
+// the node's own URL (same host, via url.Parse - never arithmetic
 // port derivation), the configured agent port, and the agent's OWN scheme
 // (independent of nodeURL's scheme - see buildAgentURL's doc comment).
 // Reuses escapeModelPathSegments (same reasoning as buildAgentDeleteURL):
@@ -8223,7 +8217,7 @@ func (s *Server) handleAnalyticsExport(w http.ResponseWriter, r *http.Request) {
 		})
 	default: // hourly
 		buckets := s.analytics.last24hBuckets()
-		// Transform bare hour keys to RFC3339 Z for an unambiguous wire (P393 U12)
+		// Transform bare hour keys to RFC3339 Z for an unambiguous wire format
 		type exportBucket struct {
 			Hour          string  `json:"hour"`
 			Local         int64   `json:"local"`
@@ -8266,8 +8260,8 @@ var vramAgentVendorToolLabel = map[string]string{
 // called when vramTotalMB > 0, so the caller has already established there
 // is a real total to attribute - this just names its source honestly instead
 // of defaulting every non-"nvidia"/"declared" case to a claimed "nvidia-smi"
-// origin regardless of which vendor tool actually produced it (R1: a label
-// is a claim about provenance, not a decoration).
+// origin regardless of which vendor tool actually produced it - a label
+// is a claim about provenance, not a decoration.
 func vramFitSourceLabel(rawVramSource, agentGPUVendor string) string {
 	switch rawVramSource {
 	case "nvidia":

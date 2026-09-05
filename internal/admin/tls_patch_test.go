@@ -701,8 +701,8 @@ func TestHandleNodeTLSProbe_RejectsNonHTTPSNode(t *testing.T) {
 	}
 }
 
-// TestHandleEnableMarborAgent_RejectsSchemeDowngradeWhilePinned verifies P24's
-// no-downgrade rule (section 7) at its actual enforcement point now that a
+// TestHandleEnableMarborAgent_RejectsSchemeDowngradeWhilePinned verifies the
+// TLS no-downgrade rule at its actual enforcement point now that a
 // pinned fingerprint describes the Agent's own scheme, not the runtime's:
 // reconfiguring the Agent from https back to http while a fingerprint is
 // still pinned for that host must be rejected (409), not silently accepted

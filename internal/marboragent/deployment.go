@@ -18,7 +18,7 @@ import (
 // RuntimeCaps describes what parallelism modes a runtime build is capable of.
 // Structured, not map[string]any, so future PP/EP/DP additions are type-safe
 // and dark-variant parity is explicit. Additive only - new caps add new
-// fields, never reinterpret existing ones (R9).
+// fields, never reinterpret existing ones.
 type RuntimeCaps struct {
 	TP         bool `json:"tp,omitempty"`
 	PP         bool `json:"pp,omitempty"`
@@ -38,7 +38,7 @@ type ParallelismInfo struct {
 // host running two vLLM on :8000 and :8001 with different TP widths does
 // not fan a single host-level report to both nodes. Server fans by
 // pinnedID/port match (agent_poll.go:184/343 pattern), not blind Host.
-// Additive: new Marbor ignores unknown fields (R9), old agent omits this block.
+// Additive: new Marbor ignores unknown fields, old agent omits this block.
 type DeploymentReport struct {
 	Runtime     string           `json:"runtime,omitempty"`    // vllm|sglang|tgi|llamacpp|mlx|ollama
 	Port        int              `json:"port,omitempty"`       // runtime's listening port, 0 if unknown
@@ -165,7 +165,7 @@ func detectRuntimeFromArgs(args string) string {
 
 // parseGPUGroupFromEnv parses CUDA_VISIBLE_DEVICES and vendor equivalents.
 // Env string is "0,1,2" or "0,1" - returns []int or nil if not set/invalid.
-// Never fabricates: empty/invalid -> nil (R1).
+// Never fabricates: empty/invalid -> nil.
 func parseGPUGroupFromEnv(envVal string) []int {
 	envVal = strings.TrimSpace(envVal)
 	if envVal == "" {
@@ -387,7 +387,7 @@ func parseDockerInspect(inspectJSON string, gpuCount int, getenv func(string) st
 // CollectDeployments is the agent-side deployment detector used by
 // scheduler.refresh. It tries: 1) ps 2) docker.sock 3) env 4) fallback nil.
 // Never fabricates: on error or when host PID namespace is isolated, returns
-// nil (server shows "unknown - add docker.sock or run agent on host") R1.
+// nil (server shows "unknown - add docker.sock or run agent on host").
 // gpuBlock provides fallback len when no env is present.
 func CollectDeployments(detected []DetectedRuntime, gpuBlock *GPUBlock) []DeploymentReport {
 	gpuCount := 0
@@ -401,7 +401,7 @@ func CollectDeployments(detected []DetectedRuntime, gpuBlock *GPUBlock) []Deploy
 	// 1) Try ps
 	if psOut, err := runPS(); err == nil && strings.TrimSpace(psOut) != "" {
 		if reps := collectFromPS(psOut, detected, gpuCount, getenv); len(reps) > 0 {
-			// Fill any missing parallelism with env fallback width? No - R1 keep nil.
+			// Fill any missing parallelism with env fallback width? No - keep nil, never fabricate.
 			return reps
 		}
 		// ps succeeded but found no runtime lines - could be docker-isolated PID ns
@@ -445,7 +445,7 @@ var psExec = func() (string, error) {
 func runPS() (string, error) { return psExec() }
 
 // collectFromDockerSocket queries /var/run/docker.sock if present.
-// Returns nil if socket not present or no deployments found (R1 unknown, not fabricated).
+// Returns nil if socket not present or no deployments found (unknown, not fabricated).
 func collectFromDockerSocket(detected []DetectedRuntime, gpuCount int) []DeploymentReport {
 	sock := "/var/run/docker.sock"
 	if _, err := os.Stat(sock); err != nil {

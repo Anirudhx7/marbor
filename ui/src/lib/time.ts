@@ -4,7 +4,7 @@
 // the others. Behavior of each function is unchanged from its original.
 
 // ---------------------------------------------------------------------------
-// Zone-aware formatting - P393: every wall-clock render must go through these
+// Zone-aware formatting: every wall-clock render must go through these
 // so the operator's configured `settings.timezone` (or "Local") is honoured.
 // "Local" means browser local (no timeZone param); any other value is an IANA
 // name validated by config.Validate() - bad values fall back to browser local

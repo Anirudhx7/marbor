@@ -36,7 +36,7 @@ type RuntimeDetector interface {
 
 	// DetectAll returns every runtime currently listening on a candidate
 	// port. An empty slice means "couldn't tell" - callers must omit the
-	// runtime resource(s) entirely (R1), never guess.
+	// runtime resource(s) entirely, never guess.
 	DetectAll(ctx context.Context) []DetectedRuntime
 }
 
@@ -71,7 +71,7 @@ func (d localhostRuntimeDetector) Detect(ctx context.Context) (string, string, b
 func (d localhostRuntimeDetector) DetectAll(ctx context.Context) []DetectedRuntime {
 	var found []DetectedRuntime
 	for _, candidate := range localRuntimePorts {
-		// DetectRuntimeConfirmed (P149), not DetectRuntime: an unidentified
+		// DetectRuntimeConfirmed, not DetectRuntime: an unidentified
 		// HTTP service on a candidate port (reached=true, confirmed=false)
 		// must not be permanently labeled and ID-registered as "ollama" -
 		// DetectAll's own doc comment above promises "an empty slice means

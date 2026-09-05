@@ -393,7 +393,7 @@ func TestNodeOverrides(t *testing.T) {
 	}
 }
 
-// TestNodeOverrides_MaxInFlight verifies the P64 per-node in-flight cap
+// TestNodeOverrides_MaxInFlight verifies the per-node in-flight cap
 // override column: roundtrips through UpsertNodeOverride/NodeOverrides,
 // survives a merge update that only touches an unrelated field (gpu_model),
 // and distinguishes "never declared" (nil) from an explicit 0.
@@ -447,7 +447,7 @@ func TestNodeOverrides_MaxInFlight(t *testing.T) {
 	}
 }
 
-// TestNodeOverrides_GPUIndices verifies the P75 Gap B/C declared-GPU-scope
+// TestNodeOverrides_GPUIndices verifies the declared-GPU-scope
 // column: roundtrips through UpsertNodeOverride/NodeOverrides, survives a
 // merge update that only touches an unrelated field (gpu_model), and can be
 // explicitly cleared back to "nothing declared" with a non-nil empty slice.
@@ -504,7 +504,7 @@ func TestNodeOverrides_GPUIndices(t *testing.T) {
 	}
 }
 
-// TestNodeOverrides_VRAMOverrides verifies the P411 vram_overrides column:
+// TestNodeOverrides_VRAMOverrides verifies the vram_overrides column:
 // round-trips through UpsertNodeOverride/NodeOverrides, survives a merge
 // update that only touches an unrelated field (gpu_model), and can be
 // explicitly cleared with a non-nil empty map.
@@ -558,10 +558,10 @@ func TestNodeOverrides_VRAMOverrides(t *testing.T) {
 	}
 }
 
-// TestNodeOverrides_TLSFingerprint verifies the P24 tls_fingerprint column:
+// TestNodeOverrides_TLSFingerprint verifies the tls_fingerprint column:
 // round-trips through UpsertNodeOverride/NodeOverrides, survives a merge
 // update that only touches an unrelated field, and can be explicitly cleared
-// with a non-nil empty string. See .local/specs/node-agent-tls.md section 3.
+// with a non-nil empty string.
 func TestNodeOverrides_TLSFingerprint(t *testing.T) {
 	s := openTestDB(t)
 
@@ -615,7 +615,7 @@ func TestNodeOverrides_TLSFingerprint(t *testing.T) {
 }
 
 // TestNodeOverrides_UpsertDoesNotClobberUnknownColumn is the regression test
-// for the P24/.local/core/P24-TLS-DESIGN.md section 10b downgrade-safety fix.
+// for the TLS-fingerprint downgrade-safety fix.
 // It directly proves UpsertNodeOverride's write primitive (INSERT ... ON
 // CONFLICT DO UPDATE SET, naming only the columns this function's Go
 // signature carries) never clobbers a column outside that list - unlike the
@@ -910,7 +910,7 @@ func TestQueryAuditLogSubstringFilters(t *testing.T) {
 }
 
 // TestAuditLogRoutingReasonRoundTrip verifies routing_reason survives a real
-// AppendAuditLog -> SQLite -> QueryAuditLog round trip (P41 code-review fix:
+// AppendAuditLog -> SQLite -> QueryAuditLog round trip (a code-review fix:
 // Requests.tsx reads the audit_log list, not request_log, so this field must
 // persist and query back through the actual audit_log column, not just live
 // on the in-memory struct).
@@ -1518,10 +1518,10 @@ func TestBackupTo(t *testing.T) {
 	}
 }
 
-// TestBenchmarkRunTPOTNullability verifies P408's new fields round-trip
+// TestBenchmarkRunTPOTNullability verifies the newer p95/p99/TPOT fields round-trip
 // through InsertBenchmarkRun/ListBenchmarkRuns: p95/p99 and TPOT p50 are all
 // nullable, preserving nil (not computable/not computed) vs. a real value
-// (R1: absence, never a fabricated 0) across the SQL NULL boundary.
+// (absence, never a fabricated 0) across the SQL NULL boundary.
 func TestBenchmarkRunTPOTNullability(t *testing.T) {
 	s := openTestDB(t)
 
@@ -1585,7 +1585,7 @@ func TestBenchmarkRunTPOTNullability(t *testing.T) {
 		t.Errorf("WarmTPOTP50Ms = %v, want nil", *gotWithTPOT.WarmTPOTP50Ms)
 	}
 	// The regression this test exists for: a row with no p95/p99 supplied
-	// (standing in for a pre-P408 row after migration) must come back with
+	// (standing in for a row from before these columns existed, after migration) must come back with
 	// nil on ColdP95Ms/ColdP99Ms/WarmP95Ms/WarmP99Ms, not a fabricated 0.
 	if gotNoPercentiles.ColdP95Ms != nil || gotNoPercentiles.ColdP99Ms != nil || gotNoPercentiles.WarmP95Ms != nil || gotNoPercentiles.WarmP99Ms != nil {
 		t.Errorf("expected p95/p99 nil for a row with no percentile data, got cold=%v/%v warm=%v/%v",

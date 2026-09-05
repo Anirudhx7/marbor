@@ -3,7 +3,7 @@ package marboragent
 // runtime_version.go detects the locally-running inference runtime's own
 // reported version, for RuntimeInfo.Version. Only "ollama" has a real
 // single-command version query today; runtimes without an equivalent
-// primitive are left empty (never guessed - R1) until one is found.
+// primitive are left empty (never guessed) until one is found.
 
 import (
 	"context"

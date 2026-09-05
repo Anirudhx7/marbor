@@ -49,7 +49,7 @@ export interface PullProgressState {
   simulating: boolean;
   startedAtMs: number;
   // speedBps is real, derived from consecutive server-reported byte counts
-  // (never fabricated - R1) - stays 0 until the direct-to-Ollama path
+  // (never fabricated) - stays 0 until the direct-to-Ollama path
   // reports at least two progress samples with an actual delta, and decays
   // back to 0 if no new bytes arrive for a few ticks (a stalled transfer
   // should not keep showing its last-known rate as if still live). The
@@ -174,7 +174,7 @@ function runDemoPull(key: string, node: string, model: string, verifyLoad: boole
       // Demo illustrates the real flow's extra phase without a backend to
       // actually probe - always resolves to success, matching every other
       // demo fixture's "idealized but plausible" convention (never a
-      // fabricated failure - R1 applies to demo data too).
+      // fabricated failure - the no-fake-data rule applies to demo data too).
       setJob(key, { status: 'verifying' });
       setTimeout(finishSuccess, 900);
       return;

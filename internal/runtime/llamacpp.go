@@ -48,7 +48,7 @@ func (p *LlamaCppProbe) Probe(ctx context.Context, nodeURL string) (ProbeResult,
 			// versions (its /v1/models implementation is hand-rolled, not
 			// vLLM's protocol) - parsed defensively so it's used when a
 			// build happens to report it and silently ignored (Digest stays
-			// empty, today's behavior) when absent. Never fabricated (R1).
+			// empty, today's behavior) when absent. Never fabricated.
 			Root string `json:"root"`
 		} `json:"data"`
 	}

@@ -63,7 +63,7 @@ func isValidTLSFingerprintArg(s string) bool {
 }
 
 // runNodesConfirmTLS implements `marbor nodes confirm-tls <node-name>
-// --fingerprint=SHA256:...` (P24, spec section 11's headless-enrollment
+// --fingerprint=SHA256:...` (spec section 11's headless-enrollment
 // exception - the only CLI surface this item adds). fingerprint must come
 // from the operator's own flag value; this command never probes the node or
 // otherwise infers/accepts a certificate on its own - the caller is
@@ -125,7 +125,7 @@ func runNodes(flags *globalFlags, stdout, stderr io.Writer) int {
 }
 
 // runNodesAdd implements `marbor nodes add <name> <url> [--runtime x]
-// [--gpu-model x] [--vram-total-mb n]` - POST /admin/nodes (P-A2-01).
+// [--gpu-model x] [--vram-total-mb n]` - POST /admin/nodes.
 func runNodesAdd(flags *globalFlags, name, url, gpuModel, runtime string, vramTotalMB int64, stdout, stderr io.Writer) int {
 	client, err := authenticatedClient(flags)
 	if err != nil {
@@ -156,7 +156,7 @@ func runNodesAdd(flags *globalFlags, name, url, gpuModel, runtime string, vramTo
 }
 
 // runNodesRemove implements `marbor nodes remove <name> [--yes]` - DELETE
-// /admin/nodes/{name} (P-A2-01). Destructive per R10: requires --yes or an
+// /admin/nodes/{name}. Destructive: requires --yes or an
 // interactive TTY confirmation, matching the "key revoke"/"users delete"
 // pattern (confirm.go).
 func runNodesRemove(flags *globalFlags, name string, yes bool, stdout, stderr io.Writer) int {
@@ -195,7 +195,7 @@ func parseCommaList(s string) []string {
 }
 
 // runNodesWarmupGet implements `marbor nodes warmup get <node>` - GET
-// /admin/nodes/{name}/warmup (P-A2-02).
+// /admin/nodes/{name}/warmup.
 func runNodesWarmupGet(flags *globalFlags, name string, stdout, stderr io.Writer) int {
 	client, err := authenticatedClient(flags)
 	if err != nil {
@@ -213,14 +213,14 @@ func runNodesWarmupGet(flags *globalFlags, name string, stdout, stderr io.Writer
 }
 
 // runNodesWarmupSet implements `marbor nodes warmup set <node> [--enabled
-// true|false] [--models a,b]` - PUT /admin/nodes/{name}/warmup (P-A2-02).
+// true|false] [--models a,b]` - PUT /admin/nodes/{name}/warmup.
 // handleSetNodeWarmup takes enabled+models together in one whole-object PUT
 // with no partial-patch semantics, so an operator who only wants to flip
 // --enabled (a common single-purpose case, e.g. pausing warmup) would
 // otherwise silently wipe any previously configured --models by omitting it
 // (code review finding). To make "set" behave like a patch from the
-// operator's point of view without inventing a new Admin API capability
-// (Law 6), any flag NOT explicitly passed is filled in from the node's
+// operator's point of view without inventing a new Admin API capability,
+// any flag NOT explicitly passed is filled in from the node's
 // current warmup config (one extra GET) before the PUT.
 func runNodesWarmupSet(ctx *RunCtx, name string) int {
 	client, err := authenticatedClient(ctx.Flags)
@@ -255,7 +255,7 @@ func runNodesWarmupSet(ctx *RunCtx, name string) int {
 }
 
 // runNodesPinnedGet implements `marbor nodes pinned get <node>` - GET
-// /admin/nodes/{name}/pinned (P-A2-02).
+// /admin/nodes/{name}/pinned.
 func runNodesPinnedGet(flags *globalFlags, name string, stdout, stderr io.Writer) int {
 	client, err := authenticatedClient(flags)
 	if err != nil {
@@ -273,7 +273,7 @@ func runNodesPinnedGet(flags *globalFlags, name string, stdout, stderr io.Writer
 }
 
 // runNodesPinnedSet implements `marbor nodes pinned set <node> --models
-// a,b` - PUT /admin/nodes/{name}/pinned (whole-list replace, P-A2-02).
+// a,b` - PUT /admin/nodes/{name}/pinned (whole-list replace).
 func runNodesPinnedSet(flags *globalFlags, name, models string, stdout, stderr io.Writer) int {
 	client, err := authenticatedClient(flags)
 	if err != nil {
@@ -291,7 +291,7 @@ func runNodesPinnedSet(flags *globalFlags, name, models string, stdout, stderr i
 }
 
 // runNodesPrewarmSet implements `marbor nodes prewarm set <node> --disabled
-// true|false` - POST /admin/nodes/{name}/prewarm (P-A2-02).
+// true|false` - POST /admin/nodes/{name}/prewarm.
 func runNodesPrewarmSet(flags *globalFlags, name string, disabled bool, stdout, stderr io.Writer) int {
 	client, err := authenticatedClient(flags)
 	if err != nil {
@@ -309,8 +309,8 @@ func runNodesPrewarmSet(flags *globalFlags, name string, disabled bool, stdout, 
 	return ExitOK
 }
 
-// runNodesPatchWithCtx implements `marbor nodes patch <node> --parallelism-type tp --parallelism-width 8` (P397)
-// and `marbor nodes patch <node> --vram-override model=mb[,model2=mb2]` (P411).
+// runNodesPatchWithCtx implements `marbor nodes patch <node> --parallelism-type tp --parallelism-width 8`
+// and `marbor nodes patch <node> --vram-override model=mb[,model2=mb2]`.
 func runNodesPatchWithCtx(ctx *RunCtx, name string) int {
 	pTypeSet := ctx.IsSet("parallelism-type")
 	pWidthSet := ctx.IsSet("parallelism-width")

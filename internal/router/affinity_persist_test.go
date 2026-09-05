@@ -7,9 +7,8 @@ import (
 	"github.com/Anirudhx7/marbor/internal/store"
 )
 
-// TestFlushAffinityThenRestoreRoundTrips covers audit finding #8
-// (.local/audit-fixes-2026-08-03.md #7): a restart must not drop every
-// in-flight sticky session. FlushAffinity's snapshot must round-trip through
+// TestFlushAffinityThenRestoreRoundTrips covers audit finding #8: a restart
+// must not drop every in-flight sticky session. FlushAffinity's snapshot must round-trip through
 // RestoreAffinity into a usable in-memory entry.
 func TestFlushAffinityThenRestoreRoundTrips(t *testing.T) {
 	st := openWarmTestStore(t)

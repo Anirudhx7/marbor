@@ -83,7 +83,7 @@ func TestDecryptSecretWrongKeyFails(t *testing.T) {
 	}
 }
 
-// TestDecryptSecretWrongAADFails verifies P137's row-scoped binding: a
+// TestDecryptSecretWrongAADFails verifies the row-scoped AAD binding: a
 // ciphertext sealed for one field must fail GCM authentication (not silently
 // decrypt) when Open is called with a different field's AAD - the guard
 // against a copy-pasted value across rows/columns.

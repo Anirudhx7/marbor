@@ -73,8 +73,8 @@ func runGeneration(t *testing.T, dir string) map[string][]byte {
 }
 
 // TestGenerate_Deterministic runs generation twice into the same temp dir
-// and asserts byte-identical output - the P83+ plan's determinism
-// requirement (Implementation section 6): running gen-docs twice must never
+// and asserts byte-identical output - the required determinism guarantee:
+// running gen-docs twice must never
 // produce a diff, or the CI drift check would be permanently red.
 func TestGenerate_Deterministic(t *testing.T) {
 	dir := t.TempDir()

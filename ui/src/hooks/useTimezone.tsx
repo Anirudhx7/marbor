@@ -9,8 +9,8 @@ const TimezoneContext = createContext<string>('Local');
 
 // How often to re-poll the settings endpoint for a live timezone change.
 // Settings.tsx writes via PUT /admin/settings - other pages must notice within
-// this interval without a hard reload (P393 acceptance: Activity re-renders on
-// Settings toggle without reload).
+// this interval without a hard reload (Activity must re-render on a Settings
+// toggle without a reload).
 const POLL_MS = 15_000;
 
 // Custom event fired by Settings.tsx after a successful timezone PUT so the

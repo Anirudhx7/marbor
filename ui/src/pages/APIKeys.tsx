@@ -52,7 +52,7 @@ export function APIKeys() {
   // in the display currency - unlike the other numeric fields, these can't
   // bind directly to the wire USD value, since the field is shown in
   // whatever currency the admin has selected. They must NOT be recomputed
-  // from a stored USD value on every render (P106): parseFloat silently
+  // from a stored USD value on every render: parseFloat silently
   // drops a trailing decimal point, so a round-trip through currency math on
   // every keystroke turned typing "10.00" into "100+" purely from typing
   // order. Converted to USD only once, at save time.

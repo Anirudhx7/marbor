@@ -13,6 +13,6 @@ var hostUnsupportedOnce sync.Once
 
 func logHostUnsupported() {
 	hostUnsupportedOnce.Do(func() {
-		log.Printf("marboragent: host telemetry (CPU/RAM/disk) is not implemented on this platform; host fields will be omitted (R1: omitted, never fabricated)")
+		log.Printf("marboragent: host telemetry (CPU/RAM/disk) is not implemented on this platform; host fields will be omitted (never fabricated)")
 	})
 }

@@ -50,7 +50,7 @@ var rocmCardKeyPattern = regexp.MustCompile(`^card(\d+)$`)
 // returns the first one actually present with a non-empty value - a real
 // but differently-capitalized/renamed key across ROCm versions is never
 // mistaken for an absent one, and a genuinely absent value stays absent
-// rather than being defaulted (R1).
+// rather than being defaulted.
 func rocmField(card map[string]string, names ...string) (string, bool) {
 	for _, n := range names {
 		if v, ok := card[n]; ok && strings.TrimSpace(v) != "" {

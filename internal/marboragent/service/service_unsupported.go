@@ -13,7 +13,7 @@ import (
 )
 
 // New reports that this GOOS has no supported service-manager backend. Per
-// .local/specs/node-agent.md section 12: promise the architecture (any OS
+// the node-agent design doc: promise the architecture (any OS
 // can get a Manager implementation later), not universal day-one coverage.
 func New() (Manager, error) {
 	return nil, fmt.Errorf("service: no supported service manager for GOOS %q - install and run %q manually in the foreground, or in your own init system", runtime.GOOS, Name)

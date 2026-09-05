@@ -1,9 +1,9 @@
 package router
 
-// max_in_flight_test.go -- locks in the P64 per-node in-flight cap: a node at
+// max_in_flight_test.go -- locks in the per-node in-flight cap: a node at
 // or over its effective cap (per-node override, or the global
 // RoutingConfig.MaxInFlightPerNode default) is a hard-ineligible routing
-// candidate (Routing Hierarchy step 1, same tier as isEligibleForModel/P79),
+// candidate (Routing Hierarchy step 1, same tier as isEligibleForModel),
 // shed immediately rather than queued, with failover handled entirely by the
 // existing RouteExcluding/retry chain.
 
@@ -52,7 +52,7 @@ func TestMaxInFlightCapExcludesNodeAtCapacity(t *testing.T) {
 }
 
 // TestMaxInFlightCapZeroMeansUncapped verifies the default (0, unset) global
-// cap preserves pre-P64 uncapped behavior: a node may accumulate any number
+// cap preserves the historical uncapped behavior: a node may accumulate any number
 // of in-flight requests and remain eligible.
 func TestMaxInFlightCapZeroMeansUncapped(t *testing.T) {
 	r := New(config.RoutingConfig{}, []config.NodeConfig{
@@ -113,7 +113,7 @@ func TestMaxInFlightPerNodeOverrideBeatsGlobalDefault(t *testing.T) {
 // TestMaxInFlightStickySessionDoesNotBypassCap verifies a session pinned to a
 // node that is at/over its cap does not reuse that node just because it's
 // pinned - the sticky shortcut must re-check capacity, same as it already
-// re-checks model eligibility (P79).
+// re-checks model eligibility.
 func TestMaxInFlightStickySessionDoesNotBypassCap(t *testing.T) {
 	r := New(config.RoutingConfig{SessionAffinity: true, MaxInFlightPerNode: 1}, []config.NodeConfig{
 		{Name: "aa-pinned-node", URL: "http://pinned.invalid", Runtime: "ollama"},

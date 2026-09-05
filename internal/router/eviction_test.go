@@ -178,7 +178,7 @@ func TestUnloadModelsScheduled(t *testing.T) {
 	}
 }
 
-// TestUnloadModelsScheduledDispatchesToAgentWhenCapable verifies the P33 fix:
+// TestUnloadModelsScheduledDispatchesToAgentWhenCapable verifies that
 // a scheduled unload on a node whose agent reports "models.unload" dispatches
 // through the agent (POST /v1/models/{name}) instead of the direct Ollama
 // keep_alive:0 HTTP call, mirroring handleUnloadModel's manual-path behavior.
@@ -337,7 +337,7 @@ func TestUnloadModelSendsKeepAliveZero(t *testing.T) {
 	}
 }
 
-// TestUnloadModelNonOllamaReturnsSentinelError is the P101 regression: a
+// TestUnloadModelNonOllamaReturnsSentinelError is a regression test: a
 // known non-Ollama runtime must return ErrUnloadUnsupported, not nil - a nil
 // return was indistinguishable from a genuine successful unload to every
 // caller (manual unload endpoint, UnloadModels' direct-path fallback,
@@ -541,7 +541,7 @@ func TestEvictForHeadroomLowerPriorityKeepWarmModelIsEvictable(t *testing.T) {
 	}
 }
 
-// TestEvictForHeadroomFragmentationOverheadTriggersEviction covers P407: a
+// TestEvictForHeadroomFragmentationOverheadTriggersEviction verifies that a
 // node whose raw free bytes (total-used) exactly satisfies neededBytes must
 // now require slightly more headroom once FragmentationOverheadMult
 // discounts the reported used bytes for allocator/CUDA-graph slack - a
@@ -577,7 +577,8 @@ func TestEvictForHeadroomFragmentationOverheadTriggersEviction(t *testing.T) {
 	r.lastUsed[modelKey("n1", "cold")] = time.Now().Add(-time.Hour)
 
 	// used = 500 MiB, total = 1000 MiB, raw free = 500 MiB >= 480 MiB needed:
-	// pre-P407 this would have been a no-op. FragmentationOverheadMult (1.08)
+	// without accounting for fragmentation this would have been a no-op.
+	// FragmentationOverheadMult (1.08)
 	// adjusts used to 540 MiB, adjusted free = 460 MiB < 480 MiB needed, so
 	// the evictable "cold" model must now be evicted to make up the slack.
 	const neededBytes = 480 * mib
@@ -594,7 +595,7 @@ func TestEvictForHeadroomFragmentationOverheadTriggersEviction(t *testing.T) {
 }
 
 // TestEvictForHeadroomFragmentationOverheadDoesNotOvertrigger covers the
-// other half of P407's acceptance criteria: eviction must NOT trigger when
+// other half of the fragmentation-overhead acceptance criteria: eviction must NOT trigger when
 // the existing free slack already covers the fragmentation overhead - the
 // constant should only close the gap the audit found, not cause gratuitous
 // extra evictions beyond what the new margin requires.
@@ -683,7 +684,7 @@ func TestEstimateModelSizeBytesPrefersLastKnownRealVRAM(t *testing.T) {
 	r := New(config.RoutingConfig{}, []config.NodeConfig{{Name: "pve", URL: srv.URL}}, nil)
 
 	// Never observed loaded yet: falls back to the on-disk size, run through
-	// the P410 quantization/format overhead multiplier (GGUFOverheadMult
+	// the quantization/format overhead multiplier (GGUFOverheadMult
 	// 1.10, since this node has no runtime set and defaults to Ollama/GGUF).
 	const wantDiskEstimate = 10568597504 // 9163 MiB (9608350718 truncated to MB) * 1.10
 	if got := r.estimateModelSizeBytes(srv.URL, "gemma4:latest", true, 0); got != wantDiskEstimate {
@@ -699,8 +700,8 @@ func TestEstimateModelSizeBytesPrefersLastKnownRealVRAM(t *testing.T) {
 	}
 }
 
-// TestEstimateModelSizeBytes_QuantOverheadByRuntime covers P410's core
-// acceptance criterion: two models tied on raw on-disk size (representing,
+// TestEstimateModelSizeBytes_QuantOverheadByRuntime verifies the core
+// acceptance criterion for quantization/format overhead by runtime: two models tied on raw on-disk size (representing,
 // e.g., a llama3.1:8b Q4_K_M GGUF build vs an equivalently-sized safetensors
 // AWQ build) no longer produce the same VRAM estimate, because the disk-size
 // tier now runs through the same GGUFOverheadMult/SafetensorsOverheadMult
@@ -789,7 +790,7 @@ func TestEnsureHeadroomUsesRealVRAMNotDiskSizeForSiblingReservation(t *testing.T
 	if evicted {
 		t.Error("ensureHeadroom triggered an eviction - mxbai should have fit in the real 896 MiB free without evicting anything")
 	}
-	// mxbai's own reservation runs its 640 MiB disk size through the P410
+	// mxbai's own reservation runs its 640 MiB disk size through the
 	// GGUFOverheadMult (1.10) since it comes from the disk-size tier, not a
 	// real observed footprint: 640 * 1.10 = 704 MiB.
 	const want = 3200*mib + 704*mib // gemma's real reservation + mxbai's overhead-adjusted disk estimate
@@ -873,7 +874,7 @@ func TestPendingPrewarmBytes_ExpiredReservationExcluded(t *testing.T) {
 // TestModelFitsAnyHealthyNode covers the three real-data cases: fits, doesn't
 // fit anywhere, and unknown size on a node with KNOWN capacity (fails open -
 // never guessed). See TestModelFitsAnyHealthyNode_NoCapacityKnownFailsClosed
-// below for the P403 case where capacity itself is unknown fleet-wide.
+// below for the case where capacity itself is unknown fleet-wide.
 func TestModelFitsAnyHealthyNode(t *testing.T) {
 	r := New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
 		{Name: "node-a", URL: "http://localhost:11434", VRAMTotalMB: 16384},
@@ -900,8 +901,8 @@ func TestModelFitsAnyHealthyNode(t *testing.T) {
 	}
 }
 
-// TestModelFitsAnyHealthyNode_NoCapacityKnownFailsClosed covers P403 (audit
-// H4): a remote fleet with no marbor-agent and no manually declared
+// TestModelFitsAnyHealthyNode_NoCapacityKnownFailsClosed covers the case where
+// a remote fleet with no marbor-agent and no manually declared
 // vram_total_mb has VRAMTotalMB==0 on every node (health.go's "api"-source
 // path only ever populates real used-VRAM, never a total). Before the fix,
 // this made ModelFitsAnyHealthyNode's sawKnownSize stay false with zero
@@ -929,11 +930,11 @@ func TestModelFitsAnyHealthyNode_NoCapacityKnownFailsClosed(t *testing.T) {
 	}
 
 	if r.ModelFitsAnyHealthyNode("big-model-70b", 0) {
-		t.Error("a fleet with zero known VRAM capacity must not report fit=true (P403 fail-open bug) - even though the model's size is known, there is no real capacity signal to compare it against")
+		t.Error("a fleet with zero known VRAM capacity must not report fit=true (a fail-open bug) - even though the model's size is known, there is no real capacity signal to compare it against")
 	}
 }
 
-// TestModelFitsAnyHealthyNode_ContextLengthAware covers P405: a model close
+// TestModelFitsAnyHealthyNode_ContextLengthAware verifies that a model close
 // to the free-VRAM edge fits at a small requested context but no longer fits
 // once the same request declares a much larger one, because the KV-cache
 // footprint at 32K tokens genuinely doesn't fit alongside the weights on this
@@ -962,7 +963,7 @@ func TestModelFitsAnyHealthyNode_ContextLengthAware(t *testing.T) {
 }
 
 // TestModelFitsAnyHealthyNode_FragmentationOverheadRequiresMoreHeadroom
-// covers P407's headroom-pass acceptance criterion: a model whose estimate
+// covers the fragmentation-overhead headroom-pass acceptance criterion: a model whose estimate
 // sits between the raw free bytes and the fragmentation-adjusted free bytes
 // must flip from "fits" to "doesn't fit" once FragmentationOverheadMult
 // discounts the node's reported used bytes for allocator/CUDA-graph slack.
@@ -982,7 +983,7 @@ func TestModelFitsAnyHealthyNode_FragmentationOverheadRequiresMoreHeadroom(t *te
 	}
 
 	if r.ModelFitsAnyHealthyNode("edge-model", 0) {
-		t.Error("edge-model (495 MiB estimate) should no longer fit once fragmentation overhead reduces free VRAM to 460 MiB - it only fit under the pre-P407 raw 500 MiB free")
+		t.Error("edge-model (495 MiB estimate) should no longer fit once fragmentation overhead reduces free VRAM to 460 MiB - it only fit under the raw 500 MiB free before fragmentation overhead was accounted for")
 	}
 }
 
@@ -1022,7 +1023,7 @@ func TestFallbackChainFor(t *testing.T) {
 }
 
 // TestLocalDegradationChainFor verifies the config-only, immutable-after-
-// construction accessor for P67's local degradation chain: declared models
+// construction accessor for the local degradation chain: declared models
 // return their chain, undeclared models return nil.
 func TestLocalDegradationChainFor(t *testing.T) {
 	r := New(config.RoutingConfig{
@@ -1142,9 +1143,9 @@ func TestEnsureHeadroomNoopWhenFits(t *testing.T) {
 	}
 }
 
-// TestReserveColdStartBytes_NeverFetchesOverHTTP guards P51's core constraint:
+// TestReserveColdStartBytes_NeverFetchesOverHTTP guards a core constraint:
 // the hot request-routing path (Route/selectBestNode/RouteExcluding) must
-// never block on I/O (R2). reserveColdStartBytes must use only already-known,
+// never block on I/O. reserveColdStartBytes must use only already-known,
 // zero-I/O size data - never estimateModelSizeBytes's HTTP-fetch fallback -
 // even when a live /api/tags endpoint would happily answer.
 func TestReserveColdStartBytes_NeverFetchesOverHTTP(t *testing.T) {
@@ -1159,17 +1160,17 @@ func TestReserveColdStartBytes_NeverFetchesOverHTTP(t *testing.T) {
 
 	// No lastKnownVRAM, no VRAMOverrides recorded: size is genuinely unknown
 	// via any zero-I/O path, even though the on-disk size IS available over
-	// HTTP. Must never call the server to find out (R2), and per P402 must
+	// HTTP. Must never call the server to find out, and must
 	// fall back to the unknownModelReserveBytes placeholder guard rather than
 	// reserving nothing - reserving 0 here is exactly the fail-open bug that
 	// let concurrent cold starts for a never-seen model double-book a node.
 	r.reserveColdStartBytes(srv.URL, "n1", "model-x")
 
 	if fetched {
-		t.Error("reserveColdStartBytes made an HTTP call - the hot request path must never block on I/O (R2)")
+		t.Error("reserveColdStartBytes made an HTTP call - the hot request path must never block on I/O")
 	}
 	if got := r.PendingPrewarmBytes("n1"); got != unknownModelReserveBytes {
-		t.Errorf("PendingPrewarmBytes(n1) = %d, want %d (unknown size must reserve the P402 placeholder guard, not nothing)", got, unknownModelReserveBytes)
+		t.Errorf("PendingPrewarmBytes(n1) = %d, want %d (unknown size must reserve the placeholder guard, not nothing)", got, unknownModelReserveBytes)
 	}
 }
 

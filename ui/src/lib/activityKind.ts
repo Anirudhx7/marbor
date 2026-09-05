@@ -1,7 +1,7 @@
 export type ActivityKind = 'drain' | 'agent' | 'runtime' | 'node' | 'warmup' | 'schedule' | 'predictive' | 'config';
 
 // toActivityKind maps a system_audit action string to its fleet-operations
-// kind bucket. Taxonomy locked per P389 tweaks: keep drain vs warmup distinct,
+// kind bucket. Taxonomy is locked: keep drain vs warmup distinct,
 // predictive is never derived from system_audit, it comes from its own
 // endpoint and gets its own badge/section.
 export function toActivityKind(action: string): ActivityKind {

@@ -1,6 +1,6 @@
 package proxy
 
-// Streaming integration tests for the proxy hot path (rule R2: streaming must
+// Streaming integration tests for the proxy hot path (streaming must
 // never be buffered). Each test stands up a mock Ollama/OpenAI node with
 // httptest, drives the real Handler, and observes the client side through a
 // write-time-recording ResponseWriter.

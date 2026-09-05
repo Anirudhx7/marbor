@@ -16,7 +16,7 @@ func newShowTestRouter() *Router {
 }
 
 // TestFetchModelShow_Success verifies the happy path: a complete model_info
-// block (all five facts P71's KV-cache formula needs) decodes into
+// block (all five facts the KV-cache formula needs) decodes into
 // ModelShowInfo with ok=true.
 func TestFetchModelShow_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -69,7 +69,7 @@ func TestFetchModelShow_Success(t *testing.T) {
 
 // TestFetchModelShow_IncompleteModelInfo verifies that a partial model_info
 // block (missing a field the formula needs) returns ok=false rather than a
-// zero-filled struct that could be mistaken for real data (R1).
+// zero-filled struct that could be mistaken for real data.
 func TestFetchModelShow_IncompleteModelInfo(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{
@@ -125,7 +125,7 @@ func TestFetchModelShow_NodeUnreachable(t *testing.T) {
 // where embedding_length < attention.head_count (which would make head_dim
 // truncate to 0 via integer division downstream, silently zeroing the
 // entire KV-cache term while still labeled "derived") is rejected as
-// ok=false rather than accepted with a fabricated zero-cost answer (R1).
+// ok=false rather than accepted with a fabricated zero-cost answer.
 func TestFetchModelShow_HeadDimTruncationGuard(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{

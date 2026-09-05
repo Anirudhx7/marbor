@@ -125,7 +125,7 @@ func TestIsBlockedManagementPath(t *testing.T) {
 // TestCloudTransportHasHeaderTimeout verifies Fix B: the cloud transport is
 // built with a non-zero ResponseHeaderTimeout derived from the router's
 // upstream timeout, so a hung cloud provider cannot leak connections. No
-// overall client Timeout is set (that would break R2 streaming).
+// overall client Timeout is set (that would break streaming).
 func TestCloudTransportHasHeaderTimeout(t *testing.T) {
 	const timeoutMs = 7000
 	r := router.New(

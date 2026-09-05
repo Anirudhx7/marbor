@@ -117,8 +117,8 @@ for i in $(seq 1 "$N"); do
   # set instead of trusting a fixed sleep - an unload POST returning 200/204
   # only means the request was accepted, not that VRAM was actually freed
   # yet, and a sample fired too early would be silently mislabeled "cold"
-  # while really warm (R1: no estimated/simulated figures presented as
-  # measurements, extended to bench numbers here too).
+  # while really warm (this project's rule against presenting estimated or
+  # simulated figures as measurements extends to bench numbers here too).
   evicted=0
   for _ in $(seq 1 20); do
     still_warm="$(curl -sS -b "$COOKIEJAR" "${ADMIN_URL}/admin/nodes" | python3 -c "

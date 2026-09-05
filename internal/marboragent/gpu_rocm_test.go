@@ -82,7 +82,7 @@ func TestParseROCmSMIJSONMultiGPU(t *testing.T) {
 	}
 
 	// card1 reports "N/A" for temperature and omits power entirely - both
-	// must stay nil rather than a fabricated 0 (R1).
+	// must stay nil rather than a fabricated 0.
 	d1 := block.Devices[1]
 	if d1.TemperatureC != nil {
 		t.Errorf("Devices[1].TemperatureC should be nil for N/A, got %v", *d1.TemperatureC)

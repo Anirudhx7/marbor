@@ -41,8 +41,8 @@ type prober interface {
 }
 
 // discoveryCandidate is one substring-matching hit within a single tier's
-// probe, before selectBestCandidate's two-pass scoring picks a winner
-// (P270): a naive first-match-wins scan lets a decoy unit (e.g. an
+// probe, before selectBestCandidate's two-pass scoring picks a winner:
+// a naive first-match-wins scan lets a decoy unit (e.g. an
 // "ollama-backup" service) shadow the real "ollama" unit whenever it happens
 // to be listed first.
 type discoveryCandidate struct {
@@ -149,7 +149,7 @@ func (systemdProber) probe(ctx context.Context, runtimeName string) (DiscoveryRe
 		}
 	}
 
-	// P271: list-units only sees loaded units, while SystemdDriver.Validate
+	// list-units only sees loaded units, while SystemdDriver.Validate
 	// uses list-unit-files and so sees disabled/unloaded units too - union
 	// the two here so a stopped-but-installed unit is still discoverable
 	// instead of only the currently-loaded ones.

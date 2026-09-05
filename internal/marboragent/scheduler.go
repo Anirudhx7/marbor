@@ -60,7 +60,7 @@ type Scheduler struct {
 	// running, so re-running the version command (e.g. a forked "ollama
 	// version" subprocess) every refresh tick for every runtime on every
 	// agent-enabled node in the fleet would be pure waste. TTL-expired
-	// (versionCacheTTL, P150): runtime_identity.go's Reconcile pass reuses
+	// (versionCacheTTL): runtime_identity.go's Reconcile pass reuses
 	// the same RuntimeID across a same-port in-place restart/upgrade, so an
 	// unbounded cache would report a stale version indefinitely until the
 	// agent daemon itself restarts. Detection here is HTTP-probe-only (no
@@ -152,7 +152,7 @@ func (s *Scheduler) metadata() Telemetry {
 // in. A GPU collection error (no GPU present, or a transient nvidia-smi
 // failure) reports the gpu block with an empty device list rather than
 // omitting it outright, so GPUBlock.Vendor - a static fact about which
-// backend is selected, not a live reading - is still visible (R1: never
+// backend is selected, not a live reading - is still visible (never
 // fabricate a *reading*, but don't discard a fact that didn't fail).
 func (s *Scheduler) refresh() {
 	defer func() {
@@ -227,7 +227,7 @@ func (s *Scheduler) refresh() {
 		s.primaryRuntime, s.primaryURL = detected[0].Name, detected[0].URL
 		s.runtimeMu.Unlock()
 
-		// ControlDriver discovery (P43) piggybacks the primary runtime this
+		// ControlDriver discovery piggybacks the primary runtime this
 		// same refresh tick - no new poll loop. Re-run every tick (a re-scan
 		// is expected to reflect drift, e.g. systemd -> Docker migration,
 		// freely); this only ever populates Discovered, never
@@ -247,8 +247,8 @@ func (s *Scheduler) refresh() {
 			},
 		}
 
-		// P397b: deployment auto-discovery per runtime instance (additive R9).
-		// CollectDeployments is read-only (ps / docker.sock / env) and never
+		// Deployment auto-discovery per runtime instance (additive-only wire
+		// change). CollectDeployments is read-only (ps / docker.sock / env) and never
 		// fabricates - nil means unknown (server shows honest "add docker.sock"
 		// warning, not a fake 0). Per-port keying so :8000 TP=8 does not bleed
 		// into :8001 TP=4 on same host.
@@ -285,7 +285,7 @@ func (s *Scheduler) refresh() {
 }
 
 // versionCacheEntry pairs a cached version string with when it was fetched,
-// so runtimeVersion can expire it after versionCacheTTL (P150) instead of
+// so runtimeVersion can expire it after versionCacheTTL instead of
 // caching forever.
 type versionCacheEntry struct {
 	version   string
@@ -293,7 +293,7 @@ type versionCacheEntry struct {
 }
 
 // versionCacheTTL bounds how long a queried runtime version is trusted
-// before runtimeVersion re-runs detectRuntimeVersion (P150) - long enough
+// before runtimeVersion re-runs detectRuntimeVersion - long enough
 // that this stays effectively free on the common case (a version genuinely
 // never changes for a process's whole lifetime), short enough that a
 // same-port in-place upgrade (which reuses the same RuntimeID, see
@@ -331,7 +331,7 @@ func (s *Scheduler) runtimeVersion(id, name string) string {
 // Snapshot returns the most recently collected Telemetry. Before Seed has
 // ever run, LastUpdated is the zero time and GPU/Host/Runtime are nil -
 // callers must treat that as "not collected yet," never as a real all-zero
-// reading (R1). Metadata fields (node_id/version/protocol_version/platform/
+// reading. Metadata fields (node_id/version/protocol_version/platform/
 // architecture/capabilities) are already known at this point (detected
 // during construction, not collection) and are populated even pre-Seed. In
 // normal operation (Seed called at startup before the server accepts
