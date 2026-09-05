@@ -606,9 +606,9 @@ func (s *sqliteStore) migrate() error {
 // node_agent rows (any install that ran v0.19.0 through v0.19.3) silently
 // lost its Marbor Agent enrollment - enabled/port/token/scope/scheme, one
 // row per node - on upgrade to v0.20.0+, since no code path has read
-// node_agent since the rename. Found while proving B.3 (schema migration
-// from every prior release) with reconstructed historical DB shapes, not
-// from a user report.
+// node_agent since the rename. Found while proving schema migration from
+// every prior release with reconstructed historical DB shapes, not from a
+// user report.
 func (s *sqliteStore) migrateRenameNodeAgentTable() error {
 	var exists int
 	if err := s.db.QueryRow(

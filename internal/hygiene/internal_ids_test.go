@@ -36,11 +36,11 @@ import (
 // This is the repo-wide sibling of internal/cli's
 // TestRegistry_NoInternalIDLeakage (which only walks CLI help strings).
 // That test stays as the fast, precise CLI-specific check; this one is the
-// broader net directed 2026-09-05 (Anirudh) after P415 was found to also
-// leak into README.md, CHANGELOG.md, docs/*.md, and Go/TS comments
-// repo-wide, not just --help text, and to also leak private-directory path
-// references (found in internal/cli/registry.go, then confirmed via
-// `git grep` across 43 tracked files) - not just queue numbers.
+// broader net, added after the CLI-only check was found to miss leaks into
+// README.md, CHANGELOG.md, docs/*.md, and Go/TS comments repo-wide, not
+// just --help text, and to miss private-directory path references (found in
+// internal/cli/registry.go, then confirmed via `git grep` across 43 tracked
+// files) - not just queue numbers.
 var internalIDPattern = regexp.MustCompile(
 	`\bP-?[A-Z0-9]*-?\d{2,}[a-z]?\b` +
 		`|\bR\d{1,2}\b` +
@@ -150,12 +150,12 @@ func gitTrackedFiles(t *testing.T) (string, []string) {
 	return rootDir, files
 }
 
-// TestNoInternalIDsRepoWide is the standing guard directed 2026-09-05
-// (Anirudh, expanding P415's original CLI-only scope): every tracked
-// source/doc file in the public repo, including comments, must be free of
-// internal-only queue-item IDs, guard/Law citations, and LESSONS refs.
-// Historical git commits are NOT rewritten (accepted paper trail per the
-// same directive) - this only guards what ships going forward.
+// TestNoInternalIDsRepoWide is the standing guard (expanded from the
+// original CLI-only scope): every tracked source/doc file in the public
+// repo, including comments, must be free of internal-only queue-item IDs,
+// guard/Law citations, and LESSONS refs. Historical git commits are NOT
+// rewritten (accepted paper trail) - this only guards what ships going
+// forward.
 //
 // If this test is failing, the fix is rewording the flagged line in plain
 // language (or adding a documented exception to internalIDExceptions for a

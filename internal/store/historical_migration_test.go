@@ -92,8 +92,8 @@ func buildHistoricalDB(t *testing.T, path string, stmts []string) {
 	}
 }
 
-// TestMigrateFromHistoricalSchemas is B.3's evidence: for each historical
-// release point, reconstruct that release's real on-disk shape, seed
+// TestMigrateFromHistoricalSchemas proves migration from every prior
+// release: for each historical release point, reconstruct that release's real on-disk shape, seed
 // representative data using only the columns that existed at that point,
 // run the CURRENT migrate() against it via the real store.Open() boot path,
 // and assert (a) no error, (b) every seeded row survives with its original
@@ -190,13 +190,14 @@ func seedHistoricalData(t *testing.T, db *sql.DB, tag string) {
 	}
 
 	// node_agent (v0.19.0's name for what v0.20.0+ calls marbor_agent) is the
-	// specific table B.3's audit found a real migration bug in: the v0.20.0
-	// rename (commit 19147ea) only renamed the Go string literal, never the
-	// table on an existing marbor.db, so a real node_agent row would have
-	// been silently orphaned - see migrateRenameNodeAgentTable's doc comment
-	// in sqlite.go. Seeded here (v0.19.0's own shape only has 5 columns -
-	// name/enabled/port/token/scope; scheme was added between v0.19.0 and
-	// the rename) to prove the fix copies it into marbor_agent correctly.
+	// specific table a schema-migration audit found a real migration bug in -
+	// the v0.20.0 rename (commit 19147ea) only renamed the Go string literal,
+	// never the table on an existing marbor.db, so a real node_agent row
+	// would have been silently orphaned - see migrateRenameNodeAgentTable's
+	// doc comment in sqlite.go. Seeded here (v0.19.0's own shape only has 5
+	// columns - name/enabled/port/token/scope; scheme was added between
+	// v0.19.0 and the rename) to prove the fix copies it into marbor_agent
+	// correctly.
 	if tableExists(t, db, "node_agent") {
 		mustExec(t, db,
 			`INSERT INTO node_agent (name, enabled, port, token, scope) VALUES (?, ?, ?, ?, ?)`,
