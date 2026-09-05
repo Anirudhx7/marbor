@@ -1,4 +1,4 @@
-# Historical schema fixtures (V1-RELEASE-GATE B.3)
+# Historical schema fixtures
 
 Each `.sql` file here is the literal `migrate()` DDL statement list from a real, tagged past
 release of `internal/store/sqlite.go`, extracted with `git show <tag>:internal/store/sqlite.go`
@@ -14,7 +14,7 @@ might have looked like.
 | `v0.11.0.sql` | v0.11.0 | Earliest tag with a persisted schema at all (`internal/store/sqlite.go` didn't exist before v0.11.0) - 9 tables, no `ALTER TABLE`s yet. |
 | `v0.14.0.sql` | v0.14.0 | Mid-early: 20 tables, 2 `ALTER TABLE`s. |
 | `v0.16.0.sql` | v0.16.0 | The last tag before commit `fe3437e` ("encrypt secrets at rest in mesh.db", 2026-07-16) shipped `secretbox.go` - `cloud_providers.api_key` and `runtime_keys.key` are still plaintext here, so this is the one point that genuinely exercises `migrateEncryptSecrets()`'s plaintext-to-ciphertext upgrade path. Also predates the `node_agent`/`marbor_agent` tables entirely. |
-| `v0.19.0.sql` | v0.19.0 | Post-secretbox, has the (then-current-named) `node_agent` table - the table commit `19147ea` later renamed to `marbor_agent` in v0.20.0 without migrating any existing rows (see B.3's fix in `sqlite.go`'s `migrateRenameNodeAgentTable`). |
+| `v0.19.0.sql` | v0.19.0 | Post-secretbox, has the (then-current-named) `node_agent` table - the table commit `19147ea` later renamed to `marbor_agent` in v0.20.0 without migrating any existing rows (see the schema-migration fix in `sqlite.go`'s `migrateRenameNodeAgentTable`). |
 | `v0.20.0.sql` | v0.20.0 | Latest tag at the time this fixture set was built (`HEAD` was `v0.20.0-106-g812e7ea`) - already has the renamed `marbor_agent` table. |
 
 Regenerating these fixtures (e.g. to add a later historical point) does **not** require re-running

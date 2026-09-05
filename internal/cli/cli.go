@@ -9,9 +9,9 @@ import (
 	"text/tabwriter"
 )
 
-// globalFlags holds the flags every subcommand accepts, per
-// operational-interfaces.md 5.1/5.2: --json is the compatibility contract
-// from the first command shipped, auth flags are shared across commands.
+// globalFlags holds the flags every subcommand accepts: --json is the
+// compatibility contract from the first command shipped, auth flags are
+// shared across commands.
 type globalFlags struct {
 	server     string
 	jsonOutput bool
@@ -231,7 +231,7 @@ func reportError(err error, stderr io.Writer) int {
 }
 
 // Run parses args and dispatches to the requested subcommand, returning the
-// process exit code (0/1/2/4 per operational-interfaces.md 5.2). It delegates
+// process exit code (0 ok, 1 user error, 2 server error, 4 auth error). It delegates
 // entirely to the registry-driven dispatcher (dispatch.go), from the CLI
 // hardening plan's registry migration. The old hand-rolled switch statement
 // that used to live here has been deleted now that every leaf command's Run

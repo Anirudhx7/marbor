@@ -119,7 +119,7 @@ Evidence basis for each marking:
 - **UNTESTED (MLX + Apple Silicon):** MLX runtime support shipped as enum wiring and request translation verified against `mlx_lm.server`'s published SERVER.md schema (CHANGELOG), with unit-test coverage against fixture responses (`internal/runtime/detect_test.go`, `probe_test.go`) - not a real Apple Silicon run. The internal bench runbook's Mac-mini step is written but has not executed; the hardware-bench release gate remains BLOCKED on hardware access.
 - **UNSUPPORTED (MLX on NVIDIA/AMD/Intel):** `mlx_lm.server` is Apple's own ML framework, built on Apple's Metal API; it has no CUDA, ROCm, or oneAPI build, so these three cells are not applicable rather than merely unexercised.
 
-**Expanding coverage** (moving UNTESTED cells to VALIDATED) requires access to the real thing per cell - a running vLLM/TGI/llama.cpp server, a real AMD or Intel GPU host with the marbor agent installed, or Apple Silicon hardware for the Ollama and MLX Apple-Silicon cells. This is desirable but not required to state the matrix honestly; it is a separate, hardware-gated effort tracked as V1-RELEASE-GATE.md's E.2.
+**Expanding coverage** (moving UNTESTED cells to VALIDATED) requires access to the real thing per cell - a running vLLM/TGI/llama.cpp server, a real AMD or Intel GPU host with the marbor agent installed, or Apple Silicon hardware for the Ollama and MLX Apple-Silicon cells. This is desirable but not required to state the matrix honestly; it is a separate, hardware-gated effort.
 
 ---
 

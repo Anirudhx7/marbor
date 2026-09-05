@@ -138,9 +138,9 @@ func parsePercent(s string) (float64, bool) {
 }
 
 // parseNvidiaSMIXML parses `nvidia-smi -q -x` output into a GPUBlock
-// carrying every reported <gpu> element (multi-GPU array, per
-// telemetry-v1-spec.md section 6 - one agent process owns the whole node,
-// including every GPU on it) plus the host-level driver/CUDA version.
+// carrying every reported <gpu> element (multi-GPU array - one agent
+// process owns the whole node, including every GPU on it) plus the
+// host-level driver/CUDA version.
 func parseNvidiaSMIXML(data []byte) (GPUBlock, bool) {
 	var log nvidiaSMILog
 	if err := xml.Unmarshal(data, &log); err != nil || len(log.GPUs) == 0 {

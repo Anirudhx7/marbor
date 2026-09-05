@@ -1,6 +1,6 @@
 // Package cli implements the marbor CLI - a thin client of the Admin API.
-// Per operational-interfaces.md, the CLI never talks to a Marbor Agent
-// directly; every command is exactly one Admin API request.
+// The CLI never talks to a Marbor Agent directly; every command is exactly
+// one Admin API request.
 package cli
 
 import (
@@ -17,8 +17,8 @@ import (
 	"time"
 )
 
-// Exit codes per operational-interfaces.md 5.2. 3 (partial success) doesn't
-// apply until batch operations exist.
+// Exit codes: 0 ok, 1 user error, 2 server error, 4 auth error.
+// 3 (partial success) doesn't apply until batch operations exist.
 const (
 	ExitOK          = 0
 	ExitUserError   = 1
@@ -185,8 +185,8 @@ func (c *Client) doRequest(method, path string, authed bool) (*http.Response, er
 // doRequestBody performs an authed HTTP request with a JSON body against
 // the Admin API, classified into the same exit-code taxonomy as doRequest.
 // Every mutating CLI command (runtime start/stop/restart, node control
-// accept) goes through this - per operational-interfaces.md, the CLI is
-// always exactly one Admin API request, never a direct Marbor Agent call.
+// accept) goes through this - the CLI is always exactly one Admin API
+// request, never a direct Marbor Agent call.
 func (c *Client) doRequestBody(method, path string, body interface{}) (*http.Response, error) {
 	if c.Token == "" {
 		return nil, userErrorf("authentication required: run 'marbor login', or pass --username/--password (or set MARBOR_USERNAME+MARBOR_PASSWORD)")
@@ -553,8 +553,8 @@ type NodeResp struct {
 }
 
 // PatchNodeTLSFingerprint calls PATCH /admin/v1/nodes/{name} with
-// tls_fingerprint (headless enrollment confirmation, spec section 11) -
-// matches router.NodePatch's snake_case JSON tag. fingerprint must be
+// tls_fingerprint (headless enrollment confirmation) - matches
+// router.NodePatch's snake_case JSON tag. fingerprint must be
 // supplied by the caller (ultimately the operator, via the CLI's
 // --fingerprint flag) - this method never probes or infers a value itself.
 func (c *Client) PatchNodeTLSFingerprint(name, fingerprint string) error {
@@ -2219,8 +2219,7 @@ type PullJobSnapshot struct {
 // across the fleet, mirroring the UI's pullProgress.ts tracking.
 // "models pull-progress" (a single node+model) filters this same list
 // client-side rather than following the separate SSE progress stream, per
-// operational-interfaces.md's "the CLI is always exactly one Admin API
-// request" contract.
+// the "one CLI command is exactly one Admin API request" contract.
 func (c *Client) ActivePulls() ([]PullJobSnapshot, error) {
 	resp, err := c.doRequest(http.MethodGet, "/admin/pulls", true)
 	if err != nil {
