@@ -40,7 +40,8 @@
 </p>
 
 <p align="center">
-  <em>Enterprise dashboard: live request telemetry, cluster-wide VRAM utilization, per-key cost attribution, and cloud-deflection savings - all from real parsed token counts.</em>
+  <em>Enterprise dashboard: live request telemetry, cluster-wide VRAM utilization, per-key cost attribution, and cloud-deflection savings - all from real parsed token counts.</em><br>
+  <a href="website/screenshots/dashboard-full.png">Full-page screenshot</a>
 </p>
 ---
 
