@@ -45,7 +45,7 @@ function MetricCard({ title, value, unit, icon, trend, trendUp, highlight, compa
         <div className="min-w-0">
           <p className={`font-medium text-muted-foreground mb-1 ${compact ? 'text-xs' : 'text-sm'}`}>{title}</p>
           <div className="flex items-baseline gap-1">
-            <span className={`font-bold text-foreground ${compact ? 'text-lg' : 'text-2xl'}`}>{value}</span>
+            <span className={`font-bold tabular-nums text-foreground ${compact ? 'text-lg' : 'text-2xl'}`}>{value}</span>
             {unit && <span className="text-sm font-medium text-muted-foreground ml-1">{unit}</span>}
           </div>
         </div>
@@ -56,7 +56,7 @@ function MetricCard({ title, value, unit, icon, trend, trendUp, highlight, compa
       {trend && (
         <div className="mt-3 flex items-center gap-1.5 text-xs font-medium">
           <span className={trendUp ? 'text-success' : 'text-destructive'}>
-            {trendUp ? 'Γåæ' : 'Γåô'} {trend}
+            {trendUp ? '▲' : '▼'} {trend}
           </span>
           <span className="text-muted-foreground">vs last hour</span>
         </div>

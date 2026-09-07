@@ -215,7 +215,7 @@ export function Metrics() {
     <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Metrics</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Metrics</h1>
         <p className="text-sm text-muted-foreground mt-1">
           Performance metrics and usage statistics for your Ollama deployment
         </p>
