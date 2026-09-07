@@ -284,6 +284,89 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
     down: 'text-destructive',
   }[node.health];
 
+  // Status pills, worst news first - a troubled node can carry half a dozen
+  // flags and DOM order would bury a TLS mismatch under a draining notice.
+  // Collected with static severities (destructive, warning, muted), sorted,
+  // rendered below. Sentence case throughout, matching the app-wide voice.
+  const statusPills: { sev: number; key: string; el: React.ReactNode }[] = [];
+  if (node.tlsFingerprintMismatch) {
+    statusPills.push({ sev: 0, key: 'tls', el: (
+      <span
+        title="The node's agent is presenting a certificate that doesn't match the pinned fingerprint - connections are refused (possible MITM or an unexpected cert rotation). Open Edit Node to review and re-confirm."
+        className="text-xs font-medium px-1.5 py-0.5 rounded bg-destructive/10 text-destructive dark:text-red-400 border border-destructive/30 whitespace-nowrap"
+      >
+        TLS mismatch
+      </span>
+    ) });
+  }
+  const warmupErrs = node.warmupErrors ?? {};
+  const warmupFailed = Object.keys(warmupErrs);
+  if (warmupFailed.length > 0) {
+    statusPills.push({ sev: 0, key: 'warmup', el: (
+      <span
+        title={warmupFailed.map((model) => `${model}: ${warmupErrs[model]}`).join('\n')}
+        className="text-xs font-medium px-1.5 py-0.5 rounded bg-destructive/10 text-destructive dark:text-red-400 border border-destructive/30 whitespace-nowrap"
+      >
+        Warmup failed ({warmupFailed.length})
+      </span>
+    ) });
+  }
+  const unloadErrs = node.unloadErrors ?? {};
+  const unloadFailed = Object.keys(unloadErrs);
+  if (unloadFailed.length > 0) {
+    statusPills.push({ sev: 0, key: 'unload', el: (
+      <span
+        title={unloadFailed.map((model) => `${model}: ${unloadErrs[model]}`).join('\n')}
+        className="text-xs font-medium px-1.5 py-0.5 rounded bg-destructive/10 text-destructive dark:text-red-400 border border-destructive/30 whitespace-nowrap"
+      >
+        Unload failed ({unloadFailed.length})
+      </span>
+    ) });
+  }
+  if (node.draining) {
+    statusPills.push({ sev: 1, key: 'draining', el: (
+      <span
+        title={node.drainedReason ? `Drained: ${node.drainedReason}` : undefined}
+        className="text-xs font-medium px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 whitespace-nowrap"
+      >
+        Draining{node.drainedReason ? ` (${node.drainedReason})` : ''}
+        {' - '}{node.activeConns > 0 ? `${node.activeConns} in-flight` : 'drained'}
+      </span>
+    ) });
+  }
+  if (node.runtimeMismatchHint) {
+    statusPills.push({ sev: 1, key: 'mlx', el: (
+      <span
+        title={node.runtimeMismatchHint}
+        className="text-xs font-medium px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 whitespace-nowrap"
+      >
+        Possible MLX node
+      </span>
+    ) });
+  }
+  const suppressed = node.warmupState ? node.warmupState.filter(s => s.state === 'suppressed') : [];
+  if (suppressed.length > 0) {
+    statusPills.push({ sev: 1, key: 'suppressed', el: (
+      <span
+        title={suppressed.map(s => `${s.model}: ${s.reason}`).join('\n')}
+        className="text-xs font-medium px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30 whitespace-nowrap"
+      >
+        Suppressed ({suppressed.length})
+      </span>
+    ) });
+  }
+  if (node.prewarmDisabled) {
+    statusPills.push({ sev: 2, key: 'prewarm', el: (
+      <span
+        title="Predictive engine will not warm new models onto this node until re-enabled or marbor restarts"
+        className="text-xs font-medium px-1.5 py-0.5 rounded bg-secondary text-muted-foreground border border-border whitespace-nowrap"
+      >
+        Prewarm off
+      </span>
+    ) });
+  }
+  statusPills.sort((a, b) => a.sev - b.sev);
+
   return (
     <div
       id={`node-card-${node.name}`}
@@ -292,9 +375,6 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-4">
         <div className="flex items-start gap-3 min-w-0">
-          <div className="p-2 bg-secondary rounded-lg shrink-0">
-            <Server className="w-5 h-5 text-muted-foreground" />
-          </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <StatusDot status={node.health} />
@@ -304,63 +384,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
                   {highlightSource === 'dashboard' ? 'From Dashboard' : highlightSource === 'models' ? 'From Models' : 'Highlighted'}
                 </span>
               )}
-              {node.draining && (
-                <span
-                  title={node.drainedReason ? `Drained: ${node.drainedReason}` : undefined}
-                  className="text-xs font-medium px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 whitespace-nowrap"
-                >
-                  DRAINING{node.drainedReason ? ` (${node.drainedReason})` : ''}
-                  {' - '}{node.activeConns > 0 ? `${node.activeConns} in-flight` : 'drained'}
-                </span>
-              )}
-              {node.prewarmDisabled && (
-                <span
-                  title="Predictive engine will not warm new models onto this node until re-enabled or marbor restarts"
-                  className="text-xs font-medium px-1.5 py-0.5 rounded bg-secondary text-muted-foreground border border-border whitespace-nowrap"
-                >
-                  PREWARM OFF
-                </span>
-              )}
-              {node.tlsFingerprintMismatch && (
-                <span
-                  title="The node's agent is presenting a certificate that doesn't match the pinned fingerprint - connections are refused (possible MITM or an unexpected cert rotation). Open Edit Node to review and re-confirm."
-                  className="text-xs font-medium px-1.5 py-0.5 rounded bg-destructive/10 text-destructive dark:text-red-400 border border-destructive/30 whitespace-nowrap"
-                >
-                  TLS MISMATCH
-                </span>
-              )}
-              {node.runtimeMismatchHint && (
-                <span
-                  title={node.runtimeMismatchHint}
-                  className="text-xs font-medium px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 whitespace-nowrap"
-                >
-                  POSSIBLE MLX NODE
-                </span>
-              )}
-              {node.warmupErrors && Object.keys(node.warmupErrors).length > 0 && (
-                <span
-                  title={Object.entries(node.warmupErrors).map(([model, err]) => `${model}: ${err}`).join('\n')}
-                  className="text-xs font-medium px-1.5 py-0.5 rounded bg-destructive/10 text-destructive dark:text-red-400 border border-destructive/30 whitespace-nowrap"
-                >
-                  WARMUP FAILED ({Object.keys(node.warmupErrors).length})
-                </span>
-              )}
-              {node.unloadErrors && Object.keys(node.unloadErrors).length > 0 && (
-                <span
-                  title={Object.entries(node.unloadErrors).map(([model, err]) => `${model}: ${err}`).join('\n')}
-                  className="text-xs font-medium px-1.5 py-0.5 rounded bg-destructive/10 text-destructive dark:text-red-400 border border-destructive/30 whitespace-nowrap"
-                >
-                  UNLOAD FAILED ({Object.keys(node.unloadErrors).length})
-                </span>
-              )}
-              {node.warmupState && node.warmupState.filter(s => s.state === 'suppressed').length > 0 && (
-                <span
-                  title={node.warmupState.filter(s => s.state === 'suppressed').map(s => `${s.model}: ${s.reason}`).join('\n')}
-                  className="text-xs font-medium px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30 whitespace-nowrap"
-                >
-                  SUPPRESSED ({node.warmupState.filter(s => s.state === 'suppressed').length})
-                </span>
-              )}
+              {statusPills.map((p) => (<span key={p.key} className="contents">{p.el}</span>))}
             </div>
             <div className="flex flex-wrap items-center gap-2 mt-1">
               <p className="text-sm text-muted-foreground">{node.gpuModel || 'Unknown GPU'}</p>
