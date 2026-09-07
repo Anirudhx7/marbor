@@ -1,5 +1,5 @@
 // Hidden hardware benchmark page (no Sidebar entry - reached only via the
-// "Hardware Benchmark" card on Settings). Lets an already-authenticated
+// "Hardware benchmark" card on Settings). Lets an already-authenticated
 // admin pick a node + model already known to marbor and watch a live
 // cold-vs-warm TTFT run, with zero manual credential entry - the marbor
 // auto-provisions and deletes an ephemeral API key server-side
@@ -257,7 +257,7 @@ export function Benchmark() {
     <div className="space-y-4 animate-fade-in max-w-3xl mx-auto">
       <div className="flex items-center gap-2.5">
         <Gauge className="w-5 h-5 text-primary" />
-        <h1 className="text-lg font-bold tracking-tight text-foreground">Hardware Benchmark</h1>
+        <h1 className="text-lg font-bold tracking-tight text-foreground">Hardware benchmark</h1>
       </div>
       <p className="text-sm text-muted-foreground -mt-2">
         Measures real cold-vs-warm Time-To-First-Token on this marbor's own hardware, through its own proxy.
@@ -387,7 +387,7 @@ export function Benchmark() {
       <Modal
         isOpen={runConfirmOpen}
         onClose={() => setRunConfirmOpen(false)}
-        title="Run Hardware Benchmark"
+        title="Run Hardware benchmark"
         maxWidth="sm"
       >
         <div className="space-y-4">

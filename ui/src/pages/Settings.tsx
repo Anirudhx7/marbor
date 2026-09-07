@@ -129,7 +129,7 @@ export function SettingsPage() {
   const roundDisplay = (n: number) => Math.round(n * 100) / 100;
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   // Tracks unsaved edits so the settings-load effect (re-triggered by a
-  // Demo Mode toggle, among other things) never silently discards them.
+  // Demo mode toggle, among other things) never silently discards them.
   // lastLoadedSettingsRef holds the exact object reference just applied by
   // a load; any onChange handler replaces settings with a brand-new object
   // (spread syntax), so a reference mismatch in the effect below means the
@@ -193,7 +193,7 @@ export function SettingsPage() {
   const [credError, setCredError] = useState<string | null>(null);
   const [credSaved, setCredSaved] = useState(false);
 
-  // Backup & Restore
+  // Backup & restore
   const [backupDownloading, setBackupDownloading] = useState(false);
   const [backupDownloadError, setBackupDownloadError] = useState<string | null>(null);
 
@@ -367,7 +367,7 @@ export function SettingsPage() {
         };
         if (dirtyRef.current) {
           // An edit is in progress (e.g. this reload was triggered by a
-          // Demo Mode toggle mid-edit) - never clobber it silently. The
+          // Demo mode toggle mid-edit) - never clobber it silently. The
           // fresh server-side values are simply not applied; the operator's
           // pending edits stay on screen until they save or reload manually.
           lastLoadedSettingsRef.current = loaded;
@@ -453,7 +453,7 @@ export function SettingsPage() {
       // for the 15s poll (instant re-render is a required behavior here).
       notifyTimezoneChanged();
       // The just-saved values are now the pristine baseline - clear the
-      // dirty flag so a subsequent settings reload (e.g. a Demo Mode
+      // dirty flag so a subsequent settings reload (e.g. a Demo mode
       // toggle) is free to apply fresh server-side values again.
       lastLoadedSettingsRef.current = settings;
       dirtyRef.current = false;
@@ -659,7 +659,7 @@ export function SettingsPage() {
         </div>
       )}
 
-      {/* Demo Mode Toggle */}
+      {/* Demo mode Toggle */}
       <div className="bg-card border border-border shadow-sm rounded-xl p-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -667,7 +667,7 @@ export function SettingsPage() {
               <MonitorPlay className="w-5 h-5 text-amber-600 dark:text-amber-400" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-foreground">Demo Mode</h3>
+              <h3 className="text-sm font-semibold text-foreground">Demo mode</h3>
               <p className="text-xs font-medium text-muted-foreground">Use mock data for testing UI without a real backend</p>
             </div>
           </div>
@@ -686,7 +686,7 @@ export function SettingsPage() {
         </div>
       </div>
 
-      {/* Hardware Benchmark - hidden diagnostic page, no Sidebar entry */}
+      {/* Hardware benchmark - hidden diagnostic page, no Sidebar entry */}
       <div className="bg-card border border-border shadow-sm rounded-xl p-6">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -694,7 +694,7 @@ export function SettingsPage() {
               <Gauge className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-foreground">Hardware Benchmark</h3>
+              <h3 className="text-sm font-semibold text-foreground">Hardware benchmark</h3>
               <p className="text-xs font-medium text-muted-foreground">Measure real cold-vs-warm TTFT on your own hardware, through this marbor</p>
             </div>
           </div>
@@ -718,7 +718,7 @@ export function SettingsPage() {
               <Terminal className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-foreground">Proxy Configuration</h3>
+              <h3 className="text-sm font-semibold text-foreground">Proxy configuration</h3>
               <p className="text-xs font-medium text-muted-foreground">Core proxy server settings</p>
             </div>
           </div>
@@ -780,7 +780,7 @@ export function SettingsPage() {
                     className="accent-primary"
                   />
                   <div>
-                    <p className="text-sm font-medium text-foreground">No Authentication</p>
+                    <p className="text-sm font-medium text-foreground">No authentication</p>
                     <p className="text-xs text-muted-foreground">Allow all requests (development only)</p>
                   </div>
                 </label>
@@ -789,14 +789,14 @@ export function SettingsPage() {
           </div>
         </div>
 
-        {/* Dashboard Preferences */}
+        {/* Dashboard preferences */}
         <div className="bg-card border border-border shadow-sm rounded-xl p-6">
           <div className="flex items-center gap-3 mb-5">
             <div className="p-2 bg-indigo-500/10 rounded-lg">
               <Sliders className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-foreground">Dashboard Preferences</h3>
+              <h3 className="text-sm font-semibold text-foreground">Dashboard preferences</h3>
               <p className="text-xs font-medium text-muted-foreground">Customize UI warning banners visibility</p>
             </div>
           </div>
@@ -804,7 +804,7 @@ export function SettingsPage() {
           <div className="space-y-4">
             <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
               <div>
-                <p className="text-sm font-medium text-foreground">Hide Demo Banner</p>
+                <p className="text-sm font-medium text-foreground">Hide demo banner</p>
                 <p className="text-xs text-muted-foreground">Do not show warning banner in demo mode</p>
               </div>
               <button
@@ -823,7 +823,7 @@ export function SettingsPage() {
 
             <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
               <div>
-                <p className="text-sm font-medium text-foreground">Hide Budget Banner</p>
+                <p className="text-sm font-medium text-foreground">Hide budget banner</p>
                 <p className="text-xs text-muted-foreground">Do not show cloud spend warning banners</p>
               </div>
               <button
@@ -848,14 +848,14 @@ export function SettingsPage() {
         <section>
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Security & Access</h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-        {/* Admin & Security */}
+        {/* Admin & security */}
         <div className="bg-card border border-border shadow-sm rounded-xl p-6">
           <div className="flex items-center gap-3 mb-5">
             <div className="p-2 bg-rose-500/10 rounded-lg">
               <Lock className="w-5 h-5 text-rose-600 dark:text-rose-400" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-foreground">Admin & Security</h3>
+              <h3 className="text-sm font-semibold text-foreground">Admin & security</h3>
               <p className="text-xs font-medium text-muted-foreground">Dashboard listen address and CORS - takes effect on next restart</p>
             </div>
           </div>
@@ -877,7 +877,7 @@ export function SettingsPage() {
             </div>
             <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
               <div>
-                <p className="text-sm font-medium text-foreground">Proxy Access Log</p>
+                <p className="text-sm font-medium text-foreground">Proxy access log</p>
                 <p className="text-xs text-muted-foreground">Structured JSON access-log line per request on stdout</p>
                 <p className="text-[10px] text-amber-700 dark:text-amber-400 mt-1">Requires a marbor restart to take effect.</p>
               </div>
@@ -885,7 +885,7 @@ export function SettingsPage() {
             </div>
             <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
               <div>
-                <p className="text-sm font-medium text-foreground">Trust Proxy Headers</p>
+                <p className="text-sm font-medium text-foreground">Trust proxy headers</p>
                 <p className="text-xs text-muted-foreground">Trust X-Forwarded-For/X-Real-IP for the logged client IP. Only enable if marbor sits behind a trusted reverse proxy - otherwise these headers are forgeable by any direct client.</p>
               </div>
               <Toggle on={settings.proxyTrustProxyHeaders} onToggle={() => setSettings({ ...settings, proxyTrustProxyHeaders: !settings.proxyTrustProxyHeaders })} />
@@ -893,14 +893,14 @@ export function SettingsPage() {
           </div>
         </div>
 
-        {/* Developer Integrations & Security */}
+        {/* Developer integrations & security */}
         <div className="bg-card border border-border shadow-sm rounded-xl p-6">
           <div className="flex items-center gap-3 mb-5">
             <div className="p-2 bg-rose-500/10 rounded-lg">
               <Lock className="w-5 h-5 text-rose-600 dark:text-rose-400" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-foreground">Developer Integrations & Security</h3>
+              <h3 className="text-sm font-semibold text-foreground">Developer integrations & security</h3>
               <p className="text-xs font-medium text-muted-foreground">API tokens and proxy access controls</p>
             </div>
           </div>
@@ -925,7 +925,7 @@ export function SettingsPage() {
 
             <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
               <div>
-                <p className="text-sm font-medium text-foreground">Allow Management Endpoints</p>
+                <p className="text-sm font-medium text-foreground">Allow management endpoints</p>
                 <p className="text-xs text-muted-foreground">Let client API keys reach model create/delete/pull APIs, not just inference. Only enable if every client is trusted.</p>
               </div>
               <button
@@ -944,7 +944,7 @@ export function SettingsPage() {
           </div>
         </div>
 
-        {/* Admin Credentials - hidden in demo mode */}
+        {/* Admin credentials - hidden in demo mode */}
         {!demoMode && (
           <div className="bg-card border border-border shadow-sm rounded-xl p-6 lg:col-span-2">
             <div className="flex items-center gap-3 mb-5">
@@ -952,7 +952,7 @@ export function SettingsPage() {
                 <KeyRound className="w-5 h-5 text-rose-600 dark:text-rose-400" />
               </div>
               <div>
-                <h3 className="text-sm font-semibold text-foreground">Admin Credentials</h3>
+                <h3 className="text-sm font-semibold text-foreground">Admin credentials</h3>
                 <p className="text-xs font-medium text-muted-foreground">Change your dashboard login password</p>
               </div>
             </div>
@@ -1022,14 +1022,14 @@ export function SettingsPage() {
         <section>
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Integrations & Cost</h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-        {/* LiteLLM Integration */}
+        {/* LiteLLM integration */}
         <div className="bg-card border border-border shadow-sm rounded-xl p-6">
           <div className="flex items-center gap-3 mb-5">
             <div className="p-2 bg-blue-500/10 rounded-lg">
               <Shield className="w-5 h-5 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-foreground">LiteLLM Integration</h3>
+              <h3 className="text-sm font-semibold text-foreground">LiteLLM integration</h3>
               <p className="text-xs font-medium text-muted-foreground">Middleware layer configuration</p>
             </div>
           </div>
@@ -1105,14 +1105,14 @@ export function SettingsPage() {
           </div>
         </div>
 
-        {/* Cloud Spend Cap */}
+        {/* Cloud spend cap */}
         <div className="bg-card border border-border shadow-sm rounded-xl p-6">
           <div className="flex items-center gap-3 mb-5">
             <div className="p-2 bg-emerald-500/10 rounded-lg">
               <DollarSign className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-foreground">Cloud Spend Cap</h3>
+              <h3 className="text-sm font-semibold text-foreground">Cloud spend cap</h3>
               <p className="text-xs font-medium text-muted-foreground">Block cloud fallback once spend hits these limits</p>
             </div>
           </div>
@@ -1208,7 +1208,7 @@ export function SettingsPage() {
           </div>
         </div>
 
-        {/* Cloud Providers */}
+        {/* Cloud providers */}
         <div className="bg-card border border-border shadow-sm rounded-xl p-6 lg:col-span-2">
           <div className="flex items-center justify-between mb-5">
             <div className="flex items-center gap-3">
@@ -1216,7 +1216,7 @@ export function SettingsPage() {
                 <Cloud className="w-5 h-5 text-sky-600 dark:text-sky-400" />
               </div>
               <div>
-                <h3 className="text-sm font-semibold text-foreground">Cloud Providers</h3>
+                <h3 className="text-sm font-semibold text-foreground">Cloud providers</h3>
                 <p className="text-xs font-medium text-muted-foreground">
                   {settings.liteLLMEnabled
                     ? 'Managed by LiteLLM while enabled - this list is inactive'
@@ -1292,14 +1292,14 @@ export function SettingsPage() {
         <section>
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Routing & Reliability</h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-        {/* Advanced Routing */}
+        {/* Advanced routing */}
         <div className="bg-card border border-border shadow-sm rounded-xl p-6 lg:col-span-2">
           <div className="flex items-center gap-3 mb-5">
             <div className="p-2 bg-cyan-500/10 rounded-lg">
               <Network className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-foreground">Advanced Routing</h3>
+              <h3 className="text-sm font-semibold text-foreground">Advanced routing</h3>
               <p className="text-xs font-medium text-muted-foreground">Timeouts, retries, session affinity, and queueing - takes effect on next restart</p>
             </div>
           </div>
@@ -1356,14 +1356,14 @@ export function SettingsPage() {
 
           <div className="mt-4 flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
             <div>
-              <p className="text-sm font-medium text-foreground">Session Affinity</p>
+              <p className="text-sm font-medium text-foreground">Session affinity</p>
               <p className="text-xs text-muted-foreground">Route requests sharing an X-Session-ID to the same node (KV-cache reuse)</p>
             </div>
             <Toggle on={settings.routingSessionAffinity} onToggle={() => setSettings({ ...settings, routingSessionAffinity: !settings.routingSessionAffinity })} />
           </div>
           {settings.routingSessionAffinity && (
             <div className="mt-3">
-              <label className="block text-sm font-medium text-muted-foreground mb-1.5">Session Affinity TTL</label>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">Session affinity TTL</label>
               <input type="text" value={settings.routingSessionAffinityTtl} onChange={(e) => setSettings({ ...settings, routingSessionAffinityTtl: e.target.value })} placeholder="10m" className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
             </div>
           )}
@@ -1373,7 +1373,7 @@ export function SettingsPage() {
               <div className="flex items-center gap-2">
                 <Flame className="w-4 h-4 text-orange-600 dark:text-orange-400" />
                 <div>
-                  <p className="text-sm font-medium text-foreground">Thermal Watchdog</p>
+                  <p className="text-sm font-medium text-foreground">Thermal watchdog</p>
                   <p className="text-xs text-muted-foreground">Auto-drain a node after sustained overheat (recovery requires manual undrain)</p>
                 </div>
               </div>
@@ -1394,21 +1394,21 @@ export function SettingsPage() {
           </div>
         </div>
 
-        {/* Docker Auto-Discovery */}
+        {/* Docker auto-discovery */}
         <div className="bg-card border border-border shadow-sm rounded-xl p-6">
           <div className="flex items-center gap-3 mb-5">
             <div className="p-2 bg-blue-500/10 rounded-lg">
               <Container className="w-5 h-5 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-foreground">Docker Auto-Discovery</h3>
+              <h3 className="text-sm font-semibold text-foreground">Docker auto-discovery</h3>
               <p className="text-xs font-medium text-muted-foreground">Auto-register Ollama containers - takes effect on next restart</p>
             </div>
           </div>
           <div className="space-y-4">
             <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
               <div>
-                <p className="text-sm font-medium text-foreground">Enable Docker Discovery</p>
+                <p className="text-sm font-medium text-foreground">Enable Docker discovery</p>
                 <p className="text-xs text-muted-foreground">Poll the Docker socket for Ollama containers</p>
               </div>
               <Toggle on={settings.dockerEnabled} onToggle={() => setSettings({ ...settings, dockerEnabled: !settings.dockerEnabled })} />
@@ -1442,7 +1442,7 @@ export function SettingsPage() {
           <div className="space-y-4">
             <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
               <div>
-                <p className="text-sm font-medium text-foreground">Enable Webhooks</p>
+                <p className="text-sm font-medium text-foreground">Enable webhooks</p>
               </div>
               <Toggle on={settings.webhookEnabled} onToggle={() => setSettings({ ...settings, webhookEnabled: !settings.webhookEnabled })} />
             </div>
@@ -1483,7 +1483,7 @@ export function SettingsPage() {
           <div className="space-y-4">
             <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
               <div>
-                <p className="text-sm font-medium text-foreground">Prometheus Metrics</p>
+                <p className="text-sm font-medium text-foreground">Prometheus metrics</p>
                 <p className="text-xs text-muted-foreground">Export metrics in Prometheus format</p>
               </div>
               <button
@@ -1532,14 +1532,14 @@ export function SettingsPage() {
           </div>
         </div>
 
-        {/* Model Context Windows */}
+        {/* Model context windows */}
         <div className="bg-card border border-border shadow-sm rounded-xl p-6">
           <div className="flex items-center gap-3 mb-5">
             <div className="p-2 bg-lime-500/10 rounded-lg">
               <Ruler className="w-5 h-5 text-lime-600 dark:text-lime-400" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-foreground">Model Context Windows</h3>
+              <h3 className="text-sm font-semibold text-foreground">Model context windows</h3>
               <p className="text-xs font-medium text-muted-foreground">Operator-declared max tokens per model, for admission-time checks</p>
             </div>
           </div>
@@ -1589,14 +1589,14 @@ export function SettingsPage() {
           </div>
         </div>
 
-        {/* Local Model Fallback Chain */}
+        {/* Local model fallback chain */}
         <div className="bg-card border border-border shadow-sm rounded-xl p-6">
           <div className="flex items-center gap-3 mb-5">
             <div className="p-2 bg-teal-500/10 rounded-lg">
               <HardDrive className="w-5 h-5 text-teal-600 dark:text-teal-400" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-foreground">Local Model Fallback Chain</h3>
+              <h3 className="text-sm font-semibold text-foreground">Local model fallback chain</h3>
               <p className="text-xs font-medium text-muted-foreground">Ordered local alternates to try when no node can serve the requested model, before cloud - only applies to keys with "Allow local degradation" enabled (API Keys page)</p>
             </div>
           </div>
@@ -1663,14 +1663,14 @@ export function SettingsPage() {
           {degChainError && <p className="text-sm text-destructive mt-2">{degChainError}</p>}
         </div>
 
-        {/* Global Warmup & Audit */}
+        {/* Global warmup & audit */}
         <div className="bg-card border border-border shadow-sm rounded-xl p-6 lg:col-span-2">
           <div className="flex items-center gap-3 mb-5">
             <div className="p-2 bg-amber-500/10 rounded-lg">
               <Ruler className="w-5 h-5 text-amber-600 dark:text-amber-400" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-foreground">Global Warmup & Audit</h3>
+              <h3 className="text-sm font-semibold text-foreground">Global warmup & audit</h3>
               <p className="text-xs font-medium text-muted-foreground">Distinct from per-node warmup toggles on the Warmup page</p>
             </div>
           </div>
@@ -1678,7 +1678,7 @@ export function SettingsPage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
                 <div>
-                  <p className="text-sm font-medium text-foreground">Enable Global Warmup</p>
+                  <p className="text-sm font-medium text-foreground">Enable global warmup</p>
                 </div>
                 <Toggle on={settings.warmupEnabled} onToggle={() => setSettings({ ...settings, warmupEnabled: !settings.warmupEnabled })} />
               </div>
@@ -1703,13 +1703,13 @@ export function SettingsPage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
                 <div>
-                  <p className="text-sm font-medium text-foreground">Audit Log</p>
+                  <p className="text-sm font-medium text-foreground">Audit log</p>
                   <p className="text-xs text-muted-foreground">Append-only request audit trail</p>
                 </div>
                 <Toggle on={settings.auditEnabled} onToggle={() => setSettings({ ...settings, auditEnabled: !settings.auditEnabled })} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1.5">Audit Log Retention (days)</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-1.5">Audit log retention (days)</label>
                 <input
                   type="number"
                   min={0}
@@ -1723,7 +1723,7 @@ export function SettingsPage() {
                 </p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1.5">System Audit Retention (days)</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-1.5">System audit retention (days)</label>
                 <input
                   type="number"
                   min={0}
@@ -1740,14 +1740,14 @@ export function SettingsPage() {
           </div>
         </div>
 
-        {/* Backup & Restore */}
+        {/* Backup & restore */}
         <div className="bg-card border border-border shadow-sm rounded-xl p-6 lg:col-span-2">
           <div className="flex items-center gap-3 mb-5">
             <div className="p-2 bg-emerald-500/10 rounded-lg">
               <HardDrive className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-foreground">Backup & Restore</h3>
+              <h3 className="text-sm font-semibold text-foreground">Backup & restore</h3>
               <p className="text-xs font-medium text-muted-foreground">
                 Full docs:{' '}
                 <a
@@ -1788,7 +1788,7 @@ export function SettingsPage() {
             </div>
             <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
               <div>
-                <p className="text-sm font-medium text-foreground">Scheduled Backup</p>
+                <p className="text-sm font-medium text-foreground">Scheduled backup</p>
                 <p className="text-xs text-muted-foreground">Automatic VACUUM INTO backups on a recurring interval</p>
               </div>
               <Toggle on={settings.backupEnabled} onToggle={() => setSettings({ ...settings, backupEnabled: !settings.backupEnabled })} />
@@ -1917,7 +1917,7 @@ export function SettingsPage() {
     <Modal
       isOpen={restoreTarget !== null}
       onClose={() => { if (!restoring) setRestoreTarget(null); }}
-      title="Restore from Backup"
+      title="Restore from backup"
       maxWidth="sm"
     >
       <div className="space-y-4">
@@ -1951,7 +1951,7 @@ export function SettingsPage() {
     <Modal
       isOpen={reloadConfirmOpen}
       onClose={() => setReloadConfirmOpen(false)}
-      title="Reload From Database"
+      title="Reload from database"
       maxWidth="sm"
     >
       <div className="space-y-4">
@@ -1987,13 +1987,13 @@ export function SettingsPage() {
     <Modal
       isOpen={demoModeConfirmOpen}
       onClose={() => setDemoModeConfirmOpen(false)}
-      title="Enable Demo Mode"
+      title="Enable Demo mode"
       maxWidth="sm"
     >
       <div className="space-y-4">
         <p className="text-sm text-muted-foreground">
           Switch this dashboard to mock data? Live fleet data (nodes, requests, savings) will be
-          replaced by fabricated demo values until you turn Demo Mode back off.
+          replaced by fabricated demo values until you turn Demo mode back off.
         </p>
         <div className="flex justify-end gap-3 pt-4 border-t border-border">
           <button
@@ -2006,7 +2006,7 @@ export function SettingsPage() {
             onClick={() => { setDemoMode(true); setDemoModeConfirmOpen(false); }}
             className="px-4 py-2 bg-amber-600 hover:bg-amber-600/90 text-white font-medium rounded-lg text-sm transition-colors shadow-sm"
           >
-            Enable Demo Mode
+            Enable Demo mode
           </button>
         </div>
       </div>
@@ -2099,7 +2099,7 @@ export function SettingsPage() {
     <Modal
       isOpen={!!providerToDelete}
       onClose={() => setProviderToDelete(null)}
-      title="Delete Cloud Provider"
+      title="Delete cloud provider"
       maxWidth="sm"
     >
       <div className="space-y-4">

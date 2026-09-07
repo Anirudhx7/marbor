@@ -360,7 +360,7 @@ export function Activity() {
         <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-secondary/30">
           <div className="flex items-center gap-2">
             <BrainCircuit className="w-4 h-4 text-primary" />
-            <h2 className="text-sm font-semibold text-foreground">Predictive Warmup Decisions</h2>
+            <h2 className="text-sm font-semibold text-foreground">Predictive warmup decisions</h2>
             <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border ${getActivityKindColor('predictive')}`}>
               {filteredDecisions.length} recent
             </span>
@@ -674,7 +674,7 @@ export function Activity() {
       <Modal
         isOpen={selectedEntry !== null}
         onClose={() => setSelectedEntry(null)}
-        title="Activity Record Details"
+        title="Activity record details"
         maxWidth="lg"
       >
         {selectedEntry && (

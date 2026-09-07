@@ -234,7 +234,7 @@ function FleetCapacityCard({ nodes }: { nodes: GPUNode[] }) {
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 mb-4">
         <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
           <MemoryStick className="w-4 h-4 text-primary" />
-          Fleet Capacity
+          Fleet capacity
         </h3>
         <span className="text-[10px] text-muted-foreground/70 font-medium">
           {nodes.length === 0
@@ -259,7 +259,7 @@ function FleetCapacityCard({ nodes }: { nodes: GPUNode[] }) {
             </div>
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-medium text-muted-foreground mb-1">Warm Models</p>
+            <p className="text-xs font-medium text-muted-foreground mb-1">Warm models</p>
             <div className="flex items-baseline gap-2">
               <span className="text-2xl font-bold text-foreground font-mono">
                 {uniqueWarm > 0 || warmInstances > 0 ? uniqueWarm : '-'}
@@ -273,7 +273,7 @@ function FleetCapacityCard({ nodes }: { nodes: GPUNode[] }) {
             </p>
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-medium text-muted-foreground mb-1">Duplicated Models</p>
+            <p className="text-xs font-medium text-muted-foreground mb-1">Duplicated models</p>
             <div className="flex items-baseline gap-2">
               <span className={`text-2xl font-bold font-mono ${duplicated > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-foreground'}`}>
                 {nodes.some(n => (n.loadedModels ?? []).length > 0) ? duplicated : '-'}
@@ -537,7 +537,7 @@ export function Dashboard() {
         <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-8">
           <div className="flex items-center gap-2">
             <StatusDot status="online" pulse />
-            <span className="text-sm font-semibold text-foreground">System Status</span>
+            <span className="text-sm font-semibold text-foreground">System status</span>
           </div>
           <div className="flex flex-wrap items-center gap-4 text-sm">
             <div className="flex items-center gap-2">
@@ -584,7 +584,7 @@ export function Dashboard() {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <MetricCard
           compact
-          title="Active Requests"
+          title="Active requests"
           value={displayActive.toString()}
           icon={<Activity className="w-4 h-4" />}
         />
@@ -598,7 +598,7 @@ export function Dashboard() {
         />
         <MetricCard
           compact
-          title="Avg Latency"
+          title="Avg latency"
           value={isLive || demoMode ? displayLatency.toFixed(0) : '--'}
           unit={isLive || demoMode ? 'ms' : undefined}
           icon={<Clock className="w-4 h-4" />}
@@ -611,13 +611,13 @@ export function Dashboard() {
         />
         <MetricCard
           compact
-          title="Warm Hit Ratio"
+          title="Warm hit ratio"
           value={isLive || demoMode ? `${(displayWarmHitRatio * 100).toFixed(0)}%` : '--'}
           icon={<Flame className="w-4 h-4 text-orange-600 dark:text-orange-400" />}
         />
         <MetricCard
           compact
-          title="Cold Starts"
+          title="Cold starts"
           value={displayColdStarts.toString()}
           unit="events"
           icon={<Server className="w-4 h-4" />}
@@ -660,7 +660,7 @@ export function Dashboard() {
       {/* GPU Nodes Panel */}
       <div className="glass-panel rounded-xl p-6">
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 mb-6">
-          <h3 className="text-sm font-semibold text-foreground">GPU Nodes Status</h3>
+          <h3 className="text-sm font-semibold text-foreground">GPU nodes status</h3>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs font-medium">
             <div className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-success" />
@@ -762,7 +762,7 @@ export function Dashboard() {
       <div className="bg-card border border-border shadow-sm rounded-xl overflow-hidden min-w-0">
         <div className="px-4 sm:px-6 py-4 border-b border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-secondary/30 min-w-0">
           <div className="flex items-center gap-3 shrink-0">
-            <h3 className="text-sm font-semibold text-foreground">Live Requests</h3>
+            <h3 className="text-sm font-semibold text-foreground">Live requests</h3>
             <div className="flex items-center gap-1.5">
               <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
               <span className="text-[10px] font-medium text-primary uppercase tracking-wider">Live</span>

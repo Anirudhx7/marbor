@@ -60,7 +60,7 @@ export function UserPortal({ session, onLogout }: UserPortalProps) {
           </svg>
           <div className="flex-1">
             <h1 className="text-lg font-semibold tracking-tight text-foreground">Marbor</h1>
-            <p className="text-sm text-muted-foreground">User Portal</p>
+            <p className="text-sm text-muted-foreground">User portal</p>
           </div>
           <button
             onClick={handleLogout}

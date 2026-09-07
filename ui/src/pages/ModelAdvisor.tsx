@@ -537,7 +537,7 @@ function ModelDetailPanel({
       <Modal
         isOpen={vramConfirmVariant !== null}
         onClose={() => setVramConfirmVariant(null)}
-        title="VRAM May Be Insufficient"
+        title="VRAM may be insufficient"
         maxWidth="sm"
       >
         {vramConfirmVariant && (
@@ -578,7 +578,7 @@ function ModelCard({
   model,
   selected,
   onSelect,
-  selectLabel = 'View Quantizations & Pull',
+  selectLabel = 'View quantizations & pull',
   isFavorite,
   onToggleFavorite,
 }: {
@@ -899,7 +899,7 @@ export function ModelAdvisor() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <Package className="w-6 h-6 text-primary" /> Model Advisor
+            <Package className="w-6 h-6 text-primary" /> Model advisor
           </h1>
           <p className="text-sm text-muted-foreground mt-1 font-medium">Search Hugging Face for models that fit your node&apos;s runtime and VRAM</p>
         </div>
@@ -1028,7 +1028,7 @@ export function ModelAdvisor() {
             <span className="font-semibold text-foreground block mb-1">How to add models to nodes:</span>
             1. Search Hugging Face for any model (e.g. <code className="font-mono text-primary font-semibold">llama-3.2</code> or <code className="font-mono text-primary font-semibold">qwen2.5</code>) using the search bar below - results are already filtered to what {browseRuntimeIsGGUF ? 'this runtime (GGUF)' : `this runtime (${browseRuntime})`} can load.
             <br />
-            2. Click <strong className="text-foreground">View Quantizations & Pull</strong> on a card to expand the detail panel inline.
+            2. Click <strong className="text-foreground">View quantizations & pull</strong> on a card to expand the detail panel inline.
             <br />
             3. Select a quantization and click <strong className="text-foreground">Pull</strong> to download it to the active node.
           </div>
@@ -1173,7 +1173,7 @@ export function ModelAdvisor() {
       {!activeNode && !loading && !error && nodes.length === 0 && (
         <div className="text-center py-16 bg-card border border-border rounded-xl shadow-sm">
           <Server className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-foreground">No GPU Nodes Connected</h3>
+          <h3 className="text-lg font-semibold text-foreground">No GPU nodes connected</h3>
           <p className="text-muted-foreground max-w-md mx-auto text-sm leading-normal mt-1">
             Marbor requires at least one active Ollama node to calculate VRAM capacity and check model compatibility.
             Connect your first node in the <strong>GPU Nodes</strong> page.

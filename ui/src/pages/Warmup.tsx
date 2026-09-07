@@ -880,7 +880,7 @@ export function Warmup() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-2.5">
           <Flame className="w-5 h-5 text-primary" />
-          <h1 className="text-lg font-bold tracking-tight text-foreground">Warmup &amp; Scheduling</h1>
+          <h1 className="text-lg font-bold tracking-tight text-foreground">Warmup &amp; scheduling</h1>
           <button onClick={handlePingWarmup} disabled={pinging} title="Manually trigger a warmup pass on every node right now"
             className="flex items-center gap-1.5 px-2.5 py-1 border border-border rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-50">
             <Zap className="w-3.5 h-3.5" /> {pinging ? 'Pinging…' : 'Ping warmup'}
@@ -961,7 +961,7 @@ export function Warmup() {
             <div className="flex items-start gap-3 bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3">
               <BrainCircuit className="w-4 h-4 text-amber-700 dark:text-amber-400 shrink-0 mt-0.5" />
               <div>
-                <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">Predictive Warmup Engine is disabled</p>
+                <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">Predictive warmup engine is disabled</p>
                 <p className="text-[11px] text-amber-600/80 dark:text-amber-400/80 mt-0.5">
                   Scheduled predictive warmups will not fire while the engine is off. Manual schedules below still run normally.
                   Enable the engine in the <button onClick={() => setTab('predictions')} className="underline underline-offset-2 hover:text-amber-700 dark:hover:text-amber-400 transition-colors">Predictions</button> tab.
@@ -1015,7 +1015,7 @@ export function Warmup() {
             <div className="flex items-center gap-3">
               <BrainCircuit className={`w-5 h-5 shrink-0 ${predictiveEnabled ? 'text-primary' : 'text-amber-700 dark:text-amber-400'}`} />
               <div>
-                <h4 className="text-sm font-semibold text-foreground">Predictive Warmup Engine</h4>
+                <h4 className="text-sm font-semibold text-foreground">Predictive warmup engine</h4>
                 <p className="text-xs text-muted-foreground">
                   Auto-preloads next-likely models in background VRAM based on historical model-transition patterns.
                 </p>
@@ -1027,14 +1027,14 @@ export function Warmup() {
             <button
               onClick={() => setPredictiveConfirmOpen(true)}
               disabled={togglingPredictive}
-              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
-                predictiveEnabled ? 'bg-primary' : 'bg-secondary'
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 ease-in-out ${
+                predictiveEnabled ? 'bg-primary' : 'bg-muted-foreground/30'
               }`}
             >
               <span
                 aria-hidden="true"
-                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                  predictiveEnabled ? 'translate-x-5' : 'translate-x-0'
+                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                  predictiveEnabled ? 'translate-x-6' : 'translate-x-1'
                 }`}
               />
             </button>
@@ -1083,12 +1083,12 @@ export function Warmup() {
       <Modal
         isOpen={predictiveConfirmOpen}
         onClose={() => setPredictiveConfirmOpen(false)}
-        title={predictiveEnabled ? 'Disable Predictive Warmup Engine' : 'Enable Predictive Warmup Engine'}
+        title={predictiveEnabled ? 'Disable Predictive warmup engine' : 'Enable Predictive warmup engine'}
         maxWidth="sm"
       >
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Are you sure you want to {predictiveEnabled ? 'disable' : 'enable'} the Predictive Warmup Engine?
+            Are you sure you want to {predictiveEnabled ? 'disable' : 'enable'} the Predictive warmup engine?
           </p>
           <p className="text-xs text-muted-foreground">
             {predictiveEnabled
@@ -1119,7 +1119,7 @@ export function Warmup() {
       <Modal
         isOpen={scheduleToDelete !== null}
         onClose={() => setScheduleToDelete(null)}
-        title="Delete Schedule"
+        title="Delete schedule"
         maxWidth="sm"
       >
         <div className="space-y-4">
@@ -1153,7 +1153,7 @@ export function Warmup() {
               }}
               className="px-4 py-2 bg-destructive hover:bg-destructive/90 text-destructive-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
             >
-              Delete Schedule
+              Delete schedule
             </button>
           </div>
         </div>

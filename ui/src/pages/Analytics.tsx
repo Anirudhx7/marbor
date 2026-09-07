@@ -183,21 +183,21 @@ export function Analytics() {
       {/* Hero Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <StatCard
-          title="Estimated Saved vs Cloud"
+          title="Estimated saved vs cloud"
           value={loading ? '--' : data?.total_saved_usd != null ? `$${data.total_saved_usd.toFixed(2)}` : '-'}
           sub={`${localPct}% requests served locally`}
           icon={<DollarSign className="w-5 h-5" />}
           accent="success"
         />
         <StatCard
-          title="Local Requests"
+          title="Local requests"
           value={loading ? '--' : (data?.local_requests ?? 0).toLocaleString()}
           sub="served by your GPU nodes"
           icon={<Server className="w-5 h-5" />}
           accent="primary"
         />
         <StatCard
-          title="Cloud Spend"
+          title="Cloud spend"
           value={loading ? '--' : data?.total_spent_usd != null ? `$${data.total_spent_usd.toFixed(4)}` : '-'}
           sub={`${(data?.cloud_requests ?? 0).toLocaleString()} cloud fallback requests`}
           icon={<Cloud className="w-5 h-5" />}
@@ -208,7 +208,7 @@ export function Analytics() {
       {/* 24h Chart */}
       <div className="glass-panel rounded-xl p-6">
         <h3 className="text-sm font-semibold text-foreground mb-6">
-          Requests per Hour - Local vs Cloud (24h)
+          Requests per hour - local vs cloud (24h)
         </h3>
         {loading ? (
           <div className="h-64 bg-secondary/30 rounded-lg animate-pulse" />
@@ -277,7 +277,7 @@ export function Analytics() {
       {/* Model Breakdown */}
       <div className="bg-card border border-border shadow-sm rounded-xl overflow-hidden">
         <div className="px-6 py-4 border-b border-border bg-secondary/30">
-          <h3 className="text-sm font-semibold text-foreground">Requests by Model</h3>
+          <h3 className="text-sm font-semibold text-foreground">Requests by model</h3>
         </div>
         {loading ? (
           <div className="divide-y divide-border">
@@ -393,10 +393,10 @@ export function Analytics() {
         )}
       </div>
 
-      {/* Cloud Spill - per-key, per-provider local-vs-cloud request counts */}
+      {/* Cloud spill - per-key, per-provider local-vs-cloud request counts */}
       <div className="bg-card border border-border shadow-sm rounded-xl overflow-hidden">
         <div className="px-6 py-4 border-b border-border bg-secondary/30">
-          <h3 className="text-sm font-semibold text-foreground">Cloud Spill</h3>
+          <h3 className="text-sm font-semibold text-foreground">Cloud spill</h3>
           <p className="text-xs text-muted-foreground mt-0.5">
             Requests served locally, by a cloud provider, or blocked by a key's local-only policy.
           </p>

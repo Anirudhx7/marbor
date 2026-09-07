@@ -248,7 +248,7 @@ export function Metrics() {
                   <BarChart3 className="w-5 h-5 text-primary" />
                 </div>
                 <div>
-                  <p className="text-xs font-medium text-muted-foreground">Total Requests</p>
+                  <p className="text-xs font-medium text-muted-foreground">Total requests</p>
                   <p className="text-xl font-bold text-foreground font-mono">
                     {totalRequests != null ? totalRequests.toLocaleString() : '-'}
                   </p>
@@ -262,7 +262,7 @@ export function Metrics() {
                   <BarChart3 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
                 </div>
                 <div>
-                  <p className="text-xs font-medium text-muted-foreground">Local Routing</p>
+                  <p className="text-xs font-medium text-muted-foreground">Local routing</p>
                   <p className="text-xl font-bold text-foreground font-mono">
                     {localPct != null ? `${localPct}%` : '-'}
                   </p>
@@ -276,7 +276,7 @@ export function Metrics() {
                   <BarChart3 className="w-5 h-5 text-amber-600 dark:text-amber-400" />
                 </div>
                 <div>
-                  <p className="text-xs font-medium text-muted-foreground">Cloud Spend</p>
+                  <p className="text-xs font-medium text-muted-foreground">Cloud spend</p>
                   <p className="text-xl font-bold text-foreground font-mono">
                     {analytics.total_spent_usd != null
                       ? `$${analytics.total_spent_usd.toFixed(4)}`
@@ -292,7 +292,7 @@ export function Metrics() {
                   <BarChart3 className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                 </div>
                 <div>
-                  <p className="text-xs font-medium text-muted-foreground">Estimated Savings</p>
+                  <p className="text-xs font-medium text-muted-foreground">Estimated savings</p>
                   <p className="text-xl font-bold text-foreground font-mono">
                     {analytics.total_saved_usd != null
                       ? `$${analytics.total_saved_usd.toFixed(4)}`
@@ -307,7 +307,7 @@ export function Metrics() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Requests Per Hour */}
             <ChartCard
-              title="Requests Per Hour (Last 24h)"
+              title="Requests per hour (last 24h)"
               onExport={() =>
                 exportToCSV(
                   hourlyExport as unknown as Record<string, unknown>[],
@@ -349,9 +349,9 @@ export function Metrics() {
               </div>
             </ChartCard>
 
-            {/* Requests by Model */}
+            {/* Requests by model */}
             <ChartCard
-              title="Requests by Model"
+              title="Requests by model"
               onExport={() =>
                 exportToCSV(
                   modelRequestData as unknown as Record<string, unknown>[],
@@ -397,7 +397,7 @@ export function Metrics() {
 
             {/* Request Distribution Pie */}
             <ChartCard
-              title="Request Distribution by Model"
+              title="Request distribution by model"
               onExport={() =>
                 exportToCSV(
                   modelPieData as unknown as Record<string, unknown>[],
@@ -441,7 +441,7 @@ export function Metrics() {
 
             {/* Savings vs Spend */}
             <ChartCard
-              title="Savings vs Spend per Hour (Last 24h)"
+              title="Savings vs spend per hour (last 24h)"
               onExport={() =>
                 exportToCSV(
                   savingsExport as unknown as Record<string, unknown>[],

@@ -30,7 +30,10 @@
   --color-info-foreground: hsl(var(--info-foreground));
 
   --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  /* Mono is intentionally the system stack: SFMono/Menlo/Consolas are all
+     tabular, offline-safe, and render digits as well as any webfont here -
+     loading JetBrains Mono would add a render-blocking fetch for no gain. */
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   
   --radius-lg: 0.5rem;
   --radius-md: 0.375rem;

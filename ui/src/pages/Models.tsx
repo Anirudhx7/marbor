@@ -229,7 +229,7 @@ function ModelFleetCard({ model, demoMode, onConfigure, onDeleted }: { model: Mo
       <Modal
         isOpen={deleteConfirmOpen}
         onClose={() => { if (!deleteBusy) setDeleteConfirmOpen(false); }}
-        title="Delete Local Model"
+        title="Delete local model"
         maxWidth="sm"
       >
         <div className="space-y-4">
@@ -672,7 +672,7 @@ export function Models() {
                                 </button>
                                 <Link
                                   to={`/gpu-nodes?highlight=${encodeURIComponent(model.nodes.map((n) => n.name).join(','))}&from=models`}
-                                  title="Manage on GPU Nodes (mutations live there)"
+                                  title="Manage on GPU nodes (mutations live there)"
                                   className="p-1.5 text-muted-foreground hover:text-primary hover:bg-secondary rounded transition-all duration-200 ease-out hover:scale-110 active:scale-95"
                                 >
                                   <ArrowUpRight className="w-3.5 h-3.5" />
@@ -704,7 +704,7 @@ export function Models() {
               <Package className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
               {catalog && catalog.total_nodes === 0 ? (
                 <div className="space-y-1">
-                  <h3 className="text-lg font-semibold text-foreground">No GPU Nodes Connected</h3>
+                  <h3 className="text-lg font-semibold text-foreground">No GPU nodes connected</h3>
                   <p className="text-muted-foreground max-w-md mx-auto text-sm leading-normal">
                     Connect your first node in the <strong>GPU Nodes</strong> page to view fleet residency and monitor warm VRAM.
                   </p>
@@ -725,12 +725,12 @@ export function Models() {
           <div className="bg-card border border-border rounded-xl p-6">
             <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
               <Layers className="w-5 h-5 text-primary" />
-              Model Catalog
+              Model catalog
             </h3>
             <p className="text-sm text-muted-foreground mt-2 leading-normal">
               Catalog is secondary to fleet intelligence. Browse curated popular models and check per-node fit in{' '}
               <Link to="/model-advisor" className="text-primary hover:underline font-medium">
-                Model Advisor
+                Model advisor
               </Link>
               , or pull any model directly to a node below. The fleet view above is the source of truth for what is actually warm and where.
             </p>
@@ -740,7 +740,7 @@ export function Models() {
                 className="inline-flex items-center gap-2 px-4 py-2 bg-secondary hover:bg-secondary/80 border border-border rounded-lg text-sm font-semibold text-foreground transition-colors"
               >
                 <Layers className="w-4 h-4" />
-                Open Model Advisor
+                Open Model advisor
               </Link>
               <button
                 onClick={openPullModal}
@@ -778,7 +778,7 @@ export function Models() {
       <Modal
         isOpen={isPullModalOpen}
         onClose={() => setIsPullModalOpen(false)}
-        title="Pull Model from Registry"
+        title="Pull model from registry"
       >
         <div className="space-y-4">
           <p className="text-xs text-muted-foreground leading-normal">

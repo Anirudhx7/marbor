@@ -94,8 +94,10 @@ export function BudgetBanner() {
               Cloud spend warning
             </p>
             <p className="text-xs text-muted-foreground leading-snug break-words">
-              {scope} at {Math.round(pct * 100)}% of its {period} cap
-              ({currency.symbol}{toDisplay(spent).toFixed(2)} / {currency.symbol}{toDisplay(cap).toFixed(2)})
+              {scope} at {Math.round(pct * 100)}% of its {period} cap{' '}
+              <span className="whitespace-nowrap">
+                ({currency.symbol}{toDisplay(spent).toFixed(2)} / {currency.symbol}{toDisplay(cap).toFixed(2)})
+              </span>
             </p>
           </div>
         </div>

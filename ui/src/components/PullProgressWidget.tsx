@@ -293,7 +293,7 @@ function PullJobCard({ job }: { job: PullProgressState }) {
       <Modal
         isOpen={deleteConfirmOpen}
         onClose={() => { if (!deleting) setDeleteConfirmOpen(false); }}
-        title="Delete Local Model"
+        title="Delete local model"
         maxWidth="sm"
       >
         <div className="space-y-4">

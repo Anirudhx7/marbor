@@ -32,13 +32,13 @@ import type { SessionData } from '../types';
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
   { path: '/activity', label: 'Activity', icon: Activity },
-  { path: '/gpu-nodes', label: 'GPU Nodes', icon: Cpu },
+  { path: '/gpu-nodes', label: 'GPU nodes', icon: Cpu },
   { path: '/warmup', label: 'Warmup', icon: Flame },
   { path: '/models', label: 'Models', icon: Package },
-  { path: '/model-advisor', label: 'Model Advisor', icon: Compass },
+  { path: '/model-advisor', label: 'Model advisor', icon: Compass },
   { path: '/analytics', label: 'Analytics', icon: TrendingUp },
   { path: '/requests', label: 'Requests', icon: ClipboardList },
-  { path: '/api-keys', label: 'API Keys', icon: Key },
+  { path: '/api-keys', label: 'API keys', icon: Key },
   { path: '/routing', label: 'Routing', icon: Route },
   { path: '/metrics', label: 'Metrics', icon: BarChart3 },
 ];
