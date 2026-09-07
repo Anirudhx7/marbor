@@ -246,7 +246,7 @@ html.light .theme-toggle .moon { display: block; }
 h1.headline {
   font-family: var(--font-serif); font-weight: 400;
   font-size: clamp(34px, 6.5vw, 52px); line-height: 1.2; letter-spacing: -0.015em;
-  margin: 0 0 22px; color: var(--text); max-width: 720px;
+  margin: 0 0 22px; color: var(--text); max-width: 720px; text-wrap: balance;
 }
 h1.headline em { font-style: italic; color: var(--accent); }
 .subhead {
@@ -270,6 +270,8 @@ h1.headline em { font-style: italic; color: var(--accent); }
 .btn-demo { background: rgba(82,183,136,0.12); background: color-mix(in srgb, var(--accent2) 12%, transparent); color: var(--accent2); border-color: rgba(82,183,136,0.35); border-color: color-mix(in srgb, var(--accent2) 35%, transparent); font-weight: 500; }
 .btn-demo:hover { background: rgba(82,183,136,0.22); background: color-mix(in srgb, var(--accent2) 22%, transparent); border-color: var(--accent2); color: var(--accent2); text-decoration: none; }
 .btn-ghost:hover { color: var(--accent); }
+.btn:active { transform: translateY(1px); }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* install line */
 .install {
@@ -351,7 +353,7 @@ h1.headline em { font-style: italic; color: var(--accent); }
 /* SECTIONS */
 section { padding: 80px 0; }
 .eyebrow { font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); margin: 0 0 14px; }
-h2.sec { font-family: var(--font-serif); font-weight: 400; font-size: clamp(26px, 4.4vw, 34px); letter-spacing: -0.01em; line-height: 1.25; margin: 0 0 12px; }
+h2.sec { font-family: var(--font-serif); font-weight: 400; font-size: clamp(26px, 4.4vw, 34px); letter-spacing: -0.01em; line-height: 1.25; margin: 0 0 12px; text-wrap: balance; }
 h2.sec em { font-style: italic; color: var(--accent); }
 .sec-sub { font-family: var(--font-serif); color: var(--text-muted); font-size: 16px; line-height: 1.6; max-width: 58ch; margin: 0 0 36px; }
 
@@ -394,6 +396,10 @@ h2.sec em { font-style: italic; color: var(--accent); }
 .feat h3 { font-family: var(--font-serif); font-weight: 600; font-size: 18px; margin: 0 0 10px; letter-spacing: -0.005em; }
 .feat p { color: var(--text-muted); font-size: 14px; margin: 0; line-height: 1.65; }
 .feat p code { background: var(--bg-surface); padding: 1px 5px; border-radius: 3px; color: var(--text); font-size: 12px; border: 1px solid var(--border-subtle); }
+
+/* pain cards share the feat hover language: border lift, no layout shift */
+.pain-card { border: 1px solid var(--border-subtle); padding: 24px; border-radius: var(--radius); background: var(--bg-elevated); transition: border-color .2s cubic-bezier(0.16, 1, 0.3, 1), transform .2s cubic-bezier(0.16, 1, 0.3, 1); }
+.pain-card:hover { border-color: var(--border); transform: translateY(-2px); }
 
 /* steps */
 .steps { display: flex; flex-direction: column; gap: 26px; }
@@ -1017,15 +1023,15 @@ SPCS-FEATURE-END -->
     <p class="sec-sub">Serving LLMs across your own GPU fleet creates silent bottlenecks that generic load balancers can't see - wasting VRAM, wearing hardware, and breaking reliability.</p>
     
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; margin-top: 32px;">
-      <div style="border: 1px solid var(--border-subtle); padding: 24px; border-radius: var(--radius); background: var(--bg-elevated);">
+      <div class="pain-card">
         <h3 style="font-family: var(--font-serif); font-size: 17px; margin: 0 0 10px; font-weight: 600;">VRAM Thrashing & Overlap</h3>
         <p style="color: var(--text-muted); font-size: 13.5px; margin: 0; line-height: 1.6;">Without scheduling coordination, developers load models ad-hoc. When GPU memory fills, the runtime terminates resident models to make room, leading to constant loading cycles that wear hardware and halt requests.</p>
       </div>
-      <div style="border: 1px solid var(--border-subtle); padding: 24px; border-radius: var(--radius); background: var(--bg-elevated);">
+      <div class="pain-card">
         <h3 style="font-family: var(--font-serif); font-size: 17px; margin: 0 0 10px; font-weight: 600;">Unbalanced Queue Hotspots</h3>
         <p style="color: var(--text-muted); font-size: 13.5px; margin: 0; line-height: 1.6;">Standard load balancers balance network connections, not request complexity. A deep reasoning request is treated the same as a short completion, causing requests to pile up on a busy node while other GPUs sit completely idle.</p>
       </div>
-      <div style="border: 1px solid var(--border-subtle); padding: 24px; border-radius: var(--radius); background: var(--bg-elevated);">
+      <div class="pain-card">
         <h3 style="font-family: var(--font-serif); font-size: 17px; margin: 0 0 10px; font-weight: 600;">Saturated Failures</h3>
         <p style="color: var(--text-muted); font-size: 13.5px; margin: 0; line-height: 1.6;">When local hardware capacity is genuinely exceeded, users get connection errors. Alternatively, routing all requests to cloud APIs by default removes the cost benefits of self-hosting local models.</p>
       </div>

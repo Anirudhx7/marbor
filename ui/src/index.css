@@ -336,6 +336,16 @@ input[type="checkbox"]:focus-visible {
   outline-offset: 2px;
 }
 
+/* Universal toggle focus ring - every h-6 w-11 switch shows the same gold
+   ring the predictive-engine toggle has, on mouse-click focus and keyboard
+   focus alike. Scoped to toggles only so click-focus stays quiet elsewhere.
+   Unlayered so it wins over utilities; per-instance focus:ring classes on
+   individual toggles are redundant next to this - don't add new ones. */
+button[class~="h-6"][class~="w-11"]:focus {
+  outline: 2px solid hsl(var(--primary));
+  outline-offset: 2px;
+}
+
 /* P399 parity tokens - filter-bar is single source via FilterField.tsx */
 
 /* Mobile tap-target floor (375px sweep): icon-only buttons get a usable hit

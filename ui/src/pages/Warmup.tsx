@@ -1027,7 +1027,7 @@ export function Warmup() {
             <button
               onClick={() => setPredictiveConfirmOpen(true)}
               disabled={togglingPredictive}
-              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background ${
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
                 predictiveEnabled ? 'bg-primary' : 'bg-secondary'
               }`}
             >
@@ -1043,7 +1043,7 @@ export function Warmup() {
           <div className={`space-y-2 transition-opacity duration-200 ${!predictiveEnabled ? 'opacity-50 pointer-events-none' : ''}`}>
             <p className="text-xs text-muted-foreground">
               Last {decisions.length} predictive-warmup decisions. Newest first - this is a log of what the engine actually did on each tick, not a schedule.
-              {!predictiveEnabled && <span className="text-amber-800 dark:text-amber-400"> (engine paused - list is frozen)</span>}
+              {!predictiveEnabled && <span className="text-amber-700 dark:text-amber-400"> (engine paused - list is frozen)</span>}
             </p>
             {loading ? (
               <p className="text-sm text-muted-foreground">Loading...</p>
