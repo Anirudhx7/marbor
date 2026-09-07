@@ -734,7 +734,7 @@ export function SettingsPage() {
                 onChange={(e) => setSettings({ ...settings, proxyPort: parseInt(e.target.value) || settings.proxyPort })}
                 className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
               />
-              <p className="text-[10px] text-amber-800 dark:text-amber-400 mt-1">
+              <p className="text-[10px] text-amber-700 dark:text-amber-400 mt-1">
                 Requires a marbor restart to take effect - saving here only stores the new port.
               </p>
             </div>
@@ -866,7 +866,7 @@ export function SettingsPage() {
               <p className="text-[10px] text-muted-foreground mt-1">
                 Use 127.0.0.1:8080 to restrict the dashboard to localhost.
               </p>
-              <p className="text-[10px] text-amber-800 dark:text-amber-400 mt-1">
+              <p className="text-[10px] text-amber-700 dark:text-amber-400 mt-1">
                 Requires a marbor restart to take effect - changing this can lock you out until you reach it via the new address.
               </p>
             </div>
@@ -879,7 +879,7 @@ export function SettingsPage() {
               <div>
                 <p className="text-sm font-medium text-foreground">Proxy Access Log</p>
                 <p className="text-xs text-muted-foreground">Structured JSON access-log line per request on stdout</p>
-                <p className="text-[10px] text-amber-800 dark:text-amber-400 mt-1">Requires a marbor restart to take effect.</p>
+                <p className="text-[10px] text-amber-700 dark:text-amber-400 mt-1">Requires a marbor restart to take effect.</p>
               </div>
               <Toggle on={settings.proxyAccessLog} onToggle={() => setSettings({ ...settings, proxyAccessLog: !settings.proxyAccessLog })} />
             </div>

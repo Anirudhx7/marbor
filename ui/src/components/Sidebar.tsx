@@ -151,7 +151,7 @@ export const Sidebar = memo(function Sidebar({ onLogout, session, pendingCount =
                 {/* Count - desktop only collapse */}
                 <span className={`overflow-hidden transition-all duration-300 max-w-[32px] opacity-100 ml-2 ${collapsed ? 'md:max-w-0 md:opacity-0 md:ml-0' : ''}`}>
                   {pendingCount > 0 && !collapsed && (
-                    <span className="px-1.5 py-0.5 text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 rounded-full leading-none border border-amber-500/20 whitespace-nowrap">
+                    <span className="px-1.5 py-0.5 text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 rounded-md leading-none border border-amber-500/20 whitespace-nowrap">
                       {pendingCount}
                     </span>
                   )}
@@ -292,7 +292,7 @@ export const Sidebar = memo(function Sidebar({ onLogout, session, pendingCount =
           </div>
         </div>
         {pendingCount > 0 && (
-          <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 rounded-full leading-none border border-amber-500/20">
+          <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-500/15 text-amber-700 dark:text-amber-300 rounded-md leading-none border border-amber-500/20">
             {pendingCount}
           </span>
         )}
