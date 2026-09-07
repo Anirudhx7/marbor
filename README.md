@@ -24,9 +24,10 @@
 <p align="center">
   <strong>Cold model loads kill your time-to-first-token. Marbor keeps hot state ready.</strong><br>
   43x faster warm vs. cold, measured on real hardware (one consumer GPU, VRAM-constrained -<br>
-  <a href="bench/">see methodology</a>). $200-3,000+/mo saved vs. cloud APIs, from real parsed<br>
-  token counts - never estimated. Bearer-token auth, per-key rate limits, and cost-metered cloud<br>
-  overflow that activates only when local capacity is fully saturated.
+  <a href="bench/">see methodology</a>). Bearer-token auth, per-key rate limits, and cost-metered<br>
+  cloud overflow that activates only when local capacity is fully saturated. Tracks $200-3,000+/mo<br>
+  of token spend served locally instead of by a cloud API, from real parsed token counts - never<br>
+  estimated, and not a total cost comparison (your hardware and power are not in that number).
 </p>
 
 <p align="center">
@@ -309,13 +310,13 @@ make build
 
 Point your LLM clients at `:11434`. Marbor speaks the Ollama API and passes through Ollama's OpenAI-compatible `/v1` endpoints - both `ollama` clients and OpenAI SDKs work unchanged.
 
-**Integration guides:** [Open WebUI](docs/integrations/open-webui.md) · [Continue](docs/integrations/continue.md) · [LibreChat](docs/integrations/librechat.md) · [AWS EC2 deploy](docs/deploy/aws-ec2.md) · [GPU node registration (Ansible)](docs/deploy/gpu-node-registration.md) · [marbor agent enrollment (Ansible)](docs/deploy/marbor-agent-enrollment.md)
+**Integration guides:** [Open WebUI](docs/integrations/open-webui.md) · [Continue](docs/integrations/continue.md) · [LibreChat](docs/integrations/librechat.md) · [LiteLLM](docs/integrations/litellm.md) · [AWS EC2 deploy](docs/deploy/aws-ec2.md) · [GPU node registration (Ansible)](docs/deploy/gpu-node-registration.md) · [marbor agent enrollment (Ansible)](docs/deploy/marbor-agent-enrollment.md)
 
 ---
 
 ## Configuration
 
-There is no config file. Marbor is DB-first: everything lives in `marbor.db` (SQLite), and you configure it entirely through the admin dashboard or the REST API - nothing to hand-edit, nothing to redeploy for a settings change.
+There is no config file. Marbor is DB-first: everything lives in `marbor.db` (SQLite), and you configure it entirely through the admin dashboard or the REST API - nothing to hand-edit, nothing to redeploy for a settings change. Nodes, keys, quotas, and routing config live in that database, so they survive a reboot with no re-registration - see the [Production Deployment Guide](docs/PRODUCTION.md) for the systemd unit and Compose restart policy that keep the process itself running.
 
 **First boot:**
 ```bash

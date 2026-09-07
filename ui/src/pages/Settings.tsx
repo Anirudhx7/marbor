@@ -1,37 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Save, Check, Terminal, Shield, Activity, MonitorPlay, Cloud, RefreshCw, KeyRound, DollarSign, Sliders, Lock, Container, Webhook, Network, Flame, Ruler, Plus, Pencil, Trash2, ChevronUp, ChevronDown, Gauge, HardDrive, Download } from 'lucide-react';
-import { Badge } from '../components/Badge';
-import { StatusDot } from '../components/StatusDot';
+import { Save, Check, Terminal, Shield, Activity, MonitorPlay, RefreshCw, KeyRound, DollarSign, Sliders, Lock, Container, Webhook, Network, Flame, Ruler, Plus, Trash2, Gauge, HardDrive, Download } from 'lucide-react';
 import { Modal } from '../components/Modal';
-import { defaultSettings, mockCloudProviders, mockModelCatalog } from '../lib/mockData';
-import { fetchSettings, updateSettings, fetchCloudProviders, addCloudProvider, updateCloudProvider, deleteCloudProvider, testCloudProvider, reorderCloudProviders, reloadFromStore, changePassword, triggerBackupNow, fetchBackupList, restoreBackup, uploadBackup, fetchModels } from '../lib/api';
-import type { Settings, CloudProvider, CloudProviderInput, BackupFileInfo } from '../types';
+import { defaultSettings, mockModelCatalog } from '../lib/mockData';
+import { fetchSettings, updateSettings, reloadFromStore, changePassword, triggerBackupNow, fetchBackupList, restoreBackup, uploadBackup, fetchModels } from '../lib/api';
+import type { Settings, BackupFileInfo } from '../types';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import { useCurrency, CURRENCY_PRESETS } from '../hooks/useCurrency';
-import { CustomSelect, CustomCombobox, CustomTagCombobox } from '../components/Select';
+import { CustomSelect, CustomCombobox } from '../components/Select';
 import { useTimezone } from '../hooks/useTimezone';
 import { formatDateTimeInZone } from '../lib/time';
 import { notifyTimezoneChanged } from '../hooks/useTimezone';
-
-// Known cloud fallback providers. All use plain `Authorization: Bearer <key>`
-// auth and an OpenAI-compatible /chat/completions schema, matching this
-// marbor's proxy - Azure OpenAI is deliberately excluded (needs an `api-key`
-// header + per-deployment URL, which this proxy doesn't support).
-const CLOUD_PROVIDER_PRESETS: Record<string, { label: string; baseUrl: string; defaultModel: string }> = {
-  openai: { label: 'OpenAI', baseUrl: 'https://api.openai.com/v1', defaultModel: 'gpt-4o' },
-  anthropic: { label: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1', defaultModel: 'claude-sonnet-5' },
-  openrouter: { label: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', defaultModel: 'openai/gpt-4o' },
-  groq: { label: 'Groq', baseUrl: 'https://api.groq.com/openai/v1', defaultModel: 'llama-3.3-70b-versatile' },
-  together: { label: 'Together AI', baseUrl: 'https://api.together.xyz/v1', defaultModel: 'meta-llama/Llama-3.3-70B-Instruct-Turbo' },
-  fireworks: { label: 'Fireworks AI', baseUrl: 'https://api.fireworks.ai/inference/v1', defaultModel: 'accounts/fireworks/models/llama-v3p1-70b-instruct' },
-  deepseek: { label: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', defaultModel: 'deepseek-chat' },
-  mistral: { label: 'Mistral AI', baseUrl: 'https://api.mistral.ai/v1', defaultModel: 'mistral-large-latest' },
-  xai: { label: 'xAI (Grok)', baseUrl: 'https://api.x.ai/v1', defaultModel: 'grok-2-latest' },
-  cerebras: { label: 'Cerebras', baseUrl: 'https://api.cerebras.ai/v1', defaultModel: 'llama-3.3-70b' },
-  nvidia: { label: 'NVIDIA NIM', baseUrl: 'https://integrate.api.nvidia.com/v1', defaultModel: 'nvidia/nemotron-3-8b-instruct' },
-  custom: { label: 'Custom / Other', baseUrl: '', defaultModel: '' },
-};
 
 // Compact toggle switch shared by every boolean setting on this page.
 function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
@@ -139,8 +118,6 @@ export function SettingsPage() {
   useEffect(() => {
     if (settings !== lastLoadedSettingsRef.current) dirtyRef.current = true;
   }, [settings]);
-  const [cloudProviders, setCloudProviders] = useState<CloudProvider[]>(demoMode ? mockCloudProviders : []);
-  const [cloudLoading, setCloudLoading] = useState(!demoMode);
   const [saved, setSaved] = useState(false);
   const [reloaded, setReloaded] = useState(false);
   const [reloading, setReloading] = useState(false);
@@ -148,27 +125,14 @@ export function SettingsPage() {
   const [demoModeConfirmOpen, setDemoModeConfirmOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Cloud providers CRUD
-  const [cloudModalOpen, setCloudModalOpen] = useState(false);
-  const [editingProvider, setEditingProvider] = useState<CloudProviderInput | null>(null);
-  const [cloudSaving, setCloudSaving] = useState(false);
-  const [cloudTesting, setCloudTesting] = useState(false);
-  const [cloudError, setCloudError] = useState<string | null>(null);
-  const [providerToDelete, setProviderToDelete] = useState<string | null>(null);
-
   // Model context windows
   const [newCtxModel, setNewCtxModel] = useState('');
   const [newCtxTokens, setNewCtxTokens] = useState('');
 
-  // Local model fallback chain
-  const [newDegModel, setNewDegModel] = useState('');
-  const [newDegAlts, setNewDegAlts] = useState('');
-  const [degChainError, setDegChainError] = useState<string | null>(null);
-
-  // Known model names for the searchable comboboxes above (context windows +
-  // local fallback chain) - suggestions only, never enforced: an
-  // operator-declared name for a not-yet-pulled or temporarily unavailable
-  // model must stay a valid config entry.
+  // Known model names for the searchable context-windows combobox -
+  // suggestions only, never enforced: an operator-declared name for a
+  // not-yet-pulled or temporarily unavailable model must stay a valid
+  // config entry. (Local fallback chain comboboxes moved to Routing.tsx.)
   const [knownModelNames, setKnownModelNames] = useState<string[]>([]);
 
   useEffect(() => {
@@ -293,11 +257,8 @@ export function SettingsPage() {
   useEffect(() => {
     if (currentAppPath() !== '/settings') return;
     let active = true;
-    if (active && currentAppPath() === '/settings') {
-      setCloudLoading(true);
-    }
-    Promise.all([fetchSettings(), fetchCloudProviders()])
-      .then(([settingsData, providersData]) => {
+    fetchSettings()
+      .then((settingsData) => {
         if (!active || currentAppPath() !== '/settings') return;
         const loaded: Settings = {
           proxyPort: settingsData.proxy?.port || 11434,
@@ -356,6 +317,10 @@ export function SettingsPage() {
           warmupKeepAlive: settingsData.warmup?.keep_alive || '10m',
 
           contextWindows: settingsData.context_windows || {},
+          // Owned by the Routing page now (fallback chain UI moved
+          // there). Loaded here only to satisfy the Settings type - never
+          // saved from here, so a stale Settings save can't clobber a
+          // Routing-side edit (the backend merges partial payloads).
           localDegradationChains: settingsData.routing?.local_degradation_chains || {},
 
           backupEnabled: settingsData.backup?.enabled || false,
@@ -375,18 +340,11 @@ export function SettingsPage() {
           lastLoadedSettingsRef.current = loaded;
           setSettings(loaded);
         }
-        setCloudProviders(demoMode ? mockCloudProviders : (providersData || []));
         setError(null);
       })
       .catch(err => {
         if (!active || currentAppPath() !== '/settings') return;
         setError(err.message || 'Failed to load settings');
-        setCloudProviders([]);
-      })
-      .finally(() => {
-        if (active && currentAppPath() === '/settings') {
-          setCloudLoading(false);
-        }
       });
     return () => {
       active = false;
@@ -416,7 +374,6 @@ export function SettingsPage() {
           health_success_threshold: settings.routingHealthSuccessThreshold,
           overflow_sla_ms: settings.routingOverflowSlaMs,
           max_in_flight_per_node: settings.routingMaxInFlightPerNode,
-          local_degradation_chains: settings.localDegradationChains,
           thermal_watchdog: {
             enabled: settings.thermalWatchdogEnabled,
             max_temp_celsius: settings.thermalWatchdogMaxTempCelsius,
@@ -512,95 +469,6 @@ export function SettingsPage() {
       setCredError(err.message || 'Failed to update credentials');
     } finally {
       setCredSaving(false);
-    }
-  };
-
-  const emptyProvider: CloudProviderInput = { name: '', provider: 'openai', base_url: '', api_key: '', default_model: '', cost_per_1k_tokens: 0, enabled: false, priority: 0 };
-
-  const refreshCloudProviders = async () => {
-    try {
-      const providers = await fetchCloudProviders();
-      setCloudProviders(providers);
-    } catch { /* keep showing the last known list on a transient fetch error */ }
-  };
-
-  const openAddCloudProvider = () => {
-    setEditingProvider({ ...emptyProvider });
-    setCloudError(null);
-    setCloudModalOpen(true);
-  };
-
-  const openEditCloudProvider = (p: CloudProvider) => {
-    setEditingProvider({ name: p.name, provider: p.provider, base_url: p.base_url, api_key: '***', default_model: p.default_model, cost_per_1k_tokens: p.cost_per_1k_tokens, enabled: p.enabled, priority: p.priority });
-    setCloudError(null);
-    setCloudModalOpen(true);
-  };
-
-  const moveCloudProvider = async (index: number, direction: -1 | 1) => {
-    const target = index + direction;
-    if (target < 0 || target >= cloudProviders.length) return;
-    const reordered = [...cloudProviders];
-    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
-    setCloudProviders(reordered); // optimistic
-    try {
-      await reorderCloudProviders(reordered.map(p => p.name));
-    } catch (err: any) {
-      setError(err.message || 'Failed to reorder cloud providers');
-      await refreshCloudProviders(); // revert to server truth on failure
-    }
-  };
-
-  const handleSaveCloudProvider = async (isNew: boolean) => {
-    if (!editingProvider) return;
-    if (!editingProvider.name.trim() || !editingProvider.provider.trim() || !editingProvider.base_url.trim()) {
-      setCloudError('Name, provider, and base URL are required');
-      return;
-    }
-    if (isNew && !editingProvider.api_key.trim()) {
-      setCloudError('API key is required');
-      return;
-    }
-    setCloudError(null);
-    // Only a real, freshly-typed key is testable - '***' means the operator
-    // left the existing stored key unchanged, so there's nothing new to verify.
-    const hasNewKey = editingProvider.api_key.trim() !== '' && editingProvider.api_key !== '***';
-    if (hasNewKey) {
-      setCloudTesting(true);
-      try {
-        await testCloudProvider(editingProvider.provider, editingProvider.base_url, editingProvider.api_key);
-      } catch (err: any) {
-        setCloudError(err.message || 'Could not verify API key');
-        setCloudTesting(false);
-        return;
-      }
-      setCloudTesting(false);
-    }
-    setCloudSaving(true);
-    try {
-      if (isNew) {
-        await addCloudProvider(editingProvider);
-      } else {
-        await updateCloudProvider(editingProvider.name, editingProvider);
-      }
-      setCloudModalOpen(false);
-      setEditingProvider(null);
-      await refreshCloudProviders();
-    } catch (err: any) {
-      setCloudError(err.message || 'Failed to save cloud provider');
-    } finally {
-      setCloudSaving(false);
-    }
-  };
-
-  const handleDeleteCloudProvider = async () => {
-    if (!providerToDelete) return;
-    try {
-      await deleteCloudProvider(providerToDelete);
-      setProviderToDelete(null);
-      await refreshCloudProviders();
-    } catch (err: any) {
-      setError(err.message || 'Failed to delete cloud provider');
-      setProviderToDelete(null);
     }
   };
 
@@ -1208,84 +1076,6 @@ export function SettingsPage() {
           </div>
         </div>
 
-        {/* Cloud Providers */}
-        <div className="bg-card border border-border shadow-sm rounded-xl p-6 lg:col-span-2">
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-sky-500/10 rounded-lg">
-                <Cloud className="w-5 h-5 text-sky-600 dark:text-sky-400" />
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-foreground">Cloud Providers</h3>
-                <p className="text-xs font-medium text-muted-foreground">
-                  {settings.liteLLMEnabled
-                    ? 'Managed by LiteLLM while enabled - this list is inactive'
-                    : 'Fallback cloud endpoints for overflow traffic, tried highest priority first'}
-                </p>
-              </div>
-            </div>
-            {!settings.liteLLMEnabled && (
-              <button
-                onClick={openAddCloudProvider}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg transition-colors"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Add Provider
-              </button>
-            )}
-          </div>
-
-          <div className={settings.liteLLMEnabled ? 'opacity-40 pointer-events-none' : ''}>
-            {cloudLoading ? (
-              <div className="space-y-3">
-                {[1, 2].map(i => (
-                  <div key={i} className="h-14 bg-secondary/30 rounded-lg animate-pulse" />
-                ))}
-              </div>
-            ) : cloudProviders.length === 0 ? (
-              <div className="py-8 text-center text-sm font-medium text-muted-foreground">
-                No cloud providers configured
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {cloudProviders.map((provider, index) => (
-                  <div key={provider.name} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-lg border border-border bg-secondary/30 min-w-0">
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <div className="flex flex-col items-center gap-0.5 w-5 text-[10px] font-medium text-muted-foreground shrink-0">
-                        <span>{index + 1}</span>
-                      </div>
-                      <StatusDot status={provider.enabled ? 'online' : 'offline'} size="sm" />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-foreground truncate" title={provider.name}>{provider.name}</p>
-                        <p className="text-xs font-medium text-muted-foreground truncate" title={`${provider.default_model} - $${provider.cost_per_1k_tokens.toFixed(4)}/1k tokens`}>{provider.default_model} - ${provider.cost_per_1k_tokens.toFixed(4)}/1k tokens</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
-                      <Badge variant={provider.enabled ? 'success' : 'muted'} size="sm">
-                        {provider.provider}
-                      </Badge>
-                      <>
-                        <button onClick={() => moveCloudProvider(index, -1)} disabled={index === 0} className="p-1.5 text-muted-foreground hover:text-foreground rounded-md hover:bg-secondary transition-colors disabled:opacity-30 disabled:pointer-events-none">
-                          <ChevronUp className="w-3.5 h-3.5" />
-                        </button>
-                        <button onClick={() => moveCloudProvider(index, 1)} disabled={index === cloudProviders.length - 1} className="p-1.5 text-muted-foreground hover:text-foreground rounded-md hover:bg-secondary transition-colors disabled:opacity-30 disabled:pointer-events-none">
-                          <ChevronDown className="w-3.5 h-3.5" />
-                        </button>
-                        <button onClick={() => openEditCloudProvider(provider)} className="p-1.5 text-muted-foreground hover:text-foreground rounded-md hover:bg-secondary transition-colors">
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                        <button onClick={() => setProviderToDelete(provider.name)} className="p-1.5 text-muted-foreground hover:text-destructive rounded-md hover:bg-secondary transition-colors">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
           </div>
         </section>
 
@@ -1587,80 +1377,6 @@ export function SettingsPage() {
               <Plus className="w-4 h-4" />
             </button>
           </div>
-        </div>
-
-        {/* Local Model Fallback Chain */}
-        <div className="bg-card border border-border shadow-sm rounded-xl p-6">
-          <div className="flex items-center gap-3 mb-5">
-            <div className="p-2 bg-teal-500/10 rounded-lg">
-              <HardDrive className="w-5 h-5 text-teal-600 dark:text-teal-400" />
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-foreground">Local Model Fallback Chain</h3>
-              <p className="text-xs font-medium text-muted-foreground">Ordered local alternates to try when no node can serve the requested model, before cloud - only applies to keys with "Allow local degradation" enabled (API Keys page)</p>
-            </div>
-          </div>
-
-          <div className="space-y-2 mb-4">
-            {Object.entries(settings.localDegradationChains).length === 0 ? (
-              <p className="text-sm text-muted-foreground py-2">No local fallback chains declared</p>
-            ) : (
-              Object.entries(settings.localDegradationChains).map(([model, alts]) => (
-                <div key={model} className="flex items-center justify-between gap-3 p-2.5 rounded-lg border border-border bg-secondary/30 min-w-0">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-foreground truncate" title={model}>{model}</p>
-                    <p className="text-xs text-muted-foreground truncate" title={alts.join(' -> ')}>{alts.join(' -> ')}</p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      const next = { ...settings.localDegradationChains };
-                      delete next[model];
-                      setSettings({ ...settings, localDegradationChains: next });
-                    }}
-                    className="p-1.5 text-muted-foreground hover:text-destructive rounded-md hover:bg-secondary transition-colors"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))
-            )}
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-2">
-            <CustomCombobox value={newDegModel} onChange={(v) => { setNewDegModel(v); setDegChainError(null); }} options={knownModelNames} placeholder="llama3.1:70b" className="sm:flex-1" />
-            <CustomTagCombobox value={newDegAlts} onChange={(v) => { setNewDegAlts(v); setDegChainError(null); }} options={knownModelNames} placeholder="llama3.1:8b, phi3:mini" className="sm:flex-1" />
-            <button
-              onClick={() => {
-                const model = newDegModel.trim();
-                const alts = newDegAlts.split(',').map((s) => s.trim()).filter(Boolean);
-                if (!model || alts.length === 0) return;
-                // Mirror config.go Validate()'s local_degradation_chains rules
-                // client-side so a nonsensical chain never even makes it into
-                // the pending list - previously this only surfaced as a
-                // confusing "validation failed" error on Save.
-                if (alts.includes(model)) {
-                  setDegChainError(`"${model}" lists itself as an alternate`);
-                  return;
-                }
-                const seen = new Set<string>();
-                for (const alt of alts) {
-                  if (seen.has(alt)) {
-                    setDegChainError(`"${model}" lists "${alt}" more than once`);
-                    return;
-                  }
-                  seen.add(alt);
-                }
-                setDegChainError(null);
-                setSettings({ ...settings, localDegradationChains: { ...settings.localDegradationChains, [model]: alts } });
-                setNewDegModel('');
-                setNewDegAlts('');
-              }}
-              className="flex items-center justify-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium rounded-lg transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-            </button>
-          </div>
-          {degChainError && <p className="text-sm text-destructive mt-2">{degChainError}</p>}
         </div>
 
         {/* Global Warmup & Audit */}
@@ -2007,111 +1723,6 @@ export function SettingsPage() {
             className="px-4 py-2 bg-amber-600 hover:bg-amber-600/90 text-white font-medium rounded-lg text-sm transition-colors shadow-sm"
           >
             Enable Demo Mode
-          </button>
-        </div>
-      </div>
-    </Modal>
-
-    <Modal
-      isOpen={cloudModalOpen}
-      onClose={() => { setCloudModalOpen(false); setEditingProvider(null); }}
-      title={editingProvider && cloudProviders.some(p => p.name === editingProvider.name) ? 'Edit Cloud Provider' : 'Add Cloud Provider'}
-      maxWidth="sm"
-    >
-      {editingProvider && (
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-muted-foreground mb-1.5">
-              Name <span className="text-destructive">*</span>
-            </label>
-            <input
-              type="text"
-              value={editingProvider.name}
-              disabled={cloudProviders.some(p => p.name === editingProvider.name)}
-              onChange={(e) => setEditingProvider({ ...editingProvider, name: e.target.value })}
-              placeholder="openai-prod"
-              className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50 disabled:opacity-50"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-muted-foreground mb-1.5">
-              Provider <span className="text-destructive">*</span>
-            </label>
-            <CustomSelect
-              value={editingProvider.provider}
-              onChange={(val) => {
-                const provider = val;
-                const preset = CLOUD_PROVIDER_PRESETS[provider];
-                setEditingProvider({
-                  ...editingProvider,
-                  provider,
-                  base_url: provider === 'custom' ? '' : (preset?.baseUrl || editingProvider.base_url || ''),
-                  default_model: provider === 'custom' ? '' : (preset?.defaultModel || editingProvider.default_model || ''),
-                });
-              }}
-              options={Object.entries(CLOUD_PROVIDER_PRESETS).map(([value, preset]) => ({ value, label: preset.label }))}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-muted-foreground mb-1.5">
-              Base URL <span className="text-destructive">*</span>
-            </label>
-            <input type="text" value={editingProvider.base_url} onChange={(e) => setEditingProvider({ ...editingProvider, base_url: e.target.value })} placeholder="https://api.openai.com/v1" className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-muted-foreground mb-1.5">
-              API Key {!cloudProviders.some(p => p.name === editingProvider.name) && <span className="text-destructive">*</span>}
-            </label>
-            <input type="password" value={editingProvider.api_key} onChange={(e) => setEditingProvider({ ...editingProvider, api_key: e.target.value })} autoComplete="off" placeholder={cloudProviders.some(p => p.name === editingProvider.name) ? 'Leave unchanged to keep current key' : ''} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1.5">Default Model</label>
-              <input type="text" value={editingProvider.default_model} onChange={(e) => setEditingProvider({ ...editingProvider, default_model: e.target.value })} placeholder="gpt-4o" className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1.5">Cost / 1k tokens</label>
-              <input type="number" step="0.0001" value={editingProvider.cost_per_1k_tokens} onChange={(e) => setEditingProvider({ ...editingProvider, cost_per_1k_tokens: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
-            </div>
-          </div>
-          <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
-            <p className="text-sm font-medium text-foreground">Enabled</p>
-            <Toggle on={editingProvider.enabled} onToggle={() => setEditingProvider({ ...editingProvider, enabled: !editingProvider.enabled })} />
-          </div>
-          {cloudError && <p className="text-sm text-destructive">{cloudError}</p>}
-          <div className="flex justify-end gap-3 pt-4 border-t border-border">
-            <button onClick={() => { setCloudModalOpen(false); setEditingProvider(null); }} disabled={cloudSaving || cloudTesting} className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50">
-              Cancel
-            </button>
-            <button
-              onClick={() => handleSaveCloudProvider(!cloudProviders.some(p => p.name === editingProvider.name))}
-              disabled={cloudSaving || cloudTesting}
-              className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm disabled:opacity-50"
-            >
-              {(cloudSaving || cloudTesting) && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
-              {cloudTesting ? 'Testing key...' : cloudSaving ? 'Saving...' : 'Save'}
-            </button>
-          </div>
-        </div>
-      )}
-    </Modal>
-
-    <Modal
-      isOpen={!!providerToDelete}
-      onClose={() => setProviderToDelete(null)}
-      title="Delete Cloud Provider"
-      maxWidth="sm"
-    >
-      <div className="space-y-4">
-        <p className="text-sm text-muted-foreground">
-          Delete cloud provider <span className="font-medium text-foreground">{providerToDelete}</span>? This cannot be undone.
-        </p>
-        <div className="flex justify-end gap-3 pt-4 border-t border-border">
-          <button onClick={() => setProviderToDelete(null)} className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-            Cancel
-          </button>
-          <button onClick={handleDeleteCloudProvider} className="px-4 py-2 bg-destructive hover:bg-destructive/90 text-destructive-foreground font-medium rounded-lg text-sm transition-colors shadow-sm">
-            Delete
           </button>
         </div>
       </div>

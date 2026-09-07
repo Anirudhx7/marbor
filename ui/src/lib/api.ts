@@ -634,7 +634,7 @@ export async function fetchSavings(): Promise<Savings> {
   return res.json();
 }
 
-// In-memory demo provider store so Settings > Cloud Providers is fully
+// In-memory demo provider store so Routing > Cloud Providers is fully
 // interactive on the static demo (add/edit/delete/reorder); resets on reload.
 let demoCloudProviders: CloudProvider[] | null = null;
 function demoProviderStore(): CloudProvider[] {
