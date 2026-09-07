@@ -21,6 +21,7 @@ import {
 import { startPull, isPullActive, subscribe as subscribePullProgress, getSnapshot as getPullProgressSnapshot } from '../lib/pullProgress';
 import { useDemoMode } from '../hooks/useDemoMode';
 import { mockHFModels, mockHFRepoDetails, mockSystemInfo, mockModelCatalogResponse, mockFavorites } from '../lib/mockData';
+import { readLastModelCount, writeLastModelCount, readLastNodeCount } from '../lib/nodeCount';
 import { CustomDatePicker } from '../components/DateTimePicker';
 
 // LIVE_VRAM_TOOL_SOURCES are every `vram_source` string handleModelFit
@@ -574,6 +575,22 @@ function ModelDetailPanel({
   );
 }
 
+function AdvisorCardSkeleton() {
+  return (
+    <div aria-hidden="true" className="bg-card border border-border shadow-sm rounded-xl p-5 flex flex-col animate-pulse">
+      <div className="flex items-start justify-between mb-2">
+        <div className="min-w-0 flex-1">
+          <div className="h-4 w-3/4 bg-secondary rounded mb-1.5" />
+          <div className="h-3 w-1/2 bg-secondary rounded" />
+        </div>
+        <div className="h-6 w-14 bg-secondary rounded shrink-0 ml-2" />
+      </div>
+      <div className="h-3 w-2/3 bg-secondary rounded mb-3" />
+      <div className="mt-auto h-8 w-full bg-secondary rounded-lg" />
+    </div>
+  );
+}
+
 function ModelCard({
   model,
   selected,
@@ -639,7 +656,7 @@ function ModelCard({
 
 export function ModelAdvisor() {
   const { demoMode } = useDemoMode();
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!demoMode);
   const [error, setError] = useState<string | null>(null);
   const [isLive, setIsLive] = useState(false);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
@@ -660,6 +677,12 @@ export function ModelAdvisor() {
   const [createdAfter, setCreatedAfter] = useState('');
 
   const [tab, setTab] = useState<'browse' | 'favourites'>('browse');
+  // Placeholder counts for the initial-load skeletons: the browse grid
+  // follows the last successful search size, the node pills follow the last
+  // known fleet size (lib/nodeCount). Read once per mount - they only matter
+  // during the pre-first-response beat, and demo never enters that branch.
+  const [skeletonModels] = useState<number>(() => readLastModelCount());
+  const [skeletonNodes] = useState<number>(() => readLastNodeCount());
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
   const [favoriteDetails, setFavoriteDetails] = useState<Record<string, HFModel>>({});
   const searchSeqRef = useRef(0);
@@ -773,6 +796,8 @@ export function ModelAdvisor() {
         });
         if (searchSeqRef.current !== seq) return;
         setModels(resp || []);
+        const modelCount = (resp || []).length;
+        if (modelCount > 0) writeLastModelCount(modelCount);
       } catch (e: unknown) {
         if (searchSeqRef.current !== seq) return;
         setSearchError(e instanceof Error ? e.message : 'Failed to search Hugging Face models. Make sure the backend has internet access.');
@@ -939,7 +964,14 @@ export function ModelAdvisor() {
         ))}
       </div>
 
-      {activeNode && (
+      {loading && !demoMode ? (
+        <div aria-hidden="true" className="flex flex-wrap items-center gap-2 animate-pulse">
+          {[...Array(skeletonNodes)].map((_, i) => (
+            <div key={i} className="h-8 w-24 bg-secondary rounded-lg" />
+          ))}
+        </div>
+      ) : (
+        activeNode && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider shrink-0">Node</span>
           {nodes.length > 1 ? (
@@ -960,9 +992,16 @@ export function ModelAdvisor() {
             <span className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-secondary text-foreground">{activeNode.name}</span>
           )}
         </div>
+        )
       )}
 
-      {sysInfo && (
+      {loading && !demoMode ? (
+        <div aria-hidden="true" className="bg-card border border-border rounded-xl px-5 py-3 flex flex-wrap gap-5 items-center shadow-sm animate-pulse">
+          <div className="h-4 w-40 max-w-full bg-secondary rounded" />
+          <div className="h-4 w-56 max-w-full bg-secondary rounded" />
+        </div>
+      ) : (
+        sysInfo && (
         <div className="bg-card border border-border rounded-xl px-5 py-3 flex flex-wrap gap-5 items-center text-xs shadow-sm">
           <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider shrink-0">Marbor Host</span>
           <span className="flex items-center gap-1.5">
@@ -978,12 +1017,25 @@ export function ModelAdvisor() {
             </span>
           )}
         </div>
+        )
       )}
 
       {tab === 'favourites' ? (
         <>
-          {activeNode && <NodeVramCard node={activeNode} />}
-          {favoriteModels.length === 0 ? (
+          {loading && !demoMode ? (
+            <div aria-hidden="true" className="bg-card border border-border rounded-xl p-5 shadow-sm animate-pulse">
+              <div className="h-4 w-48 max-w-full bg-secondary rounded mb-3" />
+              <div className="h-2 w-full bg-secondary rounded-full" />
+              <div className="h-3 w-2/3 bg-secondary rounded mt-2" />
+            </div>
+          ) : (
+            activeNode && <NodeVramCard node={activeNode} />
+          )}
+          {loading && !demoMode ? (
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
+              {[...Array(skeletonModels)].map((_, i) => <AdvisorCardSkeleton key={i} />)}
+            </div>
+          ) : favoriteModels.length === 0 ? (
           <div className="text-center py-16 bg-card border border-border rounded-xl shadow-sm">
             <Star className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
             <p className="text-muted-foreground font-medium">No favourites yet. Star a model in Browse to save it here.</p>
@@ -1119,7 +1171,15 @@ export function ModelAdvisor() {
             </div>
           </div>
 
-          {activeNode && <NodeVramCard node={activeNode} />}
+          {loading && !demoMode ? (
+            <div aria-hidden="true" className="bg-card border border-border rounded-xl p-5 shadow-sm animate-pulse">
+              <div className="h-4 w-48 max-w-full bg-secondary rounded mb-3" />
+              <div className="h-2 w-full bg-secondary rounded-full" />
+              <div className="h-3 w-2/3 bg-secondary rounded mt-2" />
+            </div>
+          ) : (
+            activeNode && <NodeVramCard node={activeNode} />
+          )}
 
           {searchError && (
             <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-xs font-semibold">
@@ -1128,8 +1188,8 @@ export function ModelAdvisor() {
           )}
 
           {loading && !demoMode ? (
-            <div className="flex justify-center items-center py-16 gap-2 text-muted-foreground">
-              <Loader2 className="w-6 h-6 animate-spin text-primary" /> Loading models...
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
+              {[...Array(skeletonModels)].map((_, i) => <AdvisorCardSkeleton key={i} />)}
             </div>
           ) : models.length === 0 ? (
             <div className="text-center py-16 bg-card border border-border rounded-xl shadow-sm">

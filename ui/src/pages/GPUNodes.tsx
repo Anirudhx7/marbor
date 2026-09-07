@@ -10,6 +10,7 @@ import { Modal } from '../components/Modal';
 import { ModelConfigModal } from '../components/ModelConfigModal';
 import { CustomSelect } from '../components/Select';
 import { mockGPUNodes, mockRuntimeLogLines } from '../lib/mockData';
+import { readLastNodeCount, writeLastNodeCount } from '../lib/nodeCount';
 import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, probeNodeTLS, fetchModelFit, unloadModel, getPinned, getMarborAgent, enableMarborAgent, regenerateMarborAgentToken, disableMarborAgent, checkNodeHealth, getNodeControl, acceptNodeControl, clearNodeControl, startNodeRuntime, stopNodeRuntime, restartNodeRuntime, getNodeRuntimeLogs } from '../lib/api';
 import type { MarborAgentStatus, NodeHealthCheckResult, NodeControlStatus } from '../lib/api';
 import type { GPUNode, ModelFitResponse, NodeFit, FitStatus } from '../types';
@@ -224,6 +225,42 @@ function DrainConfirmModal({ nodeName, title, question, explanation, actionError
         </div>
       </div>
     </Modal>
+  );
+}
+
+function NodeCardSkeleton() {
+  return (
+    <div aria-hidden="true" className="bg-card border border-border shadow-sm rounded-xl p-5 animate-pulse">
+      <div className="flex items-start justify-between mb-4">
+        <div className="h-4 w-32 max-w-full bg-secondary rounded" />
+        <div className="flex items-center gap-1 shrink-0">
+          <div className="h-7 w-7 bg-secondary rounded-md" />
+          <div className="h-7 w-7 bg-secondary rounded-md" />
+          <div className="h-7 w-7 bg-secondary rounded-md" />
+          <div className="h-7 w-7 bg-secondary rounded-md" />
+          <div className="h-7 w-7 bg-secondary rounded-md" />
+        </div>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
+        <div className="bg-secondary rounded-lg p-3">
+          <div className="h-6 w-16 bg-background/60 rounded" />
+        </div>
+        <div className="bg-secondary rounded-lg p-3">
+          <div className="h-6 w-16 bg-background/60 rounded" />
+        </div>
+      </div>
+      <div className="grid grid-cols-3 gap-2 mb-4 bg-secondary/30 border border-border/20 rounded-lg p-3">
+        <div className="h-4 w-12 max-w-full bg-secondary rounded" />
+        <div className="h-4 w-12 max-w-full bg-secondary rounded" />
+        <div className="h-4 w-12 max-w-full bg-secondary rounded" />
+      </div>
+      <div className="grid grid-cols-3 gap-2 mb-4 bg-secondary/30 border border-border/20 rounded-lg p-3">
+        <div className="h-4 w-12 max-w-full bg-secondary rounded" />
+        <div className="h-4 w-12 max-w-full bg-secondary rounded" />
+        <div className="h-4 w-12 max-w-full bg-secondary rounded" />
+      </div>
+      <div className="h-2 w-full bg-secondary rounded-full" />
+    </div>
   );
 }
 
@@ -577,6 +614,11 @@ export function GPUNodes() {
   const location = useLocation();
   const [nodes, setNodes] = useState<GPUNode[]>(demoMode ? mockGPUNodes : []);
   const [isLive, setIsLive] = useState(!demoMode);
+  // First-poll gate - same false-empty problem as the dashboard: a bare []
+  // renders "No inference nodes found matching your search" for a beat.
+  // Skeleton count follows the last known fleet size (lib/nodeCount).
+  const [fleetLoading, setFleetLoading] = useState(!demoMode);
+  const [skeletonNodes] = useState<number>(() => readLastNodeCount());
   const [searchQuery, setSearchQuery] = useState('');
   const [highlightedNodes, setHighlightedNodes] = useState<Set<string>>(new Set());
   const [highlightSource, setHighlightSource] = useState<string | null>(null);
@@ -1167,14 +1209,18 @@ export function GPUNodes() {
       const data = await fetchNodes();
       if (!active || requestId !== nodesRequestId.current || currentAppPath() !== '/gpu-nodes') return;
       setNodes(data || []);
+      const nodeCount = (data || []).length;
+      if (nodeCount > 0) writeLastNodeCount(nodeCount);
       setIsLive(true);
       setError(null);
+      setFleetLoading(false);
       await loadPinned(data || [], active, requestId);
     } catch (e: any) {
       if (!active || requestId !== nodesRequestId.current || currentAppPath() !== '/gpu-nodes') return;
       setIsLive(false);
       setNodes([]);
       setError(e.message || 'Failed to connect to backend');
+      setFleetLoading(false);
     }
   };
 
@@ -1864,12 +1910,15 @@ export function GPUNodes() {
 
       {/* Nodes Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {filteredNodes.map((node) => (
-          <NodeCard key={node.id} node={node} pinnedModels={pinnedByNode[node.name] ?? []} onRemove={(name) => { setActionError(null); setNodeToDelete(name); }} onDrain={(name) => { setActionError(null); setNodeToDrain(name); }} onUndrain={(name) => { setActionError(null); setNodeToUndrain(name); }} onTogglePrewarm={(name, disabled) => { setActionError(null); setPrewarmToToggle({ name, disabled }); }} onEdit={openEditModal} onUnload={(nodeName, model) => { setActionError(null); setModelToUnload({ nodeName, model }); }} onConfigureModel={(modelName, nodeName, runtime) => setConfigTarget({ model: modelName, node: nodeName, runtime })} onManageAgent={openAgentModal} isHighlighted={highlightedNodes.has(node.name)} highlightSource={highlightSource} />
-        ))}
+        {fleetLoading ? (
+          [...Array(skeletonNodes)].map((_, i) => <NodeCardSkeleton key={i} />)
+        ) : (
+          filteredNodes.map((node) => (
+          <NodeCard key={node.id} node={node} pinnedModels={pinnedByNode[node.name] ?? []} onRemove={(name) => { setActionError(null); setNodeToDelete(name); }} onDrain={(name) => { setActionError(null); setNodeToDrain(name); }} onUndrain={(name) => { setActionError(null); setNodeToUndrain(name); }} onTogglePrewarm={(name, disabled) => { setActionError(null); setPrewarmToToggle({ name, disabled }); }} onEdit={openEditModal} onUnload={(nodeName, model) => { setActionError(null); setModelToUnload({ nodeName, model }); }} onConfigureModel={(modelName, nodeName, runtime) => setConfigTarget({ model: modelName, node: nodeName, runtime })}           onManageAgent={openAgentModal} isHighlighted={highlightedNodes.has(node.name)} highlightSource={highlightSource} />
+          )))}
       </div>
 
-      {filteredNodes.length === 0 && (
+      {!fleetLoading && filteredNodes.length === 0 && (
         <div className="text-center py-12">
           <Server className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
           <p className="text-muted-foreground">No inference nodes found matching your search.</p>

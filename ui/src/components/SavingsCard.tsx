@@ -25,18 +25,25 @@ export function SavingsCard({ savings, loading }: SavingsCardProps) {
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-sm font-medium text-muted-foreground mb-1">Saved vs cloud</p>
-          <div className="flex items-baseline gap-1">
-            {loading ? (
-              <span className="text-2xl font-bold text-foreground animate-pulse">--</span>
-            ) : savings ? (
-              <span className="text-2xl font-bold text-success">
-                {savings.saved_usd !== null ? `$${savings.saved_usd.toFixed(2)}` : '-'}
-              </span>
-            ) : (
-              <span className="text-2xl font-bold text-muted-foreground">--</span>
-            )}
-          </div>
-          {savings && !loading ? (
+          {loading ? (
+            <div aria-hidden="true" className="animate-pulse">
+              <div className="h-8 w-32 max-w-full bg-secondary rounded mb-1.5" />
+              <div className="h-3 w-40 max-w-full bg-secondary rounded" />
+            </div>
+          ) : (
+            <div className="flex items-baseline gap-1">
+              {savings ? (
+                <span className="text-2xl font-bold text-success">
+                  {savings.saved_usd !== null ? `$${savings.saved_usd.toFixed(2)}` : '-'}
+                </span>
+              ) : (
+                <span className="text-2xl font-bold text-muted-foreground">--</span>
+              )}
+            </div>
+          )}
+          {loading ? (
+            <div aria-hidden="true" className="h-3 w-36 max-w-full bg-secondary rounded mt-2 animate-pulse" />
+          ) : savings ? (
             <p className="text-xs font-medium text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-1 leading-snug">
               <span className="whitespace-nowrap">{savings.local_requests.toLocaleString('en-US')} local</span>
               <span>/</span>
@@ -50,15 +57,19 @@ export function SavingsCard({ savings, loading }: SavingsCardProps) {
           <DollarSign className="w-5 h-5" />
         </div>
       </div>
-      <div className="mt-3 flex items-center flex-wrap gap-x-1.5 text-xs font-medium">
-        <span className="text-success whitespace-nowrap">
-          Local {loading || !savings ? '--' : `${localPct}%`}
-        </span>
-        <span className="text-muted-foreground">/</span>
-        <span className="text-amber-700 dark:text-amber-400 whitespace-nowrap">
-          Cloud {loading || !savings ? '--' : `${cloudPct}%`}
-        </span>
-      </div>
+      {loading ? (
+        <div aria-hidden="true" className="mt-3 h-4 w-40 max-w-full bg-secondary rounded animate-pulse" />
+      ) : (
+        <div className="mt-3 flex items-center flex-wrap gap-x-1.5 text-xs font-medium">
+          <span className="text-success whitespace-nowrap">
+            Local {!savings ? '--' : `${localPct}%`}
+          </span>
+          <span className="text-muted-foreground">/</span>
+          <span className="text-amber-700 dark:text-amber-400 whitespace-nowrap">
+            Cloud {!savings ? '--' : `${cloudPct}%`}
+          </span>
+        </div>
+      )}
       <p className="mt-2 text-[10px] text-muted-foreground/70 leading-snug">
         estimated: parsed token counts priced at the configured cloud reference rate
       </p>

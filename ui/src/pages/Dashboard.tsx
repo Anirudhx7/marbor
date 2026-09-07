@@ -17,6 +17,7 @@ import { SavingsCard } from '../components/SavingsCard';
 import { useLiveRequests } from '../hooks/useLiveRequests';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import { mockGPUNodes, mockSavings } from '../lib/mockData';
+import { readLastNodeCount, writeLastNodeCount } from '../lib/nodeCount';
 import { fetchNodes, fetchSummary, fetchSavings, fetchHealth, fetchKeys, fetchRequests } from '../lib/api';
 import { GPUNode, Savings, APIKey, RequestEntry } from '../types';
 import { SetupChecklist } from '../components/SetupChecklist';
@@ -61,6 +62,63 @@ function MetricCard({ title, value, unit, icon, trend, trendUp, highlight, compa
           <span className="text-muted-foreground">vs last hour</span>
         </div>
       )}
+    </div>
+  );
+}
+
+// First-poll skeletons - same shells as the real panels so nothing shifts
+// when live data resolves. Only reachable in live mode (see fleetLoading).
+function MetricCardSkeleton() {
+  return (
+    <div aria-hidden="true" className="glass-panel rounded-xl p-3.5 h-full min-w-0 animate-pulse">
+      <div className="h-3 w-20 bg-secondary rounded mb-2" />
+      <div className="h-6 w-12 bg-secondary rounded" />
+    </div>
+  );
+}
+
+function StripSkeleton() {
+  return (
+    <div aria-hidden="true" className="glass-panel rounded-xl px-5 py-4 animate-pulse">
+      <div className="h-4 w-48 max-w-full bg-secondary rounded" />
+    </div>
+  );
+}
+
+function CapacitySkeleton() {
+  return (
+    <div aria-hidden="true" className="glass-panel rounded-xl p-5 h-full animate-pulse">
+      <div className="h-4 w-40 max-w-full bg-secondary rounded mb-4" />
+      <div className="h-2 w-full bg-secondary rounded-full" />
+      <div className="h-2 w-2/3 bg-secondary rounded-full mt-2" />
+    </div>
+  );
+}
+
+// Same shell as the dashboard's linked node card below (secondary tile,
+// header row, VRAM bar, 3-stat row) minus the Link wrapper - placeholders
+// never navigate. Count comes from the last known fleet size so the grid
+// shimmers in the fleet's own shape.
+function NodeCardSkeleton() {
+  return (
+    <div aria-hidden="true" className="block bg-secondary/50 rounded-xl p-5 border border-border animate-pulse">
+      <div className="flex items-start justify-between mb-4">
+        <div className="min-w-0">
+          <div className="h-4 w-28 max-w-full bg-secondary rounded mb-1.5" />
+          <div className="h-3 w-20 bg-secondary rounded" />
+        </div>
+        <div className="h-4 w-10 bg-secondary rounded shrink-0" />
+      </div>
+      <div className="h-2 w-full bg-secondary rounded-full mb-3" />
+      <div className="grid grid-cols-3 gap-2 border-t border-border/40 pt-3">
+        <div className="h-4 w-10 bg-secondary rounded" />
+        <div className="h-4 w-10 bg-secondary rounded" />
+        <div className="h-4 w-10 bg-secondary rounded" />
+      </div>
+      <div className="flex flex-wrap gap-1.5 mt-4">
+        <div className="h-5 w-16 bg-secondary rounded" />
+        <div className="h-5 w-20 bg-secondary rounded" />
+      </div>
     </div>
   );
 }
@@ -295,7 +353,7 @@ function FleetCapacityCard({ nodes }: { nodes: GPUNode[] }) {
 export function Dashboard() {
   const { demoMode } = useDemoMode();
   const location = useLocation();
-  const { requests, newRequestId, isLive: requestsLive } = useLiveRequests(10);
+  const { requests, newRequestId, isLive: requestsLive, loaded: requestsLoaded } = useLiveRequests(10);
   const [nodes, setNodes] = useState<GPUNode[]>(demoMode ? mockGPUNodes : []);
   const [summary, setSummary] = useState(demoMode ? {
         activeRequests: 1,
@@ -319,6 +377,15 @@ export function Dashboard() {
     warmHitRatio: 0,
   });
   const [isLive, setIsLive] = useState(!demoMode);
+  // First-poll gate for the fleet views below - live mode starts with empty
+  // nodes/summary, which would otherwise flash "No nodes registered yet" and
+  // all-zero metrics as fact for a beat. Demo data is synchronous, so demo
+  // never enters the loading branch.
+  const [fleetLoading, setFleetLoading] = useState(!demoMode);
+  // How many node-card placeholders to shimmer: the fleet's real size from
+  // the last successful poll (see lib/nodeCount), read once per mount - it
+  // only matters during the pre-first-poll beat above.
+  const [skeletonNodes] = useState<number>(() => readLastNodeCount());
   const [error, setError] = useState<string | null>(null);
   const [savings, setSavings] = useState<Savings | null>(demoMode ? mockSavings : null);
   const [savingsLoading, setSavingsLoading] = useState(!demoMode);
@@ -389,6 +456,10 @@ export function Dashboard() {
         ]);
         if (!active || currentAppPath() !== '/') return;
         setNodes(nodesData || []);
+        // Only learn from non-empty polls - a transient empty payload must
+        // not shrink the next visit's skeleton grid to a single card.
+        const nodeCount = (nodesData || []).length;
+        if (nodeCount > 0) writeLastNodeCount(nodeCount);
         // Functional form, not a closure over `summary` from the effect's
         // initial render - the plain closure fell back to the mount-time
         // all-zero object on any single falsy/empty payload during the 10s
@@ -396,11 +467,13 @@ export function Dashboard() {
         setSummary(prev => summaryData ?? prev);
         setIsLive(true);
         setError(null);
+        setFleetLoading(false);
       } catch (err: any) {
         if (!active || currentAppPath() !== '/') return;
         setIsLive(false);
         setNodes([]);
         setError(err.message || 'Failed to fetch data');
+        setFleetLoading(false);
       }
     };
     loadData();
@@ -565,7 +638,7 @@ export function Dashboard() {
       )}
 
       {/* Fleet Health strip - first operational answer: is my fleet OK? */}
-      <FleetHealthStrip nodes={nodes} />
+      {fleetLoading ? <StripSkeleton /> : <FleetHealthStrip nodes={nodes} />}
 
       {/* Fleet Capacity + fleet ROI, one screen: is my fleet healthy, do I
           need another GPU or am I placing badly, and what is it saving me.
@@ -573,7 +646,7 @@ export function Dashboard() {
           the fold (it also lives on Routing next to the strategy picker). */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch">
         <div className="lg:col-span-2 min-w-0">
-          <FleetCapacityCard nodes={nodes} />
+          {fleetLoading ? <CapacitySkeleton /> : <FleetCapacityCard nodes={nodes} />}
         </div>
         <div className="min-w-0">
           <SavingsCard savings={savings} loading={savingsLoading} />
@@ -582,6 +655,10 @@ export function Dashboard() {
 
       {/* Traffic metrics - demoted to a compact secondary row below the fleet views */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        {fleetLoading ? (
+          [...Array(6)].map((_, i) => <MetricCardSkeleton key={i} />)
+        ) : (
+          <>
         <MetricCard
           compact
           title="Active requests"
@@ -622,6 +699,8 @@ export function Dashboard() {
           unit="events"
           icon={<Server className="w-4 h-4" />}
         />
+          </>
+        )}
       </div>
 
       {/* Setup Checklist - first-run activation (5 steps, inline, dismissible, localStorage only) */}
@@ -684,7 +763,9 @@ export function Dashboard() {
         </div>
         
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {nodes.length === 0 && !demoMode ? (
+          {fleetLoading ? (
+            [...Array(skeletonNodes)].map((_, i) => <NodeCardSkeleton key={i} />)
+          ) : nodes.length === 0 && !demoMode ? (
             <div className="col-span-2 py-10 text-center text-sm text-muted-foreground">
               {isLive ? 'No nodes connected.' : 'No nodes available - backend disconnected'}
             </div>
@@ -774,7 +855,7 @@ export function Dashboard() {
               to="/requests"
               className="font-medium text-primary hover:underline flex items-center gap-1 whitespace-nowrap shrink-0 min-h-[40px] sm:min-h-0 px-2 sm:px-0 -mx-2 sm:mx-0"
             >
-              View All Requests
+              View all requests
               <ArrowRight className="w-3 h-3" />
             </Link>
           </div>
@@ -794,6 +875,16 @@ export function Dashboard() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
+              {!requestsLoaded && !demoMode ? (
+                [...Array(3)].map((_, i) => (
+                  <tr key={i} aria-hidden="true">
+                    <td colSpan={7} className="px-6 py-3">
+                      <div className="h-4 w-full bg-secondary rounded animate-pulse" />
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <>
               {requests.length === 0 && requestsLive && (
                 <tr>
                   <td colSpan={7} className="px-6 py-10 text-center text-sm text-muted-foreground">
@@ -835,11 +926,25 @@ export function Dashboard() {
                   </td>
                 </tr>
               ))}
+                </>
+              )}
             </tbody>
           </table>
         </div>
 
         <div className="md:hidden space-y-3 p-4">
+          {!requestsLoaded && !demoMode ? (
+            [...Array(3)].map((_, i) => (
+              <div key={i} aria-hidden="true" className="bg-card/50 border border-border/60 rounded-xl p-4 animate-pulse">
+                <div className="h-4 w-1/2 bg-secondary rounded mb-3" />
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="h-8 bg-secondary rounded" />
+                  <div className="h-8 bg-secondary rounded" />
+                </div>
+              </div>
+            ))
+          ) : (
+            <>
           {requests.length === 0 && requestsLive && (
             <div className="text-center text-sm text-muted-foreground py-6">
               No requests yet. Send a request to your proxy endpoint to see live traffic here.
@@ -886,6 +991,8 @@ export function Dashboard() {
               </div>
             </div>
           ))}
+            </>
+          )}
         </div>
       </div>
     </div>

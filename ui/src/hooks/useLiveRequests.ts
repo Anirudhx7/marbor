@@ -54,6 +54,10 @@ export function useLiveRequests(maxRequests: number = 20) {
   const [requests, setRequests] = useState<LiveRequest[]>([]);
   const [newRequestId, setNewRequestId] = useState<string | null>(null);
   const [isLive, setIsLive] = useState(false);
+  // First-settle gate for skeleton rows - requests=[] is ambiguous between
+  // "no traffic" and "first poll hasn't answered". Set on the first accepted
+  // poll outcome (rows or failure); demo seeds on mount so starts settled.
+  const [loaded, setLoaded] = useState(demoMode);
   const lastIdRef = useRef<string | null>(null);
   // generationRef guards against a slower, older poll tick resolving after a
   // faster, newer one and overwriting fresher data - `active` alone only
@@ -81,6 +85,7 @@ export function useLiveRequests(maxRequests: number = 20) {
       if (!active || gen !== generationRef.current || currentAppPath() !== '/') return;
       setRequests(Array.isArray(data) ? data : []);
       setIsLive(true);
+      setLoaded(true);
       if (data.length > 0 && data[0].id !== lastIdRef.current) {
         lastIdRef.current = data[0].id;
         setNewRequestId(data[0].id);
@@ -93,6 +98,7 @@ export function useLiveRequests(maxRequests: number = 20) {
     } catch (e) {
       if (!active || gen !== generationRef.current || currentAppPath() !== '/') return;
       setIsLive(false);
+      setLoaded(true);
       if (demoMode) {
         const newRequest = generateRequest();
         lastIdRef.current = newRequest.id;
@@ -127,5 +133,5 @@ export function useLiveRequests(maxRequests: number = 20) {
     };
   }, [poll, location.pathname]);
 
-  return { requests, newRequestId, isLive };
+  return { requests, newRequestId, isLive, loaded };
 }
