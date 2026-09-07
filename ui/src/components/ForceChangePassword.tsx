@@ -84,7 +84,7 @@ export function ForceChangePassword({ session, onSuccess }: Props) {
               <KeyRound className="w-5 h-5 text-amber-600 dark:text-amber-400" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-foreground">Set New Password</h2>
+              <h2 className="text-sm font-semibold text-foreground">Set new password</h2>
               <p className="text-xs text-muted-foreground">Required before continuing</p>
             </div>
           </div>

@@ -24,7 +24,7 @@ export function SavingsCard({ savings, loading }: SavingsCardProps) {
     <div className="glass-panel rounded-xl p-5 hover:border-primary/50 transition-colors h-full min-w-0">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-muted-foreground mb-1">Saved vs Cloud</p>
+          <p className="text-sm font-medium text-muted-foreground mb-1">Saved vs cloud</p>
           <div className="flex items-baseline gap-1">
             {loading ? (
               <span className="text-2xl font-bold text-foreground animate-pulse">--</span>

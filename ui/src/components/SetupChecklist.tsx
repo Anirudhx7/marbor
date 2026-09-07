@@ -37,10 +37,10 @@ export function SetupChecklist({
       href: '/gpu-nodes',
     },
     {
-      title: 'Install Marbor Agent',
+      title: 'Install marbor agent',
       done: hasAgent,
       doneText: 'Agent is reporting healthy.',
-      pendingText: 'Install the Marbor Agent on your GPU node.',
+      pendingText: 'Install the marbor agent on your GPU node.',
       href: '/gpu-nodes',
     },
     {

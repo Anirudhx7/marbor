@@ -292,7 +292,7 @@ export function Routing() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-6">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Routing Logic</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Routing logic</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Configure how requests are balanced across your cluster
           </p>
@@ -352,7 +352,7 @@ export function Routing() {
       {/* Advanced Rules Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-6">
         <div>
-          <h2 className="text-lg font-semibold text-foreground">Override Rules</h2>
+          <h2 className="text-lg font-semibold text-foreground">Override rules</h2>
           <p className="text-sm text-muted-foreground">Fine-grained control for specific models or API keys</p>
         </div>
         <button
@@ -521,7 +521,7 @@ export function Routing() {
           setFormErrors([]);
           setNewRuleForm({ priority: '', condition: '', targetNode: '', strategy: 'warm-first' });
         }}
-        title="Add Routing Rule"
+        title="Add routing rule"
       >
         <div className="space-y-4">
           {formErrors.length > 0 && (
@@ -634,7 +634,7 @@ export function Routing() {
           setIsDeleteModalOpen(false);
           setRuleToDelete(null);
         }}
-        title="Delete Routing Rule"
+        title="Delete routing rule"
         maxWidth="sm"
       >
         <div className="space-y-4">
@@ -692,7 +692,7 @@ export function Routing() {
       <Modal
         isOpen={strategyToConfirm !== null}
         onClose={() => setStrategyToConfirm(null)}
-        title="Change Routing Strategy"
+        title="Change routing strategy"
         maxWidth="sm"
       >
         <div className="space-y-4">

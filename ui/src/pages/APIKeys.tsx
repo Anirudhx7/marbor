@@ -360,7 +360,7 @@ export function APIKeys() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">API Keys</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">API keys</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Manage {keys.length} API keys for authentication
           </p>
@@ -630,7 +630,7 @@ export function APIKeys() {
           setFormErrors([]);
           setNewKeyForm({ name: '', rateLimit: '1000', allowedModels: [], expiresAt: '' });
         }}
-        title="Create New API Key"
+        title="Create new API key"
       >
         <div className="space-y-4">
           {formErrors.length > 0 && (
@@ -887,7 +887,7 @@ export function APIKeys() {
           setKeyToRevoke(null);
           setRevokeError(null);
         }}
-        title="Revoke API Key"
+        title="Revoke API key"
         maxWidth="sm"
       >
         <div className="space-y-4">

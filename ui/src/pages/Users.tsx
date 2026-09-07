@@ -99,7 +99,7 @@ function ApproveModal({ user, onClose, onDone }: ApproveModalProps) {
 
   if (createdKey) {
     return (
-      <Modal isOpen={true} onClose={onDone} title="User Approved" maxWidth="sm">
+      <Modal isOpen={true} onClose={onDone} title="User approved" maxWidth="sm">
         <div className="space-y-4">
           <p className="text-xs text-muted-foreground">API key for <strong>{user.username}</strong>:</p>
           <code className="block w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-xs font-mono text-primary break-all select-all">
@@ -201,7 +201,7 @@ function ApproveModal({ user, onClose, onDone }: ApproveModalProps) {
   );
 }
 
-// ── Reset Password Modal ──────────────────────────────────────────────────────
+// ── Reset password Modal ──────────────────────────────────────────────────────
 
 interface ResetPasswordModalProps {
   user: UserRecord;
@@ -220,7 +220,7 @@ function ResetPasswordModal({ user, onClose }: ResetPasswordModalProps) {
   }, [user.id]);
 
   return (
-    <Modal isOpen={true} onClose={onClose} title="Reset Password" maxWidth="sm">
+    <Modal isOpen={true} onClose={onClose} title="Reset password" maxWidth="sm">
       <div className="space-y-4">
         {loading && <p className="text-sm text-muted-foreground animate-pulse">Generating new password...</p>}
         {error && <p className="text-xs text-destructive bg-destructive/10 px-3 py-2 rounded-lg">{error}</p>}
@@ -243,7 +243,7 @@ function ResetPasswordModal({ user, onClose }: ResetPasswordModalProps) {
   );
 }
 
-// ── Create User Modal ─────────────────────────────────────────────────────────
+// ── Create user Modal ─────────────────────────────────────────────────────────
 
 interface CreateUserModalProps {
   onClose: () => void;
@@ -274,7 +274,7 @@ function CreateUserModal({ onClose, onDone }: CreateUserModalProps) {
 
   if (created) {
     return (
-      <Modal isOpen={true} onClose={onDone} title="User Created" maxWidth="sm">
+      <Modal isOpen={true} onClose={onDone} title="User created" maxWidth="sm">
         <div className="space-y-4">
           <p className="text-xs text-muted-foreground">Initial password for <strong>{created.username}</strong>:</p>
           <code className="block w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-xs font-mono text-primary break-all select-all">
@@ -290,7 +290,7 @@ function CreateUserModal({ onClose, onDone }: CreateUserModalProps) {
   }
 
   return (
-    <Modal isOpen={true} onClose={onClose} title="Create User">
+    <Modal isOpen={true} onClose={onClose} title="Create user">
       <div className="space-y-4">
         <div className="space-y-3">
           <div>
@@ -332,7 +332,7 @@ function CreateUserModal({ onClose, onDone }: CreateUserModalProps) {
   );
 }
 
-// ── Edit User Modal ───────────────────────────────────────────────────────────
+// ── Edit user Modal ───────────────────────────────────────────────────────────
 // PATCH /admin/v1/users/{id} (handlePatchUser) has had a CLI command (marbor
 // users patch) for a while but no UI surface until now.
 
@@ -362,7 +362,7 @@ function EditUserModal({ user, onClose, onDone }: EditUserModalProps) {
   }
 
   return (
-    <Modal isOpen={true} onClose={onClose} title="Edit User">
+    <Modal isOpen={true} onClose={onClose} title="Edit user">
       <div className="space-y-4">
         <div className="space-y-3">
           <div>
@@ -492,7 +492,7 @@ export function Users() {
           className="flex items-center gap-2 px-3 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors self-start sm:self-auto"
         >
           <Plus className="w-4 h-4" />
-          Create User
+          Create user
         </button>
       </div>
 
@@ -697,7 +697,7 @@ export function Users() {
       <Modal
         isOpen={suspendTarget !== null}
         onClose={() => setSuspendTarget(null)}
-        title="Suspend User"
+        title="Suspend user"
         maxWidth="sm"
       >
         <div className="space-y-4">
@@ -725,7 +725,7 @@ export function Users() {
               }}
               className="px-4 py-2 bg-amber-600 hover:bg-amber-600/90 text-white font-medium rounded-lg text-sm transition-colors shadow-sm"
             >
-              Suspend User
+              Suspend user
             </button>
           </div>
         </div>
@@ -734,7 +734,7 @@ export function Users() {
       <Modal
         isOpen={deleteTarget !== null}
         onClose={() => setDeleteTarget(null)}
-        title="Delete User"
+        title="Delete user"
         maxWidth="sm"
       >
         <div className="space-y-4">
@@ -762,7 +762,7 @@ export function Users() {
               }}
               className="px-4 py-2 bg-destructive hover:bg-destructive/90 text-destructive-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
             >
-              Delete User
+              Delete user
             </button>
           </div>
         </div>
@@ -771,7 +771,7 @@ export function Users() {
       <Modal
         isOpen={resetConfirmTarget !== null}
         onClose={() => setResetConfirmTarget(null)}
-        title="Reset Password"
+        title="Reset password"
         maxWidth="sm"
       >
         <div className="space-y-4">
@@ -796,7 +796,7 @@ export function Users() {
               }}
               className="px-4 py-2 bg-destructive hover:bg-destructive/90 text-destructive-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
             >
-              Reset Password
+              Reset password
             </button>
           </div>
         </div>

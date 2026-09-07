@@ -336,7 +336,7 @@ export function Requests() {
       <div className="flex items-start justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">Request Log</h1>
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground">Request log</h1>
             {isDemoMode ? (
               <span className="flex items-center gap-1.5 text-xs font-medium text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500 dark:bg-amber-400" />

@@ -518,9 +518,9 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
         <code className="font-mono">:{node.port}</code>
       </div>
 
-      {/* Loaded Models */}
+      {/* Loaded models */}
       <div className="border-t border-border pt-3">
-        <p className="text-xs font-medium text-muted-foreground mb-2">Loaded Models</p>
+        <p className="text-xs font-medium text-muted-foreground mb-2">Loaded models</p>
         <div className="flex flex-wrap gap-1.5">
           {(node.loadedModels || []).length === 0 ? (
             <span className="text-xs text-muted-foreground/60">None resident</span>
@@ -1810,7 +1810,7 @@ export function GPUNodes() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">GPU Nodes</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">GPU nodes</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Manage {nodes.length} inference nodes across your infrastructure
           </p>
@@ -1876,12 +1876,12 @@ export function GPUNodes() {
         </div>
       )}
 
-      {/* Model Fit Section */}
+      {/* Model fit Section */}
       {!demoMode && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-foreground">Model Fit</h2>
+              <h2 className="text-lg font-semibold text-foreground">Model fit</h2>
               <p className="text-sm text-muted-foreground mt-0.5">Will each downloaded model fit in available VRAM?</p>
             </div>
             {modelFitLoading && (
@@ -1937,7 +1937,7 @@ export function GPUNodes() {
       <Modal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
-        title="Add GPU Node"
+        title="Add GPU node"
       >
         <div className="space-y-4">
           <div>
@@ -2318,7 +2318,7 @@ export function GPUNodes() {
       <Modal
         isOpen={pendingPatch !== null}
         onClose={() => setPendingPatch(null)}
-        title="Change Node Address"
+        title="Change node address"
         maxWidth="sm"
       >
         <div className="space-y-4">
@@ -2355,11 +2355,11 @@ export function GPUNodes() {
         </div>
       </Modal>
 
-      {/* Reset TLS Pin Confirmation Modal (destructive - disrupts an established trust state) */}
+      {/* Reset TLS pin Confirmation Modal (destructive - disrupts an established trust state) */}
       <Modal
         isOpen={pendingResetTLSPin}
         onClose={() => setPendingResetTLSPin(false)}
-        title="Reset TLS Pin"
+        title="Reset TLS pin"
         maxWidth="sm"
       >
         <div className="space-y-4">
@@ -2394,7 +2394,7 @@ export function GPUNodes() {
       <Modal
         isOpen={nodeToDelete !== null}
         onClose={() => setNodeToDelete(null)}
-        title="Remove GPU Node"
+        title="Remove GPU node"
         maxWidth="sm"
       >
         <div className="space-y-4">
@@ -2432,7 +2432,7 @@ export function GPUNodes() {
       <Modal
         isOpen={modelToUnload !== null}
         onClose={() => setModelToUnload(null)}
-        title="Unload Model from VRAM"
+        title="Unload model from VRAM"
         maxWidth="sm"
       >
         <div className="space-y-4">
@@ -2468,10 +2468,10 @@ export function GPUNodes() {
       </Modal>
 
 
-      {/* Drain Node Confirmation Modal */}
+      {/* Drain node Confirmation Modal */}
       <DrainConfirmModal
         nodeName={nodeToDrain}
-        title="Drain Node"
+        title="Drain node"
         question="Are you sure you want to drain"
         explanation="This stops new requests from being routed to this node. In-flight requests are unaffected. You can undrain it again at any time."
         actionError={actionError}
@@ -2481,16 +2481,16 @@ export function GPUNodes() {
           const ok = await handleDrainNode(nodeToDrain);
           if (ok) setNodeToDrain(null);
         }}
-        confirmLabel="Drain Node"
+        confirmLabel="Drain node"
         confirmClassName="px-4 py-2 bg-amber-600 hover:bg-amber-600/90 text-white font-medium rounded-lg text-sm transition-colors shadow-sm"
       />
 
-      {/* Undrain Node Confirmation Modal (reverses a safety decision -
+      {/* Undrain node Confirmation Modal (reverses a safety decision -
           e.g. a thermal-watchdog auto-drain - so gets the same confirm as
           Drain, not a single-click action). */}
       <DrainConfirmModal
         nodeName={nodeToUndrain}
-        title="Undrain Node"
+        title="Undrain node"
         question="Are you sure you want to undrain"
         explanation="This resumes routing new requests to this node. If it was drained automatically (e.g. by the thermal watchdog), confirm the underlying condition has actually cleared first."
         actionError={actionError}
@@ -2500,7 +2500,7 @@ export function GPUNodes() {
           const ok = await handleUndrainNode(nodeToUndrain);
           if (ok) setNodeToUndrain(null);
         }}
-        confirmLabel="Undrain Node"
+        confirmLabel="Undrain node"
         confirmClassName="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
       />
 
@@ -2670,7 +2670,7 @@ export function GPUNodes() {
 
           {agentStatus && agentStatus.enabled && (
             <div className="space-y-3">
-              {/* Agent Connection - reconfigure port/scheme on an already-enabled
+              {/* Agent connection - reconfigure port/scheme on an already-enabled
                   agent. Changing this NEVER touches this node's runtime URL
                   (node.url/scheme) - only this Agent's own port/scheme.
                   The enabled/port/scheme status lives ONLY in this card's
@@ -2696,7 +2696,7 @@ export function GPUNodes() {
                         : 'Enabled · HTTPS';
                   return (
                     <div className="flex items-center justify-between">
-                      <p className="text-sm font-medium text-foreground">Agent Connection</p>
+                      <p className="text-sm font-medium text-foreground">Agent connection</p>
                       <span className={`flex items-center gap-1.5 text-xs font-medium ${httpsUnusable ? 'text-amber-600 dark:text-amber-400' : 'text-success'}`}>
                         <span className={`w-2 h-2 rounded-full ${httpsUnusable ? 'bg-amber-500' : 'bg-success'}`} />
                         {label}
@@ -2743,7 +2743,7 @@ export function GPUNodes() {
                   Reads only agentStatus.scheme (never node.scheme/node.url) so
                   it can never be confused with, or derived from, the Runtime
                   HTTPS setting in the Edit Node modal (a hard invariant).
-                  Same bordered-card treatment as Agent Connection above. */}
+                  Same bordered-card treatment as Agent connection above. */}
               <div className="space-y-2 p-3 bg-secondary/30 border border-border rounded-lg">
                 <label className="block text-sm font-medium text-muted-foreground mb-1.5">
                   TLS Certificate Fingerprint
@@ -2892,7 +2892,7 @@ export function GPUNodes() {
 
           {(controlStatus || controlError) && (
             <div className="p-4 bg-secondary/30 border border-border rounded-xl space-y-3">
-              <p className="text-sm font-semibold text-foreground">Runtime Control</p>
+              <p className="text-sm font-semibold text-foreground">Runtime control</p>
               <p className="text-xs text-muted-foreground">
                 How the agent starts/stops/restarts the inference runtime process on this node.
               </p>
@@ -3054,11 +3054,11 @@ export function GPUNodes() {
         </div>
       </Modal>
 
-      {/* marbor agent Install Command Modal - separate dialog so the enroll token/commands don't get buried below Runtime Control */}
+      {/* marbor agent install command Modal - separate dialog so the enroll token/commands don't get buried below Runtime control */}
       <Modal
         isOpen={agentInstallCommand !== null}
         onClose={() => setAgentInstallCommand(null)}
-        title="marbor agent Install Command"
+        title="marbor agent install command"
         maxWidth="lg"
       >
         {agentInstallCommand && (
@@ -3146,7 +3146,7 @@ export function GPUNodes() {
       {/* Reconfigure marbor agent Connection Confirmation Modal - only for
           changing port/scheme on an ALREADY-enabled agent. Text is
           scoped entirely to "Agent connection" and never says "node address"
-          so it can't be mistaken for the Runtime "Change Node Address" modal
+          so it can't be mistaken for the Runtime "Change node address" modal
           above - and confirming here never touches this node's runtime URL. */}
       <Modal
         isOpen={pendingAgentReconfigure}
@@ -3288,7 +3288,7 @@ export function GPUNodes() {
       <Modal
         isOpen={controlManualConfirm}
         onClose={() => setControlManualConfirm(false)}
-        title="Set Control Driver Manually"
+        title="Set control driver manually"
         maxWidth="sm"
       >
         <div className="space-y-4">
@@ -3330,14 +3330,14 @@ export function GPUNodes() {
         </div>
       </Modal>
 
-      {/* Clear Control Driver Confirmation Modal - clearing disables
+      {/* Clear control driver Confirmation Modal - clearing disables
           Start/Stop/Restart/Logs on this node until a new driver is
           configured, same review-before-persist discipline as Set
           Manually. */}
       <Modal
         isOpen={controlClearConfirm}
         onClose={() => setControlClearConfirm(false)}
-        title="Clear Control Driver"
+        title="Clear control driver"
         maxWidth="sm"
       >
         <div className="space-y-4">
