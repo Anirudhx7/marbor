@@ -242,6 +242,9 @@ html.light .theme-toggle .moon { display: block; }
   border: 1px solid var(--accent); border-radius: 99px; padding: 5px 13px 5px 10px;
   background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
+@media (max-width: 640px) {
+  .kicker { display: inline-block; border-radius: var(--radius); }
+}
 .kicker .dot { display: none; }
 h1.headline {
   font-family: var(--font-serif); font-weight: 400;
@@ -314,7 +317,7 @@ a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outlin
   background: var(--bg-elevated); overflow: hidden; max-width: 860px;
 }
 .routing-head {
-  display: flex; align-items: center; gap: 9px; padding: 9px 14px;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 4px 9px; padding: 9px 14px;
   border-bottom: 1px solid var(--border-subtle); font-size: 12px; color: var(--text-faint);
   background: var(--bg-surface);
 }
