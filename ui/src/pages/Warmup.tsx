@@ -880,7 +880,7 @@ export function Warmup() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-2.5">
           <Flame className="w-5 h-5 text-primary" />
-          <h1 className="text-lg font-bold text-foreground">Warmup &amp; Scheduling</h1>
+          <h1 className="text-lg font-bold tracking-tight text-foreground">Warmup &amp; Scheduling</h1>
           <button onClick={handlePingWarmup} disabled={pinging} title="Manually trigger a warmup pass on every node right now"
             className="flex items-center gap-1.5 px-2.5 py-1 border border-border rounded-lg text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-50">
             <Zap className="w-3.5 h-3.5" /> {pinging ? 'Pinging…' : 'Ping warmup'}

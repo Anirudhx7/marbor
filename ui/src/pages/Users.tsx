@@ -478,7 +478,7 @@ export function Users() {
         <div className="flex items-center gap-3 flex-wrap">
           <UsersIcon className="w-6 h-6 text-primary animate-pulse" />
           <div>
-            <h1 className="text-xl font-bold text-foreground">Users</h1>
+            <h1 className="text-xl font-bold tracking-tight text-foreground">Users</h1>
             <p className="text-xs text-muted-foreground">Manage dashboard access and API key assignments</p>
           </div>
           {pendingCount > 0 && (

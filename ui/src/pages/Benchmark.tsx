@@ -257,7 +257,7 @@ export function Benchmark() {
     <div className="space-y-4 animate-fade-in max-w-3xl mx-auto">
       <div className="flex items-center gap-2.5">
         <Gauge className="w-5 h-5 text-primary" />
-        <h1 className="text-lg font-bold text-foreground">Hardware Benchmark</h1>
+        <h1 className="text-lg font-bold tracking-tight text-foreground">Hardware Benchmark</h1>
       </div>
       <p className="text-sm text-muted-foreground -mt-2">
         Measures real cold-vs-warm Time-To-First-Token on this marbor's own hardware, through its own proxy.
