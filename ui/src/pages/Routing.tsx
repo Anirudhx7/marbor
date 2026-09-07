@@ -172,7 +172,7 @@ export function Routing() {
   const [newDegAlts, setNewDegAlts] = useState('');
   const [degChainError, setDegChainError] = useState<string | null>(null);
 
-  // LiteLLM flag only gates the Cloud Providers card subtitle/Add button,
+  // LiteLLM flag only gates the Cloud providers card subtitle/Add button,
   // exactly as Settings.tsx did. Read-only here, owned by Settings.
   const [liteLLMEnabled, setLiteLLMEnabled] = useState(false);
   // Known model names for the searchable fallback-chain comboboxes -
@@ -285,7 +285,7 @@ export function Routing() {
   // Local fallback chains load - relocated from Settings.tsx. Settings
   // read this from fetchSettings().routing.local_degradation_chains; same here.
   // liteLLMEnabled is read-only here (owned by Settings) and only gates the
-  // Cloud Providers card subtitle/Add button, exactly as Settings did.
+  // Cloud providers card subtitle/Add button, exactly as Settings did.
   useEffect(() => {
     if (demoMode) {
       if (mountedRef.current) {
@@ -825,7 +825,7 @@ export function Routing() {
         ))}
       </div>
 
-      {/* Cloud Providers - relocated verbatim from Settings.tsx.
+      {/* Cloud providers - relocated verbatim from Settings.tsx.
           Fallback cloud endpoints for overflow traffic, tried highest priority
           first. Provider priority is a routing decision, not general app config. */}
       <div className="bg-card border border-border shadow-sm rounded-xl p-6">
@@ -835,7 +835,7 @@ export function Routing() {
               <Cloud className="w-5 h-5 text-sky-600 dark:text-sky-400" />
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-foreground">Cloud Providers</h3>
+              <h3 className="text-sm font-semibold text-foreground">Cloud providers</h3>
               <p className="text-xs font-medium text-muted-foreground">
                 {liteLLMEnabled
                   ? 'Managed by LiteLLM while enabled - this list is inactive'
@@ -905,15 +905,15 @@ export function Routing() {
         </div>
       </div>
 
-      {/* Local Model Fallback Chain - relocated verbatim from Settings.tsx. */}
+      {/* Local model fallback chain - relocated verbatim from Settings.tsx. */}
       <div className="bg-card border border-border shadow-sm rounded-xl p-6">
         <div className="flex items-center gap-3 mb-5">
           <div className="p-2 bg-teal-500/10 rounded-lg">
             <HardDrive className="w-5 h-5 text-teal-600 dark:text-teal-400" />
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-foreground">Local Model Fallback Chain</h3>
-            <p className="text-xs font-medium text-muted-foreground">Ordered local alternates to try when no node can serve the requested model, before cloud - only applies to keys with "Allow local degradation" enabled (API Keys page)</p>
+            <h3 className="text-sm font-semibold text-foreground">Local model fallback chain</h3>
+            <p className="text-xs font-medium text-muted-foreground">Ordered local alternates to try when no node can serve the requested model, before cloud - only applies to keys with "Allow local degradation" enabled (API keys page)</p>
           </div>
         </div>
 
@@ -961,7 +961,7 @@ export function Routing() {
         {degChainError && <p className="text-sm text-destructive mt-2">{degChainError}</p>}
       </div>
 
-      {/* Create Rule Modal */}
+      {/* Create rule modal */}
       <Modal
         isOpen={isCreateModalOpen}
         onClose={() => {
@@ -1107,11 +1107,11 @@ export function Routing() {
         </div>
       </Modal>
 
-      {/* Toggle Rule Confirmation Modal */}
+      {/* Toggle rule confirmation modal */}
       <Modal
         isOpen={ruleToToggle !== null}
         onClose={() => setRuleToToggle(null)}
-        title={ruleToToggle?.enabled ? 'Disable Routing Rule' : 'Enable Routing Rule'}
+        title={ruleToToggle?.enabled ? 'Disable routing rule' : 'Enable routing rule'}
         maxWidth="sm"
       >
         <div className="space-y-4">
@@ -1136,7 +1136,7 @@ export function Routing() {
         </div>
       </Modal>
 
-      {/* Strategy Change Confirmation Modal */}
+      {/* Strategy change confirmation modal */}
       <Modal
         isOpen={strategyToConfirm !== null}
         onClose={() => setStrategyToConfirm(null)}
@@ -1176,11 +1176,11 @@ export function Routing() {
         </div>
       </Modal>
 
-      {/* Add/Edit Cloud Provider Modal - relocated verbatim from Settings.tsx. */}
+      {/* Add/edit cloud provider modal - relocated verbatim from Settings.tsx. */}
       <Modal
         isOpen={cloudModalOpen}
         onClose={() => { setCloudModalOpen(false); setEditingProvider(null); }}
-        title={editingProvider && cloudProviders.some(p => p.name === editingProvider.name) ? 'Edit Cloud Provider' : 'Add Cloud Provider'}
+        title={editingProvider && cloudProviders.some(p => p.name === editingProvider.name) ? 'Edit cloud provider' : 'Add cloud provider'}
         maxWidth="sm"
       >
         {editingProvider && (
@@ -1264,7 +1264,7 @@ export function Routing() {
       <Modal
         isOpen={!!providerToDelete}
         onClose={() => setProviderToDelete(null)}
-        title="Delete Cloud Provider"
+        title="Delete cloud provider"
         maxWidth="sm"
       >
         <div className="space-y-4">
