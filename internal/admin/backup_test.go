@@ -383,8 +383,8 @@ func TestValidateBackupFile(t *testing.T) {
 // foreignSQLiteBytes returns the raw bytes of a genuine, non-corrupt SQLite
 // database that was never produced by marbor - it has no settings table and
 // so no schema_version row. PRAGMA quick_check passes on this file (it is a
-// real SQLite database), which is exactly the gap P430 closes: quick_check
-// alone is not enough to prove a candidate backup is actually a marbor.db.
+// real SQLite database) - quick_check alone is not enough to prove a
+// candidate backup is actually a marbor.db.
 func foreignSQLiteBytes(t *testing.T) []byte {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "foreign.db")

@@ -1,7 +1,7 @@
 package cli
 
 // settings.go - `marbor settings get/set` (GET/PUT /admin/settings had full
-// UI coverage in Settings.tsx but no CLI - P85). Deliberately whole-object,
+// UI coverage in Settings.tsx but no CLI). Deliberately whole-object,
 // not per-field flags: config.Config is large (Admin/Routing/Docker/Audit/
 // Webhook/Savings/Warmup/ContextWindows/CloudProviders/...) and the server
 // already accepts a partial JSON payload merged onto the current config, so
