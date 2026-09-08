@@ -288,10 +288,10 @@ func TestKeyCounters(t *testing.T) {
 func TestNodeDrainStates(t *testing.T) {
 	s := openTestDB(t)
 
-	if err := s.SetNodeDrain("node1", true, "manual"); err != nil {
+	if err := s.SetNodeDrain("node1", true, "manual", 300); err != nil {
 		t.Fatalf("SetNodeDrain: %v", err)
 	}
-	if err := s.SetNodeDrain("node2", false, ""); err != nil {
+	if err := s.SetNodeDrain("node2", false, "", 0); err != nil {
 		t.Fatalf("SetNodeDrain: %v", err)
 	}
 
@@ -305,12 +305,18 @@ func TestNodeDrainStates(t *testing.T) {
 	if states["node1"].Reason != "manual" {
 		t.Errorf("node1 reason = %q, want manual", states["node1"].Reason)
 	}
+	if states["node1"].GraceSeconds != 300 {
+		t.Errorf("node1 grace = %d, want 300", states["node1"].GraceSeconds)
+	}
 	if states["node2"].Draining {
 		t.Error("node2 should not be draining")
 	}
+	if states["node2"].GraceSeconds != 0 {
+		t.Errorf("node2 grace = %d, want 0 (absent = infinite)", states["node2"].GraceSeconds)
+	}
 
 	// Update node1 to not draining.
-	if err := s.SetNodeDrain("node1", false, ""); err != nil {
+	if err := s.SetNodeDrain("node1", false, "", 0); err != nil {
 		t.Fatalf("SetNodeDrain update: %v", err)
 	}
 	states, err = s.NodeDrainStates()
@@ -319,6 +325,29 @@ func TestNodeDrainStates(t *testing.T) {
 	}
 	if states["node1"].Draining {
 		t.Error("node1 should no longer be draining")
+	}
+}
+
+// TestDeleteNodeLeavesNodeDrainRowOrphaned locks in the accepted (not fixed)
+// behavior noted at sqlite.go DeleteNode: a deleted node's node_drain row is
+// left behind, matching the existing node_overrides pattern - this is a
+// documented accept-with-test decision, not a silent third state.
+func TestDeleteNodeLeavesNodeDrainRowOrphaned(t *testing.T) {
+	s := openTestDB(t)
+
+	if err := s.SetNodeDrain("gone", true, "manual", 0); err != nil {
+		t.Fatalf("SetNodeDrain: %v", err)
+	}
+	if err := s.DeleteNode("gone"); err != nil {
+		t.Fatalf("DeleteNode: %v", err)
+	}
+
+	states, err := s.NodeDrainStates()
+	if err != nil {
+		t.Fatalf("NodeDrainStates: %v", err)
+	}
+	if !states["gone"].Draining {
+		t.Error("expected orphaned node_drain row for deleted node to survive DeleteNode (accepted behavior)")
 	}
 }
 
@@ -1452,7 +1481,7 @@ func TestOpenUpgradesPreReasonNodeDrainSchema(t *testing.T) {
 	}
 	defer s.Close()
 
-	if err := s.SetNodeDrain("new-node", true, "maintenance"); err != nil {
+	if err := s.SetNodeDrain("new-node", true, "maintenance", 0); err != nil {
 		t.Fatalf("SetNodeDrain after schema upgrade: %v", err)
 	}
 
@@ -1468,6 +1497,9 @@ func TestOpenUpgradesPreReasonNodeDrainSchema(t *testing.T) {
 	}
 	if !states["new-node"].Draining || states["new-node"].Reason != "maintenance" {
 		t.Errorf("new-node = %+v, want draining=true reason=maintenance", states["new-node"])
+	}
+	if states["old-node"].GraceSeconds != 0 {
+		t.Errorf("old-node grace = %d, want 0 (backfilled default)", states["old-node"].GraceSeconds)
 	}
 }
 

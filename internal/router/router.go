@@ -124,6 +124,12 @@ type NodeState struct {
 	// UI so they can tell an admin-initiated drain from a watchdog-triggered
 	// one.
 	DrainedReason string
+	// DrainedGraceSeconds is the bounded-drain window requested when Draining
+	// was set (0 = infinite, today's frozen default) - persisted and restored
+	// alongside Draining/DrainedReason. No enforcement engine reads this yet
+	// (Phase 3 owns countdown/eviction) - it exists to round-trip and survive
+	// restart without retrofitting a changed meaning onto this field later.
+	DrainedGraceSeconds int
 	// PrewarmDisabled is a live, admin-toggleable, in-memory-only flag: when
 	// true, the predictive engine skips this node for new warmup triggers.
 	// Never persisted - it always reverts to false (prewarm enabled) on
@@ -1652,8 +1658,10 @@ func (r *Router) SyncNodes(newNodes []config.NodeConfig) (added, removed int) {
 // DrainNode marks a node as draining: it will no longer receive new requests
 // but in-flight connections are allowed to finish. reason records why (e.g.
 // "manual", "thermal", "scheduled") and is surfaced to operators in the UI.
+// graceSeconds is the bounded-drain window (0 = infinite, today's frozen
+// default) - stored only, no enforcement engine reads it yet (Phase 3).
 // Returns false if not found.
-func (r *Router) DrainNode(name string, reason string) bool {
+func (r *Router) DrainNode(name string, reason string, graceSeconds int) bool {
 	r.mu.RLock()
 	var nodeURL string
 	found := false
@@ -1662,6 +1670,7 @@ func (r *Router) DrainNode(name string, reason string) bool {
 			n.mu.Lock()
 			n.Draining = true
 			n.DrainedReason = reason
+			n.DrainedGraceSeconds = graceSeconds
 			nodeURL = n.URL
 			n.mu.Unlock()
 			found = true
@@ -1690,6 +1699,7 @@ func (r *Router) UndrainNode(name string) bool {
 			n.mu.Lock()
 			n.Draining = false
 			n.DrainedReason = ""
+			n.DrainedGraceSeconds = 0
 			nodeURL = n.URL
 			n.mu.Unlock()
 			found = true

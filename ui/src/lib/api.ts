@@ -503,10 +503,12 @@ export async function removeNode(name: string) {
   if (!res.ok) throw new Error('Failed to remove node');
 }
 
-export async function drainNode(name: string) {
+export async function drainNode(name: string, graceSeconds?: number) {
+  const body = graceSeconds !== undefined ? JSON.stringify({ grace_period_seconds: graceSeconds }) : undefined;
   const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/drain`, {
     method: 'POST',
-    headers: authHeaders(),
+    headers: { ...authHeaders(), ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    body,
   });
   if (!res.ok) throw new Error('Failed to drain node');
 }

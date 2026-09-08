@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import type { ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Plus, Trash2, Server, Thermometer, Cpu, Clock, Activity, Pencil, X, Pin, Flame, Settings2, Radio, Copy, Fan, MemoryStick, HardDrive } from 'lucide-react';
 import { StatusDot } from '../components/StatusDot';
@@ -188,7 +189,7 @@ function AgentBadge({ present, version }: { present?: boolean; version?: string 
 // confirmation modals (same Modal wrapper, two-paragraph body, error block,
 // and Cancel/Confirm button pair) - only title, copy, target node name,
 // confirm handler/label, and the confirm button's color class differ.
-function DrainConfirmModal({ nodeName, title, question, explanation, actionError, onClose, onConfirm, confirmLabel, confirmClassName }: {
+function DrainConfirmModal({ nodeName, title, question, explanation, actionError, onClose, onConfirm, confirmLabel, confirmClassName, children }: {
   nodeName: string | null;
   title: string;
   question: string;
@@ -198,6 +199,7 @@ function DrainConfirmModal({ nodeName, title, question, explanation, actionError
   onConfirm: () => Promise<void>;
   confirmLabel: string;
   confirmClassName: string;
+  children?: ReactNode;
 }) {
   return (
     <Modal isOpen={nodeName !== null} onClose={onClose} title={title} maxWidth="sm">
@@ -206,6 +208,7 @@ function DrainConfirmModal({ nodeName, title, question, explanation, actionError
           {question} <span className="text-foreground font-semibold">{nodeName}</span>?
         </p>
         <p className="text-xs text-muted-foreground">{explanation}</p>
+        {children}
         {actionError && (
           <p className="text-sm text-destructive">{actionError}</p>
         )}
@@ -666,6 +669,9 @@ export function GPUNodes() {
   const [nodeToDelete, setNodeToDelete] = useState<string | null>(null);
   const [nodeToDrain, setNodeToDrain] = useState<string | null>(null);
   const [nodeToUndrain, setNodeToUndrain] = useState<string | null>(null);
+  // Bounded-drain window entered in the Drain confirm modal. Blank = infinite
+  // (today's frozen default) - no enforcement engine reads this yet (Phase 3).
+  const [drainGraceSeconds, setDrainGraceSeconds] = useState('');
   const [prewarmToToggle, setPrewarmToToggle] = useState<{ name: string; disabled: boolean } | null>(null);
   const [modelToUnload, setModelToUnload] = useState<{ nodeName: string; model: string } | null>(null);
   const [configTarget, setConfigTarget] = useState<{ model: string; node: string; runtime: string } | null>(null);
@@ -1416,15 +1422,15 @@ export function GPUNodes() {
     }
   };
 
-  const handleDrainNode = async (name: string): Promise<boolean> => {
+  const handleDrainNode = async (name: string, graceSeconds?: number): Promise<boolean> => {
     if (demoMode) {
-      setNodes(prev => prev.map(n => n.name === name ? { ...n, draining: true } : n));
+      setNodes(prev => prev.map(n => n.name === name ? { ...n, draining: true, drainedGraceSeconds: graceSeconds ?? 0 } : n));
       setActionError(null);
       return true;
     }
     if (!isLive) return false;
     try {
-      await drainNode(name);
+      await drainNode(name, graceSeconds);
       await loadNodes();
       setActionError(null);
       return true;
@@ -2548,15 +2554,29 @@ export function GPUNodes() {
         question="Are you sure you want to drain"
         explanation="This stops new requests from being routed to this node. In-flight requests are unaffected. You can undrain it again at any time."
         actionError={actionError}
-        onClose={() => setNodeToDrain(null)}
+        onClose={() => { setNodeToDrain(null); setDrainGraceSeconds(''); }}
         onConfirm={async () => {
           if (!nodeToDrain) return;
-          const ok = await handleDrainNode(nodeToDrain);
-          if (ok) setNodeToDrain(null);
+          const grace = drainGraceSeconds.trim() === '' ? undefined : Number(drainGraceSeconds);
+          const ok = await handleDrainNode(nodeToDrain, grace);
+          if (ok) { setNodeToDrain(null); setDrainGraceSeconds(''); }
         }}
         confirmLabel="Drain node"
         confirmClassName="px-4 py-2 bg-amber-600 hover:bg-amber-600/90 text-white font-medium rounded-lg text-sm transition-colors shadow-sm"
-      />
+      >
+        <label className="block text-xs text-muted-foreground space-y-1">
+          <span>Grace period (seconds, optional - no automatic enforcement yet)</span>
+          <input
+            type="number"
+            min={0}
+            step={1}
+            placeholder="Infinite"
+            value={drainGraceSeconds}
+            onChange={e => setDrainGraceSeconds(e.target.value)}
+            className="w-full px-3 py-2 text-sm bg-background border border-border rounded-lg text-foreground"
+          />
+        </label>
+      </DrainConfirmModal>
 
       {/* Undrain node Confirmation Modal (reverses a safety decision -
           e.g. a thermal-watchdog auto-drain - so gets the same confirm as

@@ -378,9 +378,10 @@ func buildRoot() *Command {
 						Args:      []ArgSpec{{Name: "node"}},
 						Flags: []FlagSpec{
 							{Name: "reason", Kind: FlagString, DefString: "", Usage: `reason recorded for the drain (default "manual")`},
+							{Name: "grace-period", Kind: FlagInt, DefInt: -1, Usage: "bounded-drain window in seconds (omit for infinite - no enforcement engine reads this yet)"},
 						},
 						Run: func(ctx *RunCtx) int {
-							return runRuntimeDrain(ctx.Flags, ctx.Args[0], ctx.String("reason"), ctx.Stdout, ctx.Stderr)
+							return runRuntimeDrain(ctx.Flags, ctx.Args[0], ctx.String("reason"), ctx.Int("grace-period"), ctx.Stdout, ctx.Stderr)
 						},
 					},
 					{

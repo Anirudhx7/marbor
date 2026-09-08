@@ -59,16 +59,18 @@ func runRuntimeLogs(flags *globalFlags, node string, lines int, stdout, stderr i
 	return ExitOK
 }
 
-// runRuntimeDrain implements `marbor runtime drain <node> [--reason=X]` - POST
-// /admin/nodes/{name}/drain. Marbor-internal routing state (never sent to the
-// Marbor Agent) - same exit-code taxonomy as runRuntimeAction.
-func runRuntimeDrain(flags *globalFlags, node, reason string, stdout, stderr io.Writer) int {
+// runRuntimeDrain implements `marbor runtime drain <node> [--reason=X]
+// [--grace-period=N]` - POST /admin/nodes/{name}/drain. Marbor-internal
+// routing state (never sent to the Marbor Agent) - same exit-code taxonomy
+// as runRuntimeAction. gracePeriod < 0 means the flag was not passed
+// (infinite drain, today's frozen default) - matches Client.DrainNode.
+func runRuntimeDrain(flags *globalFlags, node, reason string, gracePeriod int, stdout, stderr io.Writer) int {
 	client, err := authenticatedClient(flags)
 	if err != nil {
 		return reportError(err, stderr)
 	}
 
-	result, err := client.DrainNode(node, reason)
+	result, err := client.DrainNode(node, reason, gracePeriod)
 	if err != nil {
 		return reportError(err, stderr)
 	}
