@@ -799,6 +799,87 @@ func TestRouteWithPrefix_RemovedNodeHintInert(t *testing.T) {
 	}
 }
 
+// --- G1-C case 15 (drain sub-case): a draining node's stale locality hint
+// contributes nothing, request routes to the other eligible node. ---
+func TestRouteWithPrefix_DrainingNodeHintInert(t *testing.T) {
+	r := New(config.RoutingConfig{Strategy: "warm-first", PrefixLocalityEnabled: true, PrefixLocalityWeight: 10}, []config.NodeConfig{
+		{Name: "node-a", URL: "http://node-a:11434", VRAMTotalMB: 8192},
+		{Name: "node-b", URL: "http://node-b:11434", VRAMTotalMB: 8192},
+	}, nil)
+	// node-a is the locality-preferred node from a stale record, but has
+	// since started draining - routeInternal's eligibility filter excludes it
+	// from candidacy entirely, before selectBestNode ever sees the hint.
+	r.nodes[0].mu.Lock()
+	r.nodes[0].Draining = true
+	r.nodes[0].mu.Unlock()
+
+	node, _, _ := r.RouteWithPrefix("model-x", "", "", "node-a")
+	if node == nil {
+		t.Fatal("expected a node, got nil")
+	}
+	if node.Name != "node-b" {
+		t.Errorf("selected node %q, want \"node-b\" (node-a is draining; hint on an ineligible node contributes nothing)", node.Name)
+	}
+}
+
+// --- G1-C case 15 (model-incompatible sub-case): a locality hint pointing
+// at a node that can no longer serve the requested model contributes
+// nothing, request routes to the other eligible node. ---
+func TestRouteWithPrefix_ModelIncompatibleNodeHintInert(t *testing.T) {
+	r := New(config.RoutingConfig{Strategy: "warm-first", PrefixLocalityEnabled: true, PrefixLocalityWeight: 10}, []config.NodeConfig{
+		{Name: "node-a", URL: "http://node-a:11434", VRAMTotalMB: 8192},
+		{Name: "node-b", URL: "http://node-b:11434", VRAMTotalMB: 8192},
+	}, nil)
+	// node-a is the locality-preferred node from a stale record, but is a
+	// non-Ollama runtime (no on-demand load) that no longer reports
+	// model-x in LoadedModels - isEligibleForModel excludes it from
+	// candidacy entirely. node-b is Ollama, which is exempt from this check
+	// and stays eligible via its on-demand-load path.
+	r.nodes[0].mu.Lock()
+	r.nodes[0].Runtime = "vllm"
+	r.nodes[0].LoadedModels = []ModelInfo{{Name: "model-other", SizeVRAM: 4000}}
+	r.nodes[0].mu.Unlock()
+	r.nodes[1].mu.Lock()
+	r.nodes[1].Runtime = "ollama"
+	r.nodes[1].mu.Unlock()
+
+	node, _, _ := r.RouteWithPrefix("model-x", "", "", "node-a")
+	if node == nil {
+		t.Fatal("expected a node, got nil")
+	}
+	if node.Name != "node-b" {
+		t.Errorf("selected node %q, want \"node-b\" (node-a no longer has model-x loaded and cannot on-demand-load it; hint on an ineligible node contributes nothing)", node.Name)
+	}
+}
+
+// --- G1-C case 15 (runtime-incompatible sub-case): a locality hint pointing
+// at a node whose runtime does not match the request's runtimeFilter
+// contributes nothing, request routes to the other eligible node. ---
+func TestRouteWithPrefix_RuntimeIncompatibleNodeHintInert(t *testing.T) {
+	r := New(config.RoutingConfig{Strategy: "warm-first", PrefixLocalityEnabled: true, PrefixLocalityWeight: 10}, []config.NodeConfig{
+		{Name: "node-a", URL: "http://node-a:11434", VRAMTotalMB: 8192},
+		{Name: "node-b", URL: "http://node-b:11434", VRAMTotalMB: 8192},
+	}, nil)
+	// node-a is the locality-preferred node from a stale record, but its
+	// runtime (vllm) no longer matches this request's runtimeFilter
+	// ("ollama") - routeInternal's runtimeFilter check excludes it from
+	// candidacy entirely, before selectBestNode ever sees the hint.
+	r.nodes[0].mu.Lock()
+	r.nodes[0].Runtime = "vllm"
+	r.nodes[0].mu.Unlock()
+	r.nodes[1].mu.Lock()
+	r.nodes[1].Runtime = "ollama"
+	r.nodes[1].mu.Unlock()
+
+	node, _, _ := r.RouteWithPrefix("model-x", "", "ollama", "node-a")
+	if node == nil {
+		t.Fatal("expected a node, got nil")
+	}
+	if node.Name != "node-b" {
+		t.Errorf("selected node %q, want \"node-b\" (node-a's runtime does not match runtimeFilter=ollama; hint on an ineligible node contributes nothing)", node.Name)
+	}
+}
+
 // TestRoute_DisabledPrefixLocality_BitIdenticalToBaseline is the decision-
 // parity requirement at the Route()/RouteWithPrefix() layer: with the
 // feature disabled, RouteWithPrefix("", ...) - and therefore every existing
