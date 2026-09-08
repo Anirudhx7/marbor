@@ -208,6 +208,10 @@ delete a model from a node's local storage
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
+Flags:
+
+- `--yes` - confirm deletion without prompting
+
 #### `unload <node> <model>`
 
 unload a model from a node's warm state
