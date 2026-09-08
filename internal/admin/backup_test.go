@@ -66,6 +66,103 @@ func TestHandleBackupNow_StreamsValidDatabase(t *testing.T) {
 	}
 }
 
+// TestFreshInstallBackup_BlockedUntilPasswordStep proves the P-UI-BACKUP-01
+// path end-to-end through the real HTTP stack (mux + cors + adminAuth), not
+// direct handler calls: a fresh install's forced password-change session
+// gets a plain 403 password_change_required on POST /admin/backup with no
+// 401/session-clear semantics anywhere in the response, and after the
+// password step (skip-password-change) the same call succeeds with a real
+// SQLite backup even on a completely empty fleet.
+func TestFreshInstallBackup_BlockedUntilPasswordStep(t *testing.T) {
+	s := newRealStoreTestServer(t)
+	handler := s.Handler()
+
+	loginBody, _ := json.Marshal(map[string]string{"username": "admin", "password": "admin"})
+	loginReq := httptest.NewRequest(http.MethodPost, "/admin/login", bytes.NewReader(loginBody))
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginRec := httptest.NewRecorder()
+	handler.ServeHTTP(loginRec, loginReq)
+	if loginRec.Code != http.StatusOK {
+		t.Fatalf("login status = %d, want 200; body: %s", loginRec.Code, loginRec.Body.String())
+	}
+	var loginResp map[string]interface{}
+	if err := json.Unmarshal(loginRec.Body.Bytes(), &loginResp); err != nil {
+		t.Fatalf("decode login response: %v", err)
+	}
+	if mcp, _ := loginResp["must_change_password"].(bool); !mcp {
+		t.Fatal("fresh admin login must report must_change_password:true")
+	}
+	var sessionCookie *http.Cookie
+	for _, c := range loginRec.Result().Cookies() {
+		if c.Name == sessionCookieName {
+			sessionCookie = c
+		}
+	}
+	if sessionCookie == nil {
+		t.Fatal("no session cookie set on login")
+	}
+
+	// Step 1: backup denied pre-password-change - a plain 403, nothing that
+	// looks like a 401 or session teardown.
+	backupReq := httptest.NewRequest(http.MethodPost, "/admin/backup", nil)
+	backupReq.AddCookie(sessionCookie)
+	backupRec := httptest.NewRecorder()
+	handler.ServeHTTP(backupRec, backupReq)
+	if backupRec.Code != http.StatusForbidden {
+		t.Fatalf("pre-password-change backup status = %d, want 403; body: %s", backupRec.Code, backupRec.Body.String())
+	}
+	var backupErr map[string]string
+	if err := json.Unmarshal(backupRec.Body.Bytes(), &backupErr); err != nil {
+		t.Fatalf("decode backup error response: %v", err)
+	}
+	if backupErr["error"] != "password_change_required" {
+		t.Errorf("backup error = %q, want password_change_required", backupErr["error"])
+	}
+	if got := backupRec.Header().Get("Set-Cookie"); got != "" {
+		t.Errorf("pre-password-change 403 must not touch the session cookie, got Set-Cookie: %s", got)
+	}
+	// The same session token must still work - a 403 here is not a logout.
+	session, found, err := s.st.GetUserSession(sessionCookie.Value)
+	if err != nil || !found {
+		t.Fatalf("session must survive a 403 password_change_required response: found=%v err=%v", found, err)
+	}
+	if !session.MustChangePassword {
+		t.Fatal("session must still report MustChangePassword after the blocked attempt")
+	}
+
+	// Step 2: skip the password change, then backup must succeed even on a
+	// completely empty fleet (zero nodes, zero cloud providers).
+	skipReq := httptest.NewRequest(http.MethodPost, "/admin/skip-password-change", nil)
+	skipReq.AddCookie(sessionCookie)
+	skipRec := httptest.NewRecorder()
+	handler.ServeHTTP(skipRec, skipReq)
+	if skipRec.Code != http.StatusOK {
+		t.Fatalf("skip-password-change status = %d, want 200; body: %s", skipRec.Code, skipRec.Body.String())
+	}
+	// skip-password-change rotates the session (old token deleted, new cookie
+	// issued) - the post-skip request must carry the new cookie, not the old.
+	var postSkipCookie *http.Cookie
+	for _, c := range skipRec.Result().Cookies() {
+		if c.Name == sessionCookieName {
+			postSkipCookie = c
+		}
+	}
+	if postSkipCookie == nil {
+		t.Fatal("no session cookie set on skip-password-change")
+	}
+
+	backupReq2 := httptest.NewRequest(http.MethodPost, "/admin/backup", nil)
+	backupReq2.AddCookie(postSkipCookie)
+	backupRec2 := httptest.NewRecorder()
+	handler.ServeHTTP(backupRec2, backupReq2)
+	if backupRec2.Code != http.StatusOK {
+		t.Fatalf("post-skip backup status = %d, want 200; body: %s", backupRec2.Code, backupRec2.Body.String())
+	}
+	if !bytes.HasPrefix(backupRec2.Body.Bytes(), []byte("SQLite format 3")) {
+		t.Errorf("post-skip backup body does not start with the SQLite magic header")
+	}
+}
+
 // TestRunScheduledBackup_WritesFileAndRecordsResult verifies a scheduled
 // backup run writes a timestamped file into TargetDir and records a
 // successful last-backup status (surfaced by handleSettings).

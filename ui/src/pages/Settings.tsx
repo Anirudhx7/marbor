@@ -158,7 +158,10 @@ export function SettingsPage() {
     try {
       await triggerBackupNow();
     } catch (err: any) {
-      setBackupDownloadError(err.message || 'Backup failed');
+      const message = err.message === 'password_change_required'
+        ? 'Change or skip your password first'
+        : (err.message || 'Backup failed');
+      setBackupDownloadError(message);
     } finally {
       setBackupDownloading(false);
     }
