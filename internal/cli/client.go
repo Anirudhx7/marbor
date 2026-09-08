@@ -575,32 +575,72 @@ func (c *Client) PatchNodeTLSFingerprint(name, fingerprint string) error {
 	return nil
 }
 
-// PatchNodeFieldsWithPtr is the visited-aware variant for `marbor nodes
-// patch` (parallelism, vram-override) - sends every visited field
-// in ONE PATCH request/body, matching how handlePatchNode already applies
-// them together atomically server-side. Splitting these into separate
-// sequential requests would reopen a partial-failure window the single-PATCH
-// admin handler doesn't have (code review finding). nil means "flag
-// not visited, no change"; a non-nil pointer to a zero-value ("" / 0 / an
-// empty map) explicitly clears that field.
-func (c *Client) PatchNodeFieldsWithPtr(name string, pType *string, pWidth *int, vramOverrides *map[string]int64) error {
+// NodePatchFields collects every visited-aware `marbor nodes patch` field in
+// one place - see PatchNodeFields. nil means "flag not visited, no change";
+// a non-nil pointer to a zero-value ("" / 0 / an empty slice or map)
+// explicitly clears that field, matching router.NodePatch's own convention.
+// ClearTLS is a bool rather than a pointer because it is the only supported
+// TLS operation from "nodes patch": clearing a pin, never setting one - a
+// new fingerprint can only be pinned via "nodes confirm-tls", which requires
+// the operator to have independently confirmed the value out of band.
+type NodePatchFields struct {
+	ParallelismType  *string
+	ParallelismWidth *int
+	VRAMOverrides    *map[string]int64
+	URL              *string
+	Runtime          *string
+	GPUModel         *string
+	VRAMTotalMB      *int64
+	GPUIndices       *[]int
+	MaxInFlight      *int
+	ClearTLS         bool
+}
+
+// PatchNodeFields is the visited-aware variant for `marbor nodes patch` -
+// sends every visited field in ONE PATCH request/body, matching how
+// handlePatchNode already applies them together atomically server-side.
+// Splitting these into separate sequential requests would reopen a
+// partial-failure window the single-PATCH admin handler doesn't have (code
+// review finding).
+func (c *Client) PatchNodeFields(name string, f NodePatchFields) error {
 	body := map[string]interface{}{}
-	if pType != nil {
-		if *pType == "" {
+	if f.ParallelismType != nil {
+		if *f.ParallelismType == "" {
 			body["parallelism_type"] = nil
 		} else {
-			body["parallelism_type"] = *pType
+			body["parallelism_type"] = *f.ParallelismType
 		}
 	}
-	if pWidth != nil {
-		if *pWidth == 0 {
+	if f.ParallelismWidth != nil {
+		if *f.ParallelismWidth == 0 {
 			body["parallelism_width"] = nil
 		} else {
-			body["parallelism_width"] = *pWidth
+			body["parallelism_width"] = *f.ParallelismWidth
 		}
 	}
-	if vramOverrides != nil {
-		body["vram_overrides"] = *vramOverrides
+	if f.VRAMOverrides != nil {
+		body["vram_overrides"] = *f.VRAMOverrides
+	}
+	if f.URL != nil {
+		body["url"] = *f.URL
+	}
+	if f.Runtime != nil {
+		body["runtime"] = *f.Runtime
+	}
+	if f.GPUModel != nil {
+		body["gpu_model"] = *f.GPUModel
+	}
+	if f.VRAMTotalMB != nil {
+		body["vram_total_mb"] = *f.VRAMTotalMB
+	}
+	if f.GPUIndices != nil {
+		body["gpu_indices"] = *f.GPUIndices
+	}
+	if f.MaxInFlight != nil {
+		body["max_in_flight"] = *f.MaxInFlight
+	}
+	if f.ClearTLS {
+		body["tls_fingerprint"] = ""
 	}
 	resp, err := c.doRequestBody(http.MethodPatch, "/admin/v1/nodes/"+urlPathEscape(name), body)
 	if err != nil {
@@ -608,6 +648,27 @@ func (c *Client) PatchNodeFieldsWithPtr(name string, pType *string, pWidth *int,
 	}
 	defer resp.Body.Close()
 	return nil
+}
+
+// NodeTLSProbe calls POST /admin/nodes/{name}/tls-probe - reads the node's
+// Marbor Agent TLS certificate fingerprint WITHOUT pinning it (see
+// handleNodeTLSProbe's doc comment: TOFU read only, no trust decision made).
+// Pinning only happens via a subsequent "nodes patch" (clear) or "nodes
+// confirm-tls" (set) call with the fingerprint the operator confirms out of
+// band against this result.
+func (c *Client) NodeTLSProbe(name string) (string, error) {
+	resp, err := c.doRequestBody(http.MethodPost, "/admin/nodes/"+urlPathEscape(name)+"/tls-probe", nil)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Fingerprint string `json:"fingerprint"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return "", serverErrorf("could not parse tls-probe response: %v", err)
+	}
+	return out.Fingerprint, nil
 }
 
 // Nodes calls GET /admin/v1/nodes (session-authed).

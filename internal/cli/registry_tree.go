@@ -121,16 +121,32 @@ func buildRoot() *Command {
 					},
 					{
 						Name:      "patch",
-						Short:     "set deployment parallelism or per-model VRAM overrides for a node",
+						Short:     "update a node's deployment/placement fields (url, runtime, GPU, VRAM, parallelism, TLS pin clear)",
 						NeedsAuth: true,
 						Args:      []ArgSpec{{Name: "node"}},
 						Flags: []FlagSpec{
+							{Name: "url", Kind: FlagString, Usage: "backend URL to route this node's traffic to"},
+							{Name: "runtime", Kind: FlagString, Usage: "runtime: ollama, vllm, tgi, llamacpp, mlx"},
+							{Name: "gpu-model", Kind: FlagString, Usage: "GPU model label, informational (empty to clear)"},
+							{Name: "vram-total-mb", Kind: FlagInt, Usage: "declared total VRAM in MB"},
+							{Name: "gpu-indices", Kind: FlagString, Usage: "physical GPU indices this node/runtime uses, comma-separated (e.g. 0,1) - REPLACES the whole declared list (empty to clear)"},
+							{Name: "max-in-flight", Kind: FlagInt, Usage: "per-node in-flight request cap override (0 to clear, falls back to the global default)"},
 							{Name: "parallelism-type", Kind: FlagString, Usage: "parallelism type: tp, pp, ep, dp (empty to clear)"},
 							{Name: "parallelism-width", Kind: FlagInt, Usage: "parallelism width 1..64 (0 to clear)"},
 							{Name: "vram-override", Kind: FlagString, Usage: "per-model VRAM size overrides in MB, comma-separated model=mb pairs - REPLACES the whole declared list, dropping any entry not listed here (empty to clear all)"},
+							{Name: "tls-clear", Kind: FlagBool, Usage: "clear this node's pinned TLS fingerprint (setting a new one requires \"nodes confirm-tls\", never this flag)"},
 						},
 						Run: func(ctx *RunCtx) int {
 							return runNodesPatchWithCtx(ctx, ctx.Args[0])
+						},
+					},
+					{
+						Name:      "tls-probe",
+						Short:     "read a node's Marbor Agent TLS certificate fingerprint without pinning it",
+						NeedsAuth: true,
+						Args:      []ArgSpec{{Name: "node"}},
+						Run: func(ctx *RunCtx) int {
+							return runNodesTLSProbe(ctx.Flags, ctx.Args[0], ctx.Stdout, ctx.Stderr)
 						},
 					},
 					{

@@ -180,6 +180,30 @@ func runNodesRemove(flags *globalFlags, name string, yes bool, stdout, stderr io
 	return ExitOK
 }
 
+// parseGPUIndices parses a CLI --gpu-indices value of the form "0,1,2" into
+// a []int, validating non-negative integers client-side (same fast-fail
+// role as parseVRAMOverrides). An empty input string parses to a non-nil
+// empty slice (explicit clear).
+func parseGPUIndices(s string) ([]int, error) {
+	out := []int{}
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return out, nil
+	}
+	for _, part := range strings.Split(s, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		n, err := strconv.Atoi(part)
+		if err != nil || n < 0 {
+			return nil, fmt.Errorf("invalid --gpu-indices entry %q (want non-negative integers)", part)
+		}
+		out = append(out, n)
+	}
+	return out, nil
+}
+
 // parseCommaList splits a comma-separated flag value into a trimmed,
 // non-empty-entry slice. An empty input string returns a non-nil empty
 // slice (explicit clear), matching parseVRAMOverrides' convention.
@@ -309,14 +333,24 @@ func runNodesPrewarmSet(flags *globalFlags, name string, disabled bool, stdout, 
 	return ExitOK
 }
 
-// runNodesPatchWithCtx implements `marbor nodes patch <node> --parallelism-type tp --parallelism-width 8`
-// and `marbor nodes patch <node> --vram-override model=mb[,model2=mb2]`.
+// runNodesPatchWithCtx implements `marbor nodes patch <node>` against every
+// field router.NodePatch supports except setting a new TLS fingerprint
+// (that stays exclusive to "nodes confirm-tls" - see NodePatchFields'
+// ClearTLS doc comment for why).
 func runNodesPatchWithCtx(ctx *RunCtx, name string) int {
 	pTypeSet := ctx.IsSet("parallelism-type")
 	pWidthSet := ctx.IsSet("parallelism-width")
 	pType := ctx.String("parallelism-type")
 	pWidth := ctx.Int("parallelism-width")
 	vramOverrideSet := ctx.IsSet("vram-override")
+	urlSet := ctx.IsSet("url")
+	runtimeSet := ctx.IsSet("runtime")
+	gpuModelSet := ctx.IsSet("gpu-model")
+	vramTotalSet := ctx.IsSet("vram-total-mb")
+	gpuIndicesSet := ctx.IsSet("gpu-indices")
+	maxInFlightSet := ctx.IsSet("max-in-flight")
+	clearTLS := ctx.Bool("tls-clear")
+
 	var vramOverrides map[string]int64
 	if vramOverrideSet {
 		var err error
@@ -326,8 +360,19 @@ func runNodesPatchWithCtx(ctx *RunCtx, name string) int {
 			return ExitUserError
 		}
 	}
-	if !pTypeSet && !pWidthSet && !vramOverrideSet {
-		fmt.Fprintln(ctx.Stderr, "error: at least one of --parallelism-type, --parallelism-width, or --vram-override is required")
+	var gpuIndices []int
+	if gpuIndicesSet {
+		var err error
+		gpuIndices, err = parseGPUIndices(ctx.String("gpu-indices"))
+		if err != nil {
+			fmt.Fprintf(ctx.Stderr, "error: %v\n", err)
+			return ExitUserError
+		}
+	}
+
+	if !pTypeSet && !pWidthSet && !vramOverrideSet && !urlSet && !runtimeSet &&
+		!gpuModelSet && !vramTotalSet && !gpuIndicesSet && !maxInFlightSet && !clearTLS {
+		fmt.Fprintln(ctx.Stderr, "error: at least one field flag is required (see \"nodes patch --help\")")
 		return ExitUserError
 	}
 	// For clearing, both must be explicitly set to empty/0
@@ -347,29 +392,59 @@ func runNodesPatchWithCtx(ctx *RunCtx, name string) int {
 		fmt.Fprintf(ctx.Stderr, "error: --parallelism-width must be between 0 and 64 (got %d)\n", pWidth)
 		return ExitUserError
 	}
+	if urlSet && ctx.String("url") == "" {
+		fmt.Fprintln(ctx.Stderr, "error: --url cannot be empty")
+		return ExitUserError
+	}
+	if runtimeSet && ctx.String("runtime") == "" {
+		fmt.Fprintln(ctx.Stderr, "error: --runtime cannot be empty (the server rejects a cleared runtime)")
+		return ExitUserError
+	}
+
 	client, err := authenticatedClient(ctx.Flags)
 	if err != nil {
 		return reportError(err, ctx.Stderr)
 	}
-	// Client needs to know if fields were visited to send nil vs omit.
-	// We use pointers: nil = not visited, pointer to value = visited (including empty/0 for clear).
-	var pTypePtr *string
-	var pWidthPtr *int
+
+	fields := NodePatchFields{ClearTLS: clearTLS}
 	if pTypeSet {
 		v := pType
-		pTypePtr = &v
+		fields.ParallelismType = &v
 	}
 	if pWidthSet {
 		v := pWidth
-		pWidthPtr = &v
+		fields.ParallelismWidth = &v
 	}
-	var vramOverridesPtr *map[string]int64
 	if vramOverrideSet {
-		vramOverridesPtr = &vramOverrides
+		fields.VRAMOverrides = &vramOverrides
 	}
-	if err := client.PatchNodeFieldsWithPtr(name, pTypePtr, pWidthPtr, vramOverridesPtr); err != nil {
+	if urlSet {
+		v := ctx.String("url")
+		fields.URL = &v
+	}
+	if runtimeSet {
+		v := ctx.String("runtime")
+		fields.Runtime = &v
+	}
+	if gpuModelSet {
+		v := ctx.String("gpu-model")
+		fields.GPUModel = &v
+	}
+	if vramTotalSet {
+		v := int64(ctx.Int("vram-total-mb"))
+		fields.VRAMTotalMB = &v
+	}
+	if gpuIndicesSet {
+		fields.GPUIndices = &gpuIndices
+	}
+	if maxInFlightSet {
+		v := ctx.Int("max-in-flight")
+		fields.MaxInFlight = &v
+	}
+	if err := client.PatchNodeFields(name, fields); err != nil {
 		return reportError(err, ctx.Stderr)
 	}
+
 	result := map[string]interface{}{"ok": true, "node": name}
 	if pTypeSet || pWidthSet {
 		result["parallelism_type"] = pType
@@ -377,6 +452,27 @@ func runNodesPatchWithCtx(ctx *RunCtx, name string) int {
 	}
 	if vramOverrideSet {
 		result["vram_overrides"] = vramOverrides
+	}
+	if urlSet {
+		result["url"] = ctx.String("url")
+	}
+	if runtimeSet {
+		result["runtime"] = ctx.String("runtime")
+	}
+	if gpuModelSet {
+		result["gpu_model"] = ctx.String("gpu-model")
+	}
+	if vramTotalSet {
+		result["vram_total_mb"] = ctx.Int("vram-total-mb")
+	}
+	if gpuIndicesSet {
+		result["gpu_indices"] = gpuIndices
+	}
+	if maxInFlightSet {
+		result["max_in_flight"] = ctx.Int("max-in-flight")
+	}
+	if clearTLS {
+		result["tls_fingerprint"] = ""
 	}
 	if handled, code := emitJSON(ctx.Stdout, ctx.Stderr, ctx.Flags.jsonOutput, result); handled {
 		return code
@@ -395,5 +491,61 @@ func runNodesPatchWithCtx(ctx *RunCtx, name string) int {
 			fmt.Fprintf(ctx.Stdout, "node %q vram overrides set: %v\n", name, vramOverrides)
 		}
 	}
+	if urlSet {
+		fmt.Fprintf(ctx.Stdout, "node %q url set to %s\n", name, ctx.String("url"))
+	}
+	if runtimeSet {
+		fmt.Fprintf(ctx.Stdout, "node %q runtime set to %s\n", name, ctx.String("runtime"))
+	}
+	if gpuModelSet {
+		if ctx.String("gpu-model") == "" {
+			fmt.Fprintf(ctx.Stdout, "node %q gpu model cleared\n", name)
+		} else {
+			fmt.Fprintf(ctx.Stdout, "node %q gpu model set to %s\n", name, ctx.String("gpu-model"))
+		}
+	}
+	if vramTotalSet {
+		fmt.Fprintf(ctx.Stdout, "node %q vram total set to %d MB\n", name, ctx.Int("vram-total-mb"))
+	}
+	if gpuIndicesSet {
+		if len(gpuIndices) == 0 {
+			fmt.Fprintf(ctx.Stdout, "node %q gpu indices cleared\n", name)
+		} else {
+			fmt.Fprintf(ctx.Stdout, "node %q gpu indices set: %v\n", name, gpuIndices)
+		}
+	}
+	if maxInFlightSet {
+		if ctx.Int("max-in-flight") == 0 {
+			fmt.Fprintf(ctx.Stdout, "node %q max in-flight cleared (uses global default)\n", name)
+		} else {
+			fmt.Fprintf(ctx.Stdout, "node %q max in-flight set to %d\n", name, ctx.Int("max-in-flight"))
+		}
+	}
+	if clearTLS {
+		fmt.Fprintf(ctx.Stdout, "node %q TLS fingerprint pin cleared\n", name)
+	}
+	return ExitOK
+}
+
+// runNodesTLSProbe implements `marbor nodes tls-probe <node>` - reads the
+// node's Marbor Agent TLS certificate fingerprint WITHOUT pinning it. The
+// operator compares the printed value against "agent service status" on the
+// node itself, then pins it via "nodes confirm-tls" if it matches - this
+// command never pins on its own (see client.NodeTLSProbe's doc comment).
+func runNodesTLSProbe(flags *globalFlags, name string, stdout, stderr io.Writer) int {
+	client, err := authenticatedClient(flags)
+	if err != nil {
+		return reportError(err, stderr)
+	}
+	fingerprint, err := client.NodeTLSProbe(name)
+	if err != nil {
+		return reportError(err, stderr)
+	}
+	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, map[string]interface{}{
+		"node": name, "fingerprint": fingerprint,
+	}); handled {
+		return code
+	}
+	fmt.Fprintf(stdout, "node %q Marbor Agent TLS fingerprint: %s (NOT pinned - confirm out of band, then run \"nodes confirm-tls\")\n", name, fingerprint)
 	return ExitOK
 }

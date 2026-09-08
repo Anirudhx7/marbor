@@ -471,7 +471,8 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor whoami` | show the CLI's saved identity (live-verified) |
 | `marbor nodes` | list nodes known to marbor (requires auth) |
 | `marbor nodes confirm-tls <node>` | pin a marbor agent's TLS certificate fingerprint (headless enrollment) (requires auth) |
-| `marbor nodes patch <node>` | set deployment parallelism or per-model VRAM overrides for a node (requires auth) |
+| `marbor nodes patch <node>` | update a node's deployment/placement fields (url, runtime, GPU, VRAM, parallelism, TLS pin clear) (requires auth) |
+| `marbor nodes tls-probe <node>` | read a node's Marbor Agent TLS certificate fingerprint without pinning it (requires auth) |
 | `marbor nodes add <name> <url>` | add (or update, by name) a node in the fleet (requires auth) |
 | `marbor nodes remove <node>` | remove a node from the fleet (requires auth) |
 | `marbor nodes warmup` | get or set a node's proactive warmup config (requires auth) |

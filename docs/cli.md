@@ -76,15 +76,28 @@ Flags:
 
 #### `patch <node>`
 
-set deployment parallelism or per-model VRAM overrides for a node
+update a node's deployment/placement fields (url, runtime, GPU, VRAM, parallelism, TLS pin clear)
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
 Flags:
 
+- `--url string` - backend URL to route this node's traffic to
+- `--runtime string` - runtime: ollama, vllm, tgi, llamacpp, mlx
+- `--gpu-model string` - GPU model label, informational (empty to clear)
+- `--vram-total-mb int` - declared total VRAM in MB
+- `--gpu-indices string` - physical GPU indices this node/runtime uses, comma-separated (e.g. 0,1) - REPLACES the whole declared list (empty to clear)
+- `--max-in-flight int` - per-node in-flight request cap override (0 to clear, falls back to the global default)
 - `--parallelism-type string` - parallelism type: tp, pp, ep, dp (empty to clear)
 - `--parallelism-width int` - parallelism width 1..64 (0 to clear)
 - `--vram-override string` - per-model VRAM size overrides in MB, comma-separated model=mb pairs - REPLACES the whole declared list, dropping any entry not listed here (empty to clear all)
+- `--tls-clear` - clear this node's pinned TLS fingerprint (setting a new one requires "nodes confirm-tls", never this flag)
+
+#### `tls-probe <node>`
+
+read a node's Marbor Agent TLS certificate fingerprint without pinning it
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
 #### `add <name> <url>`
 
