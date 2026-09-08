@@ -2253,6 +2253,35 @@ func (c *Client) ConfigReload() (*ConfigReloadResult, error) {
 	return &out, nil
 }
 
+// Settings calls GET /admin/settings, returning the raw JSON body - the
+// full control-plane config.Config struct with secret fields masked as
+// "***" (see handleSettings). Stays raw JSON rather than a mirrored
+// client-side struct: config.Config is large and changes shape often, and
+// the CLI has no independent business logic over its fields (same
+// rationale as SystemInfo/ModelCatalog).
+func (c *Client) Settings() (json.RawMessage, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/settings", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	return io.ReadAll(resp.Body)
+}
+
+// UpdateSettings calls PUT /admin/settings with a raw JSON body - a
+// (typically partial) config.Config payload, merged server-side onto the
+// current config (handleUpdateSettings). Passing back a "***" mask value
+// for a secret field the caller didn't intend to change preserves the
+// real stored secret (server-side mask-preserve behavior).
+func (c *Client) UpdateSettings(body json.RawMessage) error {
+	resp, err := c.doRequestBody(http.MethodPut, "/admin/settings", body)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
 // PendingUserCount calls GET /admin/v1/users/pending-count.
 func (c *Client) PendingUserCount() (int, error) {
 	resp, err := c.doRequest(http.MethodGet, "/admin/v1/users/pending-count", true)

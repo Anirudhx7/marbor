@@ -15,6 +15,7 @@ marbor-metrics.1
 marbor-warmup.1
 marbor-predictive.1
 marbor-config.1
+marbor-settings.1
 marbor-benchmark.1
 marbor-requests.1
 marbor-users.1
