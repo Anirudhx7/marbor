@@ -79,7 +79,16 @@ func runRuntimeDrain(flags *globalFlags, node, reason string, gracePeriod int, s
 		return code
 	}
 
-	fmt.Fprintf(stdout, "%s: draining\n", node)
+	fmt.Fprintf(stdout, "%s: draining", node)
+	if result.Reason != "" {
+		fmt.Fprintf(stdout, " (reason: %s)", result.Reason)
+	}
+	if result.GracePeriodSeconds > 0 {
+		fmt.Fprintf(stdout, " grace period: %ds", result.GracePeriodSeconds)
+	} else {
+		fmt.Fprint(stdout, " grace period: infinite")
+	}
+	fmt.Fprintln(stdout)
 	return ExitOK
 }
 

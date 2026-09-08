@@ -670,7 +670,8 @@ export function GPUNodes() {
   const [nodeToDrain, setNodeToDrain] = useState<string | null>(null);
   const [nodeToUndrain, setNodeToUndrain] = useState<string | null>(null);
   // Bounded-drain window entered in the Drain confirm modal. Blank = infinite
-  // (today's frozen default) - no enforcement engine reads this yet (Phase 3).
+  // (today's frozen default). Recorded and round-tripped now so a future rolling-
+  // upgrade/orchestration feature can read it; nothing enforces it yet.
   const [drainGraceSeconds, setDrainGraceSeconds] = useState('');
   const [prewarmToToggle, setPrewarmToToggle] = useState<{ name: string; disabled: boolean } | null>(null);
   const [modelToUnload, setModelToUnload] = useState<{ nodeName: string; model: string } | null>(null);
@@ -1372,6 +1373,7 @@ export function GPUNodes() {
         temperature: 45,
         health: 'healthy',
         draining: false,
+        drainedGraceSeconds: 0,
         activeConns: 0,
         uptime: '0m',
         loadedModels: [],
@@ -2564,17 +2566,25 @@ export function GPUNodes() {
         confirmLabel="Drain node"
         confirmClassName="px-4 py-2 bg-amber-600 hover:bg-amber-600/90 text-white font-medium rounded-lg text-sm transition-colors shadow-sm"
       >
-        <label className="block text-xs text-muted-foreground space-y-1">
-          <span>Grace period (seconds, optional - no automatic enforcement yet)</span>
+        <label className="block text-xs text-muted-foreground space-y-2">
+          <span className="block font-medium text-foreground">Grace period (whole seconds)</span>
           <input
             type="number"
             min={0}
             step={1}
-            placeholder="Infinite"
+            inputMode="numeric"
+            placeholder="Leave blank for infinite"
             value={drainGraceSeconds}
-            onChange={e => setDrainGraceSeconds(e.target.value)}
+            onChange={e => setDrainGraceSeconds(e.target.value.replace(/[^0-9]/g, ''))}
             className="w-full px-3 py-2 text-sm bg-background border border-border rounded-lg text-foreground"
           />
+          <span className="block">
+            Blank (infinite) means the node stays drained until you undrain it yourself - that's
+            the only thing marbor currently enforces. Any number here is recorded and shown back to
+            you (e.g. on the node's status) as a note for your own tracking, but nothing reads it
+            automatically yet - marbor does not auto-undrain or force anything at 5, 50, or 500
+            seconds. A future release will add real enforcement on top of this stored value.
+          </span>
         </label>
       </DrainConfirmModal>
 
