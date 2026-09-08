@@ -1954,6 +1954,12 @@ func (s *Server) handleWarmupPing(w http.ResponseWriter, r *http.Request) {
 // (already the source of truth for nodes/keys/cloud providers/settings) is
 // re-applied to the live router/auth instead.
 func (s *Server) ReloadFromStore() (nodesAdded, nodesRemoved, authKeys, cloudProviders int, err error) {
+	// Load and validate every stage from the store before mutating any live
+	// state. Reads are the only thing that can fail here (auth.Reload,
+	// SetClouds, and SyncNodes below have no error return), so front-loading
+	// them removes the partial-apply window entirely - a load failure at any
+	// stage returns before auth/clouds/nodes have been touched, matching the
+	// "keep previous state" contract the SIGHUP caller already assumes.
 	runtimeKeys, kErr := s.st.AllKeys()
 	if kErr != nil {
 		return 0, 0, 0, 0, fmt.Errorf("load keys: %w", kErr)
@@ -1977,10 +1983,6 @@ func (s *Server) ReloadFromStore() (nodesAdded, nodesRemoved, authKeys, cloudPro
 			AllowLocalDegradation: k.AllowLocalDegradation,
 		})
 	}
-	s.mu.RLock()
-	authEnabled := s.cfg.Auth.Enabled
-	s.mu.RUnlock()
-	s.auth.Reload(config.AuthConfig{Enabled: authEnabled, Keys: keys})
 
 	providers, cErr := s.st.AllCloudProviders()
 	if cErr != nil {
@@ -1994,7 +1996,6 @@ func (s *Server) ReloadFromStore() (nodesAdded, nodesRemoved, authKeys, cloudPro
 			CostPer1KTokens: p.CostPer1KTokens, Enabled: p.Enabled,
 		}
 	}
-	s.router.SetClouds(cloudCfgs)
 
 	runtimeNodes, nErr := s.st.AllNodes()
 	if nErr != nil {
@@ -2012,6 +2013,14 @@ func (s *Server) ReloadFromStore() (nodesAdded, nodesRemoved, authKeys, cloudPro
 		}
 		nodeCfgs[i] = config.NodeConfig{Name: n.Name, URL: n.URL, Runtime: rt, VRAMTotalMB: vram}
 	}
+
+	// Every load above succeeded - apply all three stages. Nothing past this
+	// point can fail.
+	s.mu.RLock()
+	authEnabled := s.cfg.Auth.Enabled
+	s.mu.RUnlock()
+	s.auth.Reload(config.AuthConfig{Enabled: authEnabled, Keys: keys})
+	s.router.SetClouds(cloudCfgs)
 	added, removed := s.router.SyncNodes(nodeCfgs)
 
 	s.mu.Lock()
@@ -2035,6 +2044,8 @@ func (s *Server) handleConfigReload(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("config reloaded via API from store (auth keys: %d, nodes: +%d/-%d, cloud providers: %d)",
 		authKeys, added, removed, cloudProviders)
+	s.logSystemChange(r, "config_reload", "", fmt.Sprintf("auth keys: %d, nodes: +%d/-%d, cloud providers: %d",
+		authKeys, added, removed, cloudProviders))
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"reloaded":true,"auth_keys":%d,"nodes_added":%d,"nodes_removed":%d,"cloud_providers":%d}`,
 		authKeys, added, removed, cloudProviders)
