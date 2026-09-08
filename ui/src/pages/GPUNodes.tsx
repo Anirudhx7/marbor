@@ -2566,6 +2566,10 @@ export function GPUNodes() {
         confirmLabel="Drain node"
         confirmClassName="px-4 py-2 bg-amber-600 hover:bg-amber-600/90 text-white font-medium rounded-lg text-sm transition-colors shadow-sm"
       >
+        {/* Grace-period input disabled until the enforcement engine that reads it
+        ships (the future rolling-upgrade/orchestration feature). Uncomment when
+        that lands - drainGraceSeconds/setDrainGraceSeconds and the onConfirm/
+        onClose wiring above already handle it, nothing else needs to change.
         <label className="block text-xs text-muted-foreground space-y-2">
           <span className="block font-medium text-foreground">Grace period (whole seconds)</span>
           <input
@@ -2586,6 +2590,7 @@ export function GPUNodes() {
             seconds. A future release will add real enforcement on top of this stored value.
           </span>
         </label>
+        */}
       </DrainConfirmModal>
 
       {/* Undrain node Confirmation Modal (reverses a safety decision -
