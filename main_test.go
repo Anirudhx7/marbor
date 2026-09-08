@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"database/sql"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,6 +10,9 @@ import (
 	"testing"
 
 	"github.com/Anirudhx7/marbor/internal/cli"
+	"github.com/Anirudhx7/marbor/internal/store"
+
+	_ "modernc.org/sqlite"
 )
 
 // TestResolveCommand protects the merged binary's dispatch entry point
@@ -321,4 +325,97 @@ func TestServerBinary_DoesNotDependOnAgentRuntime(t *testing.T) {
 			}
 		}
 	}
+}
+
+// TestStageRestoreCopy exercises performRestore's staged-copy + re-validate
+// sequence directly - performRestore itself can't be unit tested since every
+// path through it ends in winexit.Exit (see stageRestoreCopy's doc comment).
+// This is also the only place P430's schema-version/foreign-file rejections
+// are proven on this specific path: the same store.ValidateBackupFile call
+// admin.go's restore handler makes before ever reaching here, re-run against
+// the file that was actually staged rather than the original backupPath.
+func TestStageRestoreCopy(t *testing.T) {
+	t.Run("valid backup is staged and left in place for the caller's rename", func(t *testing.T) {
+		dir := t.TempDir()
+		dbPath := filepath.Join(dir, "marbor.db")
+		backupPath := filepath.Join(dir, "backup.db")
+		st, err := store.Open(backupPath)
+		if err != nil {
+			t.Fatalf("store.Open(backup): %v", err)
+		}
+		st.Close()
+
+		tmpPath, err := stageRestoreCopy(dbPath, backupPath)
+		if err != nil {
+			t.Fatalf("stageRestoreCopy = %v, want nil", err)
+		}
+		wantTmpPath := dbPath + ".restoring"
+		if tmpPath != wantTmpPath {
+			t.Errorf("staged path = %q, want %q", tmpPath, wantTmpPath)
+		}
+		if _, err := os.Stat(tmpPath); err != nil {
+			t.Errorf("staged file missing on success: %v", err)
+		}
+	})
+
+	t.Run("missing backup file leaves no staged copy behind", func(t *testing.T) {
+		dir := t.TempDir()
+		dbPath := filepath.Join(dir, "marbor.db")
+		backupPath := filepath.Join(dir, "does-not-exist.db")
+
+		if _, err := stageRestoreCopy(dbPath, backupPath); err == nil {
+			t.Fatal("stageRestoreCopy(missing backup) = nil error, want an error")
+		}
+		if _, statErr := os.Stat(dbPath + ".restoring"); !os.IsNotExist(statErr) {
+			t.Errorf("staged file should not exist after a missing-source failure, stat err = %v", statErr)
+		}
+	})
+
+	t.Run("well-formed but foreign SQLite backup is rejected pre-swap, no staged copy left behind", func(t *testing.T) {
+		dir := t.TempDir()
+		dbPath := filepath.Join(dir, "marbor.db")
+		backupPath := filepath.Join(dir, "foreign.db")
+		foreignDB, err := sql.Open("sqlite", backupPath)
+		if err != nil {
+			t.Fatalf("open foreign sqlite: %v", err)
+		}
+		if _, err := foreignDB.Exec(`CREATE TABLE unrelated_app_data (id INTEGER PRIMARY KEY, note TEXT)`); err != nil {
+			t.Fatalf("seed foreign db: %v", err)
+		}
+		if err := foreignDB.Close(); err != nil {
+			t.Fatalf("close foreign db: %v", err)
+		}
+
+		if _, err := stageRestoreCopy(dbPath, backupPath); err == nil {
+			t.Fatal("stageRestoreCopy(foreign SQLite) = nil error, want a schema_version rejection")
+		}
+		if _, statErr := os.Stat(dbPath + ".restoring"); !os.IsNotExist(statErr) {
+			t.Errorf("staged copy of a rejected foreign backup should be removed, stat err = %v", statErr)
+		}
+	})
+
+	t.Run("newer-schema backup is rejected pre-swap with the documented downgrade error text", func(t *testing.T) {
+		dir := t.TempDir()
+		dbPath := filepath.Join(dir, "marbor.db")
+		backupPath := filepath.Join(dir, "newer-schema.db")
+		st, err := store.Open(backupPath)
+		if err != nil {
+			t.Fatalf("store.Open(backup): %v", err)
+		}
+		if err := st.SetSetting("schema_version", "999"); err != nil {
+			t.Fatalf("stamp future schema_version: %v", err)
+		}
+		st.Close()
+
+		_, err = stageRestoreCopy(dbPath, backupPath)
+		if err == nil {
+			t.Fatal("stageRestoreCopy(newer-schema backup) = nil error, want a rejection")
+		}
+		if !strings.Contains(err.Error(), "schema_version 999 is newer than this binary supports (1) - refusing to start; upgrade the binary or restore an older marbor.db backup") {
+			t.Errorf("error = %q, want it to carry the documented downgrade error text (docs/backup.md)", err.Error())
+		}
+		if _, statErr := os.Stat(dbPath + ".restoring"); !os.IsNotExist(statErr) {
+			t.Errorf("staged copy of a rejected newer-schema backup should be removed, stat err = %v", statErr)
+		}
+	})
 }

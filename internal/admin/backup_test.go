@@ -2,17 +2,21 @@ package admin
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Anirudhx7/marbor/internal/config"
 	"github.com/Anirudhx7/marbor/internal/store"
+
+	_ "modernc.org/sqlite"
 )
 
 // newUploadRequest builds a multipart/form-data POST body carrying content
@@ -373,6 +377,199 @@ func TestValidateBackupFile(t *testing.T) {
 	}
 	if err := store.ValidateBackupFile(invalidPath); err == nil {
 		t.Error("ValidateBackupFile(garbage file) = nil, want an error")
+	}
+}
+
+// foreignSQLiteBytes returns the raw bytes of a genuine, non-corrupt SQLite
+// database that was never produced by marbor - it has no settings table and
+// so no schema_version row. PRAGMA quick_check passes on this file (it is a
+// real SQLite database), which is exactly the gap P430 closes: quick_check
+// alone is not enough to prove a candidate backup is actually a marbor.db.
+func foreignSQLiteBytes(t *testing.T) []byte {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "foreign.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("open foreign sqlite: %v", err)
+	}
+	if _, err := db.Exec(`CREATE TABLE unrelated_app_data (id INTEGER PRIMARY KEY, note TEXT)`); err != nil {
+		t.Fatalf("seed foreign db: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close foreign db: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	return data
+}
+
+// newerSchemaMarborDBBytes returns the raw bytes of a genuine marbor.db
+// whose schema_version has been stamped one ahead of
+// store.CurrentSchemaVersion, standing in for a backup taken by a newer
+// marbor release - the scenario docs/backup.md's "Downgrading after an
+// upgrade" section documents as unsupported.
+func newerSchemaMarborDBBytes(t *testing.T) []byte {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "newer-schema.db")
+	st, err := store.Open(path)
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	if err := st.SetSetting("schema_version", "999"); err != nil {
+		t.Fatalf("stamp future schema_version: %v", err)
+	}
+	st.Close()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	return data
+}
+
+// TestValidateBackupFile_RejectsForeignSQLite verifies a well-formed but
+// non-marbor SQLite file - passes PRAGMA quick_check, has no schema_version
+// row - is rejected by ValidateBackupFile itself, independent of any HTTP
+// handler.
+func TestValidateBackupFile_RejectsForeignSQLite(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "foreign.db")
+	if err := os.WriteFile(path, foreignSQLiteBytes(t), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	if err := store.ValidateBackupFile(path); err == nil {
+		t.Error("ValidateBackupFile(foreign SQLite) = nil, want a schema_version rejection")
+	}
+}
+
+// TestValidateBackupFile_RejectsNewerSchema verifies a marbor.db stamped
+// with a schema_version ahead of CurrentSchemaVersion is rejected with the
+// exact documented downgrade error text (docs/backup.md:125-138), matching
+// migrate()'s own boot-time refusal.
+func TestValidateBackupFile_RejectsNewerSchema(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "newer-schema.db")
+	if err := os.WriteFile(path, newerSchemaMarborDBBytes(t), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	err := store.ValidateBackupFile(path)
+	if err == nil {
+		t.Fatal("ValidateBackupFile(newer-schema db) = nil, want an error")
+	}
+	want := "marbor.db schema_version 999 is newer than this binary supports (1) - refusing to start; upgrade the binary or restore an older marbor.db backup"
+	if !strings.Contains(err.Error(), want) {
+		t.Errorf("error = %q, want it to contain the documented downgrade text %q", err.Error(), want)
+	}
+}
+
+// TestHandleUploadBackup_RejectsForeignSQLite verifies the upload endpoint
+// rejects a well-formed but non-marbor SQLite file with 422 pre-swap
+// (nothing is ever staged into the restorable pool), not merely a corrupt
+// file - closing the gap where PRAGMA quick_check alone would have let a
+// foreign database pass.
+func TestHandleUploadBackup_RejectsForeignSQLite(t *testing.T) {
+	s := newRealStoreTestServer(t)
+	dir := t.TempDir()
+	setBackupTargetDir(s, dir)
+
+	req := newUploadRequest(t, "foreign.db", foreignSQLiteBytes(t))
+	rec := httptest.NewRecorder()
+	s.handleUploadBackup(rec, req)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422; body: %s", rec.Code, rec.Body.String())
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("rejected foreign-SQLite upload left %d files behind, want 0: %v", len(entries), entries)
+	}
+}
+
+// TestHandleUploadBackup_RejectsNewerSchema verifies the upload endpoint
+// rejects a marbor.db backup from a newer schema_version with 422, never
+// adding it to the restorable pool.
+func TestHandleUploadBackup_RejectsNewerSchema(t *testing.T) {
+	s := newRealStoreTestServer(t)
+	dir := t.TempDir()
+	setBackupTargetDir(s, dir)
+
+	req := newUploadRequest(t, "newer-schema.db", newerSchemaMarborDBBytes(t))
+	rec := httptest.NewRecorder()
+	s.handleUploadBackup(rec, req)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422; body: %s", rec.Code, rec.Body.String())
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("rejected newer-schema upload left %d files behind, want 0: %v", len(entries), entries)
+	}
+}
+
+// TestHandleRestoreBackup_RejectsForeignSQLite verifies the restore endpoint
+// rejects a well-formed but non-marbor SQLite file with 422 before anything
+// is sent to restoreCh - it never gets a chance to swap the live database.
+func TestHandleRestoreBackup_RejectsForeignSQLite(t *testing.T) {
+	s := newRealStoreTestServer(t)
+	ch := make(chan string, 1)
+	s.SetRestoreChannel(ch)
+	dir := t.TempDir()
+	setBackupTargetDir(s, dir)
+
+	name := backupFilename(time.Now())
+	if err := os.WriteFile(filepath.Join(dir, name), foreignSQLiteBytes(t), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	body, _ := json.Marshal(map[string]string{"filename": name})
+	req := httptest.NewRequest(http.MethodPost, "/admin/backup/restore", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	s.handleRestoreBackup(rec, req)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422; body: %s", rec.Code, rec.Body.String())
+	}
+
+	select {
+	case p := <-ch:
+		t.Errorf("restoreCh received %q, want nothing sent for a rejected foreign-SQLite restore", p)
+	default:
+	}
+}
+
+// TestHandleRestoreBackup_RejectsNewerSchema verifies the restore endpoint
+// rejects a newer-schema marbor.db backup with 422 before anything is sent
+// to restoreCh - the live database (and process) is never touched.
+func TestHandleRestoreBackup_RejectsNewerSchema(t *testing.T) {
+	s := newRealStoreTestServer(t)
+	ch := make(chan string, 1)
+	s.SetRestoreChannel(ch)
+	dir := t.TempDir()
+	setBackupTargetDir(s, dir)
+
+	name := backupFilename(time.Now())
+	if err := os.WriteFile(filepath.Join(dir, name), newerSchemaMarborDBBytes(t), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	body, _ := json.Marshal(map[string]string{"filename": name})
+	req := httptest.NewRequest(http.MethodPost, "/admin/backup/restore", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	s.handleRestoreBackup(rec, req)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422; body: %s", rec.Code, rec.Body.String())
+	}
+
+	select {
+	case p := <-ch:
+		t.Errorf("restoreCh received %q, want nothing sent for a rejected newer-schema restore", p)
+	default:
 	}
 }
 
