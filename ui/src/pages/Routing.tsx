@@ -1,13 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   Zap,
-  Clock,
   ArrowUpRight,
   Plus,
   Trash2,
   Check,
   Route,
-  Shield,
   Server,
   Cloud,
   RefreshCw,
@@ -21,6 +19,7 @@ import { StatusDot } from '../components/StatusDot';
 import { Modal } from '../components/Modal';
 import { CustomSelect, CustomCombobox, CustomTagCombobox } from '../components/Select';
 import { SavingsCard } from '../components/SavingsCard';
+import { Toggle } from '../components/Toggle';
 import { mockGPUNodes, mockSavings, mockCloudProviders, mockModelCatalog } from '../lib/mockData';
 import {
   fetchRoutingRules,
@@ -42,7 +41,7 @@ import {
   updateSettings
 } from '../lib/api';
 import { useDemoMode } from '../hooks/useDemoMode';
-import { Savings, CloudProvider, CloudProviderInput } from '../types';
+import { Savings, CloudProvider, CloudProviderInput, GPUNode } from '../types';
 
 // Known cloud fallback providers. All use plain `Authorization: Bearer <key>`
 // auth and an OpenAI-compatible /chat/completions schema, matching this
@@ -64,19 +63,6 @@ const CLOUD_PROVIDER_PRESETS: Record<string, { label: string; baseUrl: string; d
   nvidia: { label: 'NVIDIA NIM', baseUrl: 'https://integrate.api.nvidia.com/v1', defaultModel: 'nvidia/nemotron-3-8b-instruct' },
   custom: { label: 'Custom / Other', baseUrl: '', defaultModel: '' },
 };
-
-// Compact toggle switch shared by boolean controls on this page.
-// Relocated verbatim from Settings.tsx for the provider Enabled toggle.
-function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
-  return (
-    <button
-      onClick={onToggle}
-      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${on ? 'bg-primary' : 'bg-muted-foreground/30'}`}
-    >
-      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${on ? 'translate-x-6' : 'translate-x-1'}`} />
-    </button>
-  );
-}
 
 const STRATEGIES = [
   { 
@@ -131,7 +117,7 @@ export function Routing() {
   const { demoMode } = useDemoMode();
   const [currentStrategy, setCurrentStrategyState] = useState('');
   const [rules, setRules] = useState<RoutingRule[]>(demoMode ? MOCK_RULES : []);
-  const [availableNodes, setAvailableNodes] = useState<any[]>([]);
+  const [availableNodes, setAvailableNodes] = useState<GPUNode[]>([]);
   const [savings, setSavings] = useState<Savings | null>(demoMode ? mockSavings : null);
   const [savingsLoading, setSavingsLoading] = useState(!demoMode);
   const [loading, setLoading] = useState(true);
@@ -218,7 +204,7 @@ export function Routing() {
       ]);
       if (!mountedRef.current) return;
       setRules(Array.isArray(rulesData) ? rulesData : []);
-      setAvailableNodes(nodesData || []);
+      setAvailableNodes(Array.isArray(nodesData) ? nodesData : []);
       setError(null);
       // Fetch strategy separately so failure is visible to the user
       try {
@@ -313,6 +299,23 @@ export function Routing() {
         if (active && mountedRef.current) setChainsLoading(false);
       });
     return () => { active = false; };
+  }, [demoMode]);
+
+  // Re-read the LiteLLM flag (and chains) when Settings saves elsewhere in
+  // the SPA - Settings dispatches `marbor-settings-change` on save.
+  useEffect(() => {
+    if (demoMode) return;
+    const onSettingsChange = () => {
+      fetchSettings()
+        .then(settingsData => {
+          if (!mountedRef.current) return;
+          setLocalDegradationChains(settingsData.routing?.local_degradation_chains || {});
+          setLiteLLMEnabled(settingsData.litellm?.enabled || false);
+        })
+        .catch(() => {});
+    };
+    window.addEventListener('marbor-settings-change', onSettingsChange);
+    return () => window.removeEventListener('marbor-settings-change', onSettingsChange);
   }, [demoMode]);
 
   // Savings poll (5s), mirroring the cadence the card had on the dashboard.
@@ -451,7 +454,7 @@ export function Routing() {
   const refreshCloudProviders = async () => {
     try {
       const providers = await fetchCloudProviders();
-      if (mountedRef.current) setCloudProviders(providers);
+      if (mountedRef.current) setCloudProviders(providers || []);
     } catch { /* keep showing the last known list on a transient fetch error */ }
   };
 
@@ -876,7 +879,7 @@ export function Routing() {
                     <StatusDot status={provider.enabled ? 'online' : 'offline'} size="sm" />
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-foreground truncate" title={provider.name}>{provider.name}</p>
-                      <p className="text-xs font-medium text-muted-foreground truncate" title={`${provider.default_model} - $${provider.cost_per_1k_tokens.toFixed(4)}/1k tokens`}>{provider.default_model} - ${provider.cost_per_1k_tokens.toFixed(4)}/1k tokens</p>
+                      <p className="text-xs font-medium text-muted-foreground truncate" title={`${provider.default_model} - $${(provider.cost_per_1k_tokens ?? 0).toFixed(4)}/1k tokens`}>{provider.default_model} - ${(provider.cost_per_1k_tokens ?? 0).toFixed(4)}/1k tokens</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
@@ -1046,7 +1049,7 @@ export function Routing() {
                     name="strategy"
                     value={strategy.value}
                     checked={newRuleForm.strategy === strategy.value}
-                    onChange={(e) => setNewRuleForm({ ...newRuleForm, strategy: e.target.value as any })}
+                    onChange={(e) => setNewRuleForm({ ...newRuleForm, strategy: e.target.value as RoutingRule['strategy'] })}
                     className="accent-primary"
                   />
                   <div>

@@ -390,7 +390,8 @@ export interface Settings {
   // Model name -> ordered list of local alternates to try when no node can
   // serve it at all. Opt-in twice over: declared here AND the
   // request's API key must have its allowLocalDegradation policy set to true.
-  localDegradationChains: Record<string, string[]>;
+  // Optional: owned by the Routing page now; Settings no longer populates it.
+  localDegradationChains?: Record<string, string[]>;
 
 // Scheduled marbor.db backup. LastBackupAt/LastBackupError are
   // read-only status from the server, never sent back on save.

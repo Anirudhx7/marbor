@@ -8,21 +8,12 @@ import type { Settings, BackupFileInfo } from '../types';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import { useCurrency, CURRENCY_PRESETS } from '../hooks/useCurrency';
 import { CustomSelect, CustomCombobox } from '../components/Select';
+import { Toggle } from '../components/Toggle';
 import { useTimezone } from '../hooks/useTimezone';
 import { formatDateTimeInZone } from '../lib/time';
 import { notifyTimezoneChanged } from '../hooks/useTimezone';
 
-// Compact toggle switch shared by every boolean setting on this page.
-function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
-  return (
-    <button
-      onClick={onToggle}
-      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${on ? 'bg-primary' : 'bg-muted-foreground/30'}`}
-    >
-      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${on ? 'translate-x-6' : 'translate-x-1'}`} />
-    </button>
-  );
-}
+
 
 const getTimezoneOffsetMinutes = (tz: string): number => {
   if (tz === 'Local') return -999999;
@@ -317,11 +308,9 @@ export function SettingsPage() {
           warmupKeepAlive: settingsData.warmup?.keep_alive || '10m',
 
           contextWindows: settingsData.context_windows || {},
-          // Owned by the Routing page now (fallback chain UI moved
-          // there). Loaded here only to satisfy the Settings type - never
-          // saved from here, so a stale Settings save can't clobber a
-          // Routing-side edit (the backend merges partial payloads).
-          localDegradationChains: settingsData.routing?.local_degradation_chains || {},
+          // Local fallback chains are owned by the Routing page now and are
+          // never sent from a Settings save (the backend merges partial
+          // payloads, so omitting them preserves Routing-side edits).
 
           backupEnabled: settingsData.backup?.enabled || false,
           backupIntervalHours: settingsData.backup?.interval_hours ?? 24,
