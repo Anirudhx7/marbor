@@ -997,44 +997,9 @@ func performRestore(dbPath, backupPath string, st store.Store) {
 		log.Printf("WARNING: error closing store before restore: %v", err)
 	}
 
-	// Stage the full copy in a temp file alongside dbPath first, so a
-	// mid-copy failure never leaves the live marbor.db truncated or corrupt -
-	// the live file is only ever touched by the final atomic rename below,
-	// once the replacement is proven complete.
-	tmpPath := dbPath + ".restoring"
-	src, err := os.Open(backupPath)
+	tmpPath, err := stageRestoreCopy(dbPath, backupPath)
 	if err != nil {
-		log.Printf("ERROR: restore aborted - could not open backup file %s: %v", backupPath, err)
-		log.Println("ERROR: marbor.db was NOT modified - restart marbor manually; it resumes with the existing database")
-		winexit.Exit(1)
-	}
-	dst, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
-	if err != nil {
-		src.Close()
-		log.Printf("ERROR: restore aborted - could not create %s: %v", tmpPath, err)
-		log.Println("ERROR: marbor.db was NOT modified - restart marbor manually; it resumes with the existing database")
-		winexit.Exit(1)
-	}
-	_, copyErr := io.Copy(dst, src)
-	src.Close()
-	closeErr := dst.Close()
-	if copyErr != nil || closeErr != nil {
-		os.Remove(tmpPath)
-		log.Printf("ERROR: restore aborted mid-copy (copy error: %v, close error: %v)", copyErr, closeErr)
-		log.Println("ERROR: marbor.db was NOT modified - restart marbor manually; it resumes with the existing database")
-		winexit.Exit(1)
-	}
-
-	// Re-validate the staged copy itself, not just backupPath earlier in
-	// admin.go: the graceful-shutdown drain above can take up to
-	// proxySrv.WriteTimeout+5s between that validation and this copy, during
-	// which the source file could change underneath it (e.g. a concurrent
-	// scheduled backup/retention prune, or filesystem trouble). This is the
-	// last chance to catch corruption before the swap makes tmpPath the live
-	// database - never fabricate a "restore complete" on unverified bytes.
-	if err := store.ValidateBackupFile(tmpPath); err != nil {
-		os.Remove(tmpPath)
-		log.Printf("ERROR: restore aborted - staged copy failed validation: %v", err)
+		log.Printf("ERROR: %v", err)
 		log.Println("ERROR: marbor.db was NOT modified - restart marbor manually; it resumes with the existing database")
 		winexit.Exit(1)
 	}
@@ -1053,4 +1018,54 @@ func performRestore(dbPath, backupPath string, st store.Store) {
 	log.Printf("Restore complete: %s -> %s", backupPath, dbPath)
 	log.Println("Exiting so the process supervisor restarts marbor with the restored database")
 	winexit.Exit(1)
+}
+
+// stageRestoreCopy copies backupPath into a temp file alongside dbPath
+// (dbPath + ".restoring") and re-validates that staged copy with
+// store.ValidateBackupFile before returning its path, so a mid-copy failure
+// or a file that changed/was swapped underneath the earlier admin.go
+// validation never leaves the live marbor.db truncated, corrupt, or swapped
+// for an incompatible backup - the live file is only ever touched by the
+// caller's separate atomic rename, once this function has proven the
+// replacement complete and valid. On any failure the partial/invalid staged
+// file is removed and the live database is left completely untouched.
+//
+// Pulled out of performRestore as a pure function (no process-exit calls) so
+// the staging/re-validation decisions - including the schema-version and
+// foreign-file rejections in store.ValidateBackupFile - are directly
+// testable; performRestore itself still can't be unit tested since every
+// path through it ends in winexit.Exit.
+func stageRestoreCopy(dbPath, backupPath string) (string, error) {
+	tmpPath := dbPath + ".restoring"
+	src, err := os.Open(backupPath)
+	if err != nil {
+		return "", fmt.Errorf("restore aborted - could not open backup file %s: %w", backupPath, err)
+	}
+	dst, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		src.Close()
+		return "", fmt.Errorf("restore aborted - could not create %s: %w", tmpPath, err)
+	}
+	_, copyErr := io.Copy(dst, src)
+	src.Close()
+	closeErr := dst.Close()
+	if copyErr != nil || closeErr != nil {
+		os.Remove(tmpPath)
+		return "", fmt.Errorf("restore aborted mid-copy (copy error: %v, close error: %v)", copyErr, closeErr)
+	}
+
+	// Re-validate the staged copy itself, not just backupPath earlier in
+	// admin.go: the graceful-shutdown drain above can take up to
+	// proxySrv.WriteTimeout+5s between that validation and this copy, during
+	// which the source file could change underneath it (e.g. a concurrent
+	// scheduled backup/retention prune, or filesystem trouble). This is the
+	// last chance to catch corruption or an incompatible schema before the
+	// swap makes tmpPath the live database - never fabricate a "restore
+	// complete" on unverified bytes.
+	if err := store.ValidateBackupFile(tmpPath); err != nil {
+		os.Remove(tmpPath)
+		return "", fmt.Errorf("restore aborted - staged copy failed validation: %w", err)
+	}
+
+	return tmpPath, nil
 }

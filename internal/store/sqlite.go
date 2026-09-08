@@ -123,15 +123,22 @@ func (s *sqliteStore) BackupTo(path string) error {
 	return nil
 }
 
-// ValidateBackupFile opens path as its own independent SQLite connection and
-// runs PRAGMA quick_check, verifying it is a genuine, non-corrupt database
-// before a restore is ever allowed to act on it. This is intentionally a
-// package-level function, not a Store method: it validates an arbitrary
-// candidate FILE (a backup sitting on disk), not the live store the caller
-// already has open. Callers (admin.go's restore handler) must call this
-// before touching the live marbor.db - a bad file has to fail loudly here,
-// before any swap happens, never discovered only after the live database is
-// already gone.
+// ValidateBackupFile opens path as its own independent SQLite connection,
+// runs PRAGMA quick_check to verify it is a genuine, non-corrupt SQLite
+// database, then confirms it is actually a marbor.db this binary can safely
+// restore: a schema_version row must be present (a well-formed but foreign
+// SQLite file - never produced by marbor - has no such row) and its value
+// must not exceed CurrentSchemaVersion (a newer release already migrated it
+// forward, the same condition migrate() itself refuses to boot on at
+// :158-159 - checked here too since a restore swaps the live DB and exits
+// the process, so that refusal must never be discovered only after the old
+// database is already gone). This is intentionally a package-level function,
+// not a Store method: it validates an arbitrary candidate FILE (a backup
+// sitting on disk), not the live store the caller already has open. Callers
+// (admin.go's upload/restore handlers, and main.go's performRestore for its
+// staged-copy re-validation) must call this before touching the live
+// marbor.db - a bad or incompatible file has to fail loudly here, before any
+// swap happens.
 func ValidateBackupFile(path string) error {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
@@ -144,6 +151,18 @@ func ValidateBackupFile(path string) error {
 	}
 	if result != "ok" {
 		return fmt.Errorf("quick_check on %s reported: %s", path, result)
+	}
+
+	var raw string
+	if err := db.QueryRow(`SELECT value FROM settings WHERE key = 'schema_version'`).Scan(&raw); err != nil {
+		return fmt.Errorf("%s has no schema_version - not a marbor.db backup (a foreign or pre-schema-tracking SQLite file)", path)
+	}
+	version, convErr := strconv.Atoi(raw)
+	if convErr != nil {
+		return fmt.Errorf("%s has a malformed schema_version %q - not a valid marbor.db backup", path, raw)
+	}
+	if version > CurrentSchemaVersion {
+		return fmt.Errorf("marbor.db schema_version %d is newer than this binary supports (%d) - refusing to start; upgrade the binary or restore an older marbor.db backup", version, CurrentSchemaVersion)
 	}
 	return nil
 }
