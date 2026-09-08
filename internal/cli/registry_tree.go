@@ -276,8 +276,11 @@ func buildRoot() *Command {
 						Short:     "delete a model from a node's local storage",
 						NeedsAuth: true,
 						Args:      []ArgSpec{{Name: "node"}, {Name: "model"}},
+						Flags: []FlagSpec{
+							{Name: "yes", Kind: FlagBool, Usage: "confirm deletion without prompting"},
+						},
 						Run: func(ctx *RunCtx) int {
-							return runModelsDelete(ctx.Flags, ctx.Args[0], ctx.Args[1], ctx.Stdout, ctx.Stderr)
+							return runModelsDelete(ctx.Flags, ctx.Args[0], ctx.Args[1], ctx.Bool("yes"), ctx.Stdout, ctx.Stderr)
 						},
 					},
 					{

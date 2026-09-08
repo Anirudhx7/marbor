@@ -161,9 +161,15 @@ func runModelsPull(flags *globalFlags, node, model string, stdout, stderr io.Wri
 	return ExitOK
 }
 
-// runModelsDelete implements `marbor models delete <node> <model>` - DELETE
-// /admin/nodes/{name}/models/{model}, capability "models.delete".
-func runModelsDelete(flags *globalFlags, node, model string, stdout, stderr io.Writer) int {
+// runModelsDelete implements `marbor models delete <node> <model> [--yes]` -
+// DELETE /admin/nodes/{name}/models/{model}, capability "models.delete".
+// Destructive and irreversible (removes the model from the node's local
+// storage): requires --yes or an interactive TTY confirmation, matching the
+// "nodes remove"/"users delete" pattern (confirm.go).
+func runModelsDelete(flags *globalFlags, node, model string, yes bool, stdout, stderr io.Writer) int {
+	if err := requireConfirm("delete model", fmt.Sprintf("%s on %s", model, node), yes, stderr); err != nil {
+		return reportError(err, stderr)
+	}
 	client, err := authenticatedClient(flags)
 	if err != nil {
 		return reportError(err, stderr)

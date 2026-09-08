@@ -56,7 +56,7 @@ func TestRun_ModelsDelete_TextOutput(t *testing.T) {
 	mustSaveSession(t, srv.URL, "tok")
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"models", "delete", "gpu-0", "llama3:8b", "--server", srv.URL}, &stdout, &stderr)
+	code := Run([]string{"models", "delete", "gpu-0", "llama3:8b", "--yes", "--server", srv.URL}, &stdout, &stderr)
 	if code != ExitOK {
 		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
 	}
@@ -68,6 +68,53 @@ func TestRun_ModelsDelete_TextOutput(t *testing.T) {
 	}
 	if stdout.String() != "gpu-0: deleted llama3:8b\n" {
 		t.Errorf("unexpected stdout: %q", stdout.String())
+	}
+}
+
+// TestRun_ModelsDelete_NonTTYWithoutYes_Aborts mirrors
+// TestRun_KeyRevoke_NonTTYWithoutYes_Aborts (keys_parity_test.go) - models
+// delete is storage-destructive and irreversible, so it must refuse without
+// --yes when there is no TTY to confirm, and never contact the server.
+func TestRun_ModelsDelete_NonTTYWithoutYes_Aborts(t *testing.T) {
+	origTTY := stdinIsTTY
+	stdinIsTTY = func() bool { return false }
+	defer func() { stdinIsTTY = origTTY }()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("server should not be called")
+	}))
+	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"models", "delete", "gpu-0", "llama3:8b", "--server", srv.URL}, &stdout, &stderr)
+	if code != ExitUserError {
+		t.Fatalf("expected abort got %d %q", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "--yes") {
+		t.Fatalf("should mention --yes %q", stderr.String())
+	}
+}
+
+// TestRun_ModelsDelete_InteractiveYes mirrors TestRun_KeyRevoke_InteractiveYes.
+func TestRun_ModelsDelete_InteractiveYes(t *testing.T) {
+	origTTY := stdinIsTTY
+	origReader := stdinReader
+	stdinIsTTY = func() bool { return true }
+	stdinReader = strings.NewReader("y\n")
+	defer func() { stdinIsTTY = origTTY; stdinReader = origReader }()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"models", "delete", "gpu-0", "llama3:8b", "--server", srv.URL}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("expected OK got %d %q", code, stderr.String())
 	}
 }
 

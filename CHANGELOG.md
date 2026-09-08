@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **Confirm-discipline gaps closed: CLI `models delete` now gated, Users UI cited, routing strategy-set exemption documented.** `marbor models delete <node> <model>` is storage-destructive and irreversible but had no confirm gate, unlike every other CLI delete/remove/revoke/suspend command - it now requires `--yes` or an interactive TTY confirmation via the same `requireConfirm` helper as `nodes remove`/`key revoke`/`users delete`. A prior audit flagged Users.tsx suspend/delete as the only R10 destructive action without cited confirm-modal evidence; both already had action-specific confirm modals (`Users.tsx:697-732`, `734-769`) - the audit's grep had simply missed them, no code change needed. `routing strategy set` remains ungated, now with a one-line documented exemption: it is a reversible config change (set again to revert), not data loss or service disruption, same class as runtime start/stop/restart/drain.
+
 ### Docs
 - README Configuration section now notes that nodes, keys, quotas, and routing config live in `marbor.db` (SQLite) and survive a reboot with no re-registration, pointing at the systemd unit and Compose restart policy in the Production Deployment Guide. The LiteLLM interop guide (`docs/integrations/litellm.md`, both directions) is now linked from the README integration guides list. The cost-savings card and the LiteLLM guide itself needed no changes - both were already shipped and prominent (dashboard hero card on Dashboard and Routing; complete two-direction doc matching the dedicated LiteLLM integration).
 
