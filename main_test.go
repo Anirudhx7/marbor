@@ -330,8 +330,8 @@ func TestServerBinary_DoesNotDependOnAgentRuntime(t *testing.T) {
 // TestStageRestoreCopy exercises performRestore's staged-copy + re-validate
 // sequence directly - performRestore itself can't be unit tested since every
 // path through it ends in winexit.Exit (see stageRestoreCopy's doc comment).
-// This is also the only place P430's schema-version/foreign-file rejections
-// are proven on this specific path: the same store.ValidateBackupFile call
+// This is also the only place the schema-version/foreign-file rejections are
+// proven on this specific path: the same store.ValidateBackupFile call
 // admin.go's restore handler makes before ever reaching here, re-run against
 // the file that was actually staged rather than the original backupPath.
 func TestStageRestoreCopy(t *testing.T) {
