@@ -304,6 +304,62 @@ func TestPrefixLocalityStore_BoundedEviction(t *testing.T) {
 	}
 }
 
+// TestPrefixLocalityStore_RefreshSurvivesEvictionOverStaleDuplicate is a
+// regression test for the eviction/refresh interaction bug found in code
+// review: set() appends a new order slot on every refresh without removing
+// the key's earlier slot, so refreshing the very FIRST key ever inserted
+// (whose original slot sits at the front of s.order, since no eviction has
+// happened yet) left a stale duplicate slot at the front. evictOldestLocked
+// would pop that stale front slot, find the key still present in s.entries,
+// and evict it - discarding a just-refreshed entry - while the genuinely
+// untouched, now-oldest key survived because its single occurrence hadn't
+// reached the front yet. This inverts the oldest-first eviction contract
+// (D3: "oldest-first overflow eviction, last-writer-wins per key"). Fails
+// against the pre-fix code (h0 gets evicted despite being refreshed, h1 does
+// not despite being genuinely untouched); passes once evictOldestLocked/
+// sweep discard stale duplicate order slots by per-entry seq comparison
+// instead of by key presence alone.
+func TestPrefixLocalityStore_RefreshSurvivesEvictionOverStaleDuplicate(t *testing.T) {
+	s := newPrefixLocalityStore()
+	base := time.Now()
+
+	// Fill to the cap. h0 is inserted first, so its original order slot sits
+	// at the very front. h1 is the genuinely-oldest, never-touched-again key
+	// once h0 is refreshed below.
+	for i := 0; i < prefixLocalityMaxEntries; i++ {
+		ts := base.Add(time.Duration(i) * time.Millisecond)
+		s.now = func() time.Time { return ts }
+		s.set("h"+strconv.Itoa(i), "node-"+strconv.Itoa(i))
+	}
+	if s.len() != prefixLocalityMaxEntries {
+		t.Fatalf("expected exactly %d entries after fill, got %d", prefixLocalityMaxEntries, s.len())
+	}
+
+	// Refresh h0 (a real ongoing conversation) well after the initial fill -
+	// this appends a second occurrence of "h0" to the back of s.order, while
+	// its original occurrence is still sitting at the very front.
+	refreshTime := base.Add(9 * time.Minute)
+	s.now = func() time.Time { return refreshTime }
+	s.set("h0", "node-h0-refreshed")
+
+	// One more insert must trigger exactly one eviction.
+	s.now = func() time.Time { return base.Add(10 * time.Minute) }
+	s.set("new-key", "node-new")
+
+	if s.len() != prefixLocalityMaxEntries {
+		t.Fatalf("expected the cap to hold after overflow, got %d", s.len())
+	}
+	if node, ok := s.lookup("h0"); !ok || node != "node-h0-refreshed" {
+		t.Errorf("refreshed key h0 must survive eviction: lookup(h0) = (%q, %v), want (\"node-h0-refreshed\", true)", node, ok)
+	}
+	if _, ok := s.lookup("h1"); ok {
+		t.Error("genuinely untouched oldest key h1 should have been evicted instead of the refreshed h0")
+	}
+	if _, ok := s.lookup("new-key"); !ok {
+		t.Error("the new key must be present after eviction")
+	}
+}
+
 // --- Case 19: concurrency / race safety under mixed-principal load ---
 func TestPrefixLocalityStore_ConcurrentAccess(t *testing.T) {
 	s := newPrefixLocalityStore()
