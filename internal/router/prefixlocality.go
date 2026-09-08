@@ -179,9 +179,25 @@ func prefixHashKey(domain, model, candidate string) string {
 }
 
 // prefixEntry is the only data ever retained per key - never raw content.
+// seq is a monotonically increasing per-store write counter stamped at the
+// time this entry was last set/refreshed - see prefixOrderSlot.
 type prefixEntry struct {
 	node string
 	ts   time.Time
+	seq  uint64
+}
+
+// prefixOrderSlot pairs a key with the seq it had at the moment it was
+// appended to s.order. A refresh of an already-live key appends a NEW slot
+// with a NEW seq rather than mutating or removing the old one (append-only,
+// O(1) on the hot set() path) - so a key can have multiple slots in s.order
+// at once. Only the slot whose seq still matches entries[key].seq is current;
+// every older slot for the same key is a stale duplicate left behind by a
+// refresh, and both evictOldestLocked and sweep must recognize and discard
+// those duplicates rather than acting on them as if they were live.
+type prefixOrderSlot struct {
+	key string
+	seq uint64
 }
 
 // prefixLocalityStore is a bounded, TTL-swept, last-writer-wins in-memory
@@ -192,7 +208,8 @@ type prefixEntry struct {
 type prefixLocalityStore struct {
 	mu      sync.Mutex
 	entries map[string]prefixEntry
-	order   []string // insertion/refresh order, oldest first - bounded at prefixLocalityMaxEntries
+	order   []prefixOrderSlot // append order, oldest first - bounded at prefixLocalityMaxEntries; may contain stale duplicates for a refreshed key, see prefixOrderSlot
+	nextSeq uint64
 	now     func() time.Time
 	hits    uint64
 	misses  uint64
@@ -223,26 +240,37 @@ func (s *prefixLocalityStore) lookup(key string) (string, bool) {
 }
 
 // set records/refreshes key -> node, last-writer-wins. Evicts the oldest
-// live entry first if inserting a genuinely new key would exceed the cap.
+// still-current entry first if inserting a genuinely new key would exceed
+// the cap. A refresh of an already-live key stamps a new seq and appends a
+// new order slot rather than removing the old one - see prefixOrderSlot for
+// why that is safe (evictOldestLocked/sweep discard the resulting stale
+// duplicates by seq comparison instead of acting on them).
 func (s *prefixLocalityStore) set(key, node string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, exists := s.entries[key]; !exists && len(s.entries) >= prefixLocalityMaxEntries {
 		s.evictOldestLocked()
 	}
-	s.entries[key] = prefixEntry{node: node, ts: s.now()}
-	s.order = append(s.order, key)
+	s.nextSeq++
+	seq := s.nextSeq
+	s.entries[key] = prefixEntry{node: node, ts: s.now(), seq: seq}
+	s.order = append(s.order, prefixOrderSlot{key: key, seq: seq})
 }
 
 // evictOldestLocked removes the single oldest entry still tracked in
-// s.order, skipping stale order entries whose key was already superseded by
-// a later set on the same key or a previous eviction/sweep.
+// s.order, walking from the front and discarding (without touching
+// s.entries) any slot whose seq no longer matches entries[key].seq - that
+// slot is a stale duplicate left behind by a later refresh of the same key
+// (see prefixOrderSlot), not a live oldest-entry candidate, so evicting the
+// key it names here would wrongly discard a just-refreshed entry while a
+// genuinely untouched key elsewhere in order survives. Only a slot whose seq
+// still matches is current and gets evicted.
 func (s *prefixLocalityStore) evictOldestLocked() {
 	for len(s.order) > 0 {
-		k := s.order[0]
+		slot := s.order[0]
 		s.order = s.order[1:]
-		if _, ok := s.entries[k]; ok {
-			delete(s.entries, k)
+		if e, ok := s.entries[slot.key]; ok && e.seq == slot.seq {
+			delete(s.entries, slot.key)
 			return
 		}
 	}
@@ -250,22 +278,26 @@ func (s *prefixLocalityStore) evictOldestLocked() {
 
 // sweep removes every entry older than the TTL. Intended to be called
 // periodically by Router's existing sweep ticker (see router.go's Start) -
-// this method itself starts no goroutine and owns no lifecycle.
+// this method itself starts no goroutine and owns no lifecycle. Also drops
+// any stale duplicate slot (seq mismatch, see prefixOrderSlot) from s.order
+// without touching s.entries for it, so a refreshed key's order footprint
+// shrinks back down to its single current slot instead of accumulating
+// duplicates forever.
 func (s *prefixLocalityStore) sweep() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := s.now()
 	live := s.order[:0]
-	for _, k := range s.order {
-		e, ok := s.entries[k]
-		if !ok {
-			continue
+	for _, slot := range s.order {
+		e, ok := s.entries[slot.key]
+		if !ok || e.seq != slot.seq {
+			continue // already removed, or a stale duplicate of a since-refreshed key
 		}
 		if now.Sub(e.ts) > prefixLocalityTTL {
-			delete(s.entries, k)
+			delete(s.entries, slot.key)
 			continue
 		}
-		live = append(live, k)
+		live = append(live, slot)
 	}
 	s.order = live
 }
