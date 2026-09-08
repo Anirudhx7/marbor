@@ -75,6 +75,10 @@ export interface GPUNode {
   // Why draining was set (e.g. "manual", "thermal", "scheduled") - persisted
   // alongside draining, empty when not draining.
   drainedReason?: string;
+  // Bounded-drain window (seconds) requested at drain time; 0/absent means
+  // infinite (today's frozen default). No enforcement engine reads this yet
+  // (Phase 3 owns countdown/eviction) - it only round-trips.
+  drainedGraceSeconds?: number;
   // Live count of in-flight requests on this node. Drain does not kill
   // in-flight requests, only stops routing new ones - this is what lets an
   // operator see when a draining node has actually finished flushing.

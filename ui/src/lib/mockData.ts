@@ -232,6 +232,7 @@ export const mockGPUNodes: GPUNode[] = [
     health: 'degraded',
     draining: true,
     drainedReason: 'manual',
+    drainedGraceSeconds: 0,
     activeConns: 2,
     prewarmDisabled: false,
     pendingPrewarmMB: 0,

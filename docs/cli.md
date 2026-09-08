@@ -302,6 +302,7 @@ Requires authentication - see the root README's CLI auth section, or run `marbor
 Flags:
 
 - `--reason string` - reason recorded for the drain (default "manual")
+- `--grace-period int` - bounded-drain window in seconds (omit for infinite - no enforcement engine reads this yet)
 
 #### `undrain <node>`
 

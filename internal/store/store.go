@@ -64,7 +64,7 @@ type Store interface {
 	NodeOverrides() (map[string]NodeOverride, error)
 
 	// Node drain state
-	SetNodeDrain(name string, draining bool, reason string) error
+	SetNodeDrain(name string, draining bool, reason string, graceSeconds int) error
 	NodeDrainStates() (map[string]NodeDrainState, error)
 
 	// Marbor Agent (per-node opaque bearer token + enable/port, encrypted at
@@ -745,10 +745,10 @@ func (NopStore) UpdateNodeURL(_ string, _ string) error                 { return
 func (NopStore) UpsertNodeOverride(_ string, _ *int64, _ *string, _ *string, _ *[]int, _ *int, _ *string, _ *string, _ *int, _ *map[string]int64) error {
 	return nil
 }
-func (NopStore) NodeOverrides() (map[string]NodeOverride, error)     { return nil, nil }
-func (NopStore) SetNodeDrain(_ string, _ bool, _ string) error       { return nil }
-func (NopStore) NodeDrainStates() (map[string]NodeDrainState, error) { return nil, nil }
-func (NopStore) UpsertMarborAgent(_ MarborAgentRecord) error         { return nil }
+func (NopStore) NodeOverrides() (map[string]NodeOverride, error)      { return nil, nil }
+func (NopStore) SetNodeDrain(_ string, _ bool, _ string, _ int) error { return nil }
+func (NopStore) NodeDrainStates() (map[string]NodeDrainState, error)  { return nil, nil }
+func (NopStore) UpsertMarborAgent(_ MarborAgentRecord) error          { return nil }
 func (NopStore) GetMarborAgent(_ string) (MarborAgentRecord, bool, error) {
 	return MarborAgentRecord{}, false, nil
 }

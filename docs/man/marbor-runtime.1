@@ -33,6 +33,9 @@ mark the node draining (stop routing new requests to it)
 .TP
 .B \-\-reason string
 reason recorded for the drain (default "manual")
+.TP
+.B \-\-grace-period int
+bounded\-drain window in seconds (omit for infinite - no enforcement engine reads this yet)
 .RE
 .TP
 .B undrain <node>

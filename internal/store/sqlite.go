@@ -228,9 +228,10 @@ func (s *sqliteStore) migrate() error {
 		)`,
 
 		`CREATE TABLE IF NOT EXISTS node_drain (
-			name           TEXT PRIMARY KEY,
-			draining       INTEGER,
-			drained_reason TEXT NOT NULL DEFAULT ''
+			name                 TEXT PRIMARY KEY,
+			draining             INTEGER,
+			drained_reason       TEXT NOT NULL DEFAULT '',
+			grace_period_seconds INTEGER NOT NULL DEFAULT 0
 		)`,
 
 		// marbor_agent holds the per-node Marbor Agent configuration (opaque
@@ -512,6 +513,7 @@ func (s *sqliteStore) migrate() error {
 		`ALTER TABLE runtime_keys ADD COLUMN local_only INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE runtime_keys ADD COLUMN allow_local_degradation INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE node_drain ADD COLUMN drained_reason TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE node_drain ADD COLUMN grace_period_seconds INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE node_overrides ADD COLUMN runtime TEXT`,
 		`ALTER TABLE node_overrides ADD COLUMN gpu_indices TEXT NOT NULL DEFAULT ''`,
 		// Per-node in-flight cap override. Nullable like vram_total_mb -
@@ -1418,14 +1420,14 @@ func (s *sqliteStore) NodeOverrides() (map[string]NodeOverride, error) {
 
 // --- Node drain state ---
 
-func (s *sqliteStore) SetNodeDrain(name string, draining bool, reason string) error {
+func (s *sqliteStore) SetNodeDrain(name string, draining bool, reason string, graceSeconds int) error {
 	d := 0
 	if draining {
 		d = 1
 	}
 	_, err := s.db.Exec(
-		`INSERT OR REPLACE INTO node_drain (name, draining, drained_reason) VALUES (?, ?, ?)`,
-		name, d, reason,
+		`INSERT OR REPLACE INTO node_drain (name, draining, drained_reason, grace_period_seconds) VALUES (?, ?, ?, ?)`,
+		name, d, reason, graceSeconds,
 	)
 	if err != nil {
 		return fmt.Errorf("store: SetNodeDrain: %w", err)
@@ -1433,15 +1435,17 @@ func (s *sqliteStore) SetNodeDrain(name string, draining bool, reason string) er
 	return nil
 }
 
-// NodeDrainState is the persisted drain flag plus the reason it was set,
-// keyed by node name in NodeDrainStates.
+// NodeDrainState is the persisted drain flag plus the reason it was set and
+// its grace period (0 = infinite, today's frozen default), keyed by node
+// name in NodeDrainStates.
 type NodeDrainState struct {
-	Draining bool
-	Reason   string
+	Draining     bool
+	Reason       string
+	GraceSeconds int
 }
 
 func (s *sqliteStore) NodeDrainStates() (map[string]NodeDrainState, error) {
-	rows, err := s.db.Query(`SELECT name, draining, drained_reason FROM node_drain`)
+	rows, err := s.db.Query(`SELECT name, draining, drained_reason, grace_period_seconds FROM node_drain`)
 	if err != nil {
 		return nil, fmt.Errorf("store: NodeDrainStates: %w", err)
 	}
@@ -1450,11 +1454,11 @@ func (s *sqliteStore) NodeDrainStates() (map[string]NodeDrainState, error) {
 	out := make(map[string]NodeDrainState)
 	for rows.Next() {
 		var name, reason string
-		var d int
-		if err := rows.Scan(&name, &d, &reason); err != nil {
+		var d, grace int
+		if err := rows.Scan(&name, &d, &reason, &grace); err != nil {
 			return nil, fmt.Errorf("store: NodeDrainStates scan: %w", err)
 		}
-		out[name] = NodeDrainState{Draining: d != 0, Reason: reason}
+		out[name] = NodeDrainState{Draining: d != 0, Reason: reason, GraceSeconds: grace}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("store: NodeDrainStates rows: %w", err)

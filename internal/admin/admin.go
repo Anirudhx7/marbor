@@ -520,10 +520,14 @@ type nodeResp struct {
 	// a 404 - the real, observed signature of an MLX node auto-detected as
 	// llamacpp (see NodeState.RuntimeMismatchHint's doc comment). Empty
 	// otherwise; never a guess presented as fact.
-	RuntimeMismatchHint string             `json:"runtimeMismatchHint,omitempty"`
-	Health              string             `json:"health"`
-	Draining            bool               `json:"draining"`
-	DrainedReason       string             `json:"drainedReason,omitempty"`
+	RuntimeMismatchHint string `json:"runtimeMismatchHint,omitempty"`
+	Health              string `json:"health"`
+	Draining            bool   `json:"draining"`
+	DrainedReason       string `json:"drainedReason,omitempty"`
+	// DrainedGraceSeconds is the bounded-drain window requested at drain time;
+	// 0 means no grace was set (infinite - today's frozen default). No
+	// enforcement engine reads this yet (Phase 3), it only round-trips.
+	DrainedGraceSeconds int                `json:"drainedGraceSeconds"`
 	PrewarmDisabled     bool               `json:"prewarmDisabled"`
 	Uptime              string             `json:"uptime"`
 	LoadedModels        []router.ModelInfo `json:"loadedModels"`
@@ -1467,6 +1471,7 @@ func (s *Server) nodeStateToResp(n *router.NodeState, id string) nodeResp {
 		Health:                        health,
 		Draining:                      n.Draining,
 		DrainedReason:                 n.DrainedReason,
+		DrainedGraceSeconds:           n.DrainedGraceSeconds,
 		PrewarmDisabled:               n.PrewarmDisabled,
 		Uptime:                        n.Uptime,
 		LoadedModels:                  safeModelInfoSlice(n.LoadedModels),
@@ -3518,7 +3523,8 @@ func (s *Server) handleDrainNode(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	name := r.PathValue("name")
 	var body struct {
-		Reason string `json:"reason"`
+		Reason             string `json:"reason"`
+		GracePeriodSeconds *int   `json:"grace_period_seconds"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil && err != io.EOF {
 		writeJSONError(w, http.StatusBadRequest, "invalid JSON")
@@ -3528,14 +3534,22 @@ func (s *Server) handleDrainNode(w http.ResponseWriter, r *http.Request) {
 	if reason == "" {
 		reason = "manual"
 	}
-	if !s.router.DrainNode(name, reason) {
+	grace := 0
+	if body.GracePeriodSeconds != nil {
+		if *body.GracePeriodSeconds < 0 {
+			writeJSONError(w, http.StatusBadRequest, "grace_period_seconds must be >= 0")
+			return
+		}
+		grace = *body.GracePeriodSeconds
+	}
+	if !s.router.DrainNode(name, reason, grace) {
 		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
 		return
 	}
-	_ = s.st.SetNodeDrain(name, true, reason)
+	_ = s.st.SetNodeDrain(name, true, reason, grace)
 	s.logSystemChange(r, "drain_node", name, reason)
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"node": name, "draining": true, "reason": reason})
+	_ = json.NewEncoder(w).Encode(map[string]any{"node": name, "draining": true, "reason": reason, "grace_period_seconds": grace})
 }
 
 func (s *Server) handleUndrainNode(w http.ResponseWriter, r *http.Request) {
@@ -3544,7 +3558,7 @@ func (s *Server) handleUndrainNode(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
 		return
 	}
-	_ = s.st.SetNodeDrain(name, false, "")
+	_ = s.st.SetNodeDrain(name, false, "", 0)
 	s.logSystemChange(r, "undrain_node", name, "")
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"node": name, "draining": false})

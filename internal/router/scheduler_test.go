@@ -100,12 +100,15 @@ func TestRunSchedulesDisabledDoesNotFire(t *testing.T) {
 
 // TestRunSchedulesDrainFires verifies a "drain" schedule actually sets the
 // node's Draining flag when it matches, exercising the full ticker-driven
-// dispatch path rather than calling DrainNode directly.
+// dispatch path rather than calling DrainNode directly - and that it
+// persists - scheduled drain was in-memory only before this.
 func TestRunSchedulesDrainFires(t *testing.T) {
 	r := &Router{
 		nodes:          []*NodeState{{Name: "n1", Healthy: true}},
 		schedLastFired: map[string]string{},
 	}
+	st := openWarmTestStore(t)
+	r.SetStore(st)
 	now := time.Now()
 	at := fmt.Sprintf("%02d:%02d", now.Hour(), now.Minute())
 	r.SetSchedules([]Schedule{{ID: "s1", Action: "drain", Node: "n1", At: at, Enabled: true}})
@@ -115,15 +118,27 @@ func TestRunSchedulesDrainFires(t *testing.T) {
 	if !r.nodes[0].Draining {
 		t.Error("scheduled drain did not set Draining=true")
 	}
+	states, err := st.NodeDrainStates()
+	if err != nil {
+		t.Fatalf("NodeDrainStates: %v", err)
+	}
+	if !states["n1"].Draining || states["n1"].Reason != "scheduled" {
+		t.Errorf("persisted drain state = %+v, want draining=true reason=scheduled", states["n1"])
+	}
 }
 
 // TestRunSchedulesUndrainFires verifies an "undrain" schedule clears the
-// node's Draining flag when it matches.
+// node's Draining flag when it matches, and clears the persisted state too.
 func TestRunSchedulesUndrainFires(t *testing.T) {
 	r := &Router{
 		nodes:          []*NodeState{{Name: "n1", Healthy: true, Draining: true}},
 		schedLastFired: map[string]string{},
 	}
+	st := openWarmTestStore(t)
+	if err := st.SetNodeDrain("n1", true, "manual", 0); err != nil {
+		t.Fatalf("seed SetNodeDrain: %v", err)
+	}
+	r.SetStore(st)
 	now := time.Now()
 	at := fmt.Sprintf("%02d:%02d", now.Hour(), now.Minute())
 	r.SetSchedules([]Schedule{{ID: "s1", Action: "undrain", Node: "n1", At: at, Enabled: true}})
@@ -132,6 +147,13 @@ func TestRunSchedulesUndrainFires(t *testing.T) {
 
 	if r.nodes[0].Draining {
 		t.Error("scheduled undrain did not clear Draining")
+	}
+	states, err := st.NodeDrainStates()
+	if err != nil {
+		t.Fatalf("NodeDrainStates: %v", err)
+	}
+	if states["n1"].Draining {
+		t.Error("scheduled undrain did not clear persisted drain state")
 	}
 }
 

@@ -438,18 +438,26 @@ func (c *Client) UnloadModel(node, model string) error {
 
 // DrainResult mirrors handleDrainNode/handleUndrainNode's response body.
 type DrainResult struct {
-	Node     string `json:"node"`
-	Draining bool   `json:"draining"`
-	Reason   string `json:"reason,omitempty"`
+	Node               string `json:"node"`
+	Draining           bool   `json:"draining"`
+	Reason             string `json:"reason,omitempty"`
+	GracePeriodSeconds int    `json:"grace_period_seconds,omitempty"`
 }
 
 // DrainNode calls POST /admin/nodes/{name}/drain - marks a node as draining
 // (marbor-internal routing state; never sent to the Marbor Agent), mirroring the
-// UI's GPUNodes.tsx "Drain" action.
-func (c *Client) DrainNode(node, reason string) (*DrainResult, error) {
-	var body map[string]string
+// UI's GPUNodes.tsx "Drain" action. graceSeconds < 0 means "not set" (absent
+// from the request body - infinite drain, today's frozen default).
+func (c *Client) DrainNode(node, reason string, graceSeconds int) (*DrainResult, error) {
+	body := map[string]any{}
 	if reason != "" {
-		body = map[string]string{"reason": reason}
+		body["reason"] = reason
+	}
+	if graceSeconds >= 0 {
+		body["grace_period_seconds"] = graceSeconds
+	}
+	if len(body) == 0 {
+		body = nil
 	}
 	resp, err := c.doRequestBody(http.MethodPost, "/admin/nodes/"+urlPathEscape(node)+"/drain", body)
 	if err != nil {

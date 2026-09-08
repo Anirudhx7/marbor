@@ -120,9 +120,21 @@ func (r *Router) fireSchedule(ctx context.Context, s Schedule) {
 	case "unload":
 		asyncErr = r.UnloadModels(ctx, s.Node, s.Models)
 	case "drain":
-		found = r.DrainNode(s.Node, "scheduled")
+		found = r.DrainNode(s.Node, "scheduled", 0)
+		// Persist so a restart doesn't silently undrain a maintenance window
+		// scheduled drain/undrain was in-memory only before this.
+		if found && r.store != nil {
+			if err := r.store.SetNodeDrain(s.Node, true, "scheduled", 0); err != nil {
+				log.Printf("schedule %q: persist drain for %s: %v", s.ID, s.Node, err)
+			}
+		}
 	case "undrain":
 		found = r.UndrainNode(s.Node)
+		if found && r.store != nil {
+			if err := r.store.SetNodeDrain(s.Node, false, "", 0); err != nil {
+				log.Printf("schedule %q: persist undrain for %s: %v", s.ID, s.Node, err)
+			}
+		}
 	}
 	metrics.ScheduleFired(s.Action, s.Node)
 	if !found {

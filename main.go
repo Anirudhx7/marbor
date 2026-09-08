@@ -596,7 +596,7 @@ func main() {
 	if drains, err := st.NodeDrainStates(); err == nil {
 		for name, ds := range drains {
 			if ds.Draining {
-				r.DrainNode(name, ds.Reason)
+				r.DrainNode(name, ds.Reason, ds.GraceSeconds)
 			}
 		}
 	}

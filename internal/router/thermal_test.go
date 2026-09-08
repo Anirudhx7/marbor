@@ -66,6 +66,34 @@ func TestThermalWatchdog_AutoDrainsAfterConsecutiveBreaches(t *testing.T) {
 	}
 }
 
+// TestThermalWatchdog_AutoDrainPersists verifies the thermal auto-drain path
+// persists to the store - it was in-memory only before this, so a restart
+// silently undrained a still-hot GPU.
+func TestThermalWatchdog_AutoDrainPersists(t *testing.T) {
+	r, _ := newThermalTestRouter(t, config.ThermalWatchdogConfig{
+		Enabled:             true,
+		MaxTempCelsius:      85,
+		ConsecutiveBreaches: 1,
+	})
+	st := openWarmTestStore(t)
+	r.SetStore(st)
+	n := r.nodes[0]
+
+	r.nvidiaMu.Lock()
+	r.nvidiaCache[0] = GPUStats{TempCelsius: 90, VRAMTotalMB: 24576, VRAMUsedMB: 1000}
+	r.nvidiaMu.Unlock()
+
+	r.pollNode(n)
+
+	states, err := st.NodeDrainStates()
+	if err != nil {
+		t.Fatalf("NodeDrainStates: %v", err)
+	}
+	if !states["gpu-0"].Draining || states["gpu-0"].Reason != "thermal" {
+		t.Errorf("persisted drain state = %+v, want draining=true reason=thermal", states["gpu-0"])
+	}
+}
+
 // TestThermalWatchdog_CoolingResetsBreachCounter verifies that a poll below
 // the threshold resets the consecutive-breach counter, so an intermittent
 // spike never accumulates toward a drain.
