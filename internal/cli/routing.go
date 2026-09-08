@@ -111,6 +111,9 @@ func runRoutingStrategyGet(flags *globalFlags, stdout, stderr io.Writer) int {
 }
 
 // runRoutingStrategySet implements `marbor routing strategy set <strategy>`.
+// No confirm gate: this is a reversible config change (set again to revert),
+// not data loss or service disruption - same exemption class as runtime
+// start/stop/restart/drain and key patch/create.
 func runRoutingStrategySet(flags *globalFlags, strategy string, stdout, stderr io.Writer) int {
 	client, err := authenticatedClient(flags)
 	if err != nil {
