@@ -1109,6 +1109,29 @@ func buildRoot() *Command {
 				},
 			},
 			{
+				Name:      "settings",
+				Short:     "get/set the full control-plane config",
+				NeedsAuth: true,
+				Footer:    authFlags,
+				Sub: []*Command{
+					{
+						Name:      "get",
+						Short:     "print the current settings (secrets masked)",
+						NeedsAuth: true,
+						Run:       func(ctx *RunCtx) int { return runSettingsGet(ctx.Flags, ctx.Stdout, ctx.Stderr) },
+					},
+					{
+						Name:      "set",
+						Short:     "apply a settings payload from a local JSON file",
+						NeedsAuth: true,
+						Flags: []FlagSpec{
+							{Name: "file", Kind: FlagString, Usage: "local JSON file with the (partial) settings payload (required)", Required: true, RequiredMsg: "error: --file is required"},
+						},
+						Run: func(ctx *RunCtx) int { return runSettingsSet(ctx.Flags, ctx.String("file"), ctx.Stdout, ctx.Stderr) },
+					},
+				},
+			},
+			{
 				Name:      "benchmark",
 				Short:     "run/inspect in-dashboard hardware benchmark jobs",
 				NeedsAuth: true,

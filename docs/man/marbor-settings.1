@@ -1,0 +1,35 @@
+.TH MARBOR\-SETTINGS 1 "2026-08-17" "marbor dev" "Marbor Manual"
+.SH NAME
+marbor\-settings \- get/set the full control\-plane config
+.SH SYNOPSIS
+.B marbor settings
+[action] [args] [\fIflags\fR]
+.SH DESCRIPTION
+get/set the full control\-plane config
+.SH COMMANDS
+.TP
+.B get
+print the current settings (secrets masked)
+.TP
+.B set
+apply a settings payload from a local JSON file
+.RS
+.TP
+.B \-\-file string
+local JSON file with the (partial) settings payload (required) (required)
+.RE
+.SH FLAGS
+.TP
+.B \-\-server
+Admin API base URL (default "http://localhost:8080", env MARBOR_SERVER)
+.TP
+.B \-\-json
+output machine\-readable JSON instead of a human table
+.TP
+.B \-\-username
+admin username, used to log in (env MARBOR_USERNAME)
+.TP
+.B \-\-password
+admin password, used to log in (env MARBOR_PASSWORD)
+.SH SEE ALSO
+\fBmarbor\fR(1)

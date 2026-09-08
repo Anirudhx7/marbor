@@ -575,6 +575,9 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor system-info` | show control-plane host system info and per-node GPU summary (requires auth) |
 | `marbor config` | control-plane configuration operations |
 | `marbor config reload` | re-sync live router/auth state from SQLite (requires auth) |
+| `marbor settings` | get/set the full control-plane config (requires auth) |
+| `marbor settings get` | print the current settings (secrets masked) (requires auth) |
+| `marbor settings set` | apply a settings payload from a local JSON file (requires auth) |
 | `marbor benchmark` | run/inspect in-dashboard hardware benchmark jobs (requires auth) |
 | `marbor benchmark run <node> <model>` | start a benchmark job (requires auth) |
 | `marbor benchmark progress <job-id>` | show a point-in-time snapshot of a running benchmark job (requires auth) |

@@ -945,6 +945,30 @@ re-sync live router/auth state from SQLite
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
+### `settings`
+
+get/set the full control-plane config
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).
+
+#### `get`
+
+print the current settings (secrets masked)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+#### `set`
+
+apply a settings payload from a local JSON file
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--file string` - local JSON file with the (partial) settings payload (required) (required)
+
 ### `benchmark`
 
 run/inspect in-dashboard hardware benchmark jobs

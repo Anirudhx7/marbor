@@ -29,6 +29,7 @@ Commands:
   predictive    show recent predictive prewarm decisions
   system-info   show control-plane host system info and per-node GPU summary
   config        control-plane configuration operations
+  settings      get/set the full control-plane config
   benchmark     run/inspect in-dashboard hardware benchmark jobs
   spill         show per-key, per-provider local-vs-cloud request counts
   activity      show unified fleet activity feed (drain, agent, runtime, node, warmup, schedule, predictive, config)
