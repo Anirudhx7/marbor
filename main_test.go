@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/Anirudhx7/marbor/internal/cli"
+	"github.com/Anirudhx7/marbor/internal/config"
+	"github.com/Anirudhx7/marbor/internal/router"
 	"github.com/Anirudhx7/marbor/internal/store"
 
 	_ "modernc.org/sqlite"
@@ -418,4 +420,76 @@ func TestStageRestoreCopy(t *testing.T) {
 			t.Errorf("staged copy of a rejected newer-schema backup should be removed, stat err = %v", statErr)
 		}
 	})
+}
+
+// TestBootRestoresNodeDrainState exercises the boot-time drain restore loop
+// (main.go's server-start sequence, "if drains, err := st.NodeDrainStates();
+// ... r.DrainNode(...)") end-to-end: store_test.go's TestNodeDrainStates only
+// round-trips SetNodeDrain/NodeDrainStates inside internal/store, and
+// router_test.go's TestDrainNodeExcludesFromRouting only calls
+// router.DrainNode directly - neither exercises the wiring between the two
+// that happens once, at boot, from a persisted drain row. This test mirrors
+// that exact wiring rather than calling into main() (which cannot be
+// invoked directly - it owns process-level setup like flag.Parse()).
+func TestBootRestoresNodeDrainState(t *testing.T) {
+	dir := t.TempDir()
+	st, err := store.Open(filepath.Join(dir, "marbor.db"))
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	defer st.Close()
+
+	// Seed a persisted drain row as if an operator had drained this node
+	// before the process was restarted.
+	if err := st.SetNodeDrain("node-a", true, "thermal", 120); err != nil {
+		t.Fatalf("SetNodeDrain: %v", err)
+	}
+	// A second, non-draining node must be left alone by the restore loop.
+	if err := st.SetNodeDrain("node-b", false, "", 0); err != nil {
+		t.Fatalf("SetNodeDrain: %v", err)
+	}
+
+	cfg := config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 100}
+	nodes := []config.NodeConfig{
+		{Name: "node-a", URL: "http://localhost:11434"},
+		{Name: "node-b", URL: "http://localhost:11435"},
+	}
+	r := router.New(cfg, nodes, nil)
+
+	// This is main.go:596-602's actual restore loop, reproduced verbatim -
+	// if that loop is ever edited, this test's copy must be kept in sync.
+	if drains, err := st.NodeDrainStates(); err == nil {
+		for name, ds := range drains {
+			if ds.Draining {
+				r.DrainNode(name, ds.Reason, ds.GraceSeconds)
+			}
+		}
+	} else {
+		t.Fatalf("NodeDrainStates: %v", err)
+	}
+
+	var gotA, gotB *router.NodeState
+	for _, n := range r.Nodes() {
+		switch n.Name {
+		case "node-a":
+			gotA = n
+		case "node-b":
+			gotB = n
+		}
+	}
+	if gotA == nil || gotB == nil {
+		t.Fatal("router.Nodes() did not return both configured nodes")
+	}
+	if !gotA.Draining {
+		t.Error("node-a should be restored as draining after boot")
+	}
+	if gotA.DrainedReason != "thermal" {
+		t.Errorf("node-a DrainedReason = %q, want %q", gotA.DrainedReason, "thermal")
+	}
+	if gotA.DrainedGraceSeconds != 120 {
+		t.Errorf("node-a DrainedGraceSeconds = %d, want 120", gotA.DrainedGraceSeconds)
+	}
+	if gotB.Draining {
+		t.Error("node-b should not be draining after boot restore")
+	}
 }
