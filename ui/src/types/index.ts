@@ -194,6 +194,13 @@ export interface GPUNode {
   // distinct from agentRuntime (just the runtime name, already above).
   runtimeVersion?: string;
   runtimeStatus?: string;
+  // Runtime's own reported live scheduling state, scraped from its
+  // native metrics endpoint - reporting only, never used in routing.
+  // Absent (undefined) means the runtime didn't report this metric this
+  // poll - render "-", never 0.
+  engineRunningRequests?: number;
+  engineWaitingRequests?: number;
+  engineKvCacheUsagePercent?: number;
   // localModels lists models already downloaded on this node (not just
   // currently loaded - loadedModels above covers that), via the agent's
   // "models.list" capability. Fetched separately (getNodeModels), not part

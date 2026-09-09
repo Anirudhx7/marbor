@@ -307,11 +307,28 @@ func (r *Router) applyAgentTelemetry(n *NodeState, t marboragent.Telemetry) {
 		n.RuntimeVersion = entry.Version
 		n.RuntimeStatus = entry.Status
 		n.AgentRuntimeID = matchedID
+		if entry.Engine != nil {
+			n.EngineRunningRequests = entry.Engine.RunningRequests
+			n.EngineWaitingRequests = entry.Engine.WaitingRequests
+			n.EngineKVCacheUsagePercent = entry.Engine.KVCacheUsagePercent
+		} else {
+			// This poll's RuntimeInfo carries no Engine block at all (e.g.
+			// runtime down, or a runtime with no native metrics source) -
+			// clear rather than hold whatever the last successful poll
+			// reported. Poll freshness is the only freshness mechanism for
+			// EngineState - no separate stale-value TTL.
+			n.EngineRunningRequests = nil
+			n.EngineWaitingRequests = nil
+			n.EngineKVCacheUsagePercent = nil
+		}
 	} else {
 		n.AgentRuntime = ""
 		n.RuntimeVersion = ""
 		n.RuntimeStatus = ""
 		n.AgentRuntimeID = ""
+		n.EngineRunningRequests = nil
+		n.EngineWaitingRequests = nil
+		n.EngineKVCacheUsagePercent = nil
 	}
 	// Per-runtime deployment auto-discovery (port/ID matched, not Host).
 	// One deployment report per runtime instance means two vLLM on same host
@@ -555,6 +572,9 @@ func clearAgentTelemetry(n *NodeState) {
 	n.RuntimeVersion = ""
 	n.RuntimeStatus = ""
 	n.AgentRuntimeID = ""
+	n.EngineRunningRequests = nil
+	n.EngineWaitingRequests = nil
+	n.EngineKVCacheUsagePercent = nil
 	n.FanPercent = nil
 	n.RAMUsedMB = 0
 	n.DiskFreeGB = 0

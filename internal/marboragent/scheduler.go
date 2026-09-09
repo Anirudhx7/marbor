@@ -211,6 +211,14 @@ func (s *Scheduler) refresh() {
 				for _, m := range result.LoadedModels {
 					runtimes[i].WarmModels = append(runtimes[i].WarmModels, m.Name)
 				}
+				// A runtime that just failed its own reachability probe
+				// above gets no engine-metrics attempt - down means down,
+				// not "try /metrics instead". Independent timeout, same
+				// reasoning as the probe's own pctx above: a slow GPU/host
+				// cycle must not starve this one either.
+				esctx, escancel := context.WithTimeout(context.Background(), 5*time.Second)
+				runtimes[i].Engine = collectEngineState(esctx, s.runtimeClient, d.Name, d.URL)
+				escancel()
 			} else {
 				runtimes[i].Status = "down"
 			}

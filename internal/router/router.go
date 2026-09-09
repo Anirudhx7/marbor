@@ -304,6 +304,20 @@ type NodeState struct {
 	// distinct from AgentRuntime (just the runtime name, already above).
 	RuntimeVersion string
 	RuntimeStatus  string
+	// EngineRunningRequests/EngineWaitingRequests/EngineKVCacheUsagePercent
+	// mirror marboragent.RuntimeInfo.Engine - the runtime's own live
+	// scheduling state, scraped from its native metrics endpoint. Reporting
+	// only: nothing in this codebase reads these for a placement/routing/
+	// scoring decision. Pointers, same never-fabricate discipline as
+	// AgentGPUs' CorePercent/TemperatureC above - nil means this runtime did
+	// not report the metric this poll (unknown), never a real zero. Never
+	// persisted to marbor.db (live-only, see EngineState's own doc comment);
+	// a poll that can't produce a metric clears the field here too, same as
+	// every other agent-derived field on this struct - it never holds a
+	// stale prior value.
+	EngineRunningRequests     *int
+	EngineWaitingRequests     *int
+	EngineKVCacheUsagePercent *float64
 	// AgentControlDiscovered* is what the agent's most recent ControlDriver
 	// probe found (marboragent.ControlDiscovery) - purely informational
 	// for the admin API's probe/accept UI. The operator-accepted value

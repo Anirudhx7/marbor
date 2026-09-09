@@ -608,6 +608,15 @@ type nodeResp struct {
 	BootTime       int64            `json:"bootTime,omitempty"`
 	RuntimeVersion string           `json:"runtimeVersion,omitempty"`
 	RuntimeStatus  string           `json:"runtimeStatus,omitempty"`
+	// EngineRunningRequests/EngineWaitingRequests/EngineKVCacheUsagePercent
+	// are the runtime's own reported live scheduling state, scraped from
+	// its native metrics endpoint - reporting only, never consumed by
+	// scoring/routing. Pointers so the UI/CLI can render "-" for nil
+	// (unknown) instead of a fabricated 0, same discipline as every other
+	// agent-derived field on this struct.
+	EngineRunningRequests     *int     `json:"engineRunningRequests,omitempty"`
+	EngineWaitingRequests     *int     `json:"engineWaitingRequests,omitempty"`
+	EngineKVCacheUsagePercent *float64 `json:"engineKvCacheUsagePercent,omitempty"`
 }
 
 // warmupStateEntry is the operator-facing shape of one suppressed keep-warm
@@ -1505,6 +1514,9 @@ func (s *Server) nodeStateToResp(n *router.NodeState, id string) nodeResp {
 		BootTime:                      n.BootTime,
 		RuntimeVersion:                n.RuntimeVersion,
 		RuntimeStatus:                 n.RuntimeStatus,
+		EngineRunningRequests:         n.EngineRunningRequests,
+		EngineWaitingRequests:         n.EngineWaitingRequests,
+		EngineKVCacheUsagePercent:     n.EngineKVCacheUsagePercent,
 	}
 }
 

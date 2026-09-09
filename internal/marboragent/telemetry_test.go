@@ -223,3 +223,64 @@ func TestGPUInfoOmitsUnmeasuredFields(t *testing.T) {
 		}
 	}
 }
+
+// TestRuntimeInfoEngineOmittedWhenNil verifies a RuntimeInfo with no Engine
+// probe attempted (nil) omits the field entirely, and - critically for the
+// agent protocol's rolling-upgrade guarantee - still decodes cleanly (an
+// older marbor build must never choke on this struct just because Engine is
+// absent).
+func TestRuntimeInfoEngineOmittedWhenNil(t *testing.T) {
+	ri := RuntimeInfo{Name: "ollama", Status: "up"}
+	b, err := json.Marshal(ri)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var decoded map[string]interface{}
+	if err := json.Unmarshal(b, &decoded); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if _, present := decoded["engine"]; present {
+		t.Errorf("engine should be omitted when nil, got %v", decoded["engine"])
+	}
+
+	// Round-trip back into a RuntimeInfo (simulates an older marbor's
+	// decode path) - must not error and must leave Engine nil.
+	var back RuntimeInfo
+	if err := json.Unmarshal(b, &back); err != nil {
+		t.Fatalf("RuntimeInfo remains decodable when Engine absent: %v", err)
+	}
+	if back.Engine != nil {
+		t.Errorf("Engine = %+v, want nil", back.Engine)
+	}
+}
+
+// TestEngineStateZeroVsUnknown is the honesty test that matters most for
+// this item: a genuinely reported zero must round-trip as a non-nil pointer to
+// 0, distinguishable from a metric the runtime never reported (nil,
+// omitted) - the exact bug QueueDepth's plain int already has (see
+// enginestate.go's package doc comment).
+func TestEngineStateZeroVsUnknown(t *testing.T) {
+	zero := 0
+	es := EngineState{
+		RunningRequests: &zero,
+		// WaitingRequests intentionally left nil: unknown this cycle.
+	}
+	b, err := json.Marshal(es)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var decoded map[string]interface{}
+	if err := json.Unmarshal(b, &decoded); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	v, present := decoded["running_requests"]
+	if !present {
+		t.Fatalf("running_requests should be present (a real reported 0), got omitted")
+	}
+	if v.(float64) != 0 {
+		t.Errorf("running_requests = %v, want 0", v)
+	}
+	if _, present := decoded["waiting_requests"]; present {
+		t.Errorf("waiting_requests should be omitted (unknown), got %v", decoded["waiting_requests"])
+	}
+}
