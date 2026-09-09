@@ -655,3 +655,115 @@ func TestPlacementScoring_TTFTWeightedLoad(t *testing.T) {
 		t.Errorf("effectiveLoad with no RecentTTFT = %v, want 3.0 (raw conns, unweighted)", got)
 	}
 }
+
+// TestEngineAwareLoad_UsesEngineCountsWhenAvailable verifies engineAwareLoad
+// prefers the real engine-reported running+waiting total over ActiveConns
+// whenever both counts are non-nil (vLLM/TGI today), and falls back
+// unchanged to effectiveLoad's ActiveConns computation whenever either
+// count is nil - a runtime whose engine telemetry doesn't cover this field,
+// or a scrape that failed this poll. See engineAwareLoad's doc comment.
+func TestEngineAwareLoad_UsesEngineCountsWhenAvailable(t *testing.T) {
+	r := New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
+		{Name: "node-a", URL: "http://node-a:11434", VRAMTotalMB: 8192},
+	}, nil)
+	n := r.nodes[0]
+	atomic.StoreInt32(&n.ActiveConns, 100) // would dominate if engine counts were ignored
+
+	t.Run("both engine counts present - uses engine total, not ActiveConns", func(t *testing.T) {
+		running, waiting := 1, 2
+		n.EngineRunningRequests = &running
+		n.EngineWaitingRequests = &waiting
+		got := engineAwareLoad(n, atomic.LoadInt32(&n.ActiveConns))
+		want := effectiveLoadFromCount(n, 3) // 1 running + 2 waiting
+		if got != want {
+			t.Errorf("engineAwareLoad = %v, want %v (engine total 3, not ActiveConns 100)", got, want)
+		}
+	})
+
+	t.Run("running nil - falls back to ActiveConns, never fabricates the missing half", func(t *testing.T) {
+		n.EngineRunningRequests = nil
+		waiting := 2
+		n.EngineWaitingRequests = &waiting
+		got := engineAwareLoad(n, atomic.LoadInt32(&n.ActiveConns))
+		want := effectiveLoad(n, atomic.LoadInt32(&n.ActiveConns))
+		if got != want {
+			t.Errorf("engineAwareLoad = %v, want %v (partial engine data must fall back to ActiveConns)", got, want)
+		}
+	})
+
+	t.Run("waiting nil - falls back to ActiveConns", func(t *testing.T) {
+		running := 1
+		n.EngineRunningRequests = &running
+		n.EngineWaitingRequests = nil
+		got := engineAwareLoad(n, atomic.LoadInt32(&n.ActiveConns))
+		want := effectiveLoad(n, atomic.LoadInt32(&n.ActiveConns))
+		if got != want {
+			t.Errorf("engineAwareLoad = %v, want %v (partial engine data must fall back to ActiveConns)", got, want)
+		}
+	})
+
+	t.Run("both nil - unsupported/unreachable runtime scores identically to the ActiveConns-only baseline", func(t *testing.T) {
+		n.EngineRunningRequests = nil
+		n.EngineWaitingRequests = nil
+		got := engineAwareLoad(n, atomic.LoadInt32(&n.ActiveConns))
+		want := effectiveLoad(n, atomic.LoadInt32(&n.ActiveConns))
+		if got != want {
+			t.Errorf("engineAwareLoad = %v, want %v (no engine telemetry must not be penalized or favored)", got, want)
+		}
+	})
+}
+
+// TestPredictedDelayBeatsRawQueueDepthOnRequestSizeVariance is a
+// deterministic acceptance test for the algorithmic behavior this scoring
+// change exists to fix. It proves the scoring formula's correctness in
+// isolation, using synthetic per-node state - it is not a substitute for
+// validating real-fleet behavior under real concurrent load against actual
+// vLLM/TGI backends, which remains outstanding and requires live hardware
+// this test suite does not have access to.
+//
+// node-a reports 5 waiting engine requests but a fast recent TTFT history
+// (short requests). node-b reports only 2 waiting engine requests but a
+// much slower recent TTFT history (long requests). A raw-queue-depth
+// comparison (waiting count alone, the thing this scoring change replaces)
+// picks node-b as less loaded - "5 waiting is not a real comparison against
+// 2 waiting" without knowing what those requests cost. The TTFT-weighted
+// predicted delay this change ships must reverse that: node-b's two long
+// requests predict a longer wait than node-a's five short ones.
+func TestPredictedDelayBeatsRawQueueDepthOnRequestSizeVariance(t *testing.T) {
+	r := New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
+		{Name: "node-a", URL: "http://node-a:11434", VRAMTotalMB: 8192},
+		{Name: "node-b", URL: "http://node-b:11434", VRAMTotalMB: 8192},
+	}, nil)
+
+	nodeA, nodeB := r.nodes[0], r.nodes[1]
+
+	runningA, waitingA := 0, 5
+	nodeA.EngineRunningRequests = &runningA
+	nodeA.EngineWaitingRequests = &waitingA
+	nodeA.RecentTTFT = []float64{0.1, 0.1, 0.1} // short requests
+
+	runningB, waitingB := 0, 2
+	nodeB.EngineRunningRequests = &runningB
+	nodeB.EngineWaitingRequests = &waitingB
+	nodeB.RecentTTFT = []float64{5.0, 5.0, 5.0} // long requests
+
+	// Sanity check on the premise: raw waiting count alone says node-a (5)
+	// looks more loaded than node-b (2) - the comparison this item rejects.
+	if waitingA <= waitingB {
+		t.Fatalf("test premise broken: want node-a's raw waiting (%d) > node-b's (%d)", waitingA, waitingB)
+	}
+
+	loadA := engineAwareLoad(nodeA, atomic.LoadInt32(&nodeA.ActiveConns))
+	loadB := engineAwareLoad(nodeB, atomic.LoadInt32(&nodeB.ActiveConns))
+	if loadA >= loadB {
+		t.Errorf("engineAwareLoad(node-a) = %v, engineAwareLoad(node-b) = %v; want node-a's predicted load lower despite its higher raw waiting count", loadA, loadB)
+	}
+
+	node, _, _ := r.Route("model-x", "", "")
+	if node == nil {
+		t.Fatal("expected a node to be selected")
+	}
+	if node.Name != "node-a" {
+		t.Errorf("Route selected %q, want \"node-a\" (predicted delay must beat raw queue depth)", node.Name)
+	}
+}
