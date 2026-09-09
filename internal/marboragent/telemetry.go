@@ -198,6 +198,38 @@ type RuntimeInfo struct {
 	// no runtime probe this agent uses exposes one today, so this is never
 	// populated yet (0 -> omitted via omitempty, never fabricated).
 	QueueDepth int `json:"queue_depth,omitempty"`
+	// Engine is this runtime's own reported live scheduling state, scraped
+	// from its native metrics endpoint (see enginestate.go) - additive,
+	// optional, nil when no probe was attempted or the runtime exposes
+	// none of it. Reporting only: nothing in this codebase reads Engine for
+	// a placement/routing/scoring decision, and it must stay that way
+	// unless a dedicated future change deliberately designs that use.
+	Engine *EngineState `json:"engine,omitempty"`
+}
+
+// EngineState is the runtime's own reported live scheduling state - the
+// observed counterpart to the router's own computed VRAM-headroom estimate.
+// Every field is a pointer: nil means this runtime did not report it this
+// scrape (unknown, never fabricated as a zero-value measurement), a
+// non-nil zero means the runtime genuinely reported zero. Never persisted
+// to marbor.db - the router copies this straight onto in-memory NodeState
+// every poll, and a poll that can't produce a metric clears the
+// corresponding field rather than holding a stale prior value (poll
+// freshness is the only freshness mechanism here, no separate TTL).
+type EngineState struct {
+	// RunningRequests is the runtime's own count of sequences currently
+	// being decoded - a load signal, not "busier" by raw connection count.
+	// Modern engines re-form the active batch every decode iteration
+	// (continuous batching), so a raw connection count is not the same
+	// thing as how busy the engine actually is.
+	RunningRequests *int `json:"running_requests,omitempty"`
+	// WaitingRequests is the runtime's own count of sequences admitted but
+	// not yet scheduled - the other half of the load signal above.
+	WaitingRequests *int `json:"waiting_requests,omitempty"`
+	// KVCacheUsagePercent is the fraction of KV cache blocks in use,
+	// reported as a 0-100 percentage - the capacity signal that matters for
+	// this workload (KV headroom, not raw GPU busy percentage).
+	KVCacheUsagePercent *float64 `json:"kv_cache_usage_percent,omitempty"`
 }
 
 // ControlInfo is the Marbor Agent Protocol's "control" resource -

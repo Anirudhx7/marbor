@@ -150,6 +150,12 @@ export const mockGPUNodes: GPUNode[] = [
     agentArchitecture: 'amd64',
     agentGpuVendor: 'nvidia',
     agentRuntime: 'vllm',
+    // Engine-native telemetry demo: vLLM exposes all three metrics
+    // natively, unlike Ollama (node-1, above - no fields at all, no
+    // Prometheus endpoint) and TGI (node-3, below - partial coverage only).
+    engineRunningRequests: 3,
+    engineWaitingRequests: 1,
+    engineKvCacheUsagePercent: 42,
   },
   {
     id: 'node-3',
@@ -204,6 +210,11 @@ export const mockGPUNodes: GPUNode[] = [
     agentArchitecture: 'amd64',
     agentGpuVendor: 'nvidia',
     agentRuntime: 'tgi',
+    // Engine-native telemetry demo: TGI exposes running/waiting
+    // counts but no KV-cache-utilization equivalent - engineKvCacheUsagePercent
+    // deliberately absent here (never fabricated), not just left at 0.
+    engineRunningRequests: 2,
+    engineWaitingRequests: 0,
     // Demo parity for the GPU Nodes "WARMUP FAILED"/"UNLOAD FAILED" badges
     // (see NodeCard in GPUNodes.tsx) - a model repeatedly failing its
     // keep-warm ping, and a separate scheduled unload that failed against

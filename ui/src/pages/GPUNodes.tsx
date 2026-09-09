@@ -2964,6 +2964,13 @@ export function GPUNodes() {
                       {agentNode.runtimeStatus ? ` (${agentNode.runtimeStatus})` : ''}
                     </p>
                   )}
+                  {agentNode.agentRuntime && (
+                    <p>
+                      <span className="font-medium text-foreground">Engine state:</span>{' '}
+                      running {agentNode.engineRunningRequests ?? '-'}, waiting {agentNode.engineWaitingRequests ?? '-'},
+                      KV cache {agentNode.engineKvCacheUsagePercent != null ? `${agentNode.engineKvCacheUsagePercent.toFixed(0)}%` : '-'}
+                    </p>
+                  )}
                   <p><span className="font-medium text-foreground">Capabilities:</span> {agentNode.agentCapabilities?.length ? agentNode.agentCapabilities.join(', ') : '--'}</p>
                   {agentNode.hostname && (
                     <p><span className="font-medium text-foreground">Host:</span> {agentNode.hostname}{agentNode.uptimeSeconds ? ` (up ${formatDurationLong(agentNode.uptimeSeconds)})` : ''}</p>
