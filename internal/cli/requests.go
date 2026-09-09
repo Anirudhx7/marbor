@@ -28,10 +28,14 @@ func runRequestsList(flags *globalFlags, stdout, stderr io.Writer) int {
 		return code
 	}
 	tw := newTabWriter(stdout)
-	fmt.Fprintln(tw, "TIME\tID\tKEY\tMODEL\tNODE\tSTATUS\tLATENCY MS\tCLOUD\tREASON")
+	fmt.Fprintln(tw, "TIME\tID\tKEY\tMODEL\tNODE\tSTATUS\tLATENCY MS\tPREFILL MS\tCLOUD\tREASON")
 	for _, r := range reqs {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%d\t%d\t%s\t%s\n",
-			r.Time.Format("2006-01-02T15:04:05Z07:00"), r.ID, r.KeyName, r.Model, r.Node, r.Status, r.LatencyMs, yesNo(r.Cloud), r.RoutingReason)
+		prefill := "-"
+		if r.PrefillMs > 0 {
+			prefill = fmt.Sprintf("%d", r.PrefillMs)
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%d\t%d\t%s\t%s\t%s\n",
+			r.Time.Format("2006-01-02T15:04:05Z07:00"), r.ID, r.KeyName, r.Model, r.Node, r.Status, r.LatencyMs, prefill, yesNo(r.Cloud), r.RoutingReason)
 	}
 	if err := tw.Flush(); err != nil {
 		fmt.Fprintln(stderr, err)

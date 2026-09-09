@@ -523,6 +523,9 @@ export interface RequestEntry {
   // the full breakdown is fetched lazily via GET
   // /admin/requests/{id}/explain, not carried on the list entry.
   routingReason?: string;
+  // Ollama-native prefill time (prompt_eval_duration), ms. Absent/0 when the
+  // source engine didn't report it - never a fabricated measurement.
+  prefillMs?: number;
 }
 
 export interface ScoreComponent {
