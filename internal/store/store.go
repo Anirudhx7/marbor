@@ -267,9 +267,12 @@ type RequestRecord struct {
 	// rows predating this feature or for cloud-fallback requests, which have
 	// no router.RoutingDecision. RoutingDetail is the JSON-encoded score
 	// breakdown, not a human string.
-	RoutingReason string    `json:"routing_reason,omitempty"`
-	RoutingDetail string    `json:"routing_detail,omitempty"`
-	TS            time.Time `json:"ts"`
+	RoutingReason string `json:"routing_reason,omitempty"`
+	RoutingDetail string `json:"routing_detail,omitempty"`
+	// PrefillMs is Ollama-native prefill time (prompt_eval_duration), 0 when
+	// the source engine didn't report it - see prefill_ms migration comment.
+	PrefillMs int64     `json:"prefill_ms,omitempty"`
+	TS        time.Time `json:"ts"`
 }
 
 // HourlyBucket tracks request counts and costs for one UTC hour.
