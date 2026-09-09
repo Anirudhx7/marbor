@@ -314,7 +314,7 @@ func TestPrefixLocalityStore_BoundedEviction(t *testing.T) {
 // and evict it - discarding a just-refreshed entry - while the genuinely
 // untouched, now-oldest key survived because its single occurrence hadn't
 // reached the front yet. This inverts the oldest-first eviction contract
-// (D3: "oldest-first overflow eviction, last-writer-wins per key"). Fails
+// ("oldest-first overflow eviction, last-writer-wins per key"). Fails
 // against the pre-fix code (h0 gets evicted despite being refreshed, h1 does
 // not despite being genuinely untouched); passes once evictOldestLocked/
 // sweep discard stale duplicate order slots by per-entry seq comparison
