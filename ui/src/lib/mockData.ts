@@ -673,9 +673,9 @@ const mins = (n: number) => new Date(now - n * 60000).toISOString();
 const secs = (n: number) => new Date(now - n * 1000).toISOString();
 
 export const mockRequests: RequestEntry[] = [
-  { id: 'req-a1b2c3d4e5f6', time: secs(8),   key_name: 'Engineering Team',  model: 'deepseek-r1:7b',  node: 'gpu-node-01', status: 200, latency_ms: 42,   cloud: false, routingReason: 'score_based' },
-  { id: 'req-b2c3d4e5f6a1', time: secs(22),  key_name: 'Engineering Team',  model: 'llama3.3:8b',     node: 'gpu-node-02', status: 200, latency_ms: 38,   cloud: false, routingReason: 'session_affinity' },
-  { id: 'req-c3d4e5f6a1b2', time: secs(38),  key_name: 'Data Platform',     model: 'qwen2.5:14b',     node: 'gpu-node-02', status: 200, latency_ms: 74,   cloud: false, routingReason: 'pinned_warm' },
+  { id: 'req-a1b2c3d4e5f6', time: secs(8),   key_name: 'Engineering Team',  model: 'deepseek-r1:7b',  node: 'gpu-node-01', status: 200, latency_ms: 42,   cloud: false, routingReason: 'score_based', prefillMs: 9 },
+  { id: 'req-b2c3d4e5f6a1', time: secs(22),  key_name: 'Engineering Team',  model: 'llama3.3:8b',     node: 'gpu-node-02', status: 200, latency_ms: 38,   cloud: false, routingReason: 'session_affinity', prefillMs: 6 },
+  { id: 'req-c3d4e5f6a1b2', time: secs(38),  key_name: 'Data Platform',     model: 'qwen2.5:14b',     node: 'gpu-node-02', status: 200, latency_ms: 74,   cloud: false, routingReason: 'pinned_warm', prefillMs: 14 },
   { id: 'req-d4e5f6a1b2c3', time: secs(51),  key_name: 'Engineering Team',  model: 'gpt-4o',           node: '',            status: 200, latency_ms: 312,  cloud: true  },
   { id: 'req-e5f6a1b2c3d4', time: mins(1),   key_name: 'CI/CD Pipeline',    model: 'qwen2.5-coder:14b',   node: 'gpu-node-01', status: 200, latency_ms: 29,   cloud: false },
   { id: 'req-f6a1b2c3d4e5', time: mins(2),   key_name: 'Engineering Team',  model: 'qwen3:8b',         node: 'gpu-node-03', status: 200, latency_ms: 67,   cloud: false, routingReason: 'score_based' },

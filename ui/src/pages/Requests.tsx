@@ -514,6 +514,7 @@ export function Requests() {
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Node</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">Latency</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">Prefill</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Why</th>
                 </tr>
               </thead>
@@ -522,7 +523,7 @@ export function Requests() {
                   [...Array(5)].map((_, i) => <SkeletonRow key={i} />)
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-12 text-center text-muted-foreground text-sm">
+                    <td colSpan={9} className="px-4 py-12 text-center text-muted-foreground text-sm">
                       <div className="flex flex-col items-center gap-2">
                         <span>{hasActiveFilter ? 'No requests match your filter.' : 'No requests yet. Send a request through the proxy to see it here.'}</span>
                         {hasActiveFilter && (
@@ -585,6 +586,9 @@ export function Requests() {
                       <td className="px-4 py-3 text-right font-mono text-xs text-muted-foreground">
                         {entry.latency_ms} ms
                       </td>
+                      <td className="px-4 py-3 text-right font-mono text-xs text-muted-foreground">
+                        {entry.prefillMs ? `${entry.prefillMs} ms` : '-'}
+                      </td>
                       <td className="px-4 py-3">
                         <button
                           type="button"
@@ -598,7 +602,7 @@ export function Requests() {
                     </tr>
                     {expandedId === entry.id && (
                       <tr className="border-b border-border last:border-0 bg-secondary/20">
-                        <td colSpan={8} className="px-4 py-3">
+                        <td colSpan={9} className="px-4 py-3">
                           <ExplainPanel state={explainData[entry.id]} />
                         </td>
                       </tr>
@@ -663,6 +667,10 @@ export function Requests() {
                 <div>
                   <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Latency</div>
                   <div className="text-sm text-foreground font-mono">{entry.latency_ms} ms</div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Prefill</div>
+                  <div className="text-sm text-foreground font-mono">{entry.prefillMs ? `${entry.prefillMs} ms` : '-'}</div>
                 </div>
                 <div>
                   <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Model</div>

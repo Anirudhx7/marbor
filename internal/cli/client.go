@@ -1242,6 +1242,7 @@ type RequestEntry struct {
 	LatencyMs     int       `json:"latency_ms"`
 	Cloud         bool      `json:"cloud"`
 	RoutingReason string    `json:"routingReason,omitempty"`
+	PrefillMs     int64     `json:"prefillMs,omitempty"`
 }
 
 // Requests calls GET /admin/requests - the full in-memory request log ring,
