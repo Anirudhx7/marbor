@@ -145,6 +145,62 @@ func TestPrefixLocality_CancellationNoRecord(t *testing.T) {
 	}
 }
 
+func TestPrefixLocality_RetryPrefersHintedNode(t *testing.T) {
+	dead := deadURL(t)
+	hinted := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"done":true}`))
+	}))
+	defer hinted.Close()
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"done":true}`))
+	}))
+	defer other.Close()
+
+	r := router.New(prefixLocalityRoutingConfig(), []config.NodeConfig{
+		{Name: "dead", URL: dead, Runtime: "ollama"},
+		{Name: "hinted", URL: hinted.URL, Runtime: "ollama"},
+		{Name: "other", URL: other.URL, Runtime: "ollama"},
+	}, nil)
+	// Only "dead" is warm, so the initial attempt is forced there by the
+	// warm_model_resident score component (50) regardless of the locality
+	// hint (10) - this isolates the retry path, which is what's under test.
+	for _, n := range r.Nodes() {
+		if n.Name == "dead" {
+			seedNode(n, "llama3")
+		}
+	}
+
+	a := admin.NewServer(r, nil, config.Config{})
+	h := NewHandler(r, a, nil)
+
+	body := []byte(`{"model":"llama3","messages":[{"role":"user","content":"retry hint test"}]}`)
+
+	// Seed a locality hint pointing at "hinted" for this exact request body,
+	// as if a prior turn had already completed there.
+	key, _ := r.PrefixLocalityLookup(context.Background(), "llama3", body)
+	r.RecordPrefixLocality(key, "hinted", true)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/chat", strings.NewReader(string(body)))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 after retry away from the dead node, got %d (body: %s)", rec.Code, rec.Body.String())
+	}
+
+	// Both "hinted" and "other" are cold and otherwise identical once "dead"
+	// is excluded on retry; only the locality hint distinguishes them. If the
+	// retry path ignores the hint (RouteExcluding instead of
+	// RouteExcludingWithPrefix), this is not deterministic and can land on
+	// "other" instead.
+	_, node := r.PrefixLocalityLookup(context.Background(), "llama3", body)
+	if node != "hinted" {
+		t.Errorf("preferred node after retry-then-success = %q, want %q (retry must still honor the locality hint when choosing among non-excluded nodes)", node, "hinted")
+	}
+}
+
 func TestPrefixLocality_TimeoutNoRecord(t *testing.T) {
 	release := make(chan struct{})
 	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
