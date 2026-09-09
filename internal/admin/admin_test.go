@@ -474,7 +474,7 @@ func TestShutdownDrainsAsyncLogQueue(t *testing.T) {
 	s := NewServer(r, nil, config.Config{}, st)
 
 	for i := 0; i < 10; i++ {
-		s.LogRequest(fmt.Sprintf("req-%d", i), "key1", "127.0.0.1", "llama3", "node1", "200", 200, 12, 100, nil)
+		s.LogRequest(fmt.Sprintf("req-%d", i), "key1", "127.0.0.1", "llama3", "node1", "200", 200, 12, 100, 0, nil)
 	}
 
 	s.Shutdown()
@@ -489,7 +489,7 @@ func TestShutdownDrainsAsyncLogQueue(t *testing.T) {
 
 	// A LogRequest call after Shutdown must not panic (send on closed
 	// channel) even though the async logger has already exited.
-	s.LogRequest("req-after-shutdown", "key1", "127.0.0.1", "llama3", "node1", "200", 200, 12, 100, nil)
+	s.LogRequest("req-after-shutdown", "key1", "127.0.0.1", "llama3", "node1", "200", 200, 12, 100, 0, nil)
 }
 
 // newScheduleTestServer builds an admin Server with one registered node
@@ -1293,7 +1293,7 @@ func TestHandleExplainRequest(t *testing.T) {
 			{Name: "free_vram_headroom", Raw: 1, Weight: 20, Value: 20},
 		},
 	}
-	s.LogRequest("req-explain-1", "key1", "127.0.0.1", "llama3", "node-a", "warm", 200, 12, 100, decision)
+	s.LogRequest("req-explain-1", "key1", "127.0.0.1", "llama3", "node-a", "warm", 200, 12, 100, 0, decision)
 
 	doGet := func(path string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
