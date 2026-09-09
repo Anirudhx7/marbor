@@ -637,6 +637,9 @@ func (c *Config) Validate() error {
 	if c.Routing.PrefixLocalityWeight == 0 {
 		c.Routing.PrefixLocalityWeight = 10
 	}
+	if c.Routing.PrefixLocalityWeight < 0 || c.Routing.PrefixLocalityWeight >= 15 {
+		return fmt.Errorf("routing.prefix_locality_weight: %v must be >= 0 and < 15 (locked scoring order requires it stay below inverse_queue_depth's weight of 15)", c.Routing.PrefixLocalityWeight)
+	}
 	if c.Metrics.Port == 0 {
 		c.Metrics.Port = 9090
 	}
