@@ -51,6 +51,30 @@ vllm:kv_cache_usage_perc{model_name="m"} 0.42
 	intEq(t, es.RunningRequests, 3)
 	intEq(t, es.WaitingRequests, 1)
 	floatEq(t, es.KVCacheUsagePercent, 42)
+	if es.PrefixCacheQueries != nil || es.PrefixCacheHits != nil {
+		t.Errorf("PrefixCacheQueries/Hits = %v/%v, want nil (metrics absent from this scrape)", es.PrefixCacheQueries, es.PrefixCacheHits)
+	}
+}
+
+// TestCollectVLLMEngineState_PrefixCacheCounters covers the raw
+// prefix-cache counter scrape: both present, summed across any per-model
+// label repeats (same discipline as the running/waiting counters above).
+func TestCollectVLLMEngineState_PrefixCacheCounters(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`vllm:prefix_cache_queries{model_name="a"} 100
+vllm:prefix_cache_queries{model_name="b"} 50
+vllm:prefix_cache_hits{model_name="a"} 80
+vllm:prefix_cache_hits{model_name="b"} 20
+`))
+	}))
+	defer srv.Close()
+
+	es := collectEngineState(context.Background(), testClient(), "vllm", srv.URL)
+	if es == nil {
+		t.Fatal("EngineState = nil, want populated")
+	}
+	floatEq(t, es.PrefixCacheQueries, 150)
+	floatEq(t, es.PrefixCacheHits, 100)
 }
 
 // TestCollectVLLMEngineState_LegacyKVName covers the legacy-engine metric

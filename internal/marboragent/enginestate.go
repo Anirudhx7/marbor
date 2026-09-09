@@ -17,7 +17,15 @@
 //     same names on both the legacy and V1 engine. The KV-cache metric name
 //     differs: legacy exposes vllm:gpu_cache_usage_perc, V1 exposes
 //     vllm:kv_cache_usage_perc - both a 0-1 fraction per vLLM's own metrics
-//     design doc, converted to a 0-100 percent here. Source:
+//     design doc, converted to a 0-100 percent here. V1 also exposes
+//     vllm:prefix_cache_queries / vllm:prefix_cache_hits as raw cumulative
+//     counters (V1 deliberately replaced a legacy hit-rate gauge with these
+//     two counters so the rate can be computed over any interval - see the
+//     doc's "Prefix Cache metrics" section). No legacy-engine equivalent is
+//     scraped: the legacy gauge is documented as deprecated with no
+//     replacement name given, so guessing one would violate the
+//     never-fabricate rule; a legacy-engine vLLM instance reports both
+//     fields as unknown. Source:
 //     https://docs.vllm.ai/en/latest/design/v1/metrics.html
 //   - TGI: tgi_batch_current_size ("Current batch size") maps to
 //     RunningRequests and tgi_queue_size ("Current queue size") maps to
@@ -82,7 +90,17 @@ func collectVLLMEngineState(ctx context.Context, client *http.Client, baseURL st
 	} else if v, ok := sumSamples(samples, "vllm:gpu_cache_usage_perc"); ok {
 		es.KVCacheUsagePercent = clampPercent(v * 100)
 	}
-	if es.RunningRequests == nil && es.WaitingRequests == nil && es.KVCacheUsagePercent == nil {
+	// Raw counters, never converted to a rate here - see the package doc
+	// comment and EngineState.PrefixCacheQueries/Hits. V1-engine only; no
+	// legacy-engine name is scraped (see package doc comment).
+	if v, ok := sumSamples(samples, "vllm:prefix_cache_queries"); ok {
+		es.PrefixCacheQueries = &v
+	}
+	if v, ok := sumSamples(samples, "vllm:prefix_cache_hits"); ok {
+		es.PrefixCacheHits = &v
+	}
+	if es.RunningRequests == nil && es.WaitingRequests == nil && es.KVCacheUsagePercent == nil &&
+		es.PrefixCacheQueries == nil && es.PrefixCacheHits == nil {
 		return nil
 	}
 	return es
