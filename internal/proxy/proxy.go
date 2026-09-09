@@ -595,7 +595,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 
 			if attempt < maxRetries {
-				alt, _, altDecision := h.router.RouteExcluding(modelName, runtimeFilter, tried)
+				alt, _, altDecision := h.router.RouteExcludingWithPrefix(modelName, runtimeFilter, tried, prefixPreferredNode)
 				if alt != nil {
 					metrics.Retry(node.Name)
 					lastFailedNode = node.Name

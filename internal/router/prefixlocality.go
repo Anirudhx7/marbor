@@ -158,7 +158,9 @@ func prefixLookupCandidates(seq []string) []string {
 // request. This is the ONLY isolation boundary in the feature.
 func prefixDomain(ctx context.Context) string {
 	if name := auth.KeyNameFromContext(ctx); name != "" {
-		return name
+		// Namespaced so no operator-chosen key name - however unusual - can
+		// ever equal anonymousDomain and share its keyspace.
+		return "k\x00" + name
 	}
 	return anonymousDomain
 }
