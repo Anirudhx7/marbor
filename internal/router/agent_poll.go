@@ -27,6 +27,43 @@ import (
 	"github.com/Anirudhx7/marbor/internal/marboragent"
 )
 
+// derivePrefixCacheHitRate converts this poll's raw cumulative prefix-cache
+// counters into a 0-100% rate against n's previous poll, then updates n's
+// baseline for the next call. Returns nil (unknown, never a fabricated 0%)
+// when either counter is missing this poll, when there is no prior baseline
+// yet (first poll that reports the counters), when the query count did not
+// increase (nothing to divide by, or a stalled engine), or when either
+// counter went backwards (the engine restarted between polls - a v1-engine
+// counter reset to 0 - so the delta would be nonsense).
+func derivePrefixCacheHitRate(n *NodeState, queries, hits *float64) *float64 {
+	prevQ, prevH := n.prevEnginePrefixCacheQueries, n.prevEnginePrefixCacheHits
+	if queries != nil && hits != nil {
+		n.prevEnginePrefixCacheQueries = queries
+		n.prevEnginePrefixCacheHits = hits
+	} else {
+		n.prevEnginePrefixCacheQueries = nil
+		n.prevEnginePrefixCacheHits = nil
+	}
+	if queries == nil || hits == nil || prevQ == nil || prevH == nil {
+		return nil
+	}
+	if *queries < *prevQ || *hits < *prevH {
+		return nil
+	}
+	deltaQ := *queries - *prevQ
+	deltaH := *hits - *prevH
+	if deltaQ <= 0 {
+		return nil
+	}
+	rate := (deltaH / deltaQ) * 100
+	if rate < 0 {
+		rate = 0
+	} else if rate > 100 {
+		rate = 100
+	}
+	return &rate
+}
+
 // pollAgentHosts groups every current node by its shared Host, polls each
 // enabled host's agent exactly once, and fans the result out via
 // pollAgentHost. Any node whose host has no enabled agent configured gets
@@ -311,6 +348,7 @@ func (r *Router) applyAgentTelemetry(n *NodeState, t marboragent.Telemetry) {
 			n.EngineRunningRequests = entry.Engine.RunningRequests
 			n.EngineWaitingRequests = entry.Engine.WaitingRequests
 			n.EngineKVCacheUsagePercent = entry.Engine.KVCacheUsagePercent
+			n.EnginePrefixCacheHitRatePercent = derivePrefixCacheHitRate(n, entry.Engine.PrefixCacheQueries, entry.Engine.PrefixCacheHits)
 		} else {
 			// This poll's RuntimeInfo carries no Engine block at all (e.g.
 			// runtime down, or a runtime with no native metrics source) -
@@ -320,6 +358,9 @@ func (r *Router) applyAgentTelemetry(n *NodeState, t marboragent.Telemetry) {
 			n.EngineRunningRequests = nil
 			n.EngineWaitingRequests = nil
 			n.EngineKVCacheUsagePercent = nil
+			n.EnginePrefixCacheHitRatePercent = nil
+			n.prevEnginePrefixCacheQueries = nil
+			n.prevEnginePrefixCacheHits = nil
 		}
 	} else {
 		n.AgentRuntime = ""
@@ -329,6 +370,9 @@ func (r *Router) applyAgentTelemetry(n *NodeState, t marboragent.Telemetry) {
 		n.EngineRunningRequests = nil
 		n.EngineWaitingRequests = nil
 		n.EngineKVCacheUsagePercent = nil
+		n.EnginePrefixCacheHitRatePercent = nil
+		n.prevEnginePrefixCacheQueries = nil
+		n.prevEnginePrefixCacheHits = nil
 	}
 	// Per-runtime deployment auto-discovery (port/ID matched, not Host).
 	// One deployment report per runtime instance means two vLLM on same host
@@ -575,6 +619,9 @@ func clearAgentTelemetry(n *NodeState) {
 	n.EngineRunningRequests = nil
 	n.EngineWaitingRequests = nil
 	n.EngineKVCacheUsagePercent = nil
+	n.EnginePrefixCacheHitRatePercent = nil
+	n.prevEnginePrefixCacheQueries = nil
+	n.prevEnginePrefixCacheHits = nil
 	n.FanPercent = nil
 	n.RAMUsedMB = 0
 	n.DiskFreeGB = 0

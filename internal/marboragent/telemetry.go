@@ -230,6 +230,16 @@ type EngineState struct {
 	// reported as a 0-100 percentage - the capacity signal that matters for
 	// this workload (KV headroom, not raw GPU busy percentage).
 	KVCacheUsagePercent *float64 `json:"kv_cache_usage_percent,omitempty"`
+	// PrefixCacheQueries/PrefixCacheHits are the runtime's own cumulative
+	// prefix-cache counters (queries = tokens looked up, hits = tokens found
+	// already cached) - monotonic since engine start, reset to 0 on engine
+	// restart. Raw counters, not a rate: vLLM's own metrics design
+	// deliberately exposes queries/hits rather than a hit-rate gauge so the
+	// rate can be computed over whatever interval the consumer chooses (see
+	// enginestate.go's scrape comment). The router derives a rate from two
+	// consecutive polls; this agent never computes one.
+	PrefixCacheQueries *float64 `json:"prefix_cache_queries,omitempty"`
+	PrefixCacheHits    *float64 `json:"prefix_cache_hits,omitempty"`
 }
 
 // ControlInfo is the Marbor Agent Protocol's "control" resource -

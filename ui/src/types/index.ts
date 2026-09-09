@@ -201,6 +201,11 @@ export interface GPUNode {
   engineRunningRequests?: number;
   engineWaitingRequests?: number;
   engineKvCacheUsagePercent?: number;
+  // Rate (0-100%) derived from two consecutive polls of the runtime's raw
+  // prefix-cache counters - vLLM V1 only today. Absent means either the
+  // runtime doesn't report the counters, or there's no prior poll yet to
+  // diff against - render "-", never 0%.
+  enginePrefixCacheHitRatePercent?: number;
   // localModels lists models already downloaded on this node (not just
   // currently loaded - loadedModels above covers that), via the agent's
   // "models.list" capability. Fetched separately (getNodeModels), not part

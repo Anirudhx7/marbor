@@ -318,6 +318,20 @@ type NodeState struct {
 	EngineRunningRequests     *int
 	EngineWaitingRequests     *int
 	EngineKVCacheUsagePercent *float64
+	// EnginePrefixCacheHitRatePercent is a rate (0-100%) derived from two
+	// consecutive polls of the agent's raw PrefixCacheQueries/PrefixCacheHits
+	// counters (see EngineState's doc comment - those are cumulative since
+	// engine start, not a rate). nil whenever a rate cannot be honestly
+	// computed: no counters reported this poll, no prior poll to diff
+	// against, or the counters went backwards (engine restarted between
+	// polls, so the delta would be nonsense) - never a fabricated 0%.
+	EnginePrefixCacheHitRatePercent *float64
+	// prevEnginePrefixCacheQueries/Hits are the raw counters from the last
+	// poll that reported them, used only to compute the delta above on the
+	// next poll. Never exposed outside this package - the rate field is the
+	// only prefix-cache surface anything else should read.
+	prevEnginePrefixCacheQueries *float64
+	prevEnginePrefixCacheHits    *float64
 	// AgentControlDiscovered* is what the agent's most recent ControlDriver
 	// probe found (marboragent.ControlDiscovery) - purely informational
 	// for the admin API's probe/accept UI. The operator-accepted value

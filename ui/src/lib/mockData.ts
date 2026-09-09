@@ -156,6 +156,9 @@ export const mockGPUNodes: GPUNode[] = [
     engineRunningRequests: 3,
     engineWaitingRequests: 1,
     engineKvCacheUsagePercent: 42,
+    // Rate derived from two polls of vLLM's raw prefix-cache counters -
+    // plausible static demo value, vLLM V1 only (see types/index.ts).
+    enginePrefixCacheHitRatePercent: 71,
   },
   {
     id: 'node-3',

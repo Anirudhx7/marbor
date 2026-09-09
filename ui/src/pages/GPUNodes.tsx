@@ -2971,6 +2971,12 @@ export function GPUNodes() {
                       KV cache {agentNode.engineKvCacheUsagePercent != null ? `${agentNode.engineKvCacheUsagePercent.toFixed(0)}%` : '-'}
                     </p>
                   )}
+                  {agentNode.agentRuntime && (
+                    <p>
+                      <span className="font-medium text-foreground">Prefix cache hit rate:</span>{' '}
+                      {agentNode.enginePrefixCacheHitRatePercent != null ? `${agentNode.enginePrefixCacheHitRatePercent.toFixed(0)}%` : '-'}
+                    </p>
+                  )}
                   <p><span className="font-medium text-foreground">Capabilities:</span> {agentNode.agentCapabilities?.length ? agentNode.agentCapabilities.join(', ') : '--'}</p>
                   {agentNode.hostname && (
                     <p><span className="font-medium text-foreground">Host:</span> {agentNode.hostname}{agentNode.uptimeSeconds ? ` (up ${formatDurationLong(agentNode.uptimeSeconds)})` : ''}</p>

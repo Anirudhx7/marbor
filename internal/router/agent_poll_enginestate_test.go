@@ -87,3 +87,75 @@ func TestClearAgentTelemetry_ClearsEngineState(t *testing.T) {
 		t.Errorf("EngineRunningRequests = %v, want nil after clearAgentTelemetry", *got)
 	}
 }
+
+// telWithPrefixCache builds a single-runtime Telemetry payload carrying only
+// the prefix-cache counters, for the rate-derivation tests below.
+func telWithPrefixCache(queries, hits float64) marboragent.Telemetry {
+	return marboragent.Telemetry{
+		Agent: marboragent.Agent{NodeID: "host1", Version: "v1", ProtocolVersion: 1},
+		Runtimes: []marboragent.RuntimeInfo{
+			{Name: "vllm", Port: 8000, ID: "id-8000", Status: "up", Engine: &marboragent.EngineState{
+				PrefixCacheQueries: &queries,
+				PrefixCacheHits:    &hits,
+			}},
+		},
+	}
+}
+
+// TestApplyAgentTelemetry_PrefixCacheHitRate_FirstPollHasNoBaseline covers
+// the case where the counters appear for the first time - there is nothing
+// to diff against yet, so the rate must be nil, never a fabricated value
+// (e.g. treating the raw counters themselves as a percentage).
+func TestApplyAgentTelemetry_PrefixCacheHitRate_FirstPollHasNoBaseline(t *testing.T) {
+	r := New(config.RoutingConfig{}, []config.NodeConfig{{Name: "n", URL: "http://10.0.0.11:8000"}}, nil)
+	n := r.nodes[0]
+
+	r.applyAgentTelemetry(n, telWithPrefixCache(100, 80))
+
+	n.mu.RLock()
+	got := n.EnginePrefixCacheHitRatePercent
+	n.mu.RUnlock()
+	if got != nil {
+		t.Errorf("EnginePrefixCacheHitRatePercent = %v, want nil (no prior poll to diff against)", *got)
+	}
+}
+
+// TestApplyAgentTelemetry_PrefixCacheHitRate_SecondPollComputesDelta covers
+// the normal case: two polls with increasing counters produce the rate over
+// exactly that interval's delta, not the cumulative-since-start ratio.
+func TestApplyAgentTelemetry_PrefixCacheHitRate_SecondPollComputesDelta(t *testing.T) {
+	r := New(config.RoutingConfig{}, []config.NodeConfig{{Name: "n", URL: "http://10.0.0.11:8000"}}, nil)
+	n := r.nodes[0]
+
+	r.applyAgentTelemetry(n, telWithPrefixCache(100, 80))
+	// Delta this interval: +100 queries, +10 hits -> 10%, deliberately far
+	// from the cumulative ratio (90/200=45%) to prove it's the interval
+	// delta being computed, not the cumulative-since-start ratio.
+	r.applyAgentTelemetry(n, telWithPrefixCache(200, 90))
+
+	n.mu.RLock()
+	got := n.EnginePrefixCacheHitRatePercent
+	n.mu.RUnlock()
+	if got == nil || *got != 10 {
+		t.Fatalf("EnginePrefixCacheHitRatePercent = %v, want 10 (interval delta, not cumulative ratio)", got)
+	}
+}
+
+// TestApplyAgentTelemetry_PrefixCacheHitRate_CounterResetYieldsNil covers an
+// engine restart between polls (v1-engine counters reset to 0): the delta
+// would be negative/nonsense, so the rate must be nil, never a fabricated
+// negative or clamped-to-zero value presented as a real measurement.
+func TestApplyAgentTelemetry_PrefixCacheHitRate_CounterResetYieldsNil(t *testing.T) {
+	r := New(config.RoutingConfig{}, []config.NodeConfig{{Name: "n", URL: "http://10.0.0.11:8000"}}, nil)
+	n := r.nodes[0]
+
+	r.applyAgentTelemetry(n, telWithPrefixCache(500, 400))
+	r.applyAgentTelemetry(n, telWithPrefixCache(10, 8)) // engine restarted, counters reset
+
+	n.mu.RLock()
+	got := n.EnginePrefixCacheHitRatePercent
+	n.mu.RUnlock()
+	if got != nil {
+		t.Errorf("EnginePrefixCacheHitRatePercent = %v, want nil (counter reset detected)", *got)
+	}
+}
