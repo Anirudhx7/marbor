@@ -306,9 +306,11 @@ type NodeState struct {
 	RuntimeStatus  string
 	// EngineRunningRequests/EngineWaitingRequests/EngineKVCacheUsagePercent
 	// mirror marboragent.RuntimeInfo.Engine - the runtime's own live
-	// scheduling state, scraped from its native metrics endpoint. Reporting
-	// only: nothing in this codebase reads these for a placement/routing/
-	// scoring decision. Pointers, same never-fabricate discipline as
+	// scheduling state, scraped from its native metrics endpoint.
+	// EngineRunningRequests/EngineWaitingRequests feed placement scoring's
+	// inverse_queue_depth factor via engineAwareLoad (placement.go) when
+	// both are non-nil; EngineKVCacheUsagePercent remains reporting only.
+	// Pointers, same never-fabricate discipline as
 	// AgentGPUs' CorePercent/TemperatureC above - nil means this runtime did
 	// not report the metric this poll (unknown), never a real zero. Never
 	// persisted to marbor.db (live-only, see EngineState's own doc comment);
