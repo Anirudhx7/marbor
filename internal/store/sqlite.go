@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -39,6 +40,13 @@ const CurrentSchemaVersion = 1
 type sqliteStore struct {
 	db        *sql.DB
 	secretKey []byte // AES-256 key for at-rest secret encryption, see secretbox.go
+
+	// prefixLocalityWrites counts AppendPrefixLocality calls so the trim
+	// below can run every Nth write instead of every write - see that
+	// method's comment for why (the 10,000-row cap is 20x predictive_history's
+	// 500, so a full-table trim on every single call would resort up to
+	// 10,000 rows per successful request).
+	prefixLocalityWrites atomic.Uint64
 }
 
 // Open opens (or creates) a SQLite database at path, runs migrations, and
@@ -305,6 +313,14 @@ func (s *sqliteStore) migrate() error {
 			to_model   TEXT NOT NULL,
 			ts         TEXT NOT NULL
 		)`,
+
+		`CREATE TABLE IF NOT EXISTS prefix_locality (
+			id          INTEGER PRIMARY KEY AUTOINCREMENT,
+			prefix_hash TEXT NOT NULL,
+			node_name   TEXT NOT NULL,
+			ts          TEXT NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_prefix_locality_hash ON prefix_locality(prefix_hash)`,
 
 		`CREATE TABLE IF NOT EXISTS runtime_keys (
 			name          TEXT PRIMARY KEY,
@@ -1744,6 +1760,60 @@ func (s *sqliteStore) PredictiveHistory() ([]PredictiveTransition, error) {
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("store: PredictiveHistory rows: %w", err)
+	}
+	return out, nil
+}
+
+// --- Rolling prefix-locality routing hints (restart-continuity persistence
+// only - the in-memory store in internal/router/prefixlocality.go is the
+// sole runtime authority; this table is never read on the routing hot
+// path) ---
+
+func (s *sqliteStore) AppendPrefixLocality(prefixHash, nodeName string, ts time.Time) error {
+	_, err := s.db.Exec(
+		`INSERT INTO prefix_locality (prefix_hash, node_name, ts) VALUES (?, ?, ?)`,
+		prefixHash, nodeName, ts.UTC().Format(time.RFC3339Nano),
+	)
+	if err != nil {
+		return fmt.Errorf("store: AppendPrefixLocality: %w", err)
+	}
+	// Trim to the same 10,000-row bound as the in-memory store's cap - a
+	// larger bound than predictive_history's 500 since this table backs a
+	// per-key-scoped cache, not a single global log. At that size, resorting
+	// the whole table on every single insert (predictive_history's pattern,
+	// fine at 500 rows) becomes real I/O pressure under load, so this trims
+	// every 50th write instead of every write: steady-state row count still
+	// stays bounded (with a small, harmless overshoot margin of at most 49
+	// rows between trims), and the common-case write stays cheap. This is
+	// asynchronous, best-effort persistence only - never the routing hot
+	// path - so a slightly stale bound here has no correctness impact.
+	if s.prefixLocalityWrites.Add(1)%50 == 0 {
+		_, _ = s.db.Exec(`DELETE FROM prefix_locality WHERE id NOT IN (SELECT id FROM prefix_locality ORDER BY id DESC LIMIT 10000)`)
+	}
+	return nil
+}
+
+func (s *sqliteStore) PrefixLocalityHistory() ([]PrefixLocalityEntry, error) {
+	rows, err := s.db.Query(`SELECT prefix_hash, node_name, ts FROM prefix_locality ORDER BY id ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("store: PrefixLocalityHistory: %w", err)
+	}
+	defer rows.Close()
+
+	var out []PrefixLocalityEntry
+	for rows.Next() {
+		var hash, node, tsRaw string
+		if err := rows.Scan(&hash, &node, &tsRaw); err != nil {
+			return nil, fmt.Errorf("store: PrefixLocalityHistory scan: %w", err)
+		}
+		ts, err := time.Parse(time.RFC3339Nano, tsRaw)
+		if err != nil {
+			continue
+		}
+		out = append(out, PrefixLocalityEntry{PrefixHash: hash, NodeName: node, Timestamp: ts})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: PrefixLocalityHistory rows: %w", err)
 	}
 	return out, nil
 }
