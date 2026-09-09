@@ -47,9 +47,9 @@ import (
 )
 
 const (
-	// prefixLocalityMaxEntries/TTL are the D3 state bounds - same precedent
-	// as session affinity's maxAffinityEntries, applied to this unrelated
-	// subsystem.
+	// prefixLocalityMaxEntries/TTL are the locked state bounds - same
+	// precedent as session affinity's maxAffinityEntries, applied to this
+	// unrelated subsystem.
 	prefixLocalityMaxEntries = 10_000
 	prefixLocalityTTL        = 10 * time.Minute
 	// prefixLocalityProbeDepth (K) bounds how many progressively-shorter
