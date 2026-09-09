@@ -656,7 +656,7 @@ func TestPlacementScoring_TTFTWeightedLoad(t *testing.T) {
 	}
 }
 
-// --- G1-C case 20: weight ordering with live-scoring numeric margins ---
+// --- case: weight ordering with live-scoring numeric margins ---
 func TestScoreComponents_PrefixMatchOrdering(t *testing.T) {
 	r := New(config.RoutingConfig{Strategy: "warm-first", PrefixLocalityEnabled: true, PrefixLocalityWeight: 10}, []config.NodeConfig{
 		{Name: "node-a", URL: "http://node-a:11434", VRAMTotalMB: 8192},
@@ -719,7 +719,7 @@ func TestPrefixMatch_DisabledFeatureParity(t *testing.T) {
 	}
 }
 
-// --- G1-C case 10: eligibility precedence over locality hint ---
+// --- case: eligibility precedence over locality hint ---
 func TestSelectBestNode_EligibilityBeatsPrefixHint(t *testing.T) {
 	r := New(config.RoutingConfig{Strategy: "warm-first", PrefixLocalityEnabled: true, PrefixLocalityWeight: 10}, []config.NodeConfig{
 		{Name: "node-a", URL: "http://node-a:11434", VRAMTotalMB: 8192},
@@ -743,7 +743,7 @@ func TestSelectBestNode_EligibilityBeatsPrefixHint(t *testing.T) {
 	}
 }
 
-// --- G1-C case 11: preferred-node failure/reroute ---
+// --- case: preferred-node failure/reroute ---
 func TestRouteWithPrefix_PreferredNodeUnhealthyReroutes(t *testing.T) {
 	r := New(config.RoutingConfig{Strategy: "warm-first", PrefixLocalityEnabled: true, PrefixLocalityWeight: 10}, []config.NodeConfig{
 		{Name: "node-a", URL: "http://node-a:11434", VRAMTotalMB: 8192},
@@ -762,7 +762,7 @@ func TestRouteWithPrefix_PreferredNodeUnhealthyReroutes(t *testing.T) {
 	}
 }
 
-// --- G1-C case 14 (routing-layer half): RouteExcludingWithPrefix never
+// --- case: RouteExcludingWithPrefix never
 // re-selects a failed/excluded preferred node through its locality entry,
 // because exclude filters the candidate slice before any scoring runs. ---
 func TestRouteExcludingWithPrefix_NeverReselectsExcludedPreferredNode(t *testing.T) {
@@ -782,7 +782,7 @@ func TestRouteExcludingWithPrefix_NeverReselectsExcludedPreferredNode(t *testing
 	}
 }
 
-// --- G1-C case 15: node removal invalidates a stale locality preference ---
+// --- case: node removal invalidates a stale locality preference ---
 func TestRouteWithPrefix_RemovedNodeHintInert(t *testing.T) {
 	r := New(config.RoutingConfig{Strategy: "warm-first", PrefixLocalityEnabled: true, PrefixLocalityWeight: 10}, []config.NodeConfig{
 		{Name: "node-a", URL: "http://node-a:11434", VRAMTotalMB: 8192},
@@ -799,7 +799,7 @@ func TestRouteWithPrefix_RemovedNodeHintInert(t *testing.T) {
 	}
 }
 
-// --- G1-C case 15 (drain sub-case): a draining node's stale locality hint
+// --- case: a draining node's stale locality hint
 // contributes nothing, request routes to the other eligible node. ---
 func TestRouteWithPrefix_DrainingNodeHintInert(t *testing.T) {
 	r := New(config.RoutingConfig{Strategy: "warm-first", PrefixLocalityEnabled: true, PrefixLocalityWeight: 10}, []config.NodeConfig{
@@ -822,7 +822,7 @@ func TestRouteWithPrefix_DrainingNodeHintInert(t *testing.T) {
 	}
 }
 
-// --- G1-C case 15 (model-incompatible sub-case): a locality hint pointing
+// --- case: a locality hint pointing
 // at a node that can no longer serve the requested model contributes
 // nothing, request routes to the other eligible node. ---
 func TestRouteWithPrefix_ModelIncompatibleNodeHintInert(t *testing.T) {
@@ -852,7 +852,7 @@ func TestRouteWithPrefix_ModelIncompatibleNodeHintInert(t *testing.T) {
 	}
 }
 
-// --- G1-C case 15 (runtime-incompatible sub-case): a locality hint pointing
+// --- case: a locality hint pointing
 // at a node whose runtime does not match the request's runtimeFilter
 // contributes nothing, request routes to the other eligible node. ---
 func TestRouteWithPrefix_RuntimeIncompatibleNodeHintInert(t *testing.T) {

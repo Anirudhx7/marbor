@@ -393,6 +393,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// from a body that injectModelDefaults or a later degradation swap may
 	// have since mutated.
 	prefixRecordKey, prefixPreferredNode := h.router.PrefixLocalityLookup(r.Context(), modelName, body)
+	// lookupModel snapshots the model the key above was actually computed
+	// against. A later local-degradation substitution can reassign modelName
+	// to a fallback model for the rest of this request; recording under the
+	// original key once a different model actually served the response would
+	// leave a locality hint pointing at the wrong model, so recording below
+	// only happens when the serving model still matches this snapshot.
+	lookupModel := modelName
 
 	// Determine runtime filter from request path. Ollama-native paths (/api/*)
 	// must only route to Ollama nodes; /v1/* paths can reach any backend
@@ -688,7 +695,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// point or leave success false). node is whichever node actually
 			// completed the request - the one that served it after any
 			// retry/failover, not necessarily the one first selected.
-			h.router.RecordPrefixLocality(prefixRecordKey, node.Name, success)
+			h.router.RecordPrefixLocality(prefixRecordKey, node.Name, success && modelName == lookupModel)
 		}
 		break
 	}
