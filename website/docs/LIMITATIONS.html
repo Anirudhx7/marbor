@@ -38,15 +38,15 @@
 --ease:cubic-bezier(.16,1,.3,1);
 --shadow:0 24px 60px -24px rgba(0,0,0,.55),0 2px 8px rgba(0,0,0,.35);
 }
-html.light{--bg:#f5f2e9;--bg-elevated:#faf7ee;--bg-surface:#e9e4d4;--bg-input:#e3ddcb;--border:#d9d2bd;--border-subtle:#e3ddcb;--text:#2b2924;--text-muted:#4a4740;--text-faint:#6e6960;--accent:#7d5f0e;--accent-dim:#6b520d;--accent-bg:rgba(125,95,14,.07);--accent-bg-hover:rgba(125,95,14,.13);--accent2:#1d4d1d;--accent3:#702626;--amber:#8a5f16;--shadow:0 24px 50px -28px rgba(60,50,20,.35),0 2px 8px rgba(60,50,20,.12)}
-html.light ::selection{background:#7d5f0e;color:#fdf6e3}
-html.light .btn-gold{background:linear-gradient(180deg,#dcae4e,#c1912f);border-color:#b8892f;color:#221806;box-shadow:0 10px 24px -12px rgba(125,95,14,.55),inset 0 1px 0 rgba(255,255,255,.35)}
-html.light .btn-gold:hover{background:linear-gradient(180deg,#cfa13c,#b8892f);border-color:#8a6a12;color:#221806}
+html.light{--bg:#f5f2e9;--bg-elevated:#faf7ee;--bg-surface:#e9e4d4;--bg-input:#e3ddcb;--border:#d9d2bd;--border-subtle:#e3ddcb;--text:#2b2924;--text-muted:#4a4740;--text-faint:#6e6960;--accent:#4c3a19;--accent-dim:#3a2f16;--accent-bg:rgba(76,58,25,.08);--accent-bg-hover:rgba(76,58,25,.14);--accent2:#1d4d1d;--accent3:#702626;--amber:#8a5f16;--shadow:0 24px 50px -28px rgba(60,50,20,.35),0 2px 8px rgba(60,50,20,.12)}
+html.light ::selection{background:#4c3a19;color:#f7f2e4}
+html.light .btn-gold{background:#2e2413;border-color:#2e2413;color:#f5f2e9;box-shadow:0 12px 26px -14px rgba(46,36,19,.6)}
+html.light .btn-gold:hover{background:#211a0e;border-color:#211a0e;color:#f5f2e9}
 *{box-sizing:border-box}
 html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-sans);font-size:15.5px;line-height:1.7;-webkit-font-smoothing:antialiased;transition:background .2s,color .2s}
 body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;background:radial-gradient(900px 480px at 50% -8%,rgba(212,168,83,.10),transparent 65%),radial-gradient(700px 500px at 88% 22%,rgba(212,168,83,.05),transparent 60%)}
-html.light body::before{background:radial-gradient(900px 480px at 50% -8%,rgba(125,95,14,.09),transparent 65%)}
+html.light body::before{background:radial-gradient(900px 480px at 50% -8%,rgba(76,58,25,.08),transparent 65%)}
 a{color:var(--accent);text-decoration:none;text-underline-offset:3px}
 a:hover{text-decoration:underline}
 ::selection{background:var(--accent);color:#111}
