@@ -1387,7 +1387,7 @@ export function GPUNodes() {
   const signalOptions = SIGNAL_DEFS.map((s) => ({
     id: s.id,
     label: s.label,
-    count: nodes.filter(s.matches).length,
+    count: filteredNodes.filter(s.matches).length,
   }));
   const activeSignalDefs = SIGNAL_DEFS.filter((s) => activeSignals.has(s.id));
   // OR semantics, deliberately NOT the landing page's AND: health chips are
