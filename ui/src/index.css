@@ -30,6 +30,9 @@
   --color-info-foreground: hsl(var(--info-foreground));
 
   --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  /* Editorial display face for brand moments only (login masthead, empty
+     state titles) - never body copy, tables, or controls. */
+  --font-display: 'Playfair Display', Georgia, 'Times New Roman', serif;
   /* Mono is intentionally the system stack: SFMono/Menlo/Consolas are all
      tabular, offline-safe, and render digits as well as any webfont here -
      loading JetBrains Mono would add a render-blocking fetch for no gain. */
@@ -156,6 +159,16 @@
 
   code, pre, .mono {
     @apply font-mono;
+  }
+
+  /* Single global keyboard-focus ring (brand primary, 2px + offset) - mirrors
+     the marketing site. Lives in @layer base (not unlayered) so component
+     utilities like focus-visible:outline-none / focus-visible:ring-2 still
+     win where a component deliberately replaces the ring. Covers keyboard-
+     scrollable .scroll-region table wrappers too - no per-instance twin. */
+  :focus-visible {
+    outline: 2px solid hsl(var(--primary));
+    outline-offset: 2px;
   }
 }
 

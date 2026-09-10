@@ -10,6 +10,7 @@ import {
 import type { GPUNode, PredictiveDecision } from '../types';
 import type { Schedule, NodeWarmup } from '../lib/api';
 import { Badge } from '../components/Badge';
+import { EmptyState } from '../components/EmptyState';
 import { Modal } from '../components/Modal';
 import { CustomSelect } from '../components/Select';
 import { CustomTimePicker } from '../components/DateTimePicker';
@@ -26,7 +27,7 @@ function ModelPills({ allModels, selected, onChange }: {
   selected: string[];
   onChange: (models: string[]) => void;
 }) {
-  if (allModels.length === 0) return <p className="text-xs text-muted-foreground">No models available.</p>;
+  if (allModels.length === 0) return <EmptyState compact icon={BrainCircuit} title="No models available" copy="Pull a model to a node first, then select it here." />;
   return (
     <div className="flex flex-wrap gap-1.5">
       {allModels.map(model => {
@@ -916,7 +917,7 @@ export function Warmup() {
           {loading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : nodes.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No nodes registered.</p>
+            <EmptyState compact icon={Server} title="No nodes registered" copy="Register a GPU node to configure per-node warmup." />
           ) : (
             nodes.map(n => (
               <NodeCard
@@ -997,7 +998,7 @@ export function Warmup() {
                 )}
 
                 {schedules.length === 0 && (
-                  <p className="text-sm text-muted-foreground">No schedules yet.</p>
+                  <EmptyState compact icon={Clock} title="No schedules yet" copy="Schedules you create will appear here." />
                 )}
               </>
             );
@@ -1048,7 +1049,7 @@ export function Warmup() {
             {loading ? (
               <p className="text-sm text-muted-foreground">Loading...</p>
             ) : decisions.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No predictive decisions recorded yet.</p>
+              <EmptyState compact icon={Zap} title="No predictive decisions yet" copy="The predictive engine records every prewarm decision here." />
             ) : (
             <div className="bg-card border border-border rounded-xl divide-y divide-border overflow-hidden">
               {[...decisions].reverse().map((d, i) => (

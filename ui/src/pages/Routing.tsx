@@ -15,6 +15,7 @@ import {
   ChevronDown
 } from 'lucide-react';
 import { Badge } from '../components/Badge';
+import { EmptyState } from '../components/EmptyState';
 import { StatusDot } from '../components/StatusDot';
 import { Modal } from '../components/Modal';
 import { CustomSelect, CustomCombobox, CustomTagCombobox } from '../components/Select';
@@ -681,7 +682,7 @@ export function Routing() {
 
       {/* Rules Table */}
       <div className="hidden md:block bg-card border border-border shadow-sm rounded-xl overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto scroll-region" tabIndex={0} role="region" aria-label="Routing rules table: scroll horizontally for more columns">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-secondary/30 border-b border-border text-muted-foreground">
@@ -749,8 +750,13 @@ export function Routing() {
               )}
               {!loading && rules.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">
-                    No override rules configured.
+                  <td colSpan={6} className="px-6">
+                    <EmptyState
+                      compact
+                      icon={Route}
+                      title="No override rules configured"
+                      copy="Rules match specific models or keys to a node and strategy."
+                    />
                   </td>
                 </tr>
               )}
@@ -865,9 +871,12 @@ export function Routing() {
               ))}
             </div>
           ) : cloudProviders.length === 0 ? (
-            <div className="py-8 text-center text-sm font-medium text-muted-foreground">
-              No cloud providers configured
-            </div>
+            <EmptyState
+              compact
+              icon={Cloud}
+              title="No cloud providers configured"
+              copy="Fallback endpoints for overflow traffic will be listed here."
+            />
           ) : (
             <div className="space-y-3">
               {cloudProviders.map((provider, index) => (

@@ -2,1564 +2,444 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<script>
-  // Apply the saved/preferred theme BEFORE first paint to avoid a flash of the
-  // wrong (dark) palette for light-mode visitors. The rest of the theme wiring
-  // (toggle button, persistence) runs in the deferred script at end of <body>.
-  (function () { try { var s = localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
-</script>
-<title>Marbor - The control plane for self-hosted AI inference</title>
-<meta name="description" content="The control plane for self-hosted AI inference. Turn your own GPUs into a high-availability alternative to cloud LLM APIs - warm, VRAM-aware routing across Ollama, vLLM, TGI, llama.cpp, and MLX, one OpenAI-compatible gateway, and cost-metered cloud overflow." />
-<link rel="icon" type="image/svg+xml" href="favicon.svg" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="color-scheme" content="dark light" />
+<script>(function(){try{var s=localStorage.getItem("marbor-theme")||localStorage.getItem("om-theme");if(s==="light"||(!s&&window.matchMedia&&window.matchMedia("(prefers-color-scheme: light)").matches))document.documentElement.classList.add("light");}catch(e){}})();</script>
+<title>Marbor - The intelligent control plane for self-hosted AI inference</title>
+<meta name="description" content="One OpenAI-compatible endpoint across Ollama, vLLM, TGI, llama.cpp and MLX. Marbor places each request where your GPUs serve it best." />
 <link rel="canonical" href="https://anirudh.social/marbor/" />
-<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
+<link rel="icon" type="image/svg+xml" href="favicon.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400..800;1,400..800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
 <meta name="theme-color" content="#d4a853" />
-<script defer data-domain="anirudh.social" src="https://plausible.io/js/script.tagged-events.js"></script>
-<!-- Open Graph -->
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="Marbor" />
-<meta property="og:locale" content="en_US" />
-<meta property="og:title" content="Marbor - The control plane for self-hosted AI inference" />
-<meta property="og:description" content="Turn your own GPUs into a self-hosted alternative to cloud LLM APIs. Warm-state VRAM scheduling across Ollama, vLLM, TGI, llama.cpp & MLX, an OpenAI-compatible gateway, and cost-aware cloud overflow." />
 <meta property="og:url" content="https://anirudh.social/marbor/" />
+<meta property="og:title" content="Marbor - The intelligent control plane for self-hosted AI inference" />
+<meta property="og:description" content="Marbor understands your GPU fleet and places each request intelligently. One OpenAI-compatible endpoint across Ollama, vLLM, TGI, llama.cpp and MLX." />
 <meta property="og:image" content="https://anirudh.social/marbor/screenshots/dashboard.png" />
-<meta property="og:image:alt" content="marbor admin dashboard showing live cluster telemetry, VRAM utilization, and per-key cost attribution" />
-<meta property="og:image:width" content="1200" />
-<meta property="og:image:height" content="630" />
-<!-- Twitter / X -->
+<meta property="og:image:alt" content="Marbor admin dashboard showing GPU fleet placement" />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="Marbor - The control plane for self-hosted AI inference" />
-<meta name="twitter:description" content="Turn your own GPUs into a self-hosted alternative to cloud LLM APIs. Warm-state VRAM scheduling across Ollama, vLLM, TGI, llama.cpp & MLX, an OpenAI-compatible gateway, and cost-aware cloud overflow." />
+<meta name="twitter:title" content="Marbor - The intelligent control plane for self-hosted AI inference" />
+<meta name="twitter:description" content="One OpenAI-compatible endpoint across Ollama, vLLM, TGI, llama.cpp and MLX." />
 <meta name="twitter:image" content="https://anirudh.social/marbor/screenshots/dashboard.png" />
-<meta name="twitter:image:alt" content="marbor admin dashboard showing live cluster telemetry, VRAM utilization, and per-key cost attribution" />
-<script type="application/ld+json">
-[
-  {
-    "@context": "https://schema.org",
-    "@type": "SoftwareApplication",
-    "name": "Marbor",
-    "description": "The control plane for self-hosted AI inference. marbor schedules each request to the GPU node that already holds the model warm in VRAM across Ollama, vLLM, TGI, llama.cpp, and MLX, exposing one OpenAI-compatible endpoint with authentication, rate limiting, and cost-metered cloud overflow to OpenAI or Anthropic - a self-hosted alternative to cloud LLM APIs.",
-    "url": "https://anirudh.social/marbor/",
-    "downloadUrl": "https://github.com/Anirudhx7/marbor/releases",
-    "applicationCategory": "DeveloperApplication",
-    "operatingSystem": "Linux, macOS, Windows",
-    "license": "https://www.apache.org/licenses/LICENSE-2.0",
-    "codeRepository": "https://github.com/Anirudhx7/marbor",
-    "programmingLanguage": "Go",
-    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-    "author": { "@type": "Person", "name": "Anirudh Mehandru", "url": "https://anirudh.social" },
-    "keywords": "self-hosted LLM inference, self-hosted LLM gateway, on-prem LLM serving, private LLM inference, self-hosted OpenAI API alternative, GPU-aware LLM routing, warm model VRAM routing, LLM inference control plane, multi-runtime inference, Ollama load balancer, vLLM load balancing, llama.cpp, TGI, MLX, LLM cost control"
-  },
-  {
-    "@context": "https://schema.org",
-    "@type": "FAQPage",
-    "mainEntity": [
-      {
-        "@type": "Question",
-        "name": "What is marbor?",
-        "acceptedAnswer": { "@type": "Answer", "text": "marbor is a single-binary control plane for self-hosted AI inference. It routes each request to the GPU node that already holds the model warm in VRAM across Ollama, vLLM, TGI, llama.cpp, and MLX, exposing one OpenAI-compatible endpoint so your own hardware becomes a high-availability alternative to cloud LLM APIs." }
-      },
-      {
-        "@type": "Question",
-        "name": "How is marbor different from a plain load balancer like nginx or HAProxy?",
-        "acceptedAnswer": { "@type": "Answer", "text": "Nginx, HAProxy, and Traefik balance TCP connections with no visibility into which GPU holds a model warm, so they route blindly and cause repeated cold starts and VRAM thrashing. marbor reads live model residency and VRAM state on every node and schedules each request to a warm GPU." }
-      },
-      {
-        "@type": "Question",
-        "name": "Does marbor work with vLLM, TGI, llama.cpp, and MLX - or only Ollama?",
-        "acceptedAnswer": { "@type": "Answer", "text": "All five. Despite the name, marbor is runtime-agnostic: it presents one unified OpenAI-compatible endpoint and translates protocols across Ollama, vLLM, TGI, llama.cpp, and MLX, so you can mix runtimes behind a single URL." }
-      },
-      {
-        "@type": "Question",
-        "name": "Can marbor replace cloud LLM APIs like OpenAI?",
-        "acceptedAnswer": { "@type": "Answer", "text": "That is the core use case. It serves requests from your own GPUs first and overflows to OpenAI or Anthropic only when local capacity is fully saturated, metering every cloud token so you can see exactly what self-hosting saves versus cloud spend." }
-      },
-      {
-        "@type": "Question",
-        "name": "How does high-availability failover work?",
-        "acceptedAnswer": { "@type": "Answer", "text": "If a node goes offline, marbor marks it unhealthy and reroutes to other warm local nodes; if the whole local cluster is saturated or down, it can optionally fail over to a configured cloud provider. The routing path is stateless, so you can run multiple instances behind an L4 load balancer for HA." }
-      },
-      {
-        "@type": "Question",
-        "name": "Can I add authentication and rate limiting in front of my models?",
-        "acceptedAnswer": { "@type": "Answer", "text": "Yes. marbor acts as an API gateway: Bearer-token authentication, per-key model allow-lists, and per-key rate limits with daily and monthly quotas - protecting self-hosted GPUs from abuse without changing your application code." }
-      }
-    ]
-  }
-]
-</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Marbor","url":"https://anirudh.social/marbor/","applicationCategory":"DeveloperApplication","operatingSystem":"Linux, macOS, Windows","license":"https://www.apache.org/licenses/LICENSE-2.0","offers":{"@type":"Offer","price":"0"},"author":{"@type":"Person","name":"Anirudh Mehandru"}}</script>
+<noscript><style>[data-reveal]{opacity:1!important;transform:none!important}</style></noscript>
 <style>
-:root {
-  --bg: #0f0e0c;
-  --bg-elevated: #1a1815;
-  --bg-surface: #24221e;
-  --bg-input: #2e2b26;
-  --border: #3a3630;
-  --border-subtle: #2a2723;
-  --text: #e8e4df;
-  --text-muted: #8a8478;
-  --text-faint: #5a5548;
-  --accent: #d4a853;
-  --accent-dim: #b8933f;
-  --accent-bg: rgba(212,168,83,0.08);
-  --accent-bg-hover: rgba(212,168,83,0.14);
-  --accent2: #7cb97c;
-  --accent3: #c97c7c;
-  --font-serif: "Georgia", "Times New Roman", "Liberation Serif", serif;
-  --font-mono: "SFMono-Regular", "Consolas", "Liberation Mono", "Menlo", "Courier New", monospace;
-  --radius: 4px;
-  --grid-color: rgba(255, 255, 255, 0.012);
+@view-transition{navigation:auto}
+:root{
+--bg:#0f0e0c;--bg-elevated:#1a1815;--bg-surface:#24221e;--bg-input:#2e2b26;
+--border:#3a3630;--border-subtle:#2a2723;
+--text:#e8e4df;--text-muted:#98917f;--text-faint:#a79f8f;
+--accent:#d4a853;--accent-dim:#b8933f;--accent-bg:color-mix(in srgb,var(--accent) 8%,transparent);--accent-bg-hover:color-mix(in srgb,var(--accent) 14%,transparent);
+--accent2:#7cb97c;--accent3:#c97c7c;--amber:#cf9440;--on-accent:#161307;--brand-chip:#1a1714;--brand-mark:#d4a853;
+--font-display:"Playfair Display",Georgia,"Times New Roman",serif;
+--font-sans:"Plus Jakarta Sans",-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",Arial,sans-serif;
+--font-mono:"JetBrains Mono","SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
+--r-lg:14px;--r-md:10px;--r-xl:18px;
+--ease:cubic-bezier(.16,1,.3,1);
+--shadow:0 24px 60px -24px rgba(0,0,0,.55),0 2px 8px rgba(0,0,0,.35);
 }
-html.light {
-  --bg: #f0ede4;
-  --bg-elevated: #f9f6ef;
-  --bg-surface: #e6e2d9;
-  --bg-input: #e0dbd0;
-  --border: #d8d2c5;
-  --border-subtle: #e0dbd0;
-  --text: #2b2924;
-  --text-muted: #4a4740;
-  --text-faint: #6e6960;
-  --accent: #664e14;
-  --accent-dim: #54400f;
-  --accent-bg: rgba(102, 78, 20, 0.05);
-  --accent-bg-hover: rgba(102, 78, 20, 0.10);
-  --accent2: #1d4d1d;
-  --accent3: #702626;
-  --grid-color: rgba(102, 78, 20, 0.015);
-}
-
-* { box-sizing: border-box; }
-html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; scrollbar-gutter: stable; }
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: 14px;
-  line-height: 1.7;
-  -webkit-font-smoothing: antialiased;
-  transition: background .2s ease, color .2s ease;
-  position: relative;
-}
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  background-image:
-    linear-gradient(to right, var(--grid-color) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--grid-color) 1px, transparent 1px);
-  background-size: 56px 56px;
-  pointer-events: none;
-  z-index: 0;
-}
-a { color: var(--accent); text-decoration: none; }
-a:hover { text-decoration: underline; }
-::selection { background: var(--accent); color: var(--bg); }
-.serif { font-family: var(--font-serif); }
-
-/* Thin custom scrollbar - replaces the OS default */
-html {
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
-}
-::-webkit-scrollbar { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
-::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
-
-/* LAYOUT */
-.page { max-width: 1200px; margin: 0 auto; padding: 0 40px; }
-.divider { border: none; border-top: 1px solid var(--border-subtle); margin: 0; }
-
+html.light{--bg:#f5f2e9;--bg-elevated:#faf7ee;--bg-surface:#e9e4d4;--bg-input:#e3ddcb;--border:#d9d2bd;--border-subtle:#d5cdb4;--text:#2b2924;--text-muted:#4a4740;--text-faint:#6e6960;--accent:#4c3a19;--accent-dim:#3a2f16;--accent-bg:rgba(76,58,25,.08);--accent-bg-hover:rgba(76,58,25,.14);--accent2:#1d4d1d;--accent3:#702626;--amber:#8a5f16;--on-accent:#f5f2e9;--brand-chip:#2e2413;--brand-mark:#f5f2e9;--shadow:0 24px 50px -28px rgba(60,50,20,.35),0 2px 8px rgba(60,50,20,.12)}
+html.light ::selection{background:var(--accent);color:var(--bg)}
+html.light .btn-gold{background:var(--accent);border-color:var(--accent);color:var(--on-accent);box-shadow:0 12px 26px -14px color-mix(in srgb,var(--accent) 60%,transparent)}
+html.light .btn-gold:hover{background:var(--accent-dim);border-color:var(--accent-dim);color:var(--on-accent)}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-sans);font-size:15.5px;line-height:1.7;-webkit-font-smoothing:antialiased;transition:background .2s,color .2s}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;background:radial-gradient(900px 480px at 50% -8%,color-mix(in srgb,var(--accent) 10%,transparent),transparent 65%),radial-gradient(700px 500px at 88% 22%,color-mix(in srgb,var(--accent) 5%,transparent),transparent 60%)}
+html.light body::before{background:radial-gradient(900px 480px at 50% -8%,var(--accent-bg),transparent 65%)}
+a{color:var(--accent);text-decoration:none;text-underline-offset:3px}
+a:hover{text-decoration:underline}
+::selection{background:var(--accent);color:var(--bg)}
+.skip{position:absolute;left:16px;top:-48px;z-index:200;background:var(--accent);color:var(--on-accent);font-weight:700;font-size:13px;padding:8px 14px;border-radius:8px}
+.skip:focus{top:12px;text-decoration:none}
+.page{max-width:1180px;margin:0 auto;padding:0 28px;position:relative;z-index:1}
 /* NAV */
-nav {
-  padding: 18px 0;
-  position: sticky; top: 0; z-index: 100;
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--border-subtle);
-}
-nav .page { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.brand { display: flex; align-items: center; gap: 10px; color: var(--text); }
-.brand:hover { text-decoration: none; }
-.brand .mark { width: 22px; height: 22px; flex: none; }
-.brand .name { font-weight: 600; letter-spacing: -0.01em; }
-.brand .ver {
-  color: var(--accent);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  padding: 2px 8px;
-  border: 1px solid var(--accent);
-  border-radius: 99px;
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-}
-.nav-right { display: flex; align-items: center; gap: 4px; }
-  .nav-right a.link {
-    position: relative;
-    color: var(--text-muted);
-    padding: 6px 12px 9px;
-    border-radius: var(--radius);
-    font-size: 13px;
-    transition: color .15s ease, background .15s ease;
-  }
-  .nav-right a.link::after {
-    content: "";
-    position: absolute;
-    left: 12px;
-    right: 12px;
-    bottom: 5px;
-    height: 1px;
-    background: var(--accent);
-    transform: scaleX(0);
-    transform-origin: left center;
-    transition: transform .2s ease;
-    opacity: .95;
-  }
-  .nav-right a.link:hover { color: var(--text); text-decoration: none; }
-  .nav-right a.link:hover::after,
-  .nav-right a.link.active::after { transform: scaleX(1); }
-.icon-btn {
-  width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
-  background: transparent; border: 1px solid var(--border); border-radius: var(--radius);
-  color: var(--text-muted); cursor: pointer; transition: all .15s ease; padding: 0;
-}
-.icon-btn:hover { color: var(--accent); border-color: var(--accent-dim); }
-.icon-btn svg { width: 15px; height: 15px; }
-.theme-toggle .moon { display: none; }
-html.light .theme-toggle .sun { display: none; }
-html.light .theme-toggle .moon { display: block; }
-.hamburger { display: none; }
-.nav-links { display: flex; align-items: center; gap: 24px; }
-
+.nav{position:sticky;top:0;z-index:100;background:var(--bg);background:color-mix(in srgb,var(--bg) 90%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--border-subtle);transition:background-color .4s var(--ease),border-color .4s var(--ease),padding .4s var(--ease);padding-top:env(safe-area-inset-top)}
+.nav-inner{max-width:1180px;margin:0 auto;padding:17px 28px;display:flex;align-items:center;justify-content:space-between;gap:14px;transition:margin .4s var(--ease),padding .4s var(--ease),border-radius .4s var(--ease),background-color .4s var(--ease),border-color .4s var(--ease),box-shadow .4s var(--ease)}
+.nav.scrolled{background:transparent;border-bottom-color:transparent;backdrop-filter:none;-webkit-backdrop-filter:none;padding:12px 0 0;padding-top:calc(12px + env(safe-area-inset-top))}
+.nav.scrolled .nav-inner{max-width:1180px;margin:0 auto;padding:10px 10px 10px 20px;border:1px solid var(--border);border-radius:99px;background:var(--bg-elevated);background:color-mix(in srgb,var(--bg-elevated) 88%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:var(--shadow)}
+.brand{display:flex;align-items:center;gap:10px;color:var(--text)}
+.brand:hover{text-decoration:none}
+.brand-chip{width:32px;height:32px;border-radius:8px;background:var(--brand-chip);display:grid;place-items:center;border:1px solid var(--border-subtle);flex:none;color:var(--brand-mark)}
+.brand-name{font-weight:650;letter-spacing:-.01em;font-size:16px}
+.brand-ver{font-size:11px;font-weight:600;letter-spacing:.02em;color:var(--text-faint);padding:2px 8px;border:1px solid var(--border);border-radius:99px;background:transparent;font-variant-numeric:tabular-nums}
+.nav-links{display:flex;align-items:center;gap:8px}
+.nav-links a.nl{position:relative;color:var(--text-muted);font-size:13.5px;font-weight:550;padding:8px 13px;border-radius:8px;transition:color .2s var(--ease)}
+.nav-links a.nl::after{content:"";position:absolute;left:13px;right:13px;bottom:4px;height:1.5px;border-radius:2px;background:var(--accent);transform:scaleX(0);transform-origin:left center;transition:transform .28s var(--ease)}
+.nav-links a.nl:hover{color:var(--text);background:transparent;text-decoration:none}
+.nav-links a.nl:hover::after{transform:scaleX(1)}
+.nav-links a.nl:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.nav-links a.nl:focus-visible::after{transform:scaleX(1)}
+.btn{display:inline-flex;align-items:center;gap:8px;font-weight:650;font-size:13.5px;padding:10px 18px;border-radius:10px;border:1px solid var(--border);background:var(--bg-surface);color:var(--text);cursor:pointer;transition:transform .18s var(--ease),background-color .18s var(--ease),border-color .18s var(--ease)}
+.btn:hover{text-decoration:none;transform:translateY(-1px);border-color:var(--accent)}
+.btn:active{transform:translateY(1px) scale(.99)}
+.btn:disabled,.btn[aria-disabled="true"]{opacity:.55;cursor:not-allowed;transform:none}
+.btn-gold{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn-gold:hover{background:var(--accent-dim);border-color:var(--accent-dim)}
+.btn-sm{display:inline-flex;align-items:center;padding:0 15px;font-size:13px;border-radius:9px}
+.nav-cta{letter-spacing:.01em;border-radius:99px}
+.nav-links .icon-btn{border-radius:50%}
+.nav-cta:active{transform:translateY(1px)}
+.icon-btn{width:36px;height:36px;display:grid;place-items:center;border-radius:9px;border:1px solid var(--border);background:var(--bg-surface);color:var(--text-muted);cursor:pointer;font-size:15px}
+.icon-btn:hover{color:var(--text);border-color:var(--accent)}
+#themeBtn{background:transparent;border-color:transparent;color:var(--text-faint)}
+#themeBtn:hover{color:var(--text);border-color:var(--border)}
+.hamb{display:none}
+.mobile-menu{display:none;position:absolute;top:100%;left:12px;right:12px;margin:8px 0 0;border:1px solid var(--border);border-radius:16px;padding:8px 20px calc(14px + env(safe-area-inset-bottom));background:var(--bg-elevated);z-index:101;max-height:calc(100vh - 90px);max-height:calc(100dvh - 90px);overflow-y:auto;box-shadow:var(--shadow)}
+.mobile-menu.open{display:block}
+.nav:has(.mobile-menu.open){background:var(--bg);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+.mobile-menu a{display:block;padding:10px 4px;color:var(--text-muted);font-weight:550;border-bottom:1px solid var(--border-subtle)}
 /* HERO */
-.hero { padding: 64px 0 40px; }
-.kicker {
-  display: inline-flex; align-items: center; gap: 8px; color: var(--accent);
-  font-size: 11px; font-weight: 600; letter-spacing: 0.02em; margin-bottom: 28px;
-  border: 1px solid var(--accent); border-radius: 99px; padding: 5px 13px 5px 10px;
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-}
-@media (max-width: 640px) {
-  .kicker { display: inline-block; border-radius: var(--radius); }
-}
-.kicker .dot { display: none; }
-h1.headline {
-  font-family: var(--font-serif); font-weight: 400;
-  font-size: clamp(34px, 6.5vw, 52px); line-height: 1.2; letter-spacing: -0.015em;
-  margin: 0 0 22px; color: var(--text); max-width: 720px; text-wrap: balance;
-}
-h1.headline em { font-style: italic; color: var(--accent); }
-.subhead {
-  font-family: var(--font-serif); font-size: clamp(16px, 2.4vw, 19px); line-height: 1.6;
-  color: var(--text-muted); margin: 0 0 32px; max-width: 60ch;
-}
-.subhead strong { color: var(--text); font-weight: 600; }
-
-/* buttons */
-.cta-row { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 28px; }
-.hero-stats { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; max-width: 860px; }
-.btn {
-  display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-mono);
-  font-size: 13px; font-weight: 500; padding: 10px 16px; border-radius: var(--radius);
-  cursor: pointer; border: 1px solid var(--border); transition: all .15s ease; background: var(--bg-elevated); color: var(--text);
-}
-.btn:hover { text-decoration: none; border-color: var(--accent-dim); }
-.btn svg { width: 15px; height: 15px; }
-.btn-primary { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 600; }
-.btn-primary:hover { background: var(--accent-dim); border-color: var(--accent-dim); }
-.btn-demo { background: rgba(82,183,136,0.12); background: color-mix(in srgb, var(--accent2) 12%, transparent); color: var(--accent2); border-color: rgba(82,183,136,0.35); border-color: color-mix(in srgb, var(--accent2) 35%, transparent); font-weight: 500; }
-.btn-demo:hover { background: rgba(82,183,136,0.22); background: color-mix(in srgb, var(--accent2) 22%, transparent); border-color: var(--accent2); color: var(--accent2); text-decoration: none; }
-.btn-ghost:hover { color: var(--accent); }
-.btn:active { transform: translateY(1px); }
-a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-
-/* install line */
-.install {
-  display: flex; align-items: stretch; border: 1px solid var(--border); border-radius: var(--radius);
-  overflow: hidden; background: var(--bg-elevated); margin-bottom: 28px; max-width: 860px;
-}
-.install .prompt {
-  display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;
-  padding: 11px 14px; font-size: 13px; overflow-x: auto; color: var(--text);
-}
-.install .prompt::-webkit-scrollbar { height: 0; }
-.install .prompt .sigil { color: var(--accent); user-select: none; flex: none; }
-.install .prompt .cmd { white-space: nowrap; }
-.install .prompt .cmd .dim { color: var(--text-faint); }
-.copy-btn {
-  flex: none; display: flex; align-items: center; gap: 6px; padding: 0 14px; cursor: pointer;
-  background: var(--bg-surface); border: none; border-left: 1px solid var(--border);
-  color: var(--text-muted); font-family: var(--font-mono); font-size: 12px; transition: all .15s;
-}
-.copy-btn:hover { color: var(--text); background: var(--bg-input); }
-.copy-btn svg { width: 14px; height: 14px; }
-.copy-btn.copied { color: var(--accent2); }
-/* code block with copy button */
-.code-wrap { position: relative; max-width: 680px; }
-.code-wrap pre.code { padding-right: 90px; }
-.code-wrap .copy-btn {
-  position: absolute; top: 8px; right: 8px;
-  border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 5px 10px; line-height: 1;
-}
-
-.trust-row { display: flex; flex-direction: column; gap: 7px; }
-.trust-item { display: flex; align-items: center; gap: 9px; color: var(--text-muted); font-size: 13px; }
-.trust-item .tick { color: var(--accent2); flex: none; }
-.trust-item svg { width: 14px; height: 14px; }
-
-/* ROUTING DIAGRAM */
-.routing {
-  margin-top: 40px; border: 1px solid var(--border); border-radius: var(--radius);
-  background: var(--bg-elevated); overflow: hidden; max-width: 860px;
-}
-.routing-head {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 4px 9px; padding: 9px 14px;
-  border-bottom: 1px solid var(--border-subtle); font-size: 12px; color: var(--text-faint);
-  background: var(--bg-surface);
-}
-.dots { display: flex; gap: 6px; }
-.dots span { width: 10px; height: 10px; border-radius: 50%; opacity: .85; }
-.dots span:nth-child(1){background:var(--accent3);} .dots span:nth-child(2){background:var(--accent);} .dots span:nth-child(3){background:var(--accent2);}
-.routing-body { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
-.rcol { padding: 18px 16px; }
-.rcol.full { grid-column: 1 / -1; border-top: 1px solid var(--border-subtle); }
-.rcol + .rcol:not(.full) { border-left: 1px solid var(--border-subtle); }
-.rlabel { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); margin-bottom: 13px; }
-.req {
-  font-size: 12.5px; background: var(--bg); border: 1px solid var(--border-subtle);
-  border-radius: var(--radius); padding: 10px 12px; color: var(--text); margin-bottom: 8px; line-height: 1.55;
-}
-.req .k { color: var(--accent); }
-.req .s { color: var(--accent2); }
-.node {
-  display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: var(--radius);
-  border: 1px solid var(--border-subtle); background: var(--bg); margin-bottom: 8px; font-size: 12.5px;
-}
-.node .gpu { color: var(--text-faint); font-size: 11px; }
-.node .state { margin-left: auto; font-size: 11px; padding: 2px 7px; border-radius: 3px; }
-.node.warm { border-color: var(--accent2); }
-.node.warm .state { color: var(--accent2); background: color-mix(in srgb, var(--accent2) 14%, transparent); }
-.node.warm .pin { color: var(--accent2); }
-.node .state.cold { color: var(--text-faint); background: var(--bg-surface); }
-.node .pin { width: 15px; height: 15px; flex: none; color: var(--text-faint); }
-.pick { font-size: 12.5px; color: var(--accent2); display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-.pick svg { width: 14px; height: 14px; }
-.fallback {
-  padding: 9px 12px; border: 1px dashed var(--border); border-radius: var(--radius);
-  font-size: 11.5px; color: var(--text-faint);
-}
-
+.hero{padding:84px 0 34px;position:relative}
+.eyebrow{display:inline-flex;align-items:center;gap:9px;font-family:var(--font-mono);font-size:12px;color:var(--text-muted);border:1px solid var(--border);background:var(--bg-elevated);border-radius:99px;padding:6px 14px 6px 8px;margin-bottom:24px}
+.dot{width:8px;height:8px;border-radius:99px;background:var(--accent2);box-shadow:0 0 0 4px color-mix(in srgb,var(--accent2) 18%,transparent);margin-left:6px;flex:none}
+h1{font-family:var(--font-display);font-size:clamp(40px,5.8vw,64px);line-height:1.06;letter-spacing:-.01em;font-weight:600;margin:0 0 18px;text-wrap:balance;max-width:18ch}
+h1 em{font-style:italic;color:var(--accent);font-weight:600}
+.lede{font-size:17.5px;color:var(--text-muted);max-width:62ch;margin:0 0 26px;text-wrap:pretty}
+.lede strong{color:var(--text);font-weight:650}
+.cta-row{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:20px}
+.install{display:flex;align-items:center;background:var(--bg-elevated);border:1px solid var(--border);border-radius:12px;overflow:hidden;max-width:750px;box-shadow:var(--shadow)}
+.install .plabel{font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-faint);padding:0 4px 0 16px;flex:none}
+.install code{flex:1;min-width:0;font-family:var(--font-mono);font-size:12.8px;line-height:1.6;color:var(--text);padding:12px 12px 12px 8px;white-space:nowrap;overflow-x:auto;text-overflow:ellipsis;scrollbar-width:thin}
+.install button{flex:none;align-self:stretch;border:0;border-left:1px solid var(--border);background:transparent;color:var(--accent);font-weight:700;font-size:13px;padding:0 18px;cursor:pointer}
+.install button:hover{background:var(--accent-bg)}
+.install.flash{animation-name:installPing;animation-duration:1.6s;animation-timing-function:cubic-bezier(.16,1,.3,1);animation-iteration-count:2}
+@keyframes installPing{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 55%,transparent)}70%{box-shadow:0 0 0 14px transparent}100%{box-shadow:0 0 0 0 transparent}}
+/* PLACEMENT */
+.place{margin-top:38px;border:1px solid var(--border);border-radius:var(--r-lg);background:linear-gradient(180deg,var(--bg-elevated),var(--bg));box-shadow:var(--shadow);overflow:hidden}
+.place-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 24px;border-bottom:1px solid var(--border-subtle);flex-wrap:wrap}
+.place-head .t{font-family:var(--font-mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted)}
+.place-head .t b{color:var(--accent)}
+.live{display:inline-flex;align-items:center;gap:7px;font-family:var(--font-mono);font-size:12px;font-weight:650;color:var(--accent2)}
+.place-grid{display:grid;grid-template-columns:300px 1fr;gap:0}
+.req-col{padding:24px;border-right:1px solid var(--border-subtle);background:var(--bg-surface);background:color-mix(in srgb,var(--bg-surface) 55%,transparent)}
+.req-card{border:1px solid var(--border);border-radius:var(--r-md);background:var(--bg);padding:14px;font-family:var(--font-sans);font-size:12.5px;font-weight:500;line-height:1.65}
+.req-card>div{display:flex;gap:10px}
+.req-card .k{flex:0 0 58px;color:var(--text-faint)}
+.req-card .v{color:var(--text)}
+.signals{padding:24px}
+.sig-label{font-size:12px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text-faint);margin:0 0 12px}
+.sig-grid{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px}
+.chip{font-family:var(--font-sans);font-size:13px;font-weight:600;padding:7px 12px;border-radius:99px;border:1px solid var(--border);background:var(--bg-surface);color:var(--text-muted);cursor:pointer;transition:color .18s var(--ease),border-color .18s var(--ease),background-color .18s var(--ease)}
+.chip:hover{border-color:var(--accent);color:var(--text)}
+.chip.on{border-color:var(--accent);color:var(--accent);background:var(--accent-bg)}
+.chip .s{font-weight:700;color:var(--accent)}
+.nodes{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.node{border:1px solid var(--border);border-radius:var(--r-md);background:var(--bg);padding:14px;transition:border-color .18s,opacity .18s}
+.node.dim{opacity:.38}
+.node.sel{border-color:var(--accent)}
+.node-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.node-name{font-family:var(--font-sans);font-size:13px;font-weight:600}
+.node-rt{font-family:var(--font-sans);font-size:12px;font-weight:600;color:var(--text-faint);border:1px solid var(--border);padding:2px 8px;border-radius:99px}
+.vram{height:7px;border-radius:99px;background:var(--bg-input);overflow:hidden;margin:8px 0 6px}
+.vram i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--accent-dim),var(--accent))}
+.vram.hot i{background:linear-gradient(90deg,var(--amber),var(--accent3))}
+.node-meta{display:flex;justify-content:space-between;font-family:var(--font-sans);font-size:12px;font-weight:500;color:var(--text-muted)}
+.badge{font-family:var(--font-sans);font-size:12px;font-weight:700;padding:2px 9px;border-radius:99px}
+.b-ok{background:color-mix(in srgb,var(--accent2) 14%,transparent);color:var(--accent2);border:1px solid color-mix(in srgb,var(--accent2) 40%,transparent)}
+.b-warn{background:color-mix(in srgb,var(--amber) 13%,transparent);color:var(--amber);border:1px solid color-mix(in srgb,var(--amber) 40%,transparent)}
+.b-bad{background:color-mix(in srgb,var(--accent3) 13%,transparent);color:var(--accent3);border:1px solid color-mix(in srgb,var(--accent3) 40%,transparent)}
+.decision{display:flex;align-items:center;gap:12px;padding:15px 24px;border-top:1px solid var(--border-subtle);background:var(--accent-bg);font-size:13.5px;flex-wrap:wrap}
+.decision code{font-family:var(--font-mono);font-size:12.5px;font-weight:600;background:var(--bg);border:1px solid var(--border);padding:4px 10px;border-radius:8px}
+.place-note{padding:12px 24px;border-top:1px solid var(--border-subtle);font-size:12.5px;color:var(--text-faint)}
+.place-proof{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--border-subtle);background:var(--bg-surface);background:color-mix(in srgb,var(--bg-surface) 42%,transparent)}
+.pp{padding:14px 20px;border-right:1px solid var(--border-subtle)}
+.pp:last-child{border-right:0}
+.pp .n{font-family:var(--font-sans);font-size:20px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.pp .n .g{color:var(--accent)}
+.pp .l{font-size:11.5px;color:var(--text-muted);margin-top:2px}
 /* SECTIONS */
-section { padding: 80px 0; }
-.eyebrow { font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); margin: 0 0 14px; }
-h2.sec { font-family: var(--font-serif); font-weight: 400; font-size: clamp(26px, 4.4vw, 34px); letter-spacing: -0.01em; line-height: 1.25; margin: 0 0 12px; text-wrap: balance; }
-h2.sec em { font-style: italic; color: var(--accent); }
-.sec-sub { font-family: var(--font-serif); color: var(--text-muted); font-size: 16px; line-height: 1.6; max-width: 58ch; margin: 0 0 36px; }
-
-/* CHIP / PILL - semantic status indicators */
-.chip {
-  display: inline-flex; align-items: center; gap: 5px;
-  height: 22px; padding: 0 9px;
-  border-radius: 99px;
-  font-size: 11px; font-weight: 500;
-  letter-spacing: 0.02em;
-  border: 1px solid;
-  white-space: nowrap;
-}
-.chip-yes  { color: var(--accent2); border-color: color-mix(in srgb, var(--accent2) 35%, transparent); background: color-mix(in srgb, var(--accent2) 8%, transparent); }
-.chip-no   { color: var(--text-faint); border-color: var(--border-subtle); background: var(--bg-surface); }
-.chip-partial { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, transparent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
-
-/* PULSING BRAND DOT */
-.brand-dot {
-  width: 6px; height: 6px; border-radius: 50%;
-  background: var(--accent2);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--accent2) 60%, transparent);
-  flex-shrink: 0;
-  animation: dot-pulse 2.4s ease-in-out infinite;
-}
-@keyframes dot-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
-}
-
-/* features as a list, terminal-doc style */
-.features { display: flex; flex-direction: column; gap: 0; border-top: 1px solid var(--border-subtle); }
-.feat { display: grid; grid-template-columns: 34px 1fr; gap: 16px; padding: 22px 16px; margin: 0 -16px; border-bottom: 1px solid var(--border-subtle); border-radius: var(--radius); transition: all .2s cubic-bezier(0.16, 1, 0.3, 1); }
-.feat:hover { background: var(--bg-elevated); transform: translateX(6px); }
-.feat .ic { color: var(--accent); width: 34px; height: 34px; display: flex; align-items: flex-start; justify-content: center; padding-top: 2px; }
-.feat .ic svg { width: 22px; height: 22px; }
-.feat.warm .ic { color: var(--accent); }
-.feat-meta { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 10px; }
-.feat-meta .chip { height: 20px; padding: 0 8px; }
-.feat h3 { font-family: var(--font-serif); font-weight: 600; font-size: 18px; margin: 0 0 10px; letter-spacing: -0.005em; }
-.feat p { color: var(--text-muted); font-size: 14px; margin: 0; line-height: 1.65; }
-.feat p code { background: var(--bg-surface); padding: 1px 5px; border-radius: 3px; color: var(--text); font-size: 12px; border: 1px solid var(--border-subtle); }
-
-/* pain cards share the feat hover language: border lift, no layout shift */
-.pain-card { border: 1px solid var(--border-subtle); padding: 24px; border-radius: var(--radius); background: var(--bg-elevated); transition: border-color .2s cubic-bezier(0.16, 1, 0.3, 1), transform .2s cubic-bezier(0.16, 1, 0.3, 1); }
-.pain-card:hover { border-color: var(--border); transform: translateY(-2px); }
-
-/* steps */
-.steps { display: flex; flex-direction: column; gap: 26px; }
-.step { display: grid; grid-template-columns: 40px 1fr; gap: 18px; }
-.step .num {
-  width: 40px; height: 40px; border-radius: var(--radius); display: flex; align-items: center; justify-content: center;
-  font-weight: 600; font-size: 15px; color: var(--accent); background: var(--bg-elevated); border: 1px solid var(--border);
-}
-.step h3 { font-family: var(--font-serif); font-weight: 600; font-size: 17px; margin: 6px 0 8px; }
-.step p { color: var(--text-muted); font-size: 13.5px; margin: 0 0 12px; }
-pre.code {
-  background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 12px 14px; font-size: 12.5px; overflow-x: auto; margin: 0; line-height: 1.7; color: var(--text);
-  scrollbar-width: none;  /* Hide scrollbars in Firefox */
-  -ms-overflow-style: none;  /* Hide scrollbars in IE/Edge */
-}
-pre.code::-webkit-scrollbar {
-  display: none;  /* Hide scrollbars in WebKit/Blink (Chrome, Safari, Edge) */
-}
-.table-scroll {
-  scrollbar-width: thin; scrollbar-color: var(--border) transparent;
-}
-.table-scroll::-webkit-scrollbar {
-  height: 6px; width: 6px;
-}
-.table-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-.table-scroll::-webkit-scrollbar-thumb {
-  background-color: var(--border); border-radius: var(--radius);
-}
-.table-scroll::-webkit-scrollbar-thumb:hover {
-  background-color: var(--text-faint);
-}
-pre.code .c { color: var(--text-faint); }
-pre.code .g { color: var(--accent2); }
-pre.code .b { color: var(--accent); }
-
-/* compare table */
-.compare-summary { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 18px; }
-.compare-summary .chip { height: 22px; padding: 0 10px; font-weight: 600; }
-.table-wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--bg-elevated); box-shadow: 0 4px 24px -12px rgba(0,0,0,0.5); }
-.table-scroll { overflow-x: auto; }
-table.compare { width: 100%; border-collapse: collapse; font-size: 13.5px; min-width: 560px; }
-table.compare th, table.compare td { padding: 14px 16px; text-align: left; border-bottom: 1px solid var(--border-subtle); transition: background-color .15s ease; }
-table.compare thead th { font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted); font-weight: 600; background: var(--bg-surface); }
-table.compare thead th.us { color: var(--accent); }
-table.compare tbody tr:nth-child(odd) td { background: color-mix(in srgb, var(--bg) 56%, transparent); }
-table.compare tbody td:first-child { color: var(--text); font-weight: 600; }
-table.compare td.col-us { background: color-mix(in srgb, var(--accent) 10%, transparent); }
-table.compare tbody tr { transition: background-color .15s ease; }
-table.compare tbody tr:hover { background-color: var(--bg-surface); }
-table.compare tbody tr:hover td.col-us { background-color: var(--accent-bg-hover); }
-table.compare tr:last-child td { border-bottom: none; }
-.yes { color: var(--accent2); }
-.no { color: var(--text-faint); }
-.partial { color: var(--accent); }
-.cell-ic { display: inline-flex; align-items: center; gap: 6px; }
-.cell-ic svg { width: 14px; height: 14px; flex: none; }
-
-/* cta band */
-.band { border: 1px solid var(--border); border-radius: var(--radius); padding: 40px 32px; text-align: center; background: var(--bg-elevated); }
-.band h2 { font-family: var(--font-serif); font-weight: 400; font-size: clamp(24px, 4vw, 32px); letter-spacing: -0.01em; margin: 0 0 12px; }
-.band h2 em { font-style: italic; color: var(--accent); }
-.band p { font-family: var(--font-serif); color: var(--text-muted); font-size: 16px; max-width: 50ch; margin: 0 auto 24px; }
-.band .cta-row { justify-content: center; margin-bottom: 0; }
-
-/* footer */
-footer.foot { border-top: 1px solid var(--border-subtle); padding: 44px 0 36px; }
-.foot-grid { display: grid; grid-template-columns: 1.6fr 1fr 1fr 1fr; gap: 28px; margin-bottom: 32px; }
-.foot-brand p { color: var(--text-muted); font-size: 13px; max-width: 32ch; margin: 12px 0 14px; line-height: 1.6; }
-.foot-col h4 { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); margin: 0 0 12px; font-weight: 600; }
-.foot-col a { display: block; color: var(--text-muted); font-size: 13px; padding: 4px 0; }
-.foot-col a:hover { color: var(--accent); text-decoration: none; }
-.foot-bottom { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; justify-content: space-between; padding-top: 22px; border-top: 1px solid var(--border-subtle); color: var(--text-faint); font-size: 12px; }
-.gh-link { color: var(--text-muted); }
-.gh-link:hover { color: var(--accent); }
-
-/* mobile */
-.mobile-menu { display: none; }
-@media (max-width: 640px) {
-  .page { padding: 0 20px; }
-  .nav-links { display: none; }
-  .hamburger { display: inline-flex; }
-  .step { display: flex; flex-direction: column; gap: 8px; }
-  .step .num { width: 32px; height: 32px; font-size: 13px; }
-  pre.code { font-size: 11.5px; padding: 10px 12px; }
-  .code-wrap pre.code { padding-right: 80px; }
-  .routing-body { grid-template-columns: 1fr; }
-  .rcol + .rcol:not(.full) { border-left: none; border-top: 1px solid var(--border-subtle); }
-  .foot-grid { grid-template-columns: 1fr 1fr; gap: 22px; }
-  .foot-brand { grid-column: 1 / -1; }
-  .hero { padding: 44px 0 32px; }
-  .mobile-menu.open {
-    display: block; position: fixed; inset: 69px 0 0; z-index: 39; background: var(--bg);
-    padding: 14px 24px; animation: fade .18s ease;
-  }
-  .mobile-menu.open a { display: block; padding: 14px 0; min-height: 44px; font-size: 16px; color: var(--text); border-bottom: 1px solid var(--border-subtle); }
-  @keyframes fade { from{opacity:0;transform:translateY(-5px);} to{opacity:1;transform:none;} }
-}
-@media (max-width: 480px) {
-  h1.headline { font-size: clamp(28px, 8vw, 40px); }
-  .cta-row { flex-direction: column; }
-  .btn { width: 100%; justify-content: center; min-height: 44px; }
-  .band { padding: 28px 20px; }
-  .band .cta-row { flex-direction: column; align-items: stretch; }
-  .node { flex-wrap: wrap; padding: 8px 10px; gap: 6px 8px; font-size: 12px; }
-  .node .gpu { font-size: 10.5px; }
-  .node .state { margin-left: auto; }
-}
-@media (max-width: 380px) { .page { padding: 0 16px; } .foot-grid { grid-template-columns: 1fr; } }
-@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; scroll-behavior: auto; } }
-section, #install { scroll-margin-top: 80px; }
-
-/* TRUST BADGES */
-.badge-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 12px;
-  margin-bottom: 36px;
-  margin-top: 24px;
-}
-.badge-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  padding: 10px 14px;
-  border-radius: var(--radius);
-  font-size: 13px;
-  color: var(--text-muted);
-}
-.badge-item strong {
-  color: var(--text);
-}
-.badge-item svg {
-  width: 15px;
-  height: 15px;
-  color: var(--accent);
-  flex-shrink: 0;
-}
-
-/* SPCS-FEATURE-START
-.spcs-section {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg-elevated);
-  padding: 40px;
-  margin-bottom: 20px;
-}
-.spcs-grid {
-  display: grid;
-  grid-template-columns: 1.2fr 1fr;
-  gap: 40px;
-  margin-top: 24px;
-}
-@media (max-width: 768px) {
-  .spcs-grid {
-    grid-template-columns: 1fr;
-    gap: 24px;
-  }
-  .spcs-section {
-    padding: 24px;
-  }
-}
-.spcs-text {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-.spcs-diagram {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  background: var(--bg);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius);
-  padding: 24px;
-  justify-content: center;
-}
-.spcs-timeline {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.spcs-timeline-label {
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-faint);
-  font-weight: 600;
-}
-.spcs-bar {
-  position: relative;
-  height: 40px;
-  border-radius: var(--radius);
-  border: 1px solid var(--border-subtle);
-  display: flex;
-  align-items: center;
-  padding: 0 14px;
-  font-size: 12px;
-  overflow: hidden;
-}
-.spcs-bar.without {
-  background: repeating-linear-gradient(45deg, var(--bg-surface), var(--bg-surface) 10px, var(--bg) 10px, var(--bg) 20px);
-  border-color: var(--accent3);
-}
-.spcs-bar.with {
-  background: var(--bg-surface);
-  border-color: var(--accent2);
-}
-.spcs-bar-fill {
-  position: absolute;
-  top: 0;
-  left: 0;
-  height: 100%;
-  background: color-mix(in srgb, var(--accent2) 12%, transparent);
-  width: 100%;
-}
-.spcs-bar-text {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  justify-content: space-between;
-  width: 100%;
-  align-items: center;
-}
-.spcs-badge {
-  font-size: 10px;
-  padding: 3px 6px;
-  border-radius: 3px;
-  font-weight: bold;
-}
-.spcs-badge.cold {
-  background: rgba(201,124,124,0.15);
-  color: var(--accent3);
-}
-.spcs-badge.warm {
-  background: rgba(124,185,124,0.15);
-  color: var(--accent2);
-}
-SPCS-FEATURE-END */
-
-/* LITELLM ARCHITECTURE DIAGRAM */
-.litellm-section {
-  margin-top: 32px;
-  padding: 28px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg-surface);
-}
-.litellm-title {
-  font-family: var(--font-serif);
-  font-size: 18px;
-  font-weight: 600;
-  margin: 0 0 10px;
-}
-.litellm-desc {
-  color: var(--text-muted);
-  font-size: 13.5px;
-  line-height: 1.6;
-  margin: 0 0 24px;
-  max-width: 76ch;
-}
-.stack-diagram {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius);
-  padding: 20px;
-  overflow-x: auto;
-}
-.stack-node {
-  flex: 1;
-  min-width: 130px;
-  text-align: center;
-  padding: 12px 10px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius);
-  font-size: 12px;
-  font-weight: 500;
-  background: var(--bg);
-  line-height: 1.4;
-}
-.stack-node.app {
-  border-color: var(--text-faint);
-  color: var(--text-muted);
-}
-.stack-node.litellm {
-  border-color: var(--text-muted);
-  color: var(--text);
-}
-.stack-node.marbor {
-  border-color: var(--accent);
-  background: var(--accent-bg);
-  color: var(--accent);
-  font-weight: bold;
-}
-.stack-node.runtime {
-  border-color: var(--accent2);
-  color: var(--accent2);
-}
-.stack-arrow {
-  font-size: 18px;
-  color: var(--text-faint);
-  user-select: none;
-}
-
-/* DYNAMIC ROUTER EXTENSIONS */
-.rcol .node-vram {
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-left: 8px;
-}
-.rcol .node-queue {
-  font-size: 11px;
-  color: var(--text-faint);
-  margin-left: auto;
-  margin-right: 8px;
-}
-.routing-stats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px dashed var(--border-subtle);
-  font-size: 12px;
-  color: var(--text-muted);
-}
-.routing-stat-item strong {
-  color: var(--text);
-}
-.reasoning-box {
-  background: var(--bg-surface);
-  border-left: 3px solid var(--accent);
-  padding: 10px 14px;
-  font-size: 12px;
-  margin-top: 10px;
-  color: var(--text);
-  font-family: var(--font-mono);
-  line-height: 1.5;
-}
-
-/* FAQ Card Styling */
-.faq-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 24px;
-  margin-top: 32px;
-}
-.faq-card {
-  padding: 24px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius);
-  background: var(--bg-elevated);
-  transition: all .2s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 4px 16px -12px rgba(0,0,0,0.5);
-}
-.faq-card:hover {
-  border-color: var(--border);
-  transform: translateY(-2px);
-  background: var(--bg-surface);
-  box-shadow: 0 8px 24px -12px rgba(0,0,0,0.7);
-}
+section.block{padding:56px 0}
+.kicker{font-family:var(--font-mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin:0 0 12px}
+h2{font-family:var(--font-display);font-size:clamp(28px,3.6vw,40px);font-weight:600;letter-spacing:-.015em;line-height:1.08;margin:0 0 12px;text-wrap:balance}
+.sub{color:var(--text-muted);max-width:64ch;margin:0 0 28px;font-size:16px}
+.feat-list{border-top:1px solid var(--border)}
+.lead{padding:36px 4px 32px;border-bottom:1px solid var(--border-subtle)}
+.lead h3{margin:0 0 8px;font-size:clamp(24px,3vw,32px);letter-spacing:-.01em;font-weight:600;text-wrap:balance}
+.lead h3 .g{color:var(--accent)}
+.lead p{margin:0 0 24px;font-size:15.5px;color:var(--text-muted);max-width:72ch}
+.sigpath{width:100%;height:auto;display:block}
+.sigpath .wire{stroke:var(--border);stroke-width:1.5}
+.sigpath .tick{stroke:var(--text-faint);stroke-width:1.5}
+.sigpath text{font-family:var(--font-mono);font-size:11px;fill:var(--text-faint);letter-spacing:.04em}
+.sigpath .req{fill:var(--bg-surface);stroke:var(--text-faint);stroke-width:1.5}
+.sigpath .dec{fill:var(--accent)}
+.sigpath .decl{fill:var(--accent);font-weight:700}
+.crow{position:relative;overflow:hidden;padding:36px 4px;border-bottom:1px solid var(--border-subtle);outline:none}
+.crow-body{position:relative;max-width:72ch}
+.fnum{position:absolute;top:50%;right:-14px;transform:translateY(-50%);font-family:var(--font-display);font-size:170px;font-weight:600;font-style:italic;letter-spacing:-.02em;line-height:1;color:var(--border-subtle);color:color-mix(in srgb,var(--text) 7%,transparent);transition:color .25s var(--ease);pointer-events:none}
+.crow:hover .fnum,.crow:focus-visible .fnum{color:var(--accent-dim);color:color-mix(in srgb,var(--accent) 26%,transparent)}
+.crow h3{margin:0 0 6px;font-size:19px;letter-spacing:-.015em;font-weight:650;text-wrap:balance}
+.crow p{margin:0;font-size:14.5px;color:var(--text-muted)}
+.crow code{font-family:var(--font-mono);font-size:.92em;color:var(--text)}
+.spec{max-height:0;opacity:0;overflow:hidden;margin:10px 0 0;font-family:var(--font-mono);font-size:12px;color:var(--accent);transition:opacity .18s var(--ease),max-height .18s var(--ease)}
+.crow:hover .spec,.crow:focus-visible .spec{max-height:44px;opacity:1}
+.cmp{border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden;background:var(--bg-elevated)}
+.cmp table{width:100%;border-collapse:collapse;font-size:13.8px}
+.cmp th,.cmp td{padding:13px 18px;text-align:left;border-bottom:1px solid var(--border-subtle)}
+.cmp th{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-faint);font-weight:700}
+.cmp tr:last-child td{border-bottom:0}
+.cmp th:nth-child(2),.cmp td:nth-child(2){background:var(--accent-bg)}
+.cmp tr.grp td{background:transparent;font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);padding:14px 18px 6px}
+.cmp-notes{margin:0;padding:14px 4px 0;list-style:none;font-family:var(--font-sans);font-size:12.5px;line-height:1.8;color:var(--text-muted)}
+.cmp-notes li{padding-left:18px;position:relative}
+.cmp-notes li::before{content:"*";position:absolute;left:4px;color:var(--accent)}
+.y{color:var(--accent2);font-weight:700}.n{color:var(--text-faint)}.p{color:var(--amber);font-weight:700}
+.setup{border:1px solid var(--border);border-radius:var(--r-lg);background:var(--bg-elevated);box-shadow:var(--shadow);padding:26px 26px 20px}
+.setup-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:6px}
+.setup-head h3{margin:0;font-size:20px;font-weight:650;letter-spacing:-.015em}
+.setup-head p{margin:4px 0 0;font-size:13.5px;color:var(--text-muted)}
+.setup-count{font-family:var(--font-mono);font-size:13px;color:var(--text-muted);flex:none}
+.srow{display:flex;width:100%;background:none;border:0;border-radius:0;text-align:left;font:inherit;color:inherit;cursor:pointer;align-items:flex-start;gap:13px;padding:16px 0}
+.srow:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.srow{transition:background-color .2s ease}
+.srow:hover{background:var(--bg-surface);background:color-mix(in srgb,var(--bg-surface) 50%,transparent);border-radius:10px}
+.srow:active{background:var(--bg-surface)}
+.srow>div{min-width:0;flex:1}
+.scheck{transition:background-color .25s ease,border-color .25s ease,color .25s ease}
+.ssub{transition:color .25s ease}
+.sbar i{transition:width .5s var(--ease)}
+.srow+.srow{border-top:1px solid var(--border-subtle)}
+.scheck{flex:none;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;margin-top:1px}
+.scheck.done{background:transparent;border:1px solid var(--accent);color:var(--accent);font-size:12px;font-weight:700}
+.scheck.todo{border:1px solid var(--border);background:var(--bg-surface)}
+.scheck.todo i{width:8px;height:8px;border-radius:50%;border:1.5px solid var(--text-faint)}
+.stitle{display:block;margin:0;font-family:var(--font-sans);font-size:16px;font-weight:600;letter-spacing:-.01em}
+.ssub{display:block;margin:2px 0 0;font-size:12.5px}
+.ssub.done{color:var(--text-muted)}
+.ssub.todo{color:var(--text-muted)}
+.sbar{height:8px;border-radius:99px;background:var(--bg-input);overflow:hidden;margin:18px 0 8px}
+.sbar i{display:block;height:100%;width:80%;border-radius:99px;background:var(--accent)}
+.sfoot{display:flex;justify-content:flex-end;font-family:var(--font-mono);font-size:12px;color:var(--text-muted)}
+.shot-cap{margin:14px 0 0;font-family:var(--font-mono);font-size:12px;color:var(--text-faint)}
+.stack-note{margin-top:12px;border:1px dashed var(--border);border-radius:var(--r-md);padding:16px 18px;font-size:13.5px;color:var(--text-muted);background:var(--bg)}
+.stack-note code{font-family:var(--font-mono);font-size:12.5px;color:var(--accent)}
+.faq{display:grid;grid-template-columns:1fr 1.4fr;gap:26px;align-items:start}
+details{border-bottom:1px solid var(--border-subtle);padding:4px 0}
+summary{padding:18px 4px;cursor:pointer;font-weight:600;font-size:15.5px;list-style:none;display:flex;justify-content:space-between;gap:10px;align-items:center}
+summary::-webkit-details-marker{display:none}
+summary:hover{color:var(--accent)}
+summary span{color:var(--accent);font-family:var(--font-mono);font-size:13px;flex:none}
+details p{padding:0 4px 20px;margin:0;font-size:13.8px;color:var(--text-muted);max-width:72ch}
+.faq-toggle{margin-top:18px;margin-bottom:12px;position:relative;display:flex;width:100%;align-items:center;justify-content:center;gap:8px;background:var(--accent-bg);background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 7%,transparent),color-mix(in srgb,var(--accent) 2%,transparent));border:1px solid var(--border);border-radius:10px;padding:14px;color:var(--accent);font-weight:600;font-size:13.5px;letter-spacing:.02em;cursor:pointer;text-decoration:none;min-height:48px}
+.faq-toggle::before{content:"";position:absolute;inset:0;border-radius:10px;padding:1px;background:radial-gradient(ellipse at center,rgba(212,168,83,.26) 52%,transparent 78%);background:radial-gradient(ellipse at center,color-mix(in srgb,var(--accent) 26%,transparent) 52%,color-mix(in srgb,var(--accent) 0%,transparent) 78%);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude;pointer-events:none}
+.faq-toggle:hover{background:var(--accent-bg-hover);background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 11%,transparent),color-mix(in srgb,var(--accent) 4%,transparent));text-decoration:none}
+.faq-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.faq-toggle:hover,.faq-toggle:focus,.faq-toggle:active{text-decoration:none!important}
+.cta-band{border:1px solid var(--border);border-radius:var(--r-xl);background:var(--bg-elevated);padding:40px 36px;box-shadow:var(--shadow);display:grid;grid-template-columns:1.4fr 1fr;gap:28px;align-items:center}
+.cta-band h2{margin:0 0 10px}
+.cta-band p{color:var(--text-muted);margin:0;max-width:52ch}
+.cta-act{display:flex;flex-direction:column;gap:10px;align-items:stretch}
+.cta-act .btn{justify-content:center}
+.docs-link{font-size:13.5px;text-align:center}
+footer{border-top:1px solid var(--border-subtle);padding:30px 0 40px;margin-top:40px;color:var(--text-faint);font-size:13px}
+.foot-grid{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;align-items:flex-start}
+.foot-links{display:flex;gap:18px;flex-wrap:wrap}
+.foot-links a{color:var(--text-muted)}
+[data-reveal]{opacity:0;transform:translateY(14px);transition:opacity .6s var(--ease),transform .6s var(--ease)}
+[data-reveal].in{opacity:1;transform:none}
+/* native fragment jumps (cross-page footer links, new tabs) must clear the sticky nav */
+section.block,#install,#main{scroll-margin-top:88px}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+/* Sections/main only ever receive programmatic focus (landing glides, skip link)
+   - never Tab focus - so their rings are pure artifact (notably the stuck ring
+   after cross-page arrivals) while AT focus still lands. Real tab stops below
+   keep their visible rings. :not(:focus-visible) so a future genuinely
+   focusable/tabbable element nested here isn't silently stripped of its ring. */
+section.block:focus:not(:focus-visible),main:focus:not(:focus-visible){outline:none!important;box-shadow:none!important}
+/* Same stuck-ring guard for the install box (arrival focuses it directly).
+   Outline only: the intended flash halo is a box-shadow animation and must survive. */
+.install:focus:not(:focus-visible){outline:none!important}
+.crow:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.crow{outline:none}
+.sigscroll:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.cmp th:first-child,.cmp td:first-child{position:sticky;left:0;background:var(--bg-elevated);z-index:1}
+.cmp td:nth-child(2){background:var(--accent-bg)}
+.cmp,.sigscroll{scrollbar-width:thin}
+@media print{:root{color-scheme:light}body{background:#fff!important;color:#000!important}body::before,.nav,.cta-row,.install button,.mobile-menu,#themeBtn,#hamb{display:none!important}.page,.place,.setup,.cmp,.cta-band{box-shadow:none!important}[data-reveal]{opacity:1!important;transform:none!important}}
+/* ---- mobile hardening (all viewports, no visual change on desktop) ---- */
+@supports (overflow:clip){html,body{overflow-x:clip}}
+@supports not (overflow:clip){body{overflow-x:hidden}}
+img,svg{max-width:100%}
+a,button{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn{min-height:44px}
+.icon-btn{width:44px;height:44px}
+.mobile-menu{overflow-y:auto}
+.mobile-menu a{padding:14px 4px;min-height:48px;display:flex;align-items:center}
+.cmp{overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:thin}
+.cmp:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sigscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:thin;margin:0 -4px;padding:0 4px 6px}
+.req-card>div{min-width:0}
+.req-card .v{min-width:0;overflow-wrap:anywhere;word-break:break-word}
+.node-top{flex-wrap:wrap;gap:8px}
+.node-meta{flex-wrap:wrap;gap:8px;align-items:center}
+.decision code{max-width:100%;overflow-wrap:anywhere;word-break:break-word}
+.stack-note code,.install code{overflow-wrap:anywhere;word-break:break-word}
+.foot-links a{padding:8px 4px;min-height:44px;display:inline-flex;align-items:center}
+.chip{min-height:44px}
+footer{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
+@media(max-width:900px){.place-grid{grid-template-columns:1fr}.req-col{border-right:0;border-bottom:1px solid var(--border-subtle)}.place-proof{grid-template-columns:repeat(2,1fr)}.pp:nth-child(2){border-right:0}.pp{border-top:1px solid var(--border-subtle)}.pp:nth-child(1),.pp:nth-child(2){border-top:0}.setup{padding:20px 18px 16px}.faq{grid-template-columns:1fr}.req-col,.signals{padding:20px}}
+@media(max-width:640px){.page{padding:0 18px}.nav-inner{margin:0;padding:10px 14px;gap:10px}.nav.scrolled{padding:8px 12px 0;padding-top:calc(8px + env(safe-area-inset-top))}.nav.scrolled .nav-inner{margin:0 auto;padding:6px 6px 6px 14px;max-width:calc(100% - 0px)}.nav-links{gap:6px}.nav-links a.nl{display:none}.hamb{display:grid}.icon-btn{width:44px;height:44px}#themeBtn{width:44px;height:44px}.nav-cta{height:44px;padding:0 14px;font-size:12.5px;white-space:nowrap}.brand-name{font-size:15px}.hero{padding:48px 0 20px}h1{font-size:clamp(32px,9vw,40px);line-height:1.1}h2{font-size:clamp(24px,7vw,28px)}.lede{font-size:16px}.eyebrow{font-size:11px;max-width:100%;flex-wrap:wrap;border-radius:16px;padding:8px 12px 8px 8px;line-height:1.5;align-items:flex-start}.cta-row{align-items:stretch}.cta-row .btn{flex:1 1 100%;justify-content:center;min-height:48px;font-size:14px}.nodes{grid-template-columns:1fr}.lead{padding:32px 0 28px}.crow{padding:24px 72px 24px 0}.fnum{font-size:48px;right:0;opacity:.9}.spec{max-height:none;opacity:1;margin-top:10px}.install{flex-direction:column;align-items:stretch;max-width:none}.install .plabel{padding:10px 14px 0}.install code{font-size:11.5px;white-space:normal;padding:8px 14px 12px}.install button{align-self:auto;border-left:0;border-top:1px solid var(--border);min-height:48px;font-size:14px}.place-head,.signals{padding-left:16px;padding-right:16px}.req-col{padding:16px}.decision,.place-note{padding-left:16px;padding-right:16px}.pp{padding:12px 16px}.pp .n{font-size:18px}.chip{font-size:13px;padding:10px 14px;min-height:44px}.sigpath{min-width:560px}.cmp table{min-width:560px;font-size:13px}.cmp th,.cmp td{padding:11px 12px}.srow{padding:14px 10px;margin:0 -10px}.stitle{font-size:15px}summary{font-size:15px;padding:16px 4px;min-height:56px}.cta-band{grid-template-columns:1fr;padding:28px 20px}.cta-band .btn{min-height:48px}.cta-act .btn{width:100%}.foot-links{gap:8px}.foot-links a{min-height:44px;display:inline-flex;align-items:center}.foot-grid{flex-direction:column}section.block{padding:40px 0}}
+@media(max-width:560px){.place-proof{grid-template-columns:1fr}.pp{border-right:0!important;border-top:1px solid var(--border-subtle)!important}.pp:nth-child(1){border-top:0!important}.pp .n{font-size:19px}}
+@media(max-width:400px){.page{padding:0 14px}.brand-ver{display:none}.nav-cta{padding:0 12px}.hero{padding:36px 0 16px}h1{font-size:clamp(30px,9.5vw,34px)}.eyebrow{font-size:10.5px}.cta-band{padding:24px 16px}.setup{padding:18px 14px 14px}}
+@media(max-width:380px){.nav-cta{display:none}}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}@view-transition{navigation:none}[data-reveal]{opacity:1;transform:none;transition:none}.install.flash{animation:none}.btn,.chip,.nav-links a.nl,.nav,.nav-inner,.fnum,.spec,.node,.scheck,.ssub,.sbar i{transition:none}}
+@media (pointer:coarse){.btn{min-height:48px}.chip{min-height:44px}.icon-btn{width:44px;height:44px}summary{min-height:56px}.srow{padding-top:14px;padding-bottom:14px}}
 </style>
 </head>
 <body>
-
-<!-- NAV -->
-<nav>
-  <div class="page">
-    <a href="#top" class="brand" aria-label="Marbor home">
-      <div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-        <svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true">
-          <path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
-          <circle cx="75" cy="75" r="8" fill="#a87f3a"/>
-        </svg>
-      </div>
-      <span class="name">Marbor</span>
-      <span class="ver">{{VERSION}}</span>
-      <span class="brand-dot" title="Active"></span>
-    </a>
-    <div class="nav-right">
-      <div class="nav-links">
-        <a class="link" href="#features">Features</a>
-        <a class="link" href="#how">How it works</a>
-        <a class="link" href="#compare">Compare</a>
-        <a class="link" href="docs/">Docs</a>
-        <a class="link" href="https://github.com/Anirudhx7/marbor" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
-        <a class="link" href="demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
-      </div>
-      <button class="icon-btn theme-toggle" id="themeToggle" aria-label="Toggle dark and light mode">
-        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
-        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
-      </button>
-      <button class="icon-btn hamburger" id="hamburger" aria-label="Open menu" aria-expanded="false">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
-      </button>
-    </div>
-  </div>
-</nav>
-<div class="mobile-menu" id="mobileMenu" aria-hidden="true">
-  <a href="#features">Features</a>
-  <a href="#how">How it works</a>
-  <a href="#compare">Compare</a>
-  <a href="docs/">Docs</a>
-  <a href="demo/" target="_blank" rel="noopener noreferrer">Live demo</a>
-  <a href="https://github.com/Anirudhx7/marbor" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
+<a class="skip" href="#main">Skip to content</a>
+<header class="nav"><div class="nav-inner">
+<a class="brand" href="#main" aria-label="Marbor home"><span class="brand-chip" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 100 100" fill="none"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="currentColor" opacity=".65"/></svg></span><span class="brand-name">Marbor</span><span class="brand-ver" data-version>v0.20.0</span></a>
+<nav class="nav-links" aria-label="Primary"><a class="nl" href="#features">Features</a><a class="nl" href="#how">How it works</a><a class="nl" href="#compare">Compare</a><a class="nl" href="docs/">Docs</a><a class="btn btn-gold btn-sm nav-cta" href="demo/">Live demo →</a><button type="button" class="icon-btn" id="themeBtn" aria-label="Toggle theme" aria-pressed="false">◐</button><button type="button" class="icon-btn hamb" id="hamb" aria-label="Menu" aria-expanded="false" aria-controls="mmenu">☰</button></nav>
+</div><nav class="mobile-menu" id="mmenu" aria-label="Mobile"><a href="#features">Features</a><a href="#how">How it works</a><a href="#compare">Compare</a><a href="#faq">FAQ</a><a href="docs/">Docs</a><a href="demo/">Live demo</a><a href="https://github.com/Anirudhx7/marbor">GitHub</a></nav></header>
+<main id="main" tabindex="-1"><div class="page">
+<div class="hero">
+<div class="eyebrow"><span class="dot" aria-hidden="true"></span><span data-version>v0.20.0</span>&nbsp;· 5 runtimes · apache-2.0 · self-hosted</div>
+<h1>The <em>intelligent control plane</em> for self-hosted AI inference.</h1>
+<p class="lede">Marbor understands your GPU fleet, <strong>models, runtimes, capacity, deployments, and inference state</strong>, then places each request where it can be served best. Run Ollama, vLLM, TGI, llama.cpp, and MLX behind one OpenAI-compatible endpoint, with cost-metered cloud overflow that stays off until your hardware is full.</p>
+<div class="cta-row"><a class="btn btn-gold" href="#install">↓ Install in one command</a><a class="btn" href="demo/">Open live demo</a></div>
+<div class="install" id="install"><span class="plabel">install</span><code id="cmd">curl -fsSL raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | sh</code><button type="button" id="copyBtn" aria-live="polite">Copy</button></div>
+<div class="place" id="trace" data-reveal>
+<div class="place-head"><span class="t">Inference-aware placement · <b>live trace</b></span><span class="live"><span class="dot" aria-hidden="true"></span>evaluating 7 signals</span></div>
+<div class="place-grid">
+<div class="req-col"><p class="sig-label">Incoming request</p><div class="req-card"><div><span class="k">POST </span><span class="v">/v1/chat/completions</span></div><div><span class="k">model </span><span class="v">llama-3.1-8b</span></div><div><span class="k">runtime </span><span class="v">any · vllm preferred</span></div><div><span class="k">needs </span><span class="v">~10gb · ctx 8k</span></div><div><span class="k">policy </span><span class="v">local-first, overflow metered</span></div></div>
+<p class="sig-label" style="margin-top:16px">Tap a signal to filter nodes</p></div>
+<div class="signals"><p class="sig-label">Placement signals: warm state is one of seven</p>
+<div class="sig-grid" id="sigs">
+<button type="button" class="chip on" data-f="model" aria-pressed="true">model <span class="s" aria-hidden="true">✓</span></button>
+<button type="button" class="chip on" data-f="runtime" aria-pressed="true">runtime <span class="s" aria-hidden="true">✓</span></button>
+<button type="button" class="chip on" data-f="deploy" aria-pressed="true">deployment <span class="s" aria-hidden="true">✓</span></button>
+<button type="button" class="chip on" data-f="group" aria-pressed="true">gpu-group <span class="s" aria-hidden="true">✓</span></button>
+<button type="button" class="chip on" data-f="cap" aria-pressed="true">capacity <span class="s" aria-hidden="true">✓</span></button>
+<button type="button" class="chip on" data-f="health" aria-pressed="true">health·load <span class="s" aria-hidden="true">✓</span></button>
+<button type="button" class="chip" data-f="warm" aria-pressed="false">warm-state <span class="s" aria-hidden="true">·1 signal</span></button>
 </div>
-
-<a id="top"></a>
-<!-- HERO -->
-<header class="hero">
-  <div class="page">
-    <span class="kicker"><span class="dot"></span>{{VERSION}}: Supports Ollama, vLLM, TGI, llama.cpp, MLX · Self-hosted · Apache-2.0</span>
-    <h1 class="headline">The control plane for <em>self-hosted AI inference.</em></h1>
-    <p class="subhead">
-      A self-hosted control plane with a marbor agent for remote telemetry, model operations, and node-side maintenance.
-      marbor routes each request to the node already holding the model warm in VRAM - eliminating cold starts,
-      balancing queue depth across nodes, and metering cost-aware cloud overflow with full token accounting.
-      The core stays a single Go binary; the marbor agent extends it on remote GPU hosts with richer live data, lifecycle control, and fleet maintenance.
-    </p>
-
-    <div class="cta-row">
-      <a href="#install" class="btn btn-primary">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
-        install in one command
-      </a>
-      <a href="demo/" class="btn btn-demo" target="_blank" rel="noopener noreferrer">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-        live demo
-      </a>
-      <a href="docs/" class="btn btn-ghost">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 19.5A2.5 2.5 0 0 0 6.5 22H20M4 19.5V3a1 1 0 0 1 1-1h15a1 1 0 0 1 1 1v19a1 1 0 0 1-1 1H6.5a2.5 2.5 0 0 1-2.5-2.5z"/></svg>
-        read the docs
-      </a>
-      <a href="https://github.com/Anirudhx7/marbor" class="btn btn-ghost" target="_blank" rel="noopener noreferrer">
-        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-        view on github
-      </a>
-    </div>
-
-    <div class="install" id="install">
-      <div class="prompt">
-        <span class="sigil">$</span>
-        <span class="cmd">curl -fsSL raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh <span class="dim">|</span> sh</span>
-      </div>
-      <button class="copy-btn" id="copyBtn" aria-label="Copy install command" data-copy="curl -fsSL raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | sh">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-        <span id="copyLabel">copy</span>
-      </button>
-    </div>
-
-    <div class="badge-grid">
-      <div class="badge-item">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
-        <span>License: <strong>Apache-2.0</strong></span>
-      </div>
-      <div class="badge-item">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
-        <span>Deployment: <strong>Self-Hosted</strong></span>
-      </div>
-      <div class="badge-item">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
-        <span>Security: <strong>Air-Gapped Ready</strong></span>
-      </div>
-      <div class="badge-item">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
-        <span>API: <strong>OpenAI-Compatible</strong></span>
-      </div>
-      <div class="badge-item">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
-        <span>Runtime: <strong>Single Go Binary</strong></span>
-      </div>
-      <div class="badge-item">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
-        <span>Cluster: <strong>Multi-Runtime</strong></span>
-      </div>
-    </div>
-
-    <!-- routing diagram -->
-    <div class="routing" role="img" aria-label="Diagram: a chat completion request is scheduled dynamically by marbor based on queue depth and warm model residency.">
-      <div class="routing-head">
-        <div class="dots"><span></span><span></span><span></span></div>
-        <span>marbor · scheduler console</span>
-        <span style="margin-left:auto;color:var(--accent2)" id="liveIndicator">● simulating live traffic</span>
-      </div>
-      <div class="routing-body">
-        <div class="rcol">
-          <div class="rlabel">Incoming request</div>
-          <div class="req" id="consoleReq">
-            <span class="k">POST</span> /v1/chat/completions<br>
-            <span class="k">model</span>: <span class="s" id="reqModel">"deepseek-r1:7b"</span><br>
-            <span class="k">stream</span>: <span class="s">true</span>
-          </div>
-          <div class="routing-stats">
-            <div class="routing-stat-item">VRAM Saved: <strong id="statVram">16.0 GB</strong></div>
-            <div class="routing-stat-item">Latency Saved: <strong id="statLatency">18.4s</strong></div>
-          </div>
-        </div>
-        <div class="rcol">
-          <div class="rlabel">Cluster state</div>
-          <div class="node" id="node1">
-            <svg class="pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.9 5.8a2 2 0 001.3 1.3L21 12l-5.8 1.9a2 2 0 00-1.3 1.3L12 21l-1.9-5.8a2 2 0 00-1.3-1.3L3 12l5.8-1.9a2 2 0 001.3-1.3L12 3z"/></svg>
-            <div>gpu-01 <span class="gpu" id="node1Model">deepseek-r1:7b</span><span class="node-vram" id="node1Vram">8.2GB/80GB</span></div>
-            <span class="node-queue" id="node1Queue">Queue: 0</span>
-            <span class="state" id="node1State">warm</span>
-          </div>
-          <div class="node" id="node2">
-            <svg class="pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.9 5.8a2 2 0 001.3 1.3L21 12l-5.8 1.9a2 2 0 00-1.3 1.3L12 21l-1.9-5.8a2 2 0 00-1.3-1.3L3 12l5.8-1.9a2 2 0 001.3-1.3L12 3z"/></svg>
-            <div>gpu-02 <span class="gpu" id="node2Model">llama3.1:8b</span><span class="node-vram" id="node2Vram">9.4GB/80GB</span></div>
-            <span class="node-queue" id="node2Queue">Queue: 0</span>
-            <span class="state" id="node2State">warm</span>
-          </div>
-          <div class="node" id="node3">
-            <svg class="pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.9 5.8a2 2 0 001.3 1.3L21 12l-5.8 1.9a2 2 0 00-1.3 1.3L12 21l-1.9-5.8a2 2 0 00-1.3-1.3L3 12l5.8-1.9a2 2 0 001.3-1.3L12 3z"/></svg>
-            <div>gpu-03 <span class="gpu" id="node3Model">idle</span><span class="node-vram" id="node3Vram">0GB/80GB</span></div>
-            <span class="node-queue" id="node3Queue">Queue: 0</span>
-            <span class="state" id="node3State">cold</span>
-          </div>
-        </div>
-        <div class="rcol full">
-          <div class="rlabel">Routing Decision</div>
-          <div class="pick" id="decisionText" style="font-weight: 600;">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;margin-right:8px;"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-            route → gpu-01 · <span style="color:var(--accent2)">0ms model load</span> (already warm)
-          </div>
-          <div class="reasoning-box" id="decisionReasoning">
-            Warm hit detected on gpu-01. Routing request to resident VRAM.
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Measured benchmark - real numbers from a deployed instance, not simulation -->
-    <p style="margin:14px 2px 0;font-size:13px;color:var(--muted);line-height:1.6;">
-      Measured, not simulated: on a deployed v0.13.1 instance routing to a single consumer-GPU node
-      (8B Q4_K_M model, ~9.6&nbsp;GB), cold TTFT was <strong>11.5–18.1&nbsp;s</strong> (median 17.3&nbsp;s)
-      vs a warm median of <strong>8.1&nbsp;s</strong> and a fastest warm response of
-      <strong>0.4&nbsp;s</strong> - up to <strong>43×</strong> faster than the median cold start.
-      Honest context: only ~3.3 GB fit in VRAM so even warm was partly CPU-bound - full-VRAM hardware widens the gap.
-      Reproduce it on your hardware with the
-      <a href="https://github.com/Anirudhx7/marbor/tree/main/bench" style="color:var(--accent2);">open benchmark harness</a>.
-    </p>
-  </div>
-</header>
-
-<!-- SPCS-FEATURE-START
-<section id="spcs" style="padding: 80px 0 40px; border-top: 1px solid var(--border-subtle);">
-  <div class="page">
-    <div class="spcs-section">
-      <p class="eyebrow">Protocol: SPCS</p>
-      <h2 class="sec">Warm models in <em>under a second.</em></h2>
-      <p class="sec-sub" style="margin-bottom: 20px;">
-        Speculative Prefix-Cached Swapping (SPCS) eliminates the multi-second delay of loading cold model weights into VRAM.
-      </p>
-
-      <div class="spcs-grid">
-        <div class="spcs-text">
-          <p style="font-size: 14px; color: var(--text-muted); margin: 0 0 16px; line-height: 1.6;">
-            When a user requests a model that is not currently loaded in VRAM, conventional systems make them wait 20 to 30 seconds for the weights to load.
-          </p>
-          <p style="font-size: 14px; color: var(--text-muted); margin: 0; line-height: 1.6;">
-            <code>marbor</code> eliminates this wait entirely using a protocol called <strong>SPCS</strong>. The moment a cold-model request arrives, the scheduler immediately streams tokens from a warm draft model while loading the target model in the background. Once the target is warm and prefix-cached, it performs a seamless hot-swap mid-stream. The client receives a response starting in under 1 second, and the final output comes from the correct target model, exposing zero cold-start delay to the user.
-          </p>
-        </div>
-        <div class="spcs-diagram">
-          <div class="spcs-timeline">
-            <div class="spcs-timeline-label">Without marbor (Conventional Routing)</div>
-            <div class="spcs-bar without">
-              <div class="spcs-bar-text">
-                <span>Cold 70B Request</span>
-                <span class="spcs-badge cold">24-second VRAM weight load delay</span>
-                <span>First Token</span>
-              </div>
-            </div>
-          </div>
-          <div class="spcs-timeline">
-            <div class="spcs-timeline-label">With marbor + SPCS (Speculative Streaming)</div>
-            <div class="spcs-bar with">
-              <div class="spcs-bar-fill"></div>
-              <div class="spcs-bar-text">
-                <span>Cold 70B Request</span>
-                <span class="spcs-badge warm">&lt;1s draft stream</span>
-                <span style="color: var(--accent); font-weight: bold;">[Seamless Swap]</span>
-                <span>70B Target Output</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-SPCS-FEATURE-END -->
-
-<!-- DEMO STRIP -->
-<div style="border-top:1px solid var(--border-subtle); border-bottom:1px solid var(--border-subtle); background:var(--bg-elevated); padding:14px 0;">
-  <div class="page" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
-    <div style="display:flex;align-items:center;gap:10px;">
-      <span class="brand-dot"></span>
-      <span style="font-size:13px;color:var(--text-muted);">See it running live - real admin dashboard, VRAM state, and request telemetry.</span>
-    </div>
-    <a href="demo/" target="_blank" rel="noopener noreferrer" class="btn btn-demo" style="padding:6px 16px;font-size:12px;">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" style="width:13px;height:13px;"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-      open live demo &nbsp;↗
-    </a>
-  </div>
+<div class="nodes" id="nodes">
+<div class="node sel" data-tags="model runtime deploy group cap health warm"><div class="node-top"><span class="node-name">gpu-01 · vllm</span><span class="node-rt">llama-3.1-8b</span></div><div class="vram"><i style="width:46%"></i></div><div class="node-meta"><span>vram 11/24gb</span><span class="badge b-ok">selected</span></div></div>
+<div class="node" data-tags="model runtime deploy group health"><div class="node-top"><span class="node-name">gpu-02 · vllm</span><span class="node-rt">llama-3.1-8b</span></div><div class="vram"><i style="width:78%"></i></div><div class="node-meta"><span>vram 18/24gb · queue 6</span><span class="badge b-warn">loaded</span></div></div>
+<div class="node" data-tags="model group cap health"><div class="node-top"><span class="node-name">gpu-03 · ollama</span><span class="node-rt">mistral-7b</span></div><div class="vram"><i style="width:30%"></i></div><div class="node-meta"><span>wrong model resident</span><span class="badge b-bad">skip</span></div></div>
+<div class="node" data-tags="runtime deploy"><div class="node-top"><span class="node-name">gpu-04 · drained</span><span class="node-rt">maintenance</span></div><div class="vram hot"><i style="width:92%"></i></div><div class="node-meta"><span>unhealthy · excluded</span><span class="badge b-bad">excluded</span></div></div>
+</div></div></div>
+<div class="decision" role="status" aria-live="polite"><span>Decision →</span><code>gpu-01 · model ✓ runtime ✓ capacity ✓ health ✓</code><span style="color:var(--text-muted)">Marbor routes and observes. Sharding, parallelism, and KV transport stay inside the runtime.</span></div>
+<div class="place-note">Polls each agent every 2s. New signals (GPU groups, deployment constraints) slot into the same evaluation without redesign.</div>
+<div class="place-proof"><div class="pp"><div class="n">17.3<span class="g">s</span></div><div class="l">Median cold TTFT · measured v0.13.1 (11.5–18.1s)</div></div><div class="pp"><div class="n">0.4<span class="g">s</span></div><div class="l">Fastest warm TTFT · 8.1s typical · 43× best case</div></div><div class="pp"><div class="n">2<span class="g"> binaries</span></div><div class="l">marbor + marbor-agent · SQLite only · zero deps</div></div><div class="pp"><div class="n">5<span class="g"> runtimes</span></div><div class="l">Ollama · vLLM · TGI · llama.cpp · MLX</div></div></div>
 </div>
-
-<!-- WHY LOCAL INFERENCE IS HARD -->
-<section id="why-hard" style="padding: 40px 0 80px; border-top: 1px solid var(--border-subtle);">
-  <div class="page">
-    <p class="eyebrow">The Scheduling Problem</p>
-    <h2 class="sec">Self-hosting is easy. Operating it is hard.</h2>
-    <p class="sec-sub">Serving LLMs across your own GPU fleet creates silent bottlenecks that generic load balancers can't see - wasting VRAM, wearing hardware, and breaking reliability.</p>
-    
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; margin-top: 32px;">
-      <div class="pain-card">
-        <h3 style="font-family: var(--font-serif); font-size: 17px; margin: 0 0 10px; font-weight: 600;">VRAM Thrashing & Overlap</h3>
-        <p style="color: var(--text-muted); font-size: 13.5px; margin: 0; line-height: 1.6;">Without scheduling coordination, developers load models ad-hoc. When GPU memory fills, the runtime terminates resident models to make room, leading to constant loading cycles that wear hardware and halt requests.</p>
-      </div>
-      <div class="pain-card">
-        <h3 style="font-family: var(--font-serif); font-size: 17px; margin: 0 0 10px; font-weight: 600;">Unbalanced Queue Hotspots</h3>
-        <p style="color: var(--text-muted); font-size: 13.5px; margin: 0; line-height: 1.6;">Standard load balancers balance network connections, not request complexity. A deep reasoning request is treated the same as a short completion, causing requests to pile up on a busy node while other GPUs sit completely idle.</p>
-      </div>
-      <div class="pain-card">
-        <h3 style="font-family: var(--font-serif); font-size: 17px; margin: 0 0 10px; font-weight: 600;">Saturated Failures</h3>
-        <p style="color: var(--text-muted); font-size: 13.5px; margin: 0; line-height: 1.6;">When local hardware capacity is genuinely exceeded, users get connection errors. Alternatively, routing all requests to cloud APIs by default removes the cost benefits of self-hosting local models.</p>
-      </div>
-    </div>
-    
-    <div style="margin-top: 32px; padding: 20px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--accent-bg); display: flex; gap: 16px; align-items: flex-start;">
-      <svg style="width: 20px; height: 20px; color: var(--accent); flex-shrink: 0; margin-top: 2px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
-      <div>
-        <h4 style="margin: 0 0 4px; font-size: 14px; font-weight: bold; color: var(--text);">How marbor solves placement:</h4>
-        <p style="margin: 0; color: var(--text-muted); font-size: 13.5px; line-height: 1.6;">
-          By actively polling node states and VRAM layouts every 2 seconds, <code>marbor</code> acts as a centralized control plane. It schedules requests based on real-time model residency, coordinates queues across nodes, and overflows to cloud providers only when local capacity is fully saturated - preserving local compute first.
-        </p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- FEATURES -->
-<section id="features">
-  <div class="page">
-    <p class="eyebrow">Built for platform engineers</p>
-    <h2 class="sec">One binary for the <em>whole job.</em></h2>
-    <p class="sec-sub">Point every app at one OpenAI-compatible URL. marbor handles warm-state routing, high-availability failover, authentication, rate limiting, and cost analytics - across Ollama, vLLM, TGI, llama.cpp, and MLX.</p>
-
-    <div class="features">
-      <div class="feat warm">
-        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l1.9 5.8a2 2 0 001.3 1.3L21 12l-5.8 1.9a2 2 0 00-1.3 1.3L12 21l-1.9-5.8a2 2 0 00-1.3-1.3L3 12l5.8-1.9a2 2 0 001.3-1.3L12 3z"/></svg></div>
-          <div>
-            <div class="feat-meta">
-              <span class="chip chip-yes">warm hit</span>
-              <span class="chip chip-partial">resident VRAM</span>
-              <span class="chip chip-no">queue depth</span>
-            </div>
-            <h3>Warm-state VRAM scheduling</h3>
-            <p>Schedules requests exclusively to GPU nodes where the target model is already resident in VRAM. Prevents the multi-second delay of thrashing models in and out of GPU memory, maximizing hardware lifetime and throughput.</p>
-          </div>
-      </div>
-      <div class="feat">
-        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 019-9 9.75 9.75 0 016.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 01-9 9 9.75 9.75 0 01-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg></div>
-        <div>
-          <div class="feat-meta">
-            <span class="chip chip-yes">2 cloud backends</span>
-            <span class="chip chip-partial">auto reroute</span>
-            <span class="chip chip-no">saturation aware</span>
-          </div>
-          <h3>High-availability failover & overflow</h3>
-          <p>Spills traffic to backup cloud APIs (OpenAI or Anthropic) only when local GPUs are fully saturated. The scheduler automatically pulls traffic back to the local cluster the instant queue depth or VRAM capacity is freed, ensuring you only pay for cloud compute when your local hardware is genuinely full.</p>
-        </div>
-      </div>
-      <div class="feat">
-        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></div>
-        <div>
-          <div class="feat-meta">
-            <span class="chip chip-yes">per token</span>
-            <span class="chip chip-partial">cloud overflow</span>
-            <span class="chip chip-no">savings log</span>
-          </div>
-          <h3>Cost-aware routing</h3>
-          <p>Tracks, prices, and logs every cloud-overflow request per token. Provides a clear accounting of the dollar amount saved by serving requests locally versus what was spent on cloud fallback, directly in your terminal or dashboard.</p>
-        </div>
-      </div>
-      <div class="feat">
-        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg></div>
-        <div>
-          <div class="feat-meta">
-            <span class="chip chip-yes">marbor agent</span>
-            <span class="chip chip-partial">live nodes</span>
-            <span class="chip chip-no">node-side ops</span>
-          </div>
-          <h3>marbor agent observability and operations</h3>
-          <p>Turns each remote GPU host into a live, operator-visible node: real-time GPU utilization, active queue depth, VRAM occupancy, model residency, and node-side operations are all available through the same product surface. No separate exporters, databases, or Grafana stack to assemble just to observe, control, and maintain your cluster.</p>
-        </div>
-      </div>
-      <div class="feat">
-        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg></div>
-        <div>
-          <div class="feat-meta">
-            <span class="chip chip-yes">1 binary</span>
-            <span class="chip chip-partial">&lt;10ms cold start</span>
-            <span class="chip chip-no">zero deps</span>
-          </div>
-          <h3>Single-binary deployment</h3>
-          <p>A static, self-contained Go binary with zero runtime dependencies. Cold-starts in under 10ms, has a negligible memory footprint, and requires no Python environment, node modules, or Docker containers to run.</p>
-        </div>
-      </div>
-      <div class="feat">
-        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg></div>
-        <div>
-          <div class="feat-meta">
-            <span class="chip chip-yes">/v1/chat/completions</span>
-            <span class="chip chip-partial">API keys</span>
-            <span class="chip chip-no">quotas</span>
-          </div>
-          <h3>OpenAI-compatible API gateway</h3>
-          <p>Enforces API key authentication and token quotas. Supports the standard <code>/v1/chat/completions</code> endpoint for tools like Continue, LibreChat, Open WebUI, and custom applications by changing a single base URL.</p>
-        </div>
-      </div>
-      <div class="feat">
-        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="7" height="7" rx="1"/><rect x="15" y="3" width="7" height="7" rx="1"/><rect x="2" y="14" width="7" height="7" rx="1"/><rect x="15" y="14" width="7" height="7" rx="1"/><path d="M9 6.5h6M9 17.5h6M5.5 10v4M18.5 10v4"/></svg></div>
-        <div>
-          <div class="feat-meta">
-            <span class="chip chip-yes">5 runtimes</span>
-            <span class="chip chip-partial">protocol translation</span>
-            <span class="chip chip-no">mix &amp; match</span>
-          </div>
-          <h3>Multi-runtime load balancing</h3>
-          <p>Provides a unified OpenAI-compatible endpoint that transparently orchestrates Ollama, vLLM, llama.cpp, TGI, and MLX nodes. Handles protocol translation automatically, allowing you to mix and match runtimes based on performance needs.</p>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- HOW IT WORKS -->
-<section id="how">
-  <div class="page">
-    <p class="eyebrow">From zero to routed in three steps</p>
-    <h2 class="sec">One control plane, one <em>optional agent.</em></h2>
-    <p class="sec-sub">The core control plane is a single Go binary. When you want richer remote telemetry, model lifecycle operations, or node-side maintenance, install the marbor agent on the GPU hosts that need it. marbor still communicates with every runtime over standard HTTP APIs.</p>
-
-    <div class="steps">
-      <div class="step">
-        <div class="num">1</div>
-        <div>
-          <h3>Install the binary</h3>
-          <p>Grab the release for your platform - or build from source with Go. It's one file with no runtime dependencies.</p>
-          <p style="margin-bottom: 0.5rem;">Option 1: Download & Install only (Recommended)</p>
-          <div class="code-wrap"><pre class="code"><span class="g">curl</span> -fsSL raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh <span class="b">|</span> sh</pre><button class="copy-btn" aria-label="Copy" data-copy="curl -fsSL raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | sh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-
-          <p style="margin-top: 1.2rem; margin-bottom: 0.5rem;">Option 2: Install, scan local network & run daemon in background</p>
-          <div class="code-wrap"><pre class="code"><span class="g">curl</span> -fsSL raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh <span class="b">|</span> <span class="g">START</span>=1 sh</pre><button class="copy-btn" aria-label="Copy" data-copy="curl -fsSL raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | START=1 sh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-        </div>
-      </div>
-      <div class="step">
-        <div class="num">2</div>
-        <div>
-          <h3>Point it at your nodes</h3>
-          <p>Add nodes from the dashboard, or seed them at install time. No config file to write. Ollama, vLLM, TGI, llama.cpp, and MLX nodes all work - set <code>runtime</code> per node.</p>
-          <div class="code-wrap"><pre class="code"><span class="c"># seed at install time (repeatable flag)</span>
-marbor <span class="b">--seed-node</span> <span class="g">"name=ollama-gpu,url=http://gpu-01:11434,runtime=ollama"</span> <span class="b">--seed-node</span> <span class="g">"name=vllm-gpu,url=http://10.0.1.20:8000,runtime=vllm"</span></pre><button class="copy-btn" aria-label="Copy" data-copy='marbor --seed-node "name=ollama-gpu,url=http://gpu-01:11434,runtime=ollama" --seed-node "name=vllm-gpu,url=http://10.0.1.20:8000,runtime=vllm"'><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-        </div>
-      </div>
-      <div class="step">
-        <div class="num">3</div>
-        <div>
-          <h3>Send traffic to one URL</h3>
-          <p>Repoint your apps to the marbor. Same OpenAI-compatible endpoint - the routing happens behind it.</p>
-          <div class="code-wrap"><pre class="code"><span class="c"># your app, unchanged otherwise</span>
-base_url = <span class="g">"http://marbor:11434/v1"</span>
-<span class="c"># warm node picked automatically</span></pre><button class="copy-btn" aria-label="Copy" data-copy='base_url = "http://marbor:11434/v1"'><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- COMPARE -->
-<section id="compare">
-  <div class="page">
-    <p class="eyebrow">Where it fits</p>
-    <h2 class="sec">Load balancers guess. Marbor <em>knows.</em></h2>
-    <p class="sec-sub">Nginx, HAProxy, and Traefik balance TCP connections - they can't see which GPU holds your model warm. marbor schedules on live GPU and VRAM state instead. Here's the honest breakdown.</p>
-    <div class="compare-summary" aria-label="Comparison summary">
-      <span class="chip chip-yes">8 capability checks</span>
-      <span class="chip chip-partial">8/8 for marbor</span>
-      <span class="chip chip-no">0/8 for plain load balancers</span>
-    </div>
-
-    <div class="table-wrap"><div class="table-scroll">
-      <table class="compare">
-        <thead>
-          <tr>
-            <th>Capability</th>
-            <th class="us">marbor</th>
-            <th>Plain load balancer (nginx / HAProxy)</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>Warm-state routing (knows which nodes have which models loaded)</td>
-            <td class="col-us"><span class="chip chip-yes">✓ Yes</span></td>
-            <td><span class="chip chip-no">✗ No - nginx has no VRAM visibility</span></td>
-          </tr>
-          <tr>
-            <td>Model residency awareness (avoids unnecessary reloads)</td>
-            <td class="col-us"><span class="chip chip-yes">✓ Yes</span></td>
-            <td><span class="chip chip-no">✗ No - routes blindly, causes thrashing</span></td>
-          </tr>
-          <tr>
-            <td>GPU locality scheduling (routes by where the model already lives)</td>
-            <td class="col-us"><span class="chip chip-yes">✓ Yes</span></td>
-            <td><span class="chip chip-no">✗ No - cannot query GPU layouts</span></td>
-          </tr>
-          <tr>
-            <td>Queue-depth awareness (avoids piling requests on a busy node)</td>
-            <td class="col-us"><span class="chip chip-yes">✓ Yes</span></td>
-            <td><span class="chip chip-partial">~ Partial - balances TCP, not LLM queues</span></td>
-          </tr>
-          <tr>
-            <td>VRAM visibility (knows what is consuming memory across the cluster)</td>
-            <td class="col-us"><span class="chip chip-yes">✓ Yes</span></td>
-            <td><span class="chip chip-no">✗ No - cannot read /api/ps or nvidia-smi</span></td>
-          </tr>
-          <tr>
-            <td>Cold start handling (detects and routes around cold nodes)</td>
-            <td class="col-us"><span class="chip chip-yes">✓ Yes</span></td>
-            <td><span class="chip chip-no">✗ No - exposes 20–30s cold load to user</span></td>
-          </tr>
-          <tr>
-            <td>Multi-runtime support (Ollama, vLLM, TGI, llama.cpp, MLX)</td>
-            <td class="col-us"><span class="chip chip-yes">✓ Yes</span></td>
-            <td><span class="chip chip-no">✗ No - needs custom per-runtime config</span></td>
-          </tr>
-          <tr>
-            <td>Cluster observability (unified view of all nodes)</td>
-            <td class="col-us"><span class="chip chip-yes">✓ Yes</span></td>
-            <td><span class="chip chip-no">✗ No - requires Prometheus + Grafana setup</span></td>
-          </tr>
-        </tbody>
-      </table>
-    </div></div>
-
-    <!-- Secondary section for LiteLLM -->
-    <div class="litellm-section">
-      <h3 class="litellm-title">Using LiteLLM already? marbor runs below it.</h3>
-      <p class="litellm-desc">
-        LiteLLM is excellent for provider abstraction, enterprise auth, and user-level rate limiting. <code>marbor</code> slots in directly below LiteLLM as your physical scheduling layer, handling raw GPU queue depths, model residency, and warm-state routing. Together, they form the standard enterprise stack for high-throughput, self-hosted LLM clusters.
-      </p>
-      <div class="stack-diagram">
-        <div class="stack-node app">Applications</div>
-        <div class="stack-arrow">→</div>
-        <div class="stack-node litellm">LiteLLM<br><span style="font-size: 10px; color: var(--text-muted)">Auth & Provider Abstraction</span></div>
-        <div class="stack-arrow">→</div>
-        <div class="stack-node marbor">marbor<br><span style="font-size: 10px; opacity: 0.85">GPU Scheduling & VRAM Routing</span></div>
-        <div class="stack-arrow">→</div>
-        <div class="stack-node runtime">Runtimes<br><span style="font-size: 10px; opacity: 0.85">Ollama, vLLM, TGI, llama.cpp, MLX</span></div>
-        <div class="stack-arrow">→</div>
-        <div class="stack-node runtime" style="border-color: var(--accent); color: var(--text);">GPUs<br><span style="font-size: 10px; color: var(--text-muted)">On-Premise / Private Cloud</span></div>
-      </div>
-    </div>
-
-    <!-- self-hosted vs cloud APIs -->
-    <div style="margin-top: 32px; padding: 20px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--accent-bg); display: flex; gap: 16px; align-items: flex-start;">
-      <svg style="width: 20px; height: 20px; color: var(--accent); flex-shrink: 0; margin-top: 2px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
-      <div>
-        <h4 style="margin: 0 0 4px; font-size: 14px; font-weight: bold; color: var(--text);">Self-hosted vs. cloud LLM APIs</h4>
-        <p style="margin: 0; color: var(--text-muted); font-size: 13.5px; line-height: 1.6;">
-          Every request marbor keeps on your own GPUs is a request you don't pay OpenAI or Anthropic for. It meters each cloud-overflow token against your configured reference rate, so you see the exact dollar difference between local and cloud on every response - see the <a href="docs/SAVINGS-MATH.html">savings math</a>.
-        </p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- FAQ SECTION -->
-<section id="faq" style="padding: 80px 0 40px; border-top: 1px solid var(--border-subtle);">
-  <div class="page">
-    <p class="eyebrow">Frequently Asked Questions</p>
-    <h2 class="sec">What operators ask <em>before installing.</em></h2>
-
-    <div class="faq-grid">
-      <div class="faq-card">
-        <h3>What is marbor?</h3>
-        <p><code>marbor</code> is a single-binary control plane for self-hosted AI inference. It routes each request to the GPU node that already holds the model warm in VRAM across Ollama, vLLM, TGI, llama.cpp, and MLX, exposing one OpenAI-compatible endpoint so your own hardware becomes a high-availability alternative to cloud LLM APIs.</p>
-      </div>
-      <div class="faq-card">
-        <h3>How is marbor different from a plain load balancer like nginx or HAProxy?</h3>
-        <p>Nginx, HAProxy, and Traefik balance TCP connections with no visibility into which GPU holds a model warm, so they route blindly and cause repeated cold starts and VRAM thrashing. <code>marbor</code> reads live model residency and VRAM state on every node and schedules each request to a warm GPU.</p>
-      </div>
-      <div class="faq-card">
-        <h3>Does marbor work with vLLM, TGI, llama.cpp, and MLX - or only Ollama?</h3>
-        <p>All five. Despite the name, <code>marbor</code> is runtime-agnostic: it presents one unified OpenAI-compatible endpoint and translates protocols across Ollama, vLLM, TGI, llama.cpp, and MLX, so you can mix runtimes behind a single URL.</p>
-      </div>
-      <div class="faq-card">
-        <h3>Can marbor replace cloud LLM APIs like OpenAI?</h3>
-        <p>That is the core use case. It serves requests from your own GPUs first and overflows to OpenAI or Anthropic only when local capacity is fully saturated, metering every cloud token so you can see exactly what self-hosting saves versus cloud spend.</p>
-      </div>
-      <div class="faq-card">
-        <h3>How does high-availability failover work?</h3>
-        <p>If a node goes offline, <code>marbor</code> marks it unhealthy and reroutes to other warm local nodes; if the whole local cluster is saturated or down, it can optionally fail over to a configured cloud provider. The routing path is stateless, so you can run multiple instances behind an L4 load balancer for HA.</p>
-      </div>
-      <div class="faq-card">
-        <h3>Can I add authentication and rate limiting in front of my models?</h3>
-        <p>Yes. <code>marbor</code> acts as an API gateway: Bearer-token authentication, per-key model allow-lists, and per-key rate limits with daily and monthly quotas - protecting self-hosted GPUs from abuse without changing your application code.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- CTA BAND -->
-<section>
-  <div class="page">
-    <div class="band">
-      <h2>Find out what your cluster is <em>actually doing.</em></h2>
-      <p>Install it, point it at your nodes, and open the dashboard. The numbers are yours - measured, not mocked up.</p>
-      <div class="cta-row">
-        <a href="#install" class="btn btn-primary">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
-          install marbor
-        </a>
-        <a href="docs/" class="btn btn-ghost">read the docs →</a>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- FOOTER -->
-<footer class="foot">
-  <div class="page">
-    <div class="foot-grid">
-      <div class="foot-brand">
-<a href="#top" class="brand" aria-label="Marbor home">
-          <div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-            <svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true">
-              <path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
-              <circle cx="75" cy="75" r="8" fill="#a87f3a"/>
-            </svg>
-          </div>
-<span class="name">Marbor</span>
-        </a>
-        <p>Warm-first routing and honest cost tracking for self-hosted GPU inference - Ollama, vLLM, TGI, llama.cpp, and MLX.</p>
-        <a class="gh-link" href="https://github.com/Anirudhx7/marbor" aria-label="GitHub repository" target="_blank" rel="noopener noreferrer">
-          <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-        </a>
-        <a class="gh-link" href="https://www.linkedin.com/in/anirudh-mehandru/" aria-label="LinkedIn profile" target="_blank" rel="noopener noreferrer" style="margin-left:10px;">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.45 20.45h-3.56v-5.57c0-1.33-.03-3.04-1.85-3.04-1.86 0-2.14 1.45-2.14 2.94v5.67H9.33V9h3.42v1.56h.05c.48-.9 1.66-1.85 3.42-1.85 3.66 0 4.33 2.41 4.33 5.54v6.2zM5.34 7.43a2.07 2.07 0 1 1 0-4.14 2.07 2.07 0 0 1 0 4.14zM7.12 20.45H3.55V9h3.57v11.45z"/></svg>
-        </a>
-      </div>
-      <div class="foot-col">
-        <h4>Product</h4>
-        <a href="#features">Features</a>
-        <a href="#how">How it works</a>
-        <a href="#compare">Compare</a>
-        <a href="docs/SAVINGS-MATH.html">Savings math</a>
-        <a href="demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);">Live demo ↗</a>
-      </div>
-      <div class="foot-col">
-        <h4>Docs</h4>
-        <a href="docs/">Overview</a>
-        <a href="docs/INTEGRATIONS.html">Integrations</a>
-        <a href="docs/PRODUCTION.html">Production</a>
-        <a href="docs/deploy/aws-ec2.html">Deploy on AWS</a>
-        <a href="docs/LIMITATIONS.html">Known limitations</a>
-      </div>
-      <div class="foot-col">
-        <h4>Integrations</h4>
-        <a href="docs/integrations/continue.html">Continue</a>
-        <a href="docs/integrations/librechat.html">LibreChat</a>
-        <a href="docs/integrations/litellm.html">LiteLLM</a>
-        <a href="docs/integrations/open-webui.html">Open WebUI</a>
-        <a href="docs/USE-CASES.html">Use cases</a>
-      </div>
-    </div>
-    <div class="foot-bottom">
-      <span>© <span id="year">2026</span> Marbor · Apache-2.0</span>
-      <span>
-        <span style="color:var(--accent);font-size:11px;font-weight:600;letter-spacing:0.02em;padding:2px 8px;border:1px solid var(--accent);border-radius:99px;background:color-mix(in srgb,var(--accent) 10%,transparent);">{{VERSION}}</span>
-        · <a href="https://github.com/Anirudhx7/marbor/releases" class="gh-link">releases ↗</a>
-      </span>
-    </div>
-  </div>
-</footer>
-
+<section class="block" id="features" data-reveal><p class="kicker">Capabilities</p><h2>One binary for the whole job.</h2><p class="sub">Placement, failover, cost control, and observability, without claiming work that belongs to the runtime.</p>
+<div class="feat-list">
+<div class="lead"><h3>Deployment-aware <span class="g">placement</span></h3><p>Every request is evaluated against model residency, runtime compatibility, deployment constraints, GPU groups, free capacity, health, queue depth, and warm state. The best fit wins, not round-robin.</p>
+<div class="sigscroll" tabindex="0" role="region" aria-label="Placement schematic: scroll horizontally on small screens"><svg class="sigpath" viewBox="0 0 640 120" role="img" aria-label="Schematic: one request evaluated against seven signals leading to a placement decision"><line class="wire" x1="30" y1="58" x2="610" y2="58"/><rect class="req" x="22" y="50" width="16" height="16"/><text x="30" y="88" text-anchor="middle">req</text><line class="tick" x1="100" y1="48" x2="100" y2="68"/><text x="100" y="88" text-anchor="middle">model</text><line class="tick" x1="170" y1="48" x2="170" y2="68"/><text x="170" y="88" text-anchor="middle">runtime</text><line class="tick" x1="240" y1="48" x2="240" y2="68"/><text x="240" y="88" text-anchor="middle">deploy</text><line class="tick" x1="310" y1="48" x2="310" y2="68"/><text x="310" y="88" text-anchor="middle">group</text><line class="tick" x1="380" y1="48" x2="380" y2="68"/><text x="380" y="88" text-anchor="middle">capacity</text><line class="tick" x1="450" y1="48" x2="450" y2="68"/><text x="450" y="88" text-anchor="middle">health</text><line class="tick" x1="520" y1="48" x2="520" y2="68"/><text x="520" y="88" text-anchor="middle">warm</text><circle class="dec" cx="610" cy="58" r="7"/><text class="decl" x="610" y="88" text-anchor="middle">place</text></svg></div></div>
+<div class="crow" tabindex="0"><span class="fnum" aria-hidden="true">02</span><div class="crow-body"><h3>Fleet capacity &amp; health</h3><p>Unhealthy nodes are excluded automatically. Saturated fleets overflow to configured cloud, metered per token. Cloud overflow stays off until local capacity is full.</p><p class="spec">→ unhealthy excluded automatically · overflow metered · off until local is full</p></div></div>
+<div class="crow" tabindex="0"><span class="fnum" aria-hidden="true">03</span><div class="crow-body"><h3>Cost-aware overflow</h3><p>Serve from your GPUs first. Burst to OpenAI/Anthropic only when local is full, with per-key attribution so savings are visible.</p><p class="spec">→ local-first · per-key attribution · OpenAI / Anthropic overflow</p></div></div>
+<div class="crow" tabindex="0"><span class="fnum" aria-hidden="true">04</span><div class="crow-body"><h3>Fleet observability</h3><p>Agent snapshot every 2s: VRAM, model residency, runtime health. One dashboard, per-key usage, honest “-” when data is missing.</p><p class="spec">→ :8080 dashboard · :9090 metrics · honest “-” when missing</p></div></div>
+<div class="crow" tabindex="0"><span class="fnum" aria-hidden="true">05</span><div class="crow-body"><h3>OpenAI-compatible gateway</h3><p><code>/v1/chat/completions</code> in front of all five runtimes. Bearer auth, per-key allow-lists, daily/monthly quotas.</p><p class="spec">→ Bearer keys · per-key allow-lists · daily + monthly quotas</p></div></div>
+<div class="crow" tabindex="0"><span class="fnum" aria-hidden="true">06</span><div class="crow-body"><h3>Multi-runtime fleet</h3><p>Mix Ollama, vLLM, TGI, llama.cpp, and MLX behind one URL. Protocol translation included. No app changes.</p><p class="spec">→ ollama · vllm · tgi · llama.cpp · mlx · one URL on :11434</p></div></div>
+</div></section>
+<section class="block" id="how" data-reveal><p class="kicker">How it works</p><h2>One control plane, one optional agent.</h2><p class="sub">No Kubernetes. No distributed state. Up in minutes.</p>
+<div class="setup" data-reveal>
+<div class="setup-head"><div><h3>Get started with Marbor</h3><p>Complete these steps to start serving models.</p></div><span class="setup-count">4/5</span></div>
+<button type="button" class="srow" aria-pressed="true" data-done="Your first inference node is connected." data-pending="Add your first GPU node to Marbor."><span class="scheck done" aria-hidden="true">✓</span><div><span class="stitle">Add a GPU node</span><span class="ssub done">Your first inference node is connected.</span></div></button>
+<button type="button" class="srow" aria-pressed="true" data-done="Agent is reporting healthy." data-pending="Install the marbor agent on your GPU node."><span class="scheck done" aria-hidden="true">✓</span><div><span class="stitle">Install marbor agent</span><span class="ssub done">Agent is reporting healthy.</span></div></button>
+<button type="button" class="srow" aria-pressed="true" data-done="llama3.2 is warm on your fleet." data-pending="Pull a model to your fleet."><span class="scheck done" aria-hidden="true">✓</span><div><span class="stitle">Pull a model</span><span class="ssub done">llama3.2 is warm on your fleet.</span></div></button>
+<button type="button" class="srow" aria-pressed="true" data-done="An active API key is ready for inference." data-pending="Create an API key to authenticate requests."><span class="scheck done" aria-hidden="true">✓</span><div><span class="stitle">Create an API key</span><span class="ssub done">An active API key is ready for inference.</span></div></button>
+<button type="button" class="srow" aria-pressed="false" data-done="Your first inference request was served." data-pending="Send your first inference request to Marbor."><span class="scheck todo" aria-hidden="true"><i></i></span><div><span class="stitle">Serve your first request</span><span class="ssub todo">Send your first inference request to Marbor.</span></div></button>
+<div class="sbar" role="progressbar" aria-label="Setup progress" aria-valuemin="0" aria-valuemax="5" aria-valuenow="4"><i></i></div>
+<div class="sfoot"><span>4/5</span></div>
+</div>
+<p class="shot-cap">The real setup checklist from your Marbor dashboard. Click a step to try it.</p></section>
+<section class="block" id="compare" data-reveal><p class="kicker">Why not a load balancer</p><h2>Load balancers guess. Marbor knows.</h2><p class="sub">TCP balancers see connections. Marbor sees deployments.</p>
+<div class="cmp" tabindex="0" role="region" aria-label="Comparison table: scroll horizontally on small screens"><table><caption class="sr-only">Marbor versus plain load balancers across placement and safety capabilities</caption><thead><tr><th scope="col">Capability</th><th scope="col">Marbor</th><th scope="col">nginx / HAProxy / Traefik</th></tr></thead><tbody>
+<tr class="grp"><td colspan="3">Placement intelligence</td></tr>
+<tr><td>Model-aware routing</td><td class="y">Yes</td><td class="n">No</td></tr>
+<tr><td>Runtime compatibility checks</td><td class="y">Yes</td><td class="n">No</td></tr>
+<tr><td>VRAM headroom scoring</td><td class="y">Yes</td><td class="n">No</td></tr>
+<tr><td>Live load (conns + measured TTFT)</td><td class="y">Yes</td><td class="p">Partial</td></tr>
+<tr><td>Warm-model + session affinity</td><td class="y">Yes</td><td class="p">Partial</td></tr>
+<tr><td>GPU-group / deployment fit</td><td class="y">Yes</td><td class="n">No</td></tr>
+<tr class="grp"><td colspan="3">Safe operations</td></tr>
+<tr><td>Streaming-safe retry (pre-first-byte)</td><td class="y">Yes</td><td class="p">Partial</td></tr>
+<tr><td>Burst queue with SLA, then cloud or 503</td><td class="y">Yes</td><td class="p">Partial</td></tr>
+<tr><td>Cloud overflow with cost metering</td><td class="y">Yes</td><td class="n">No</td></tr>
+<tr><td>Per-key quotas, spend caps + model allow-lists</td><td class="y">Yes</td><td class="n">No</td></tr>
+<tr><td>Predictive prewarming + pinned models</td><td class="y">Yes</td><td class="n">No</td></tr>
+<tr><td>Cost attribution + placement explanations</td><td class="y">Yes</td><td class="n">No</td></tr>
+</tbody></table></div>
+<ul class="cmp-notes">
+<li>VRAM telemetry is richest on Ollama + agent nodes; other runtimes score on load, health, and residency.</li>
+<li>Affinity means warm-model residency plus opt-in sessions. Marbor never inspects prompts and moves no KV data.</li>
+<li>Ships as two static binaries (marbor + marbor-agent). SQLite is the only store.</li>
+<li>Retries fire before the first response byte, never mid-stream.</li>
+<li>The burst queue waits up to your configured SLA, then cloud or 503.</li>
+<li>Plain LBs do least-conn and maxconn queueing, but see no TTFT signal.</li>
+<li>Cookie and IP persistence exist; awareness of which node holds the model does not.</li>
+<li>proxy_next_upstream and redispatch retry plain HTTP, unsafe for inference streams by default.</li>
+<li>HAProxy queues with timeouts, but spills nowhere.</li>
+</ul>
+<div class="stack-note">Already on LiteLLM? Keep it: <code>Apps → LiteLLM → Marbor → runtimes → GPUs</code>. LiteLLM handles keys and fallbacks; Marbor owns placement onto real hardware. Centralizing cloud on one contract? <code>Marbor → LiteLLM → cloud</code> works too.</div>
+<div class="stack-note">What LiteLLM can't see from above: free VRAM per node, which runtime serves which model where, live load per GPU, which node already holds the model warm, whether a retry is stream-safe, which sessions must stay local, and which GPUs to prewarm or drain. That is the layer Marbor adds underneath.</div></section>
+<section class="block" id="faq" data-reveal><p class="kicker">FAQ</p><h2>What operators ask before installing.</h2><p class="sub">Short answers, no hype.</p>
+<div><div>
+<details open><summary>What is Marbor? <span aria-hidden="true">−</span></summary><p>Marbor is the control plane for self-hosted inference: a static binary on your gateway, with an optional marbor-agent on GPU nodes for live GPU telemetry. It places each request across Ollama, vLLM, TGI, llama.cpp, and MLX behind one OpenAI-compatible endpoint.</p></details>
+<details><summary>How is it different from nginx? <span aria-hidden="true">+</span></summary><p>Nginx routes connections blindly. Marbor reads live fleet state: model residency, runtime, VRAM, in-flight load, and health, and places each request where it can actually serve.</p></details>
+<details><summary>Does it do distributed inference (TP/PP/expert routing)? <span aria-hidden="true">+</span></summary><p>No, and it never claims to. Parallelism, sharding, and KV transport stay inside the runtime (e.g. vLLM). Marbor selects the right deployment and observes the result.</p></details>
+<details><summary>Can it replace cloud APIs? <span aria-hidden="true">+</span></summary><p>Marbor is designed to serve inference from your own GPUs first, with optional cloud overflow to OpenAI or Anthropic when local capacity is saturated, metered per token.</p></details>
+<div id="faqMore" hidden>
+<details><summary>How does HA work? <span aria-hidden="true">+</span></summary><p>Unhealthy nodes are excluded automatically after consecutive failed polls; saturated queues spill to configured, metered cloud overflow or a 503. Marbor itself runs as a single process. For gateway redundancy, place two independent instances behind an L4 balancer; in-flight requests on a failed instance are lost.</p></details>
+<details><summary>Auth and limits? <span aria-hidden="true">+</span></summary><p>Bearer keys, per-key model allow-lists, daily/monthly quotas. Protect GPUs without app changes.</p></details>
+<details><summary>Does Marbor look at my prompts? <span aria-hidden="true">+</span></summary><p>No. Placement uses only the model name, session id, and request path. Prompt text is never parsed for routing, and KV data never moves between nodes.</p></details>
+<details><summary>What happens in a traffic burst? <span aria-hidden="true">+</span></summary><p>When the overflow queue is enabled and has room, bursts wait up to queue_timeout_ms (or your overflow SLA) for a slot, then try any configured local alternate, then spill to configured metered cloud or a 503.</p></details>
+<details><summary>What if a node dies mid-request? <span aria-hidden="true">+</span></summary><p>If nothing has streamed yet, the request retries on a healthy node. A stream in flight is never replayed.</p></details>
+<details><summary>Does Marbor learn my workload? <span aria-hidden="true">+</span></summary><p>Yes. Sequence and time-of-day patterns drive predictive prewarming (when size and headroom are known), pinned models are never evicted, and warm state is restored after restarts.</p></details>
+<details><summary>Can I see why a request landed where it did? <span aria-hidden="true">+</span></summary><p>Yes. Each locally-routed request records a routing explanation, reason plus score breakdown, viewable per request in the dashboard and via the requests explain API.</p></details>
+</div>
+<button type="button" class="faq-toggle" id="faqToggle" aria-expanded="false" aria-controls="faqMore">Show 7 more questions ↓</button>
+</div><div>
+<div class="cta-band"><div><h2>Find out what your fleet is actually doing.</h2><p>Install in one command. Point your OpenAI client at Marbor. Watch the first placed request.</p></div><div class="cta-act"><a class="btn btn-gold" href="#install">↓ Install Marbor</a><a class="docs-link" href="docs/">Read the docs →</a></div></div>
+</div></div></section>
+</div></main>
+<footer><div class="page foot-grid"><div><a class="brand" href="#main" aria-label="Marbor home" style="margin-bottom:10px"><span class="brand-chip" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 100 100" fill="none"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="currentColor" opacity=".65"/></svg></span><span class="brand-name">Marbor</span></a><div>© <span id="yr">2026</span> Anirudh Mehandru · Apache-2.0</div></div><div class="foot-links"><a href="#install">Install</a><a href="#features">Features</a><a href="#how">How</a><a href="#compare">Compare</a><a href="docs/">Docs</a><a href="demo/">Demo</a><a href="https://github.com/Anirudhx7/marbor">GitHub</a></div></div></footer>
 <script>
-(function () {
-  "use strict";
-  // Theme class is already applied pre-paint by the inline script in <head>.
-  var root = document.documentElement;
-  var toggle = document.getElementById("themeToggle");
-  if (toggle) toggle.addEventListener("click", function () {
-    root.classList.toggle("light");
-    try { localStorage.setItem("om-theme", root.classList.contains("light") ? "light" : "dark"); } catch (e) {}
-  });
-  var burger = document.getElementById("hamburger");
-  var menu = document.getElementById("mobileMenu");
-  function closeMenu() { menu.classList.remove("open"); burger.setAttribute("aria-expanded", "false"); menu.setAttribute("aria-hidden", "true"); }
-  if (burger && menu) {
-    burger.addEventListener("click", function () {
-      var open = menu.classList.toggle("open");
-      burger.setAttribute("aria-expanded", String(open));
-      menu.setAttribute("aria-hidden", String(!open));
-    });
-    menu.querySelectorAll("a").forEach(function (a) { a.addEventListener("click", closeMenu); });
-  }
-  document.querySelectorAll(".copy-btn").forEach(function (btn) {
-    btn.addEventListener("click", function () {
-      var text = btn.dataset.copy || "";
-      if (!text) {
-        var wrap = btn.closest(".code-wrap");
-        var pre = wrap && wrap.querySelector("pre");
-        if (pre) text = pre.innerText || pre.textContent || "";
-      }
-      var label = btn.querySelector("span");
-      var done = function () {
-        btn.classList.add("copied");
-        if (label) label.textContent = "copied!";
-        setTimeout(function () { btn.classList.remove("copied"); if (label) label.textContent = "copy"; }, 1600);
-      };
-      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done).catch(done);
-      else { var ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); } catch (e) {} document.body.removeChild(ta); done(); }
-    });
-  });
-  var y = document.getElementById("year"); if (y) y.textContent = new Date().getFullYear();
-
-  // Routing Console Simulation
-  var scenarios = [
-    {
-      model: "deepseek-r1:7b",
-      statVram: "16.0 GB",
-      statLatency: "18.4s",
-      nodes: [
-        { model: "deepseek-r1:7b", vram: "8.2GB/80GB", queue: "Queue: 0", state: "warm", active: true },
-        { model: "llama3.1:8b", vram: "9.4GB/80GB", queue: "Queue: 0", state: "warm", active: false },
-        { model: "idle", vram: "0GB/80GB", queue: "Queue: 0", state: "cold", active: false }
-      ],
-      decision: "route → gpu-01 · <span style='color:var(--accent2)'>0ms weight load</span> (already warm)",
-      reasoning: "Warm hit detected on gpu-01. Scheduled request directly to warm VRAM, eliminating the 18.4s cold-start loading delay."
-    },
-    {
-      model: "llama3.1:8b",
-      statVram: "32.0 GB",
-      statLatency: "30.5s",
-      nodes: [
-        { model: "deepseek-r1:7b", vram: "8.2GB/80GB", queue: "Queue: 0", state: "warm", active: false },
-        { model: "llama3.1:8b", vram: "9.4GB/80GB", queue: "Queue: 0", state: "warm", active: true },
-        { model: "idle", vram: "0GB/80GB", queue: "Queue: 0", state: "cold", active: false }
-      ],
-      decision: "route → gpu-02 · <span style='color:var(--accent2)'>0ms weight load</span> (already warm)",
-      reasoning: "Warm hit detected on gpu-02. Scheduled to resident VRAM. Eliminated 12.1s load delay."
-    },
-    /* SPCS-FEATURE-START
-    {
-      model: "qwen2.5-coder:14b",
-      statVram: "32.0 GB",
-      statLatency: "53.0s",
-      nodes: [
-        { model: "deepseek-r1:7b", vram: "8.2GB/80GB", queue: "Queue: 0", state: "warm", active: false },
-        { model: "llama3.1:8b", vram: "9.4GB/80GB", queue: "Queue: 0", state: "warm", active: false },
-        { model: "qwen2.5-coder:14b", vram: "16.5GB/80GB [loading]", queue: "Queue: 1", state: "cold", active: true }
-      ],
-      decision: "route → gpu-03 <span style='color:var(--accent)'>(via SPCS Protocol)</span>",
-      reasoning: "Cold request. Activated Speculative Prefix-Cached Swapping (SPCS). Streaming from warm draft model (qwen2.5:7b) [0ms wait] while loading target weights in background. Seamless mid-stream swap scheduled."
-    },
-    SPCS-FEATURE-END */
-    {
-      model: "deepseek-r1:70b",
-      statVram: "32.0 GB",
-      statLatency: "53.0s",
-      nodes: [
-        { model: "deepseek-r1:7b", vram: "80GB/80GB", queue: "Queue: 5 [saturated]", state: "warm", active: false },
-        { model: "llama3.1:8b", vram: "80GB/80GB", queue: "Queue: 6 [saturated]", state: "warm", active: false },
-        { model: "qwen2.5-coder:14b", vram: "80GB/80GB", queue: "Queue: 4 [saturated]", state: "warm", active: false }
-      ],
-      decision: "overflow → openai/gpt-4o-mini <span style='color:var(--accent3)'>(cost: $0.0015)</span>",
-      reasoning: "All local GPUs saturated (queue depths > 4). Activating Cost-aware cloud overflow to prevent request failure. Local scheduling resumes automatically as queues clear."
-    }
-  ];
-
-  var scenarioIdx = 0;
-  function cycleScenarios() {
-    var s = scenarios[scenarioIdx];
-    var reqModelEl = document.getElementById("reqModel");
-    var statVramEl = document.getElementById("statVram");
-    var statLatencyEl = document.getElementById("statLatency");
-    var decisionTextEl = document.getElementById("decisionText");
-    var decisionReasoningEl = document.getElementById("decisionReasoning");
-
-    if (reqModelEl) reqModelEl.textContent = '"' + s.model + '"';
-    if (statVramEl) statVramEl.textContent = s.statVram;
-    if (statLatencyEl) statLatencyEl.textContent = s.statLatency;
-    if (decisionTextEl) decisionTextEl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;margin-right:8px;"><path d="M5 12h14M13 6l6 6-6 6"/></svg>' + s.decision;
-    if (decisionReasoningEl) decisionReasoningEl.innerHTML = s.reasoning;
-
-    for (var i = 1; i <= 3; i++) {
-      var nodeEl = document.getElementById("node" + i);
-      var nodeData = s.nodes[i - 1];
-      if (!nodeEl || !nodeData) continue;
-      
-      var mEl = document.getElementById("node" + i + "Model");
-      var vEl = document.getElementById("node" + i + "Vram");
-      var qEl = document.getElementById("node" + i + "Queue");
-      var sEl = document.getElementById("node" + i + "State");
-
-      if (mEl) mEl.textContent = nodeData.model;
-      if (vEl) vEl.textContent = nodeData.vram;
-      if (qEl) qEl.textContent = nodeData.queue;
-      if (sEl) {
-        sEl.textContent = nodeData.state;
-        sEl.className = "state " + nodeData.state;
-      }
-      
-      nodeEl.className = "node" + (nodeData.active ? " warm" : "") + (nodeData.state === "cold" ? "" : "");
-      if (nodeData.active) {
-        nodeEl.style.borderColor = nodeData.state === "warm" ? "var(--accent2)" : "var(--accent)";
-      } else {
-        nodeEl.style.borderColor = "var(--border-subtle)";
-      }
-    }
-    
-    scenarioIdx = (scenarioIdx + 1) % scenarios.length;
-  }
-  
-  if (document.getElementById("node1")) {
-    setInterval(cycleScenarios, 4500);
-    cycleScenarios(); // Initial run
-  }
-})();
-</script>
-<script>
-// Plausible custom events - per analytics-tracking-plan.md
-(function(){
-  function track(name, props){ try{ window.plausible && window.plausible(name, {props: props}); }catch(e){} }
-  document.addEventListener('click', function(e){
-    var a = e.target.closest('a'), btn = e.target.closest('button');
-    if(a){
-      var href = a.getAttribute('href')||'';
-      if(href.indexOf('github.com/Anirudhx7/marbor')>-1) track('star_clicked', {location: a.closest('.hero')?'hero':a.closest('nav')?'nav':'footer'});
-      if(href.indexOf('/demo')>-1) track('demo_requested', {source: a.closest('.hero')?'hero':a.closest('nav')?'nav':'badge_strip'});
-      if(href==='#install' || href.indexOf('#install')>-1) track('cta_clicked', {cta_text:(a.textContent||'').trim().slice(0,40), location:'hero'});
-      if(href.indexOf('/docs')>-1) track('docs_viewed', {doc_slug: href});
-    }
-    if(btn && btn.id==='copyBtn') track('install_initiated', {method:'copy_button'});
-    var primary = e.target.closest('.btn-primary');
-    if(primary) track('cta_clicked', {cta_text:(primary.textContent||'').trim().slice(0,40), location:'hero'});
-  });
+(function(){/* Release version: single source, synced from latest git tag. Bump on release. Benchmark labels keep their measured version. */
+var MARBOR_VERSION='v0.20.0';document.querySelectorAll('[data-version]').forEach(function(el){el.textContent=MARBOR_VERSION;});
+var b=document.getElementById('themeBtn');function syncThemeBtn(){if(!b)return;var light=document.documentElement.classList.contains('light');b.setAttribute('aria-pressed',light?'true':'false');b.textContent=light?'☀':'◐';syncMetaTheme();}function syncMetaTheme(){try{var cs=getComputedStyle(document.documentElement);var m=document.querySelector('meta[name="theme-color"]');if(m){var bg=cs.getPropertyValue('--bg').trim();if(bg)m.setAttribute('content',bg);}}catch(e){}}if(b)b.addEventListener('click',function(){var h=document.documentElement;h.classList.toggle('light');try{localStorage.setItem('marbor-theme',h.classList.contains('light')?'light':'dark');}catch(e){}syncThemeBtn();});syncThemeBtn();
+var hb=document.getElementById('hamb'),mm=document.getElementById('mmenu');if(hb&&mm){function setMenu(o){mm.classList.toggle('open',o);hb.setAttribute('aria-expanded',o?'true':'false');hb.textContent=o?'✕':'☰';}hb.addEventListener('click',function(){setMenu(!mm.classList.contains('open'));});mm.querySelectorAll('a').forEach(function(a){a.addEventListener('click',function(){setMenu(false);hb.focus();});});document.addEventListener('keydown',function(ev){if(ev.key==='Escape'&&mm.classList.contains('open')){setMenu(false);hb.focus();}});window.addEventListener('resize',function(){if(window.innerWidth>640)setMenu(false);});}
+var c=document.getElementById('copyBtn'),cmd=document.getElementById('cmd');if(c&&cmd)c.addEventListener('click',function(){var t=cmd.textContent;var resetT=null;function say(s){c.textContent=s;try{c.setAttribute('aria-label',s==='Copy'?'Copy install command':'Install command '+s.toLowerCase());}catch(e){}}function done(){say('Copied');if(resetT)clearTimeout(resetT);resetT=setTimeout(function(){say('Copy');},1400);}function fail(){say('Failed');if(resetT)clearTimeout(resetT);resetT=setTimeout(function(){say('Copy');},1400);}if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(done,function(){fallback();});}else{fallback();}function fallback(){try{var ta=document.createElement('textarea');ta.value=t;ta.setAttribute('readonly','');ta.style.cssText='position:fixed;top:0;left:0;opacity:0;font-size:16px;';document.body.appendChild(ta);ta.select();var ok=false;try{ok=document.execCommand('copy');}catch(e){ok=false;}document.body.removeChild(ta);if(ok)done();else fail();}catch(e){fail();}}});
+var y=document.getElementById('yr');if(y)y.textContent=new Date().getFullYear();
+var io;try{io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}});},{threshold:.12});document.querySelectorAll('[data-reveal]').forEach(function(el){io.observe(el);});}catch(e){document.querySelectorAll('[data-reveal]').forEach(function(el){el.classList.add('in');});}
+var sigs=document.getElementById('sigs'),nodes=document.getElementById('nodes');
+if(sigs&&nodes){var decCode=document.querySelector('.decision code');var decDefault=decCode?decCode.textContent:'';sigs.addEventListener('click',function(ev){var b=ev.target.closest('.chip');if(!b)return;b.classList.toggle('on');var on=b.classList.contains('on');b.setAttribute('aria-pressed',on?'true':'false');var active=Array.from(sigs.querySelectorAll('.chip.on')).map(function(x){return x.getAttribute('data-f');});var cards=nodes.querySelectorAll('.node');var dimmed=0;cards.forEach(function(n){var tags=(n.getAttribute('data-tags')||'').split(' ');var ok=active.length===0?true:active.some(function(a){return tags.indexOf(a)>-1;});n.classList.toggle('dim',!ok);if(!ok)dimmed++;});if(decCode){decCode.textContent=active.length===0?'showing all nodes · select a signal to filter':(dimmed>0?('filtered view · '+active.join(' + ')+' · '+dimmed+' dimmed'):decDefault);}});}
+document.querySelectorAll('details').forEach(function(d){d.addEventListener('toggle',function(){var s=d.querySelector('summary span');if(s)s.textContent=d.open?'−':'+';});});
+var faqT=document.getElementById('faqToggle'),faqM=document.getElementById('faqMore');
+if(faqT&&faqM){faqT.addEventListener('click',function(){var open=faqM.hidden;faqM.hidden=!open;faqT.setAttribute('aria-expanded',open?'true':'false');faqT.textContent=open?'Show fewer ↑':'Show 7 more questions ↓';});}
+var setup=document.querySelector('.setup');
+if(setup){var rows=Array.prototype.slice.call(setup.querySelectorAll('.srow'));var countEls=setup.querySelectorAll('.setup-count,.sfoot span');var bar=setup.querySelector('.sbar i');var sbarBox=setup.querySelector('.sbar');
+function paintSetup(){var done=rows.filter(function(r){return r.getAttribute('aria-pressed')==='true';}).length;var total=rows.length||1;countEls.forEach(function(el){el.textContent=done+'/'+total;});if(bar)bar.style.width=(done/total*100)+'%';if(sbarBox){sbarBox.setAttribute('aria-valuenow',String(done));sbarBox.setAttribute('aria-valuemax',String(total));sbarBox.setAttribute('aria-label','Setup progress: '+done+' of '+total+' steps complete');}}
+rows.forEach(function(r){function flip(){var on=r.getAttribute('aria-pressed')==='true';r.setAttribute('aria-pressed',on?'false':'true');var check=r.querySelector('.scheck'),sub=r.querySelector('.ssub');if(check){check.classList.toggle('done',!on);check.classList.toggle('todo',on);check.innerHTML=!on?'✓':'<i></i>';}if(sub){sub.textContent=!on?r.getAttribute('data-done'):r.getAttribute('data-pending');sub.classList.toggle('done',!on);sub.classList.toggle('todo',on);}paintSetup();}
+r.addEventListener('click',flip);});paintSetup();}
+var nv=document.querySelector('.nav');
+if(nv){var tick=false;function paintNav(){nv.classList.toggle('scrolled',window.scrollY>120);}function onScroll(){if(tick)return;tick=true;requestAnimationFrame(function(){paintNav();tick=false;});}window.addEventListener('scroll',onScroll,{passive:true});paintNav();var navInner=nv.querySelector('.nav-inner');try{nv.style.transition='none';if(navInner)navInner.style.transition='none';}catch(e){}function enableNavTrans(){try{nv.style.transition='';if(navInner)navInner.style.transition='';}catch(e){}}window.addEventListener('load',function(){setTimeout(function(){paintNav();enableNavTrans();},80);});setTimeout(enableNavTrans,2500);}
+var reduceMQ=window.matchMedia?window.matchMedia('(prefers-reduced-motion: reduce)'):null;
+function reduceMotionOn(){return !!(reduceMQ&&reduceMQ.matches);}
+if(!reduceMotionOn()){try{document.documentElement.style.scrollBehavior='auto';}catch(e){}}
+var NAV_OFFSET=88;
+function easeCubic(p){return p<.5?4*p*p*p:1-Math.pow(-2*p+2,3)/2;}
+/* Shared 0.9s easeInOutCubic glide. Same-page nav/footer clicks and cross-page
+   fragment arrivals both run through here so they feel identical. Isolated in
+   try/catch so no unrelated failure above can ever unbind it. CSS
+   html{scroll-behavior:smooth} remains as the no-JS fallback. */
+function smoothTo(y,onDone){onDone=onDone||function(){};if(reduceMotionOn()){try{window.scrollTo(0,y);}catch(e){}onDone();return;}var from=window.scrollY,d=y-from;if(Math.abs(d)<4){onDone();return;}var start=null,dur=900;function step(ts){if(!start)start=ts;var p=Math.min((ts-start)/dur,1);try{window.scrollTo(0,from+d*easeCubic(p));}catch(e){try{window.scrollTo(0,y);}catch(e2){}onDone();return;}if(p<1){requestAnimationFrame(step);}else{onDone();}}requestAnimationFrame(step);}
+function targetFor(id,t){return (id.length<2||id==='#install')?0:t.getBoundingClientRect().top+window.scrollY-NAV_OFFSET;}
+try{document.querySelectorAll('a[href^="#"]').forEach(function(a){var id=a.getAttribute('href');if(!id)return;var t=id.length<2?document.body:document.querySelector(id);if(!t)return;a.addEventListener('click',function(ev){ev.preventDefault();try{var mm=document.getElementById('mmenu');if(mm)mm.classList.remove('open');var hb2=document.getElementById('hamb');if(hb2){hb2.setAttribute('aria-expanded','false');hb2.textContent='☰';}}catch(e){}var y=targetFor(id,t);var flashT=null;function flashInstall(){if(id==='#install'){var ib=document.getElementById('install');if(ib){ib.classList.remove('flash');void ib.offsetWidth;ib.classList.add('flash');if(flashT)clearTimeout(flashT);flashT=setTimeout(function(){ib.classList.remove('flash');},3400);}}}function focusTarget(){if(t!==document.body&&t.setAttribute){try{if(!t.hasAttribute('data-had-tab')){if(t.hasAttribute('tabindex'))t.setAttribute('data-had-tab','1');}t.setAttribute('tabindex','-1');t.focus({preventScroll:true});t.addEventListener('blur',function cleanup(){if(!t.hasAttribute('data-had-tab'))t.removeAttribute('tabindex');t.removeEventListener('blur',cleanup);});}catch(e){}}}smoothTo(y,function(){flashInstall();focusTarget();});});});}catch(e){}
+/* Cross-page arrivals (docs nav/footer links, shared URLs, new tabs): hold the top,
+   then glide to the fragment with the same easing as same-page clicks instead of
+   appearing there instantly. scrollRestoration is set to manual only for hashed
+   arrivals so plain back/forward restoration keeps working. */
+try{if(location.hash){var ht0=document.querySelector(location.hash);if(ht0){var hashId=location.hash;try{history.scrollRestoration='manual';}catch(e){}try{window.scrollTo(0,0);}catch(e){}if(ht0.hasAttribute('data-reveal'))ht0.classList.add('in');var arrived=false;var arrive=function(){if(arrived)return;arrived=true;if(ht0.hasAttribute('data-reveal'))ht0.classList.add('in');var y=targetFor(hashId,ht0);smoothTo(y,function(){if(hashId==='#install'){var ib=document.getElementById('install');if(ib){ib.classList.remove('flash');void ib.offsetWidth;ib.classList.add('flash');setTimeout(function(){ib.classList.remove('flash');},3400);}}try{ht0.setAttribute('tabindex','-1');ht0.focus({preventScroll:true});}catch(e){}});};if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){setTimeout(arrive,80);});}window.addEventListener('load',function(){setTimeout(arrive,140);});setTimeout(arrive,2500);}}}catch(e){}
 })();
 </script>
 </body>

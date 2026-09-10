@@ -2,9 +2,15 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
 <title>Page Not Found | Marbor</title>
 <meta name="robots" content="noindex, nofollow">
+<link rel="icon" type="image/svg+xml" href="/marbor/favicon.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400..800;1,400..800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<meta name="theme-color" content="#d4a853" />
 <script>
   // SPA redirect for GitHub Pages demo subpath.
   // Deep-link to /demo/* → redirect directly to SPA hash route.
@@ -19,58 +25,75 @@
       l.replace(l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') + '/marbor/demo/#/' + subpath + l.search + l.hash);
     }
   })();
+  (function(){try{var s=localStorage.getItem("marbor-theme")||localStorage.getItem("om-theme");if(s==="light"||(!s&&window.matchMedia&&window.matchMedia("(prefers-color-scheme: light)").matches))document.documentElement.classList.add("light");}catch(e){}})();
 </script>
 <style>
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-body {
-  background: #0f0e0c;
-  color: #e8e4df;
-  font-family: "SFMono-Regular", "Consolas", "Liberation Mono", "Menlo", "Courier New", monospace;
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 24px;
+@view-transition{navigation:auto}
+:root{
+--bg:#0f0e0c;--bg-elevated:#1a1815;--bg-surface:#24221e;--bg-input:#2e2b26;
+--border:#3a3630;--border-subtle:#2a2723;
+--text:#e8e4df;--text-muted:#98917f;--text-faint:#a79f8f;
+--accent:#d4a853;--accent-dim:#b8933f;--accent-bg:color-mix(in srgb,var(--accent) 8%,transparent);--accent-bg-hover:color-mix(in srgb,var(--accent) 14%,transparent);
+--accent2:#7cb97c;--accent3:#c97c7c;--amber:#cf9440;--on-accent:#161307;--brand-chip:#1a1714;--brand-mark:#d4a853;
+--font-display:"Playfair Display",Georgia,"Times New Roman",serif;
+--font-sans:"Plus Jakarta Sans",-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",Arial,sans-serif;
+--font-mono:"JetBrains Mono","SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
+--r-lg:14px;--r-md:10px;--r-xl:18px;
+--ease:cubic-bezier(.16,1,.3,1);
+--shadow:0 24px 60px -24px rgba(0,0,0,.55),0 2px 8px rgba(0,0,0,.35);
 }
-.inner { max-width: 400px; }
-.code {
-  font-family: "SFMono-Regular", "Consolas", "Liberation Mono", "Menlo", "Courier New", monospace;
-  font-size: 72px;
-  font-weight: 800;
-  color: #d4a853;
-  line-height: 1;
-  margin-bottom: 16px;
-}
-h1 { font-size: 22px; margin-bottom: 10px; color: #e8e4df; }
-p { color: #8a8478; margin-bottom: 28px; font-size: 15px; }
-a {
-  display: inline-block;
-  background: #d4a853;
-  color: #0f0e0c;
-  padding: 10px 22px;
-  border-radius: 4px;
-  font-weight: 600;
-  font-size: 15px;
-  text-decoration: none;
-}
-a:hover { opacity: 0.85; }
+html.light{--bg:#f5f2e9;--bg-elevated:#faf7ee;--bg-surface:#e9e4d4;--bg-input:#e3ddcb;--border:#d9d2bd;--border-subtle:#d5cdb4;--text:#2b2924;--text-muted:#4a4740;--text-faint:#6e6960;--accent:#4c3a19;--accent-dim:#3a2f16;--accent-bg:rgba(76,58,25,.08);--accent-bg-hover:rgba(76,58,25,.14);--accent2:#1d4d1d;--accent3:#702626;--amber:#8a5f16;--on-accent:#f5f2e9;--brand-chip:#2e2413;--brand-mark:#f5f2e9;--shadow:0 24px 50px -28px rgba(60,50,20,.35),0 2px 8px rgba(60,50,20,.12)}
+html.light ::selection{background:var(--accent);color:var(--bg)}
+html.light .btn-gold{background:var(--accent);border-color:var(--accent);color:var(--on-accent);box-shadow:0 12px 26px -14px color-mix(in srgb,var(--accent) 60%,transparent)}
+html.light .btn-gold:hover{background:var(--accent-dim);border-color:var(--accent-dim);color:var(--on-accent)}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+@supports (overflow:clip){html,body{overflow-x:clip}}
+@supports not (overflow:clip){body{overflow-x:hidden}}
+@media print{:root{color-scheme:light}body{background:#fff!important;color:#000!important}body::before{display:none!important}}
+@media (prefers-reduced-motion:reduce){body{transition:none}.btn{transition:none}@view-transition{navigation:none}}
+a{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+main{display:contents}
+.skip{position:absolute;left:16px;top:-48px;z-index:200;background:var(--accent);color:var(--on-accent);font-weight:700;font-size:13px;padding:8px 14px;border-radius:8px}
+.skip:focus{top:12px;text-decoration:none}
+.icon-btn{width:44px;height:44px;display:grid;place-items:center;border-radius:9px;border:1px solid var(--border);background:var(--bg-surface);color:var(--text-muted);cursor:pointer;font-size:15px}
+.icon-btn:hover{color:var(--text);border-color:var(--accent)}
+#themeBtn{position:fixed;top:16px;right:16px;z-index:2;background:transparent;border-color:transparent;color:var(--text-faint)}
+#themeBtn:hover{color:var(--text);border-color:var(--border)}
+body{margin:0;min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;background:var(--bg);color:var(--text);font-family:var(--font-sans);font-size:15.5px;line-height:1.7;-webkit-font-smoothing:antialiased;transition:background .2s,color .2s}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;background:radial-gradient(900px 480px at 50% -8%,color-mix(in srgb,var(--accent) 10%,transparent),transparent 65%),radial-gradient(700px 500px at 88% 22%,color-mix(in srgb,var(--accent) 5%,transparent),transparent 60%)}
+html.light body::before{background:radial-gradient(900px 480px at 50% -8%,var(--accent-bg),transparent 65%)}
+::selection{background:var(--accent);color:var(--bg)}
+.card{position:relative;z-index:1;max-width:560px;width:100%;border:1px solid var(--border);border-radius:var(--r-xl);background:linear-gradient(180deg,var(--bg-elevated),var(--bg));box-shadow:var(--shadow);padding:48px 40px;overflow:hidden}
+.brand-chip{width:72px;height:72px;border-radius:18px;background:var(--brand-chip);display:inline-grid;place-items:center;border:1px solid var(--border-subtle);margin-bottom:20px;color:var(--brand-mark)}
+.eyebrow{display:inline-flex;align-items:center;gap:9px;font-family:var(--font-mono);font-size:12px;font-weight:400;color:var(--text-muted);border:1px solid var(--border);background:var(--bg-elevated);border-radius:99px;padding:6px 14px;margin-bottom:20px}
+.dot{width:8px;height:8px;border-radius:99px;background:var(--accent3);box-shadow:0 0 0 4px color-mix(in srgb,var(--accent3) 18%,transparent)}
+h1{font-family:var(--font-display);font-size:clamp(36px,6vw,52px);line-height:1.06;letter-spacing:-.01em;font-weight:600;margin:0 0 14px;text-wrap:balance}
+h1 em{font-style:italic;color:var(--accent);font-weight:600}
+.lede{font-size:16px;color:var(--text-muted);margin:0 0 26px;text-wrap:pretty}
+.cta-row{display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:center}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;font-weight:650;font-size:13.5px;padding:10px 18px;border-radius:10px;border:1px solid var(--border);background:var(--bg-surface);color:var(--text);cursor:pointer;text-decoration:none;transition:transform .18s var(--ease),background-color .18s var(--ease),border-color .18s var(--ease)}
+.btn:hover{text-decoration:none;transform:translateY(-1px);border-color:var(--accent)}
+.btn:disabled,.btn[aria-disabled="true"]{opacity:.55;cursor:not-allowed;transform:none}
+.btn-gold{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn-gold:hover{background:var(--accent-dim);border-color:var(--accent-dim)}
+@media(max-width:480px){.card{padding:36px 24px}h1{font-size:clamp(32px,9vw,40px)}.cta-row .btn{width:100%;justify-content:center;min-height:48px;font-size:14px}}
+@media(max-width:400px){body{padding:16px}.card{padding:32px 20px}.brand-chip{width:60px;height:60px}}
 </style>
 </head>
 <body>
-<div class="inner">
-  <div style="margin-bottom: 24px; display: inline-flex; align-items: center; justify-content: center;">
-    <div style="width:48px;height:48px;background:#1a1714;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-      <svg width="32" height="32" viewBox="0 0 100 100" fill="none" aria-hidden="true">
-        <path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="#d4a853" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
-        <circle cx="75" cy="75" r="8" fill="#a87f3a"/>
-      </svg>
-    </div>
-  </div>
-  <div class="code">404</div>
-  <h1>Page not found</h1>
-  <p>The page you're looking for doesn't exist. It may have moved or been removed.</p>
-  <a href="/marbor/">Back to Marbor</a>
-</div>
+<a class="skip" href="#main">Skip to content</a>
+<button type="button" class="icon-btn" id="themeBtn" aria-label="Toggle theme" aria-pressed="false">◐</button>
+<main id="main" tabindex="-1"><div class="card">
+  <span class="brand-chip" aria-hidden="true"><svg width="40" height="40" viewBox="0 0 100 100" fill="none"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="currentColor" opacity=".65"/></svg></span><br>
+  <span class="eyebrow"><span class="dot" aria-hidden="true"></span>error · 404</span>
+  <h1>Page <em>not found.</em></h1>
+  <p class="lede">The page you're looking for doesn't exist. It may have moved or been removed.</p>
+  <div class="cta-row"><a class="btn btn-gold" href="/marbor/">← Back to Marbor</a><a class="btn" href="/marbor/docs/">Read the docs</a></div>
+</div></main>
+<script>
+(function(){function syncT(){var b=document.getElementById('themeBtn');if(!b)return;var l=document.documentElement.classList.contains('light');b.setAttribute('aria-pressed',l?'true':'false');b.textContent=l?'☀':'◐';try{var cs=getComputedStyle(document.documentElement);var m=document.querySelector('meta[name="theme-color"]');if(m){var bg=cs.getPropertyValue('--bg').trim();if(bg)m.setAttribute('content',bg);}}catch(e){}}var b=document.getElementById('themeBtn');if(b)b.addEventListener('click',function(){var h=document.documentElement;h.classList.toggle('light');try{localStorage.setItem('marbor-theme',h.classList.contains('light')?'light':'dark');}catch(e){}syncT();});syncT();})();
+</script>
 </body>
 </html>
