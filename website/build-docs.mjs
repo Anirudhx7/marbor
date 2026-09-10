@@ -262,7 +262,8 @@ function page({ slug, title, contentHtml, headings }) {
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="color-scheme" content="dark light" />
 <script defer data-domain="anirudh.social" src="https://plausible.io/js/script.tagged-events.js"><\/script>
 <script>
   (function () { try { var s = localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
@@ -289,8 +290,8 @@ function page({ slug, title, contentHtml, headings }) {
 <a class="skip" href="#main">Skip to content</a>
 <header class="nav"><div class="nav-inner">
 ${BRAND_HTML(r)}
-<nav class="nav-links" aria-label="Primary"><a class="nl" href="${r}index.html#features">Features</a><a class="nl" href="${r}index.html#how">How it works</a><a class="nl" href="${r}index.html#compare">Compare</a><a class="nl on" href="${r}docs/index.html">Docs</a><a class="btn btn-gold btn-sm nav-cta" href="https://anirudh.social/marbor/demo/" target="_blank" rel="noopener">Live demo →</a><button class="icon-btn" id="themeBtn" aria-label="Toggle theme">◐</button><button class="icon-btn hamb" id="hamb" aria-label="Menu" aria-expanded="false">☰</button></nav>
-</div><div class="mobile-menu" id="mmenu"><a href="${r}index.html#features">Features</a><a href="${r}index.html#how">How it works</a><a href="${r}index.html#compare">Compare</a><a href="${r}docs/index.html">Docs</a><a href="https://anirudh.social/marbor/demo/" target="_blank" rel="noopener">Live demo</a><a href="https://github.com/Anirudhx7/marbor">GitHub</a></div></header>
+<nav class="nav-links" aria-label="Primary"><a class="nl" href="${r}index.html#features">Features</a><a class="nl" href="${r}index.html#how">How it works</a><a class="nl" href="${r}index.html#compare">Compare</a><a class="nl on" href="${r}docs/index.html">Docs</a><a class="btn btn-gold btn-sm nav-cta" href="https://anirudh.social/marbor/demo/" target="_blank" rel="noopener">Live demo →</a><button type="button" class="icon-btn" id="themeBtn" aria-label="Toggle theme" aria-pressed="false">◐</button><button type="button" class="icon-btn hamb" id="hamb" aria-label="Menu" aria-expanded="false" aria-controls="mmenu">☰</button></nav>
+</div><nav class="mobile-menu" id="mmenu" aria-label="Mobile"><a href="${r}index.html#features">Features</a><a href="${r}index.html#how">How it works</a><a href="${r}index.html#compare">Compare</a><a href="${r}docs/index.html">Docs</a><a href="https://anirudh.social/marbor/demo/" target="_blank" rel="noopener">Live demo</a><a href="https://github.com/Anirudhx7/marbor">GitHub</a></nav></header>
 
 <div class="doc-shell">
 <aside class="doc-sidebar" id="docSidebar" aria-label="Documentation navigation">
@@ -320,8 +321,8 @@ ${BRAND_HTML(r)}
 ${siteFooter(r)}
 
 <script>
-(function(){var b=document.getElementById('themeBtn');if(b)b.addEventListener('click',function(){var h=document.documentElement;h.classList.toggle('light');try{localStorage.setItem('om-theme',h.classList.contains('light')?'light':'dark');}catch(e){}});
-var hb=document.getElementById('hamb'),mm=document.getElementById('mmenu');if(hb&&mm){function setMenu(o){mm.classList.toggle('open',o);hb.setAttribute('aria-expanded',o?'true':'false');hb.textContent=o?'✕':'☰';}hb.addEventListener('click',function(){setMenu(!mm.classList.contains('open'));});mm.querySelectorAll('a').forEach(function(a){a.addEventListener('click',function(){setMenu(false);});});document.addEventListener('keydown',function(ev){if(ev.key==='Escape')setMenu(false);});window.addEventListener('resize',function(){if(window.innerWidth>640)setMenu(false);});}
+(function(){var b=document.getElementById('themeBtn');function syncT(){if(!b)return;var l=document.documentElement.classList.contains('light');b.setAttribute('aria-pressed',l?'true':'false');b.textContent=l?'☀':'◐';}if(b)b.addEventListener('click',function(){var h=document.documentElement;h.classList.toggle('light');try{localStorage.setItem('om-theme',h.classList.contains('light')?'light':'dark');}catch(e){}syncT();});syncT();
+var hb=document.getElementById('hamb'),mm=document.getElementById('mmenu');if(hb&&mm){function setMenu(o){mm.classList.toggle('open',o);hb.setAttribute('aria-expanded',o?'true':'false');hb.textContent=o?'✕':'☰';}hb.addEventListener('click',function(){setMenu(!mm.classList.contains('open'));});mm.querySelectorAll('a').forEach(function(a){a.addEventListener('click',function(){setMenu(false);});});document.addEventListener('keydown',function(ev){if(ev.key==='Escape'&&mm.classList.contains('open')){setMenu(false);hb.focus();}});window.addEventListener('resize',function(){if(window.innerWidth>640)setMenu(false);});}
 document.querySelectorAll('.yr').forEach(function(y){y.textContent=new Date().getFullYear();});
 var io;try{io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}});},{threshold:.12});document.querySelectorAll('[data-reveal]').forEach(function(el){io.observe(el);});}catch(e){}
 var nv=document.querySelector('.nav');if(nv){var tick=false;function onScrollNav(){if(tick)return;tick=true;requestAnimationFrame(function(){nv.classList.toggle('scrolled',window.scrollY>120);tick=false;});}window.addEventListener('scroll',onScrollNav,{passive:true});nv.classList.toggle('scrolled',window.scrollY>120);}
@@ -348,7 +349,8 @@ function docsIndexPage() {
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="color-scheme" content="dark light" />
 <script defer data-domain="anirudh.social" src="https://plausible.io/js/script.tagged-events.js"><\/script>
 <script>
   (function () { try { var s = localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
@@ -366,8 +368,8 @@ function docsIndexPage() {
 <a class="skip" href="#main">Skip to content</a>
 <header class="nav"><div class="nav-inner">
 ${BRAND_HTML(r)}
-<nav class="nav-links" aria-label="Primary"><a class="nl" href="${r}index.html#features">Features</a><a class="nl" href="${r}index.html#how">How it works</a><a class="nl" href="${r}index.html#compare">Compare</a><a class="nl on" href="index.html">Docs</a><a class="btn btn-gold btn-sm nav-cta" href="https://anirudh.social/marbor/demo/" target="_blank" rel="noopener">Live demo →</a><button class="icon-btn" id="themeBtn" aria-label="Toggle theme">◐</button><button class="icon-btn hamb" id="hamb" aria-label="Menu" aria-expanded="false">☰</button></nav>
-</div><div class="mobile-menu" id="mmenu"><a href="${r}index.html#install">Install</a><a href="${r}index.html#features">Features</a><a href="${r}index.html#how">How it works</a><a href="${r}index.html#compare">Compare</a><a href="index.html">Docs</a><a href="https://anirudh.social/marbor/demo/" target="_blank" rel="noopener">Live demo</a><a href="https://github.com/Anirudhx7/marbor" target="_blank" rel="noopener">GitHub</a></div></header>
+<nav class="nav-links" aria-label="Primary"><a class="nl" href="${r}index.html#features">Features</a><a class="nl" href="${r}index.html#how">How it works</a><a class="nl" href="${r}index.html#compare">Compare</a><a class="nl on" href="index.html">Docs</a><a class="btn btn-gold btn-sm nav-cta" href="https://anirudh.social/marbor/demo/" target="_blank" rel="noopener">Live demo →</a><button type="button" class="icon-btn" id="themeBtn" aria-label="Toggle theme" aria-pressed="false">◐</button><button type="button" class="icon-btn hamb" id="hamb" aria-label="Menu" aria-expanded="false" aria-controls="mmenu">☰</button></nav>
+</div><nav class="mobile-menu" id="mmenu" aria-label="Mobile"><a href="${r}index.html#install">Install</a><a href="${r}index.html#features">Features</a><a href="${r}index.html#how">How it works</a><a href="${r}index.html#compare">Compare</a><a href="index.html">Docs</a><a href="https://anirudh.social/marbor/demo/" target="_blank" rel="noopener">Live demo</a><a href="https://github.com/Anirudhx7/marbor" target="_blank" rel="noopener">GitHub</a></nav></header>
 
 <main class="doc-index" id="main">
 <div class="hero" data-reveal>
@@ -402,8 +404,8 @@ ${DOC_GROUPS.map((g) => `
 
 ${siteFooter(r)}
 <script>
-(function(){var b=document.getElementById('themeBtn');if(b)b.addEventListener('click',function(){var h=document.documentElement;h.classList.toggle('light');try{localStorage.setItem('om-theme',h.classList.contains('light')?'light':'dark');}catch(e){}});
-var hb=document.getElementById('hamb'),mm=document.getElementById('mmenu');if(hb&&mm){function setMenu(o){mm.classList.toggle('open',o);hb.setAttribute('aria-expanded',o?'true':'false');hb.textContent=o?'✕':'☰';}hb.addEventListener('click',function(){setMenu(!mm.classList.contains('open'));});mm.querySelectorAll('a').forEach(function(a){a.addEventListener('click',function(){setMenu(false);});});document.addEventListener('keydown',function(ev){if(ev.key==='Escape')setMenu(false);});window.addEventListener('resize',function(){if(window.innerWidth>640)setMenu(false);});}
+(function(){var b=document.getElementById('themeBtn');function syncT(){if(!b)return;var l=document.documentElement.classList.contains('light');b.setAttribute('aria-pressed',l?'true':'false');b.textContent=l?'☀':'◐';}if(b)b.addEventListener('click',function(){var h=document.documentElement;h.classList.toggle('light');try{localStorage.setItem('om-theme',h.classList.contains('light')?'light':'dark');}catch(e){}syncT();});syncT();
+var hb=document.getElementById('hamb'),mm=document.getElementById('mmenu');if(hb&&mm){function setMenu(o){mm.classList.toggle('open',o);hb.setAttribute('aria-expanded',o?'true':'false');hb.textContent=o?'✕':'☰';}hb.addEventListener('click',function(){setMenu(!mm.classList.contains('open'));});mm.querySelectorAll('a').forEach(function(a){a.addEventListener('click',function(){setMenu(false);});});document.addEventListener('keydown',function(ev){if(ev.key==='Escape'&&mm.classList.contains('open')){setMenu(false);hb.focus();}});window.addEventListener('resize',function(){if(window.innerWidth>640)setMenu(false);});}
 document.querySelectorAll('.yr').forEach(function(y){y.textContent=new Date().getFullYear();});
 var io;try{io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}});},{threshold:.12});document.querySelectorAll('[data-reveal]').forEach(function(el){el.classList.add('in');});}catch(e){}
 var nv=document.querySelector('.nav');if(nv){var tick=false;function onScrollNav(){if(tick)return;tick=true;requestAnimationFrame(function(){nv.classList.toggle('scrolled',window.scrollY>120);tick=false;});}window.addEventListener('scroll',onScrollNav,{passive:true});nv.classList.toggle('scrolled',window.scrollY>120);}
