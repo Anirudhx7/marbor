@@ -162,8 +162,24 @@ function renderMarkdown(md) {
 }
 
 /* ---------- shared chrome (matches index.html) ---------- */
-const LOGO_HTML = `<div style="width:32px;height:32px;background:#1a1714;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0"><svg width="22" height="22" viewBox="0 0 100 100" fill="none" aria-hidden="true"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="var(--accent)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></div>`;
+const LOGO_HTML = `<span class="brand-chip" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 100 100" fill="none"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="#d4a853" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></span>`;
+const BRAND_HTML = (r) => `<a href="${r}index.html" class="brand" aria-label="Marbor home">${LOGO_HTML}<span class="brand-name">Marbor</span><span class="brand-ver">{{VERSION}}</span></a>`;
 const GH_SVG = `<svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>`;
+const EXT_IC = `<svg class="ext-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17L17 7M7 7h10v10"/></svg>`;
+
+// Word-boundary excerpt for cards: never cut mid-word, no trailing "..." when short.
+function excerpt(s, n) {
+  const t = String(s).replace(/\s+/g, " ").trim();
+  if (t.length <= n) return t;
+  const cut = t.slice(0, n);
+  const at = cut.lastIndexOf(" ");
+  return (at > 1 ? cut.slice(0, at) : cut).trimEnd() + "...";
+}
+
+// Shared footer - identical to the landing page footer (paths relative via r).
+function siteFooter(r) {
+  return `<footer><div class="page foot-grid"><div>${BRAND_HTML(r)}<div style="margin-top:10px">© <span class="yr">2026</span> Anirudh Mehandru · Apache-2.0</div></div><div class="foot-links"><a href="${r}index.html#install">Install</a><a href="${r}index.html#features">Features</a><a href="${r}index.html#how">How</a><a href="${r}index.html#compare">Compare</a><a href="${r}docs/index.html">Docs</a><a href="https://anirudh.social/marbor/demo/" target="_blank" rel="noopener">Demo</a><a href="https://github.com/Anirudhx7/marbor" target="_blank" rel="noopener">GitHub</a></div></div></footer>`;
+}
 
 // All docs in nav order, grouped.
 const DOC_GROUPS = [
@@ -185,6 +201,9 @@ const DOC_GROUPS = [
     { slug: "integrations/librechat", label: "LibreChat" },
     { slug: "integrations/litellm", label: "LiteLLM" },
     { slug: "integrations/open-webui", label: "Open WebUI" },
+  ]},
+  { title: "Reference", items: [
+    { slug: "cli", label: "CLI reference" },
   ]},
 ];
 
@@ -210,6 +229,20 @@ function tocHtml(headings) {
   return `<ul class="toc">${headings.map((h) =>
     `<li class="lvl-${h.level}"><a href="#${h.id}">${escapeHtml(h.text)}</a></li>`
   ).join("")}</ul>`;
+}
+
+// Prev/next pager across all grouped pages in nav order, plus a demoted
+// centered source link underneath.
+function pagerHtml(slug) {
+  const flat = DOC_GROUPS.flatMap((g) => g.items);
+  const i = flat.findIndex((it) => it.slug === slug);
+  if (i < 0) return "";
+  const r = relRoot(slug);
+  const card = (it, dir) => it
+    ? `<a class="page-card ${dir}" href="${r}docs/${it.slug}.html"><span class="dir">${dir === "prev" ? "← Previous" : "Next →"}</span><span class="lbl">${escapeHtml(it.label)}</span></a>`
+    : `<span class="page-card missing" aria-hidden="true"></span>`;
+  return `<div class="pager">${card(flat[i - 1], "prev")}${card(flat[i + 1], "next")}</div>
+      <div class="edit-link"><a href="https://github.com/Anirudhx7/marbor/blob/main/docs/${slug}.md" target="_blank" rel="noopener">View on GitHub →</a></div>`;
 }
 
 function breadcrumb(slug, title) {
@@ -246,70 +279,53 @@ function page({ slug, title, contentHtml, headings }) {
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="${escapeHtml(title)} · Marbor docs" />
 <meta name="twitter:image" content="https://anirudh.social/marbor/screenshots/dashboard.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400..800;1,400..800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<meta name="theme-color" content="#d4a853" />
 <style>${DOC_CSS}</style>
 </head>
 <body>
-<nav>
-  <div class="page">
-    <a href="${r}index.html" class="brand" aria-label="Marbor home">${LOGO_HTML}<span class="name">Marbor</span><span class="ver">{{VERSION}}</span><span class="brand-dot" title="Active"></span></a>
-    <div class="nav-right">
-      <div class="nav-links">
-        <a class="link" href="${r}index.html#features">Features</a>
-        <a class="link" href="${r}index.html#how">How it works</a>
-        <a class="link" href="${r}index.html#compare">Compare</a>
-        <a class="link active" href="${r}docs/index.html">Docs</a>
-        <a class="link" href="https://github.com/Anirudhx7/marbor" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
-        <a class="link" href="https://anirudh.social/marbor/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
-      </div>
-      <button class="icon-btn theme-toggle" id="themeToggle" aria-label="Toggle dark and light mode">
-        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
-        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
-      </button>
-      <button class="icon-btn hamburger" id="sidebarToggle" aria-label="Open docs menu" aria-expanded="false">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
-      </button>
-    </div>
-  </div>
-</nav>
+<a class="skip" href="#main">Skip to content</a>
+<header class="nav"><div class="nav-inner">
+${BRAND_HTML(r)}
+<nav class="nav-links" aria-label="Primary"><a class="nl" href="${r}index.html#features">Features</a><a class="nl" href="${r}index.html#how">How it works</a><a class="nl" href="${r}index.html#compare">Compare</a><a class="nl on" href="${r}docs/index.html">Docs</a><a class="btn btn-gold btn-sm nav-cta" href="https://anirudh.social/marbor/demo/" target="_blank" rel="noopener">Live demo →</a><button class="icon-btn" id="themeBtn" aria-label="Toggle theme">◐</button><button class="icon-btn hamb" id="hamb" aria-label="Menu" aria-expanded="false">☰</button></nav>
+</div><div class="mobile-menu" id="mmenu"><a href="${r}index.html#features">Features</a><a href="${r}index.html#how">How it works</a><a href="${r}index.html#compare">Compare</a><a href="${r}docs/index.html">Docs</a><a href="https://anirudh.social/marbor/demo/" target="_blank" rel="noopener">Live demo</a><a href="https://github.com/Anirudhx7/marbor">GitHub</a></div></header>
 
 <div class="doc-shell">
-  <aside class="doc-sidebar" id="docSidebar" aria-label="Documentation navigation">
+<aside class="doc-sidebar" id="docSidebar" aria-label="Documentation navigation">
+<div class="doc-side-head">Docs · <b>index</b></div>
+<div class="doc-side-body">
     <a class="doc-nav-link home" href="${r}docs/index.html">← Docs home</a>
-    <a class="doc-nav-link" href="https://anirudh.social/marbor/demo/" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;color:var(--accent2);margin-bottom:18px;"><span class="brand-dot" style="flex-shrink:0"></span>Live demo ↗</a>
     ${docSidebar(slug)}
-  </aside>
+</div>
+</aside>
 
-  <main class="doc-main">
-    <div class="breadcrumb" aria-label="Breadcrumb">${breadcrumb(slug, title)}</div>
-    <article class="doc-content">
+  <main class="doc-main" id="main">
+    <article class="doc-content doc-card"><div class="doc-card-body">
+      <div class="breadcrumb" aria-label="Breadcrumb">${breadcrumb(slug, title)}</div>
       ${contentHtml}
       <div class="doc-foot-edit">
-        <a href="https://github.com/Anirudhx7/marbor/blob/main/docs/${slug}.md" target="_blank" rel="noopener">View on GitHub →</a>
+        ${pagerHtml(slug)}
       </div>
-    </article>
+    </div></article>
   </main>
 
-  <aside class="doc-toc" aria-label="On this page">
-    <div class="toc-title">On this page</div>
+  <div class="doc-toc-wrap"><aside class="toc-card" aria-label="On this page">
+    <p class="toc-title">On this page</p>
     ${tocHtml(headings)}
-  </aside>
+  </aside></div>
 </div>
 
-<footer class="foot">
-  <div class="foot-bottom">
-    <span>© <span id="year">2026</span> Marbor contributors · Apache-2.0</span>
-    <span>Marbor <span style="color:var(--accent)">{{VERSION}}</span></span>
-  </div>
-</footer>
+${siteFooter(r)}
 
 <script>
-(function(){"use strict";var root=document.documentElement;
-try{var s=localStorage.getItem("om-theme");if(s==="light")root.classList.add("light");else if(!s&&matchMedia&&matchMedia("(prefers-color-scheme: light)").matches)root.classList.add("light");}catch(e){}
-var t=document.getElementById("themeToggle");if(t)t.addEventListener("click",function(){root.classList.toggle("light");try{localStorage.setItem("om-theme",root.classList.contains("light")?"light":"dark");}catch(e){}});
-var sb=document.getElementById("sidebarToggle"),side=document.getElementById("docSidebar");
-if(sb&&side)sb.addEventListener("click",function(){var o=side.classList.toggle("open");sb.setAttribute("aria-expanded",String(o));});
-var y=document.getElementById("year");if(y)y.textContent=new Date().getFullYear();
-document.querySelectorAll(".copy-btn").forEach(function(btn){btn.addEventListener("click",function(){var text=btn.dataset.copy||"";var label=btn.querySelector("span");var done=function(){btn.classList.add("copied");if(label)label.textContent="copied!";setTimeout(function(){btn.classList.remove("copied");if(label)label.textContent="copy";},1600);};if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).then(done).catch(done);else{var ta=document.createElement("textarea");ta.value=text;document.body.appendChild(ta);ta.select();try{document.execCommand("copy");}catch(e){}document.body.removeChild(ta);done();}});});
+(function(){var b=document.getElementById('themeBtn');if(b)b.addEventListener('click',function(){var h=document.documentElement;h.classList.toggle('light');try{localStorage.setItem('om-theme',h.classList.contains('light')?'light':'dark');}catch(e){}});
+var hb=document.getElementById('hamb'),mm=document.getElementById('mmenu');if(hb&&mm){function setMenu(o){mm.classList.toggle('open',o);hb.setAttribute('aria-expanded',o?'true':'false');hb.textContent=o?'✕':'☰';}hb.addEventListener('click',function(){setMenu(!mm.classList.contains('open'));});mm.querySelectorAll('a').forEach(function(a){a.addEventListener('click',function(){setMenu(false);});});document.addEventListener('keydown',function(ev){if(ev.key==='Escape')setMenu(false);});window.addEventListener('resize',function(){if(window.innerWidth>640)setMenu(false);});}
+document.querySelectorAll('.yr').forEach(function(y){y.textContent=new Date().getFullYear();});
+var io;try{io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}});},{threshold:.12});document.querySelectorAll('[data-reveal]').forEach(function(el){io.observe(el);});}catch(e){}
+var nv=document.querySelector('.nav');if(nv){var tick=false;function onScrollNav(){if(tick)return;tick=true;requestAnimationFrame(function(){nv.classList.toggle('scrolled',window.scrollY>120);tick=false;});}window.addEventListener('scroll',onScrollNav,{passive:true});nv.classList.toggle('scrolled',window.scrollY>120);}
+document.querySelectorAll(".copy-btn").forEach(function(btn){btn.addEventListener("click",function(){var text=btn.dataset.copy||"";var done=function(){if(btn.dataset.done)return;btn.dataset.done="1";var old=btn.innerHTML;btn.classList.add("copied");btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><span>copied!</span>';setTimeout(function(){btn.classList.remove("copied");btn.innerHTML=old;delete btn.dataset.done;},1600);};if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).then(done).catch(done);else{var ta=document.createElement("textarea");ta.value=text;document.body.appendChild(ta);ta.select();try{document.execCommand("copy");}catch(e){}document.body.removeChild(ta);done();}});});
 // active TOC on scroll
 var links=[].slice.call(document.querySelectorAll(".toc a"));
 var ids=links.map(function(a){return a.getAttribute("href").slice(1);});
@@ -326,11 +342,7 @@ window.addEventListener("scroll",onScroll,{passive:true});onScroll();
 function docsIndexPage() {
   const slug = "index-placeholder"; // depth 0 for relRoot via custom
   const r = "../";
-  const cards = DOC_GROUPS.flatMap((g) => g.items.map((it) => {
-    const md = readFileSync(join(DOCS_SRC, it.slug + ".md"), "utf8");
-    const firstPara = (md.split("\n").find((l, idx) => l.trim() && !l.startsWith("#") && !l.startsWith(">")) || "").trim();
-    return `<a class="index-card" href="${it.slug}.html"><h3>${it.label}</h3><p>${escapeHtml(firstPara.replace(/[*`\[\]]/g, "").slice(0, 130))}...</p><span class="arrow">Read →</span></a>`;
-  })).join("");
+  const total = DOC_GROUPS.reduce((a, g) => a + g.items.length, 0);
 
   return `<!doctype html>
 <html lang="en">
@@ -344,89 +356,57 @@ function docsIndexPage() {
 <title>Documentation · Marbor</title>
 <meta name="description" content="Marbor documentation -- integrations, production deployment, savings math, and use cases." />
 <link rel="icon" type="image/svg+xml" href="${r}favicon.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400..800;1,400..800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<meta name="theme-color" content="#d4a853" />
 <style>${DOC_CSS}</style>
 </head>
 <body>
-<nav>
-  <div class="page">
-    <a href="${r}index.html" class="brand" aria-label="Marbor home">${LOGO_HTML}<span class="name">Marbor</span><span class="ver">{{VERSION}}</span><span class="brand-dot" title="Active"></span></a>
-    <div class="nav-right">
-      <div class="nav-links">
-        <a class="link" href="${r}index.html#features">Features</a>
-        <a class="link" href="${r}index.html#how">How it works</a>
-        <a class="link" href="${r}index.html#compare">Compare</a>
-        <a class="link active" href="index.html">Docs</a>
-        <a class="link" href="https://github.com/Anirudhx7/marbor" target="_blank" rel="noopener noreferrer">GitHub&nbsp;↗</a>
-        <a class="link" href="https://anirudh.social/marbor/demo/" target="_blank" rel="noopener noreferrer" style="color:var(--accent2);font-weight:500;">Demo&nbsp;↗</a>
-      </div>
-      <button class="icon-btn theme-toggle" id="themeToggle" aria-label="Toggle dark and light mode">
-        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
-        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
-      </button>
-      <button class="icon-btn hamburger" id="hamburger" aria-label="Open menu" aria-expanded="false">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
-      </button>
-    </div>
-  </div>
-</nav>
-<div class="mobile-menu" id="mobileMenu" aria-hidden="true">
-  <a href="${r}index.html#features">Features</a>
-  <a href="${r}index.html#how">How it works</a>
-  <a href="${r}index.html#compare">Compare</a>
-  <a href="index.html">Docs</a>
-  <a href="https://anirudh.social/marbor/demo/" target="_blank" rel="noopener noreferrer">Live demo</a>
-  <a href="https://github.com/Anirudhx7/marbor" target="_blank" rel="noopener noreferrer">GitHub ↗</a>
-</div>
+<a class="skip" href="#main">Skip to content</a>
+<header class="nav"><div class="nav-inner">
+${BRAND_HTML(r)}
+<nav class="nav-links" aria-label="Primary"><a class="nl" href="${r}index.html#features">Features</a><a class="nl" href="${r}index.html#how">How it works</a><a class="nl" href="${r}index.html#compare">Compare</a><a class="nl on" href="index.html">Docs</a><a class="btn btn-gold btn-sm nav-cta" href="https://anirudh.social/marbor/demo/" target="_blank" rel="noopener">Live demo →</a><button class="icon-btn" id="themeBtn" aria-label="Toggle theme">◐</button><button class="icon-btn hamb" id="hamb" aria-label="Menu" aria-expanded="false">☰</button></nav>
+</div><div class="mobile-menu" id="mmenu"><a href="${r}index.html#install">Install</a><a href="${r}index.html#features">Features</a><a href="${r}index.html#how">How it works</a><a href="${r}index.html#compare">Compare</a><a href="index.html">Docs</a><a href="https://anirudh.social/marbor/demo/" target="_blank" rel="noopener">Live demo</a><a href="https://github.com/Anirudhx7/marbor" target="_blank" rel="noopener">GitHub</a></div></header>
 
-<main class="doc-index">
-  <p class="eyebrow">Documentation</p>
-  <h1>Run it, route it, read the numbers.</h1>
-  <p class="lead">Everything you need to put Marbor in front of your cluster -- connect your tools, ship to production, and understand exactly what it's saving you.</p>
+<main class="doc-index" id="main">
+<div class="hero" data-reveal>
+  <h1>Run it, <em>route it</em>, read the numbers.</h1>
+  <p class="lede">Everything you need to put Marbor in front of your cluster -- connect your tools, ship to production, and understand exactly what it's saving you.</p>
+  <div class="breadcrumb" aria-label="Breadcrumb"><a href="../index.html">Home</a><span class="sep">/</span><span class="current">Docs</span></div>
+</div>
+<div class="doc-shell two-col">
+<aside class="doc-sidebar" aria-label="Documentation navigation" data-reveal>
+<div class="doc-side-head">Docs · <b>${total} pages</b></div>
+<div class="doc-side-body">
+${DOC_GROUPS.map((g) => `
+    <div class="nav-group"><p class="nav-group-title">${g.title}</p>${g.items.map((it) => `<a class="doc-nav-link" href="${it.slug}.html">${it.label}</a>`).join("")}</div>`).join("")}
+</div>
+</aside>
+<div class="doc-main">
   ${DOC_GROUPS.map((g) => `
-    <section class="index-section">
-      <h2>${g.title} · ${g.items.length} pages</h2>
-      <div class="index-grid">
+    <section class="doc-card" data-reveal>
+      <div class="doc-card-head"><span class="t">${g.title} · <b>${g.items.length} page${g.items.length === 1 ? "" : "s"}</b></span></div>
+      <div class="doc-card-body"><div class="index-grid">
         ${g.items.map((it) => {
           const md = readFileSync(join(DOCS_SRC, it.slug + ".md"), "utf8");
           const firstPara = (md.split("\n").find((l) => l.trim() && !l.startsWith("#") && !l.startsWith(">")) || "").trim();
-        return `<a class="index-card" href="${it.slug}.html"><div class="index-card-top"><span class="index-card-count">${g.title} · ${g.items.length} pages</span></div><h3>${it.label}</h3><p>${escapeHtml(firstPara.replace(/[*\`\[\]()]/g, "").replace(/https?:\S+/g,"").slice(0, 120))}...</p><span class="arrow">Read →</span></a>`;
+        return `<a class="index-card" href="${it.slug}.html"><div class="index-card-top"><span class="index-card-count">${g.title}</span></div><h3>${it.label}</h3><p>${escapeHtml(excerpt(firstPara.replace(/[*\`\[\]()]/g, "").replace(/https?:\S+/g,""), 120))}</p><span class="arrow">Read →</span></a>`;
       }).join("")}
-      </div>
+      </div></div>
     </section>`).join("")}
+  <div class="cta-band" data-reveal><div><h2>Find out what your fleet is actually doing.</h2><p>Install in one command. Point your OpenAI client at Marbor. Watch the first placed request.</p></div><div class="cta-act"><a class="btn btn-gold" href="${r}index.html#install">↓ Install Marbor</a><a class="docs-link" href="${r}index.html#features">Explore features →</a></div></div>
+</div>
+</div>
 </main>
 
-<footer class="foot">
-  <div class="foot-bottom">
-    <span>© <span id="year">2026</span> Marbor contributors · Apache-2.0</span>
-    <span>Marbor <span style="color:var(--accent)">{{VERSION}}</span></span>
-  </div>
-</footer>
+${siteFooter(r)}
 <script>
-(function(){
-  var root=document.documentElement;
-  try{
-    var s=localStorage.getItem("om-theme");
-    if(s==="light")root.classList.add("light");
-    else if(!s&&matchMedia&&matchMedia("(prefers-color-scheme: light)").matches)root.classList.add("light");
-  }catch(e){}
-  var t=document.getElementById("themeToggle");
-  if(t)t.addEventListener("click",function(){
-    root.classList.toggle("light");
-    try{localStorage.setItem("om-theme",root.classList.contains("light")?"light":"dark");}catch(e){}
-  });
-  var burger=document.getElementById("hamburger");
-  var menu=document.getElementById("mobileMenu");
-  function closeMenu() { menu.classList.remove("open"); burger.setAttribute("aria-expanded", "false"); menu.setAttribute("aria-hidden", "true"); }
-  if(burger&&menu) {
-    burger.addEventListener("click",function(){
-      var open=menu.classList.toggle("open");
-      burger.setAttribute("aria-expanded",String(open));
-      menu.setAttribute("aria-hidden",String(!open));
-    });
-    menu.querySelectorAll("a").forEach(function(a){a.addEventListener("click",closeMenu);});
-  }
-  var y=document.getElementById("year");
-  if(y)y.textContent=new Date().getFullYear();
+(function(){var b=document.getElementById('themeBtn');if(b)b.addEventListener('click',function(){var h=document.documentElement;h.classList.toggle('light');try{localStorage.setItem('om-theme',h.classList.contains('light')?'light':'dark');}catch(e){}});
+var hb=document.getElementById('hamb'),mm=document.getElementById('mmenu');if(hb&&mm){function setMenu(o){mm.classList.toggle('open',o);hb.setAttribute('aria-expanded',o?'true':'false');hb.textContent=o?'✕':'☰';}hb.addEventListener('click',function(){setMenu(!mm.classList.contains('open'));});mm.querySelectorAll('a').forEach(function(a){a.addEventListener('click',function(){setMenu(false);});});document.addEventListener('keydown',function(ev){if(ev.key==='Escape')setMenu(false);});window.addEventListener('resize',function(){if(window.innerWidth>640)setMenu(false);});}
+document.querySelectorAll('.yr').forEach(function(y){y.textContent=new Date().getFullYear();});
+var io;try{io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}});},{threshold:.12});document.querySelectorAll('[data-reveal]').forEach(function(el){el.classList.add('in');});}catch(e){}
+var nv=document.querySelector('.nav');if(nv){var tick=false;function onScrollNav(){if(tick)return;tick=true;requestAnimationFrame(function(){nv.classList.toggle('scrolled',window.scrollY>120);tick=false;});}window.addEventListener('scroll',onScrollNav,{passive:true});nv.classList.toggle('scrolled',window.scrollY>120);}
 })();
 </script>
 </body>
@@ -453,6 +433,15 @@ function titleFromMd(md, slug) {
 function main() {
   // Exclude internal/design docs from the public site - these stay local (never published).
   const slugs = listMd(DOCS_SRC).filter((s) => s !== "prometheus-alerts" && !s.startsWith("design/"));
+  // Every rendered page must be linked from the index + sidebar (both render
+  // from DOC_GROUPS). Fail loudly so an ungrouped page can never silently
+  // ship unlinked again (this script runs in pages.yml CI).
+  const grouped = new Set(DOC_GROUPS.flatMap((g) => g.items.map((it) => it.slug)));
+  const orphans = slugs.filter((s) => !grouped.has(s));
+  if (orphans.length) {
+    console.error(`build-docs: ${orphans.length} rendered page(s) missing from DOC_GROUPS (unlinked from index + sidebar): ${orphans.join(", ")}`);
+    process.exit(1);
+  }
   let count = 0;
   for (const slug of slugs) {
     const md = readFileSync(join(DOCS_SRC, slug + ".md"), "utf8");
