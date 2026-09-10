@@ -46,10 +46,12 @@ function formatBytes(bytes: number): string {
 const LIVE_VRAM_TOOL_SOURCES = new Set(['nvidia-smi', 'rocm-smi', 'xpu-smi', 'system_profiler', 'agent', 'api']);
 
 // SIGNAL_DEFS backs the placement-signal filter chips above the node grid -
-// the fleet-page version of the landing page's live-trace signal grid. Same
-// AND semantics as the site: a shown node matches every active signal.
-// Unlike the site (which dims), non-matches are filtered out so a 100-GPU
-// fleet stays scannable without hunting for lit cards.
+// the fleet-page version of the landing page's live-trace signal grid, but
+// with OR semantics: a shown node matches any active signal. (The site keeps
+// AND because a *request* must satisfy every signal to land; an operator
+// *querying* nodes needs union, and health chips are mutually exclusive, so
+// AND would empty-set Degraded + Down.) Non-matches are filtered out so a
+// 100-GPU fleet stays scannable without hunting for lit cards.
 const SIGNAL_DEFS: { id: string; label: string; matches: (n: GPUNode) => boolean }[] = [
   // health/degraded exclude draining nodes, mirroring computeFleetHealth in
   // Dashboard.tsx - a draining node lights the Draining chip, not Healthy.
@@ -1388,7 +1390,11 @@ export function GPUNodes() {
     count: nodes.filter(s.matches).length,
   }));
   const activeSignalDefs = SIGNAL_DEFS.filter((s) => activeSignals.has(s.id));
-  const nodeMatchesSignals = (node: GPUNode) => activeSignalDefs.every((s) => s.matches(node));
+  // OR semantics, deliberately NOT the landing page's AND: health chips are
+  // mutually exclusive, so AND would empty-set the classic triage query
+  // (Degraded + Down = "everything on fire"). OR gathers, AND would mislead.
+  const nodeMatchesSignals = (node: GPUNode) =>
+    activeSignalDefs.length === 0 || activeSignalDefs.some((s) => s.matches(node));
   const visibleNodes = filteredNodes.filter(nodeMatchesSignals);
 
   const handleAddNode = async () => {
@@ -2040,7 +2046,7 @@ export function GPUNodes() {
           <EmptyState
             icon={Server}
             title="No nodes match these signals"
-            copy="No shown node matches every active signal."
+            copy="No shown node matches any active signal."
             action={
               <button
                 onClick={() => setActiveSignals(new Set())}
