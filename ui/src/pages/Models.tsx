@@ -4,6 +4,7 @@ import { Package, Download, Settings2, Trash2, AlertTriangle, Layers, Flame, Cop
 import { StatusDot } from '../components/StatusDot';
 import { Badge } from '../components/Badge';
 import { SearchInput } from '../components/SearchInput';
+import { EmptyState } from '../components/EmptyState';
 import { mockModelCatalog, mockGPUNodes } from '../lib/mockData';
 import { fetchModels, fetchNodes, deleteNodeModel } from '../lib/api';
 import { startPull, onPullSuccess } from '../lib/pullProgress';
@@ -86,7 +87,7 @@ function ModelFleetCard({ model, demoMode, onConfigure, onDeleted }: { model: Mo
   };
 
   return (
-    <div className={`bg-card border shadow-sm rounded-xl p-5 hover:border-primary/50 transition-all duration-300 ease-out hover:shadow-md hover:scale-[1.01] active:scale-[0.99] flex flex-col h-full ${isWarm ? 'border-border' : 'border-border opacity-80'}`}>
+    <div className={`bg-card border shadow-sm rounded-xl p-5 hover:border-primary/50 transition-[box-shadow,border-color] duration-200 ease-out hover:shadow-md flex flex-col h-full ${isWarm ? 'border-border' : 'border-border opacity-80'}`}>
       {/* Header */}
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-start gap-3 min-w-0">
@@ -176,7 +177,7 @@ function ModelFleetCard({ model, demoMode, onConfigure, onDeleted }: { model: Mo
               key={node.name}
               to={`/gpu-nodes?highlight=${encodeURIComponent(node.name)}&from=models`}
               title={`${node.name} · ${node.runtime || 'runtime unknown'} · ${node.warm ? 'warm' : 'cold'} · digest ${node.digest || '-'}${node.vram_bytes ? ` · ${formatVRAM(node.vram_bytes)}` : ''}`}
-              className="inline-flex items-center gap-1.5 px-2 py-1 bg-secondary hover:bg-secondary/80 border border-transparent hover:border-border rounded-md text-xs font-medium text-foreground transition-all duration-200 ease-out hover:scale-[1.02] active:scale-[0.98]"
+              className="inline-flex items-center gap-1.5 px-2 py-1 bg-secondary hover:bg-secondary/80 border border-transparent hover:border-border rounded-md text-xs font-medium text-foreground transition-colors duration-200 ease-out"
             >
               <StatusDot status={node.healthy ? 'healthy' : 'down'} />
               <span className="font-mono">{node.name}</span>
@@ -500,13 +501,13 @@ export function Models() {
       <div className="flex items-center gap-1 p-1 bg-secondary rounded-lg w-fit">
         <button
           onClick={() => setActiveTab('fleet')}
-          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all duration-200 ease-out hover:scale-[1.02] active:scale-[0.97] ${activeTab === 'fleet' ? 'bg-card shadow-sm text-foreground border border-border' : 'text-muted-foreground hover:text-foreground'}`}
+          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors duration-200 ease-out ${activeTab === 'fleet' ? 'bg-card shadow-sm text-foreground border border-border' : 'text-muted-foreground hover:text-foreground'}`}
         >
           Fleet
         </button>
         <button
           onClick={() => setActiveTab('catalog')}
-          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all duration-200 ease-out hover:scale-[1.02] active:scale-[0.97] ${activeTab === 'catalog' ? 'bg-card shadow-sm text-foreground border border-border' : 'text-muted-foreground hover:text-foreground'}`}
+          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors duration-200 ease-out ${activeTab === 'catalog' ? 'bg-card shadow-sm text-foreground border border-border' : 'text-muted-foreground hover:text-foreground'}`}
         >
           Catalog
         </button>
@@ -558,28 +559,28 @@ export function Models() {
               />
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <label className={`inline-flex items-center gap-2 px-3 py-1.5 border rounded-lg text-xs font-medium cursor-pointer transition-all duration-200 ease-out hover:scale-[1.02] active:scale-[0.97] ${driftedOnly ? 'bg-primary/10 border-primary/30 text-primary shadow-sm' : 'bg-secondary border-border hover:bg-secondary/80'}`}>
+              <label className={`inline-flex items-center gap-2 px-3 py-1.5 border rounded-lg text-xs font-medium cursor-pointer transition-colors duration-200 ease-out ${driftedOnly ? 'bg-primary/10 border-primary/30 text-primary shadow-sm' : 'bg-secondary border-border hover:bg-secondary/80'}`}>
                 <input
                   type="checkbox"
                   checked={driftedOnly}
                   onChange={(e) => setDriftedOnly(e.target.checked)}
-                  className="accent-primary cursor-pointer transition-all duration-200"
+                  className="accent-primary cursor-pointer"
                 />
                 Drifted only
               </label>
-              <label className={`inline-flex items-center gap-2 px-3 py-1.5 border rounded-lg text-xs font-medium cursor-pointer transition-all duration-200 ease-out hover:scale-[1.02] active:scale-[0.97] ${warmOnly ? 'bg-primary/10 border-primary/30 text-primary shadow-sm' : 'bg-secondary border-border hover:bg-secondary/80'}`}>
+              <label className={`inline-flex items-center gap-2 px-3 py-1.5 border rounded-lg text-xs font-medium cursor-pointer transition-colors duration-200 ease-out ${warmOnly ? 'bg-primary/10 border-primary/30 text-primary shadow-sm' : 'bg-secondary border-border hover:bg-secondary/80'}`}>
                 <input
                   type="checkbox"
                   checked={warmOnly}
                   onChange={(e) => setWarmOnly(e.target.checked)}
-                  className="accent-primary cursor-pointer transition-all duration-200"
+                  className="accent-primary cursor-pointer"
                 />
                 Warm only
               </label>
-              <div className={`transition-all duration-200 ease-out ${driftedOnly || warmOnly || searchQuery ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 -translate-y-1 scale-95 pointer-events-none w-0 overflow-hidden'}`}>
+              <div className={`transition-[opacity,translate,scale] duration-200 ease-out ${driftedOnly || warmOnly || searchQuery ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 -translate-y-1 scale-95 pointer-events-none w-0 overflow-hidden'}`}>
                 <button
                   onClick={clearAllFilters}
-                  className="text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded-md hover:bg-secondary transition-all duration-200 ease-out hover:scale-105 active:scale-95 whitespace-nowrap"
+                  className="text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded-md hover:bg-secondary transition-colors duration-200 ease-out whitespace-nowrap"
                 >
                   Clear filters
                 </button>
@@ -597,8 +598,8 @@ export function Models() {
           ) : filteredModels.length > 0 ? (
             <div className="space-y-6 animate-fade-in">
               {/* Desktop table - hidden on mobile, no horizontal scroll at 375px because hidden */}
-              <div className="hidden md:block bg-card border border-border rounded-xl overflow-hidden animate-fade-in transition-all duration-300 ease-out">
-                <div className="overflow-x-auto">
+<div className="hidden md:block bg-card border border-border rounded-xl overflow-hidden animate-fade-in">
+<div className="overflow-x-auto scroll-region" tabIndex={0} role="region" aria-label="Models table: scroll horizontally for more columns">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-border bg-secondary/30 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
@@ -652,7 +653,7 @@ export function Models() {
                                     key={node.name}
                                     to={`/gpu-nodes?highlight=${encodeURIComponent(node.name)}&from=models`}
                                     title={`${node.name} ${node.runtime || ''} ${node.warm ? 'warm' : 'cold'} ${node.digest || ''}`}
-                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-secondary rounded text-xs font-medium hover:bg-secondary/80 transition-all duration-200 ease-out hover:scale-[1.02] active:scale-[0.98]"
+                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-secondary rounded text-xs font-medium hover:bg-secondary/80 transition-colors duration-200 ease-out"
                                   >
                                     <StatusDot status={node.healthy ? 'healthy' : 'down'} size="sm" />
                                     <span className="font-mono">{node.name}</span>
@@ -666,14 +667,14 @@ export function Models() {
                                 <button
                                   onClick={() => setConfigModel(model.name)}
                                   title={`Settings for ${model.name}`}
-                                  className="p-1.5 text-muted-foreground hover:text-primary hover:bg-secondary rounded transition-all duration-200 ease-out hover:scale-110 active:scale-95"
+                                  className="p-1.5 text-muted-foreground hover:text-primary hover:bg-secondary rounded transition-colors duration-200 ease-out"
                                 >
                                   <Settings2 className="w-3.5 h-3.5" />
                                 </button>
                                 <Link
                                   to={`/gpu-nodes?highlight=${encodeURIComponent(model.nodes.map((n) => n.name).join(','))}&from=models`}
                                   title="Manage on GPU nodes (mutations live there)"
-                                  className="p-1.5 text-muted-foreground hover:text-primary hover:bg-secondary rounded transition-all duration-200 ease-out hover:scale-110 active:scale-95"
+                                  className="p-1.5 text-muted-foreground hover:text-primary hover:bg-secondary rounded transition-colors duration-200 ease-out"
                                 >
                                   <ArrowUpRight className="w-3.5 h-3.5" />
                                 </Link>
@@ -700,21 +701,28 @@ export function Models() {
               </div>
             </div>
           ) : (
-            <div className="text-center py-16 bg-card border border-border rounded-xl shadow-sm animate-fade-in">
-              <Package className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
+            <div className="bg-card border border-border rounded-xl shadow-sm animate-fade-in px-4">
               {catalog && catalog.total_nodes === 0 ? (
-                <div className="space-y-1">
-                  <h3 className="text-lg font-semibold text-foreground">No GPU nodes connected</h3>
-                  <p className="text-muted-foreground max-w-md mx-auto text-sm leading-normal">
-                    Connect your first node in the <strong>GPU Nodes</strong> page to view fleet residency and monitor warm VRAM.
-                  </p>
-                </div>
+                <EmptyState
+                  icon={Package}
+                  title="No GPU nodes connected"
+                  copy="Connect your first node to view fleet residency and monitor warm VRAM."
+                  action={
+                    <Link to="/gpu-nodes" className="text-sm font-medium text-primary hover:underline">
+                      Go to GPU Nodes
+                    </Link>
+                  }
+                />
               ) : (
-                <p className="text-muted-foreground text-sm font-medium">
-                  {searchQuery || driftedOnly || warmOnly
-                    ? 'No models matching your filters.'
-                    : 'No models reported across any nodes. Start a request or pull a model to populate the fleet.'}
-                </p>
+                <EmptyState
+                  icon={Package}
+                  title="No models found"
+                  copy={
+                    searchQuery || driftedOnly || warmOnly
+                      ? 'No models matching your filters.'
+                      : 'No models reported across any nodes. Start a request or pull a model to populate the fleet.'
+                  }
+                />
               )}
             </div>
           )}

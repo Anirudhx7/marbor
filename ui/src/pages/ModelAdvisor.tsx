@@ -1,9 +1,11 @@
 import { useState, useEffect, useMemo, useCallback, useRef, useSyncExternalStore } from 'react';
+import { Link } from 'react-router-dom';
 import { Package, Download, Check, Server, Loader2, Cpu, HardDrive, Star, ArrowDown, ExternalLink, X, Settings2 } from 'lucide-react';
 import { SearchInput } from '../components/SearchInput';
 import { VramBar } from '../components/VramBar';
 import { ModelConfigModal } from '../components/ModelConfigModal';
 import { Modal } from '../components/Modal';
+import { EmptyState } from '../components/EmptyState';
 import { CustomSelect } from '../components/Select';
 import {
   fetchSystemInfo,
@@ -1036,10 +1038,13 @@ export function ModelAdvisor() {
               {[...Array(skeletonModels)].map((_, i) => <AdvisorCardSkeleton key={i} />)}
             </div>
           ) : favoriteModels.length === 0 ? (
-          <div className="text-center py-16 bg-card border border-border rounded-xl shadow-sm">
-            <Star className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
-            <p className="text-muted-foreground font-medium">No favourites yet. Star a model in Browse to save it here.</p>
-          </div>
+<div className="bg-card border border-border rounded-xl shadow-sm px-4">
+<EmptyState
+  icon={Star}
+  title="No favourites yet"
+  copy="Star a model in Browse to save it here."
+/>
+</div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
             {favoriteGridItems.map((item) =>
@@ -1192,10 +1197,13 @@ export function ModelAdvisor() {
               {[...Array(skeletonModels)].map((_, i) => <AdvisorCardSkeleton key={i} />)}
             </div>
           ) : models.length === 0 ? (
-            <div className="text-center py-16 bg-card border border-border rounded-xl shadow-sm">
-              <Package className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
-              <p className="text-muted-foreground font-medium">No repositories found. Try searching for "llama" or "gemma".</p>
-            </div>
+<div className="bg-card border border-border rounded-xl shadow-sm px-4">
+<EmptyState
+  icon={Package}
+  title="No repositories found"
+  copy='Try searching for "llama" or "gemma".'
+/>
+</div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
               {gridItems.map((item) =>
@@ -1231,14 +1239,18 @@ export function ModelAdvisor() {
       )}
 
       {!activeNode && !loading && !error && nodes.length === 0 && (
-        <div className="text-center py-16 bg-card border border-border rounded-xl shadow-sm">
-          <Server className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-foreground">No GPU nodes connected</h3>
-          <p className="text-muted-foreground max-w-md mx-auto text-sm leading-normal mt-1">
-            Marbor requires at least one active Ollama node to calculate VRAM capacity and check model compatibility.
-            Connect your first node in the <strong>GPU Nodes</strong> page.
-          </p>
-        </div>
+<div className="bg-card border border-border rounded-xl shadow-sm px-4">
+<EmptyState
+  icon={Server}
+  title="No GPU nodes connected"
+  copy="Marbor requires at least one active Ollama node to calculate VRAM capacity and check model compatibility."
+  action={
+    <Link to="/gpu-nodes" className="text-sm font-medium text-primary hover:underline">
+      Go to GPU Nodes
+    </Link>
+  }
+/>
+</div>
       )}
       </>
       )}
