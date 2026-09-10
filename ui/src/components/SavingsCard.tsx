@@ -1,5 +1,6 @@
 import { DollarSign } from 'lucide-react';
 import { Savings } from '../types';
+import { CardKicker } from './CardKicker';
 
 interface SavingsCardProps {
   savings: Savings | null;
@@ -24,7 +25,7 @@ export function SavingsCard({ savings, loading }: SavingsCardProps) {
     <div className="glass-panel rounded-xl p-5 hover:border-primary/50 transition-colors h-full min-w-0">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-muted-foreground mb-1">Saved vs cloud</p>
+          <CardKicker className="mb-1">Saved vs cloud</CardKicker>
           {loading ? (
             <div aria-hidden="true" className="animate-pulse">
               <div className="h-8 w-32 max-w-full bg-secondary rounded mb-1.5" />

@@ -17,6 +17,7 @@ import { useDemoMode } from '../hooks/useDemoMode';
 import { useTimezone } from '../hooks/useTimezone';
 import { formatDateTimeInZone } from '../lib/time';
 import { Modal } from '../components/Modal';
+import { EmptyState } from '../components/EmptyState';
 
 function fmtMs(ms: number): string {
   if (!Number.isFinite(ms)) return '-';
@@ -269,7 +270,7 @@ export function Benchmark() {
         {loading ? (
           <p className="text-sm text-muted-foreground">Loading nodes…</p>
         ) : healthyNodes.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No healthy nodes available to benchmark.</p>
+          <EmptyState compact icon={Server} title="No healthy nodes to benchmark" copy="Benchmarks need at least one healthy node with a known model." />
         ) : (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -336,7 +337,7 @@ export function Benchmark() {
           </div>
           {running && (
             <div className="w-full h-1.5 bg-secondary rounded-md overflow-hidden">
-              <div className="h-full bg-primary transition-all duration-300" style={{
+              <div className="h-full bg-primary transition-[width,background-color] duration-300" style={{
                 width: `${Math.min(100, ((progress.coldSamplesMs.length + progress.warmSamplesMs.length) / Math.max(1, progress.n * 2)) * 100)}%`,
               }} />
             </div>
@@ -362,7 +363,7 @@ export function Benchmark() {
         {historyError ? (
           <p className="text-sm text-destructive px-5 py-4">{historyError}</p>
         ) : history.length === 0 ? (
-          <p className="text-sm text-muted-foreground px-5 py-4">No benchmark runs yet.</p>
+          <EmptyState compact icon={History} title="No benchmark runs yet" copy="Completed cold-vs-warm runs will be listed here." />
         ) : (
           <div className="divide-y divide-border">
             {history.map(r => (

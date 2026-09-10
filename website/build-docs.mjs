@@ -266,7 +266,7 @@ function page({ slug, title, contentHtml, headings }) {
 <meta name="color-scheme" content="dark light" />
 <script defer data-domain="anirudh.social" src="https://plausible.io/js/script.tagged-events.js"><\/script>
 <script>
-  (function () { try { var s = localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
+  (function () { try { var s = localStorage.getItem("marbor-theme")||localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
 </script>
 <title>${escapeHtml(title)} · Marbor docs</title>
 <meta name="description" content="Marbor documentation: ${escapeHtml(title)}." />
@@ -321,7 +321,7 @@ ${BRAND_HTML(r)}
 ${siteFooter(r)}
 
 <script>
-(function(){var b=document.getElementById('themeBtn');function syncT(){if(!b)return;var l=document.documentElement.classList.contains('light');b.setAttribute('aria-pressed',l?'true':'false');b.textContent=l?'☀':'◐';syncMetaTheme();}function syncMetaTheme(){try{var cs=getComputedStyle(document.documentElement);var m=document.querySelector('meta[name="theme-color"]');if(m){var bg=cs.getPropertyValue('--bg').trim();if(bg)m.setAttribute('content',bg);}}catch(e){}}if(b)b.addEventListener('click',function(){var h=document.documentElement;h.classList.toggle('light');try{localStorage.setItem('om-theme',h.classList.contains('light')?'light':'dark');}catch(e){}syncT();});syncT();
+(function(){var b=document.getElementById('themeBtn');function syncT(){if(!b)return;var l=document.documentElement.classList.contains('light');b.setAttribute('aria-pressed',l?'true':'false');b.textContent=l?'☀':'◐';syncMetaTheme();}function syncMetaTheme(){try{var cs=getComputedStyle(document.documentElement);var m=document.querySelector('meta[name="theme-color"]');if(m){var bg=cs.getPropertyValue('--bg').trim();if(bg)m.setAttribute('content',bg);}}catch(e){}}if(b)b.addEventListener('click',function(){var h=document.documentElement;h.classList.toggle('light');try{localStorage.setItem('marbor-theme',h.classList.contains('light')?'light':'dark');}catch(e){}syncT();});syncT();
 var hb=document.getElementById('hamb'),mm=document.getElementById('mmenu');if(hb&&mm){function setMenu(o){mm.classList.toggle('open',o);hb.setAttribute('aria-expanded',o?'true':'false');hb.textContent=o?'✕':'☰';}hb.addEventListener('click',function(){setMenu(!mm.classList.contains('open'));});mm.querySelectorAll('a').forEach(function(a){a.addEventListener('click',function(){setMenu(false);});});document.addEventListener('keydown',function(ev){if(ev.key==='Escape'&&mm.classList.contains('open')){setMenu(false);hb.focus();}});window.addEventListener('resize',function(){if(window.innerWidth>640)setMenu(false);});}
 document.querySelectorAll('.yr').forEach(function(y){y.textContent=new Date().getFullYear();});
 var io;try{io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}});},{threshold:.12});document.querySelectorAll('[data-reveal]').forEach(function(el){io.observe(el);});}catch(e){}
@@ -354,7 +354,7 @@ function docsIndexPage() {
 <meta name="color-scheme" content="dark light" />
 <script defer data-domain="anirudh.social" src="https://plausible.io/js/script.tagged-events.js"><\/script>
 <script>
-  (function () { try { var s = localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
+  (function () { try { var s = localStorage.getItem("marbor-theme")||localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
 </script>
 <title>Documentation · Marbor</title>
 <meta name="description" content="Marbor documentation -- integrations, production deployment, savings math, and use cases." />
@@ -405,7 +405,7 @@ ${DOC_GROUPS.map((g) => `
 
 ${siteFooter(r)}
 <script>
-(function(){var b=document.getElementById('themeBtn');function syncT(){if(!b)return;var l=document.documentElement.classList.contains('light');b.setAttribute('aria-pressed',l?'true':'false');b.textContent=l?'☀':'◐';syncMetaTheme();}function syncMetaTheme(){try{var cs=getComputedStyle(document.documentElement);var m=document.querySelector('meta[name="theme-color"]');if(m){var bg=cs.getPropertyValue('--bg').trim();if(bg)m.setAttribute('content',bg);}}catch(e){}}if(b)b.addEventListener('click',function(){var h=document.documentElement;h.classList.toggle('light');try{localStorage.setItem('om-theme',h.classList.contains('light')?'light':'dark');}catch(e){}syncT();});syncT();
+(function(){var b=document.getElementById('themeBtn');function syncT(){if(!b)return;var l=document.documentElement.classList.contains('light');b.setAttribute('aria-pressed',l?'true':'false');b.textContent=l?'☀':'◐';syncMetaTheme();}function syncMetaTheme(){try{var cs=getComputedStyle(document.documentElement);var m=document.querySelector('meta[name="theme-color"]');if(m){var bg=cs.getPropertyValue('--bg').trim();if(bg)m.setAttribute('content',bg);}}catch(e){}}if(b)b.addEventListener('click',function(){var h=document.documentElement;h.classList.toggle('light');try{localStorage.setItem('marbor-theme',h.classList.contains('light')?'light':'dark');}catch(e){}syncT();});syncT();
 var hb=document.getElementById('hamb'),mm=document.getElementById('mmenu');if(hb&&mm){function setMenu(o){mm.classList.toggle('open',o);hb.setAttribute('aria-expanded',o?'true':'false');hb.textContent=o?'✕':'☰';}hb.addEventListener('click',function(){setMenu(!mm.classList.contains('open'));});mm.querySelectorAll('a').forEach(function(a){a.addEventListener('click',function(){setMenu(false);});});document.addEventListener('keydown',function(ev){if(ev.key==='Escape'&&mm.classList.contains('open')){setMenu(false);hb.focus();}});window.addEventListener('resize',function(){if(window.innerWidth>640)setMenu(false);});}
 document.querySelectorAll('.yr').forEach(function(y){y.textContent=new Date().getFullYear();});
 var io;try{io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}});},{threshold:.12});document.querySelectorAll('[data-reveal]').forEach(function(el){el.classList.add('in');});}catch(e){}

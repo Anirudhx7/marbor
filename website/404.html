@@ -25,7 +25,7 @@
       l.replace(l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') + '/marbor/demo/#/' + subpath + l.search + l.hash);
     }
   })();
-  (function(){try{var s=localStorage.getItem("om-theme");if(s==="light"||(!s&&window.matchMedia&&window.matchMedia("(prefers-color-scheme: light)").matches))document.documentElement.classList.add("light");}catch(e){}})();
+  (function(){try{var s=localStorage.getItem("marbor-theme")||localStorage.getItem("om-theme");if(s==="light"||(!s&&window.matchMedia&&window.matchMedia("(prefers-color-scheme: light)").matches))document.documentElement.classList.add("light");}catch(e){}})();
 </script>
 <style>
 @view-transition{navigation:auto}
@@ -93,7 +93,7 @@ h1 em{font-style:italic;color:var(--accent);font-weight:600}
   <div class="cta-row"><a class="btn btn-gold" href="/marbor/">← Back to Marbor</a><a class="btn" href="/marbor/docs/">Read the docs</a></div>
 </div></main>
 <script>
-(function(){function syncT(){var b=document.getElementById('themeBtn');if(!b)return;var l=document.documentElement.classList.contains('light');b.setAttribute('aria-pressed',l?'true':'false');b.textContent=l?'☀':'◐';try{var cs=getComputedStyle(document.documentElement);var m=document.querySelector('meta[name="theme-color"]');if(m){var bg=cs.getPropertyValue('--bg').trim();if(bg)m.setAttribute('content',bg);}}catch(e){}}var b=document.getElementById('themeBtn');if(b)b.addEventListener('click',function(){var h=document.documentElement;h.classList.toggle('light');try{localStorage.setItem('om-theme',h.classList.contains('light')?'light':'dark');}catch(e){}syncT();});syncT();})();
+(function(){function syncT(){var b=document.getElementById('themeBtn');if(!b)return;var l=document.documentElement.classList.contains('light');b.setAttribute('aria-pressed',l?'true':'false');b.textContent=l?'☀':'◐';try{var cs=getComputedStyle(document.documentElement);var m=document.querySelector('meta[name="theme-color"]');if(m){var bg=cs.getPropertyValue('--bg').trim();if(bg)m.setAttribute('content',bg);}}catch(e){}}var b=document.getElementById('themeBtn');if(b)b.addEventListener('click',function(){var h=document.documentElement;h.classList.toggle('light');try{localStorage.setItem('marbor-theme',h.classList.contains('light')?'light':'dark');}catch(e){}syncT();});syncT();})();
 </script>
 </body>
 </html>

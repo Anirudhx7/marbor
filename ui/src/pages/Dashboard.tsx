@@ -1,19 +1,21 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
-  Activity,
-  Clock,
-  Zap,
-  Server,
-  ArrowRight,
-  Flame,
-  AlertTriangle,
-  MemoryStick
+Activity,
+Clock,
+Zap,
+Server,
+ArrowRight,
+Flame,
+AlertTriangle,
+MemoryStick,
+Inbox
 } from 'lucide-react';
 import { StatusDot } from '../components/StatusDot';
 import { VramBar } from '../components/VramBar';
 import { Badge } from '../components/Badge';
 import { SavingsCard } from '../components/SavingsCard';
+import { CardKicker } from '../components/CardKicker';
 import { useLiveRequests } from '../hooks/useLiveRequests';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import { mockGPUNodes, mockSavings } from '../lib/mockData';
@@ -21,6 +23,7 @@ import { readLastNodeCount, writeLastNodeCount } from '../lib/nodeCount';
 import { fetchNodes, fetchSummary, fetchSavings, fetchHealth, fetchKeys, fetchRequests } from '../lib/api';
 import { GPUNode, Savings, APIKey, RequestEntry } from '../types';
 import { SetupChecklist } from '../components/SetupChecklist';
+import { EmptyState } from '../components/EmptyState';
 
 interface MetricCardProps {
   title: string;
@@ -212,10 +215,10 @@ function FleetHealthStrip({ nodes }: { nodes: GPUNode[] }) {
               <Link
                 key={n.id}
                 to={`/gpu-nodes?highlight=${encodeURIComponent(n.name)}&from=dashboard`}
-                className="no-underline rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2"
+                className="no-underline rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2"
                 title={`View ${n.name} on GPU Nodes`}
               >
-                <Badge variant="destructive" size="sm" className="max-w-full cursor-pointer transition-all duration-200 ease-out hover:shadow-sm hover:border-destructive/30 hover:bg-destructive/15">
+                <Badge variant="destructive" size="sm" className="max-w-full cursor-pointer transition-[color,background-color,border-color,box-shadow] duration-200 ease-out hover:shadow-sm hover:border-destructive/30 hover:bg-destructive/15">
                   <AlertTriangle className="w-3 h-3 mr-1 shrink-0" />
                   <span className="truncate">{n.name} down</span>
                 </Badge>
@@ -225,18 +228,18 @@ function FleetHealthStrip({ nodes }: { nodes: GPUNode[] }) {
               <Link
                 to={`/gpu-nodes?highlight=${encodeURIComponent(f.downNodes.map((n) => n.name).join(','))}&from=dashboard`}
                 title={`View all ${f.downNodes.length} down nodes`}
-                className="no-underline rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2"
+                className="no-underline rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2"
               >
-                <Badge variant="destructive" size="sm" className="cursor-pointer transition-all duration-200 ease-out hover:shadow-sm hover:border-destructive/30 hover:bg-destructive/15">+{extraDown} more down</Badge>
+                <Badge variant="destructive" size="sm" className="cursor-pointer transition-[color,background-color,border-color,box-shadow] duration-200 ease-out hover:shadow-sm hover:border-destructive/30 hover:bg-destructive/15">+{extraDown} more down</Badge>
               </Link>
             )}
             {f.staleAgents.length > 0 && (
               <Link
                 to={`/gpu-nodes?highlight=${encodeURIComponent(f.staleAgents.map((n) => n.name).join(','))}&from=dashboard`}
                 title={`View ${f.staleAgents.length} stale agent${f.staleAgents.length > 1 ? 's' : ''}`}
-                className="no-underline rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2"
+                className="no-underline rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2"
               >
-                <Badge variant="warning" size="sm" className="cursor-pointer transition-all duration-200 ease-out hover:shadow-sm hover:border-warning/30 hover:bg-warning/15">
+                <Badge variant="warning" size="sm" className="cursor-pointer transition-[color,background-color,border-color,box-shadow] duration-200 ease-out hover:shadow-sm hover:border-warning/30 hover:bg-warning/15">
                   <AlertTriangle className="w-3 h-3 mr-1 shrink-0" />
                   {f.staleAgents.length} agent{f.staleAgents.length > 1 ? 's' : ''} stale
                 </Badge>
@@ -246,9 +249,9 @@ function FleetHealthStrip({ nodes }: { nodes: GPUNode[] }) {
               <Link
                 to={`/gpu-nodes?highlight=${encodeURIComponent(f.vramPressure.map((n) => n.name).join(','))}&from=dashboard`}
                 title={`View ${f.vramPressure.length} VRAM pressured node${f.vramPressure.length > 1 ? 's' : ''}`}
-                className="no-underline rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2"
+                className="no-underline rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2"
               >
-                <Badge variant="warning" size="sm" className="cursor-pointer transition-all duration-200 ease-out hover:shadow-sm hover:border-warning/30 hover:bg-warning/15">
+                <Badge variant="warning" size="sm" className="cursor-pointer transition-[color,background-color,border-color,box-shadow] duration-200 ease-out hover:shadow-sm hover:border-warning/30 hover:bg-warning/15">
                   <AlertTriangle className="w-3 h-3 mr-1 shrink-0" />
                   {f.vramPressure.length} VRAM pressure
                 </Badge>
@@ -289,6 +292,7 @@ function FleetCapacityCard({ nodes }: { nodes: GPUNode[] }) {
 
   return (
     <div className="glass-panel rounded-xl p-5">
+      <CardKicker className="mb-2">Live capacity</CardKicker>
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 mb-4">
         <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
           <MemoryStick className="w-4 h-4 text-primary" />
@@ -609,7 +613,7 @@ export function Dashboard() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-6">
         <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-8">
           <div className="flex items-center gap-2">
-            <StatusDot status="online" pulse />
+            <StatusDot status="online" pulse halo />
             <span className="text-sm font-semibold text-foreground">System status</span>
           </div>
           <div className="flex flex-wrap items-center gap-4 text-sm">
@@ -738,6 +742,7 @@ export function Dashboard() {
 
       {/* GPU Nodes Panel */}
       <div className="glass-panel rounded-xl p-6">
+        <CardKicker className="mb-2">Nodes · {nodes.length} total</CardKicker>
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 mb-6">
           <h3 className="text-sm font-semibold text-foreground">GPU nodes status</h3>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs font-medium">
@@ -766,8 +771,12 @@ export function Dashboard() {
           {fleetLoading ? (
             [...Array(skeletonNodes)].map((_, i) => <NodeCardSkeleton key={i} />)
           ) : nodes.length === 0 && !demoMode ? (
-            <div className="col-span-2 py-10 text-center text-sm text-muted-foreground">
-              {isLive ? 'No nodes connected.' : 'No nodes available - backend disconnected'}
+            <div className="col-span-2">
+              <EmptyState
+                icon={Server}
+                title={isLive ? 'No nodes connected' : 'Backend disconnected'}
+                copy={isLive ? 'Connect your first GPU node to see fleet status here.' : 'No nodes available - the backend is unreachable.'}
+              />
             </div>
           ) : (
             nodes.map((node) => (
@@ -775,7 +784,7 @@ export function Dashboard() {
                 key={node.id}
                 to={`/gpu-nodes?highlight=${encodeURIComponent(node.name)}&from=dashboard`}
                 title={`View ${node.name} on GPU Nodes`}
-                className="block bg-secondary/50 rounded-xl p-5 border border-border hover:border-primary/30 hover:shadow-md hover:bg-secondary/70 transition-all duration-200 ease-out cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background will-change-transform"
+                className="block bg-secondary/50 rounded-xl p-5 border border-border hover:border-primary/30 hover:shadow-md hover:bg-secondary/70 transition-[box-shadow,border-color,background-color] duration-200 ease-out cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
                 <div className="flex items-start justify-between mb-4">
                   <div>
@@ -842,11 +851,14 @@ export function Dashboard() {
       {/* Live Requests Table */}
       <div className="bg-card border border-border shadow-sm rounded-xl overflow-hidden min-w-0">
         <div className="px-4 sm:px-6 py-4 border-b border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-secondary/30 min-w-0">
-          <div className="flex items-center gap-3 shrink-0">
-            <h3 className="text-sm font-semibold text-foreground">Live requests</h3>
-            <div className="flex items-center gap-1.5">
-              <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-              <span className="text-[10px] font-medium text-primary uppercase tracking-wider">Live</span>
+          <div className="shrink-0">
+            <CardKicker>Latest traffic</CardKicker>
+            <div className="flex items-center gap-3 mt-0.5">
+              <h3 className="text-sm font-semibold text-foreground">Live requests</h3>
+              <div className="flex items-center gap-1.5">
+                <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                <span className="text-[10px] font-medium text-primary uppercase tracking-wider">Live</span>
+              </div>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs min-w-0">
@@ -861,7 +873,7 @@ export function Dashboard() {
           </div>
         </div>
         
-        <div className="hidden md:block overflow-x-auto">
+        <div className="hidden md:block overflow-x-auto scroll-region" tabIndex={0} role="region" aria-label="Live requests table: scroll horizontally for more columns">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-secondary/30 border-b border-border text-muted-foreground">
@@ -885,13 +897,18 @@ export function Dashboard() {
                 ))
               ) : (
                 <>
-              {requests.length === 0 && requestsLive && (
-                <tr>
-                  <td colSpan={7} className="px-6 py-10 text-center text-sm text-muted-foreground">
-                    No requests yet. Send a request to your proxy endpoint to see live traffic here.
-                  </td>
-                </tr>
-              )}
+{requests.length === 0 && requestsLive && (
+<tr>
+<td colSpan={7} className="px-6">
+<EmptyState
+  compact
+  icon={Inbox}
+  title="No requests yet"
+  copy="Send a request to your proxy endpoint to see live traffic here."
+/>
+</td>
+</tr>
+)}
               {requests.slice(0, 10).map((req) => (
                 <tr
                   key={req.id}
@@ -945,11 +962,14 @@ export function Dashboard() {
             ))
           ) : (
             <>
-          {requests.length === 0 && requestsLive && (
-            <div className="text-center text-sm text-muted-foreground py-6">
-              No requests yet. Send a request to your proxy endpoint to see live traffic here.
-            </div>
-          )}
+{requests.length === 0 && requestsLive && (
+<EmptyState
+  compact
+  icon={Inbox}
+  title="No requests yet"
+  copy="Send a request to your proxy endpoint to see live traffic here."
+/>
+)}
           {requests.slice(0, 10).map((req) => (
             <div
               key={req.id}
