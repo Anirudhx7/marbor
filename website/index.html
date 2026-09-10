@@ -247,11 +247,12 @@ section.block,#install,#main{scroll-margin-top:88px}
 /* Sections/main only ever receive programmatic focus (landing glides, skip link)
    - never Tab focus - so their rings are pure artifact (notably the stuck ring
    after cross-page arrivals) while AT focus still lands. Real tab stops below
-   keep their visible rings. */
-section.block:focus,main:focus{outline:none!important;box-shadow:none!important}
+   keep their visible rings. :not(:focus-visible) so a future genuinely
+   focusable/tabbable element nested here isn't silently stripped of its ring. */
+section.block:focus:not(:focus-visible),main:focus:not(:focus-visible){outline:none!important;box-shadow:none!important}
 /* Same stuck-ring guard for the install box (arrival focuses it directly).
    Outline only: the intended flash halo is a box-shadow animation and must survive. */
-.install:focus{outline:none!important}
+.install:focus:not(:focus-visible){outline:none!important}
 .crow:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .crow{outline:none}
 .sigscroll:focus-visible{outline:2px solid var(--accent);outline-offset:2px}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Plus, Trash2, Server, Thermometer, Cpu, Clock, Activity, Pencil, X, Pin, Flame, Settings2, Radio, Copy, Fan, MemoryStick, HardDrive } from 'lucide-react';
@@ -1379,23 +1379,28 @@ export function GPUNodes() {
     return () => clearTimeout(t);
   }, [location.search]);
 
-  const filteredNodes = nodes.filter(node =>
+  const filteredNodes = useMemo(() => nodes.filter(node =>
     (node.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
     (node.gpuModel || '').toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  ), [nodes, searchQuery]);
 
-  const signalOptions = SIGNAL_DEFS.map((s) => ({
+  const signalOptions = useMemo(() => SIGNAL_DEFS.map((s) => ({
     id: s.id,
     label: s.label,
     count: filteredNodes.filter(s.matches).length,
-  }));
-  const activeSignalDefs = SIGNAL_DEFS.filter((s) => activeSignals.has(s.id));
-  // OR semantics, deliberately NOT the landing page's AND: health chips are
-  // mutually exclusive, so AND would empty-set the classic triage query
-  // (Degraded + Down = "everything on fire"). OR gathers, AND would mislead.
-  const nodeMatchesSignals = (node: GPUNode) =>
-    activeSignalDefs.length === 0 || activeSignalDefs.some((s) => s.matches(node));
-  const visibleNodes = filteredNodes.filter(nodeMatchesSignals);
+  })), [filteredNodes]);
+  const activeSignalDefs = useMemo(
+    () => SIGNAL_DEFS.filter((s) => activeSignals.has(s.id)),
+    [activeSignals]
+  );
+  const visibleNodes = useMemo(() => {
+    // OR semantics, deliberately NOT the landing page's AND: health chips are
+    // mutually exclusive, so AND would empty-set the classic triage query
+    // (Degraded + Down = "everything on fire"). OR gathers, AND would mislead.
+    const nodeMatchesSignals = (node: GPUNode) =>
+      activeSignalDefs.length === 0 || activeSignalDefs.some((s) => s.matches(node));
+    return filteredNodes.filter(nodeMatchesSignals);
+  }, [filteredNodes, activeSignalDefs]);
 
   const handleAddNode = async () => {
     if (!newNode.name || !newNode.host) return;
