@@ -127,7 +127,7 @@ function renderMarkdown(md) {
         rows.push(lines[i].split("|").slice(1, -1).map((c) => c.trim()));
         i++;
       }
-      html += `<div class="table-scroll"><table>\n<thead><tr>${head.map((c) => `<th>${inline(c)}</th>`).join("")}</tr></thead>\n<tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${inline(c)}</td>`).join("")}</tr>`).join("\n")}</tbody>\n</table></div>\n`;
+      html += `<div class="table-scroll" tabindex="0" role="region" aria-label="Data table: scroll horizontally on small screens"><table>\n<thead><tr>${head.map((c) => `<th>${inline(c)}</th>`).join("")}</tr></thead>\n<tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${inline(c)}</td>`).join("")}</tr>`).join("\n")}</tbody>\n</table></div>\n`;
       continue;
     }
 
@@ -162,7 +162,7 @@ function renderMarkdown(md) {
 }
 
 /* ---------- shared chrome (matches index.html) ---------- */
-const LOGO_HTML = `<span class="brand-chip" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 100 100" fill="none"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="#d4a853" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></span>`;
+const LOGO_HTML = `<span class="brand-chip" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 100 100" fill="none"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="currentColor" opacity=".65"/></svg></span>`;
 const BRAND_HTML = (r) => `<a href="${r}index.html" class="brand" aria-label="Marbor home">${LOGO_HTML}<span class="brand-name">Marbor</span><span class="brand-ver">{{VERSION}}</span></a>`;
 const GH_SVG = `<svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>`;
 const EXT_IC = `<svg class="ext-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17L17 7M7 7h10v10"/></svg>`;
@@ -218,8 +218,8 @@ function docSidebar(currentSlug) {
     <div class="nav-group">
       <div class="nav-group-title">${g.title}</div>
       ${g.items.map((it) => {
-        const active = it.slug === currentSlug ? " active" : "";
-        return `<a class="doc-nav-link${active}" href="${r}docs/${it.slug}.html">${it.label}</a>`;
+        const active = it.slug === currentSlug;
+        return `<a class="doc-nav-link${active ? " active" : ""}"${active ? ' aria-current="page"' : ""} href="${r}docs/${it.slug}.html">${it.label}</a>`;
       }).join("")}
     </div>`).join("");
 }
@@ -239,19 +239,19 @@ function pagerHtml(slug) {
   if (i < 0) return "";
   const r = relRoot(slug);
   const card = (it, dir) => it
-    ? `<a class="page-card ${dir}" href="${r}docs/${it.slug}.html"><span class="dir">${dir === "prev" ? "← Previous" : "Next →"}</span><span class="lbl">${escapeHtml(it.label)}</span></a>`
+    ? `<a class="page-card ${dir}" rel="${dir}" href="${r}docs/${it.slug}.html"><span class="dir">${dir === "prev" ? "← Previous" : "Next →"}</span><span class="lbl">${escapeHtml(it.label)}</span></a>`
     : `<span class="page-card missing" aria-hidden="true"></span>`;
-  return `<div class="pager">${card(flat[i - 1], "prev")}${card(flat[i + 1], "next")}</div>
+  return `<nav class="pager" aria-label="Documentation pages">${card(flat[i - 1], "prev")}${card(flat[i + 1], "next")}</nav>
       <div class="edit-link"><a href="https://github.com/Anirudhx7/marbor/blob/main/docs/${slug}.md" target="_blank" rel="noopener">View on GitHub →</a></div>`;
 }
 
 function breadcrumb(slug, title) {
   const r = relRoot(slug);
   const parts = slug.split("/");
-  const crumbs = [`<a href="${r}index.html">Home</a>`, `<a href="${r}docs/index.html">Docs</a>`];
-  if (parts.length > 1) crumbs.push(`<span>${parts[0]}</span>`);
-  crumbs.push(`<span class="current">${escapeHtml(title)}</span>`);
-  return crumbs.join('<span class="sep">/</span>');
+  const crumbs = [`<li><a href="${r}index.html">Home</a></li>`, `<li><a href="${r}docs/index.html">Docs</a></li>`];
+  if (parts.length > 1) crumbs.push(`<li><span>${parts[0]}</span></li>`);
+  crumbs.push(`<li><span class="current" aria-current="page">${escapeHtml(title)}</span></li>`);
+  return crumbs.join('<li aria-hidden="true"><span class="sep">/</span></li>');
 }
 
 const DOC_CSS = readFileSync(join(__dirname, "docs.css"), "utf8");
@@ -294,17 +294,17 @@ ${BRAND_HTML(r)}
 </div><nav class="mobile-menu" id="mmenu" aria-label="Mobile"><a href="${r}index.html#features">Features</a><a href="${r}index.html#how">How it works</a><a href="${r}index.html#compare">Compare</a><a href="${r}docs/index.html">Docs</a><a href="https://anirudh.social/marbor/demo/" target="_blank" rel="noopener">Live demo</a><a href="https://github.com/Anirudhx7/marbor">GitHub</a></nav></header>
 
 <div class="doc-shell">
-<aside class="doc-sidebar" id="docSidebar" aria-label="Documentation navigation">
+<nav class="doc-sidebar" id="docSidebar" aria-label="Documentation navigation">
 <div class="doc-side-head">Docs · <b>index</b></div>
 <div class="doc-side-body">
     <a class="doc-nav-link home" href="${r}docs/index.html">← Docs home</a>
     ${docSidebar(slug)}
 </div>
-</aside>
+</nav>
 
   <main class="doc-main" id="main">
     <article class="doc-content doc-card"><div class="doc-card-body">
-      <div class="breadcrumb" aria-label="Breadcrumb">${breadcrumb(slug, title)}</div>
+      <nav class="breadcrumb" aria-label="Breadcrumb"><ol>${breadcrumb(slug, title)}</ol></nav>
       ${contentHtml}
       <div class="doc-foot-edit">
         ${pagerHtml(slug)}
@@ -321,18 +321,18 @@ ${BRAND_HTML(r)}
 ${siteFooter(r)}
 
 <script>
-(function(){var b=document.getElementById('themeBtn');function syncT(){if(!b)return;var l=document.documentElement.classList.contains('light');b.setAttribute('aria-pressed',l?'true':'false');b.textContent=l?'☀':'◐';}if(b)b.addEventListener('click',function(){var h=document.documentElement;h.classList.toggle('light');try{localStorage.setItem('om-theme',h.classList.contains('light')?'light':'dark');}catch(e){}syncT();});syncT();
+(function(){var b=document.getElementById('themeBtn');function syncT(){if(!b)return;var l=document.documentElement.classList.contains('light');b.setAttribute('aria-pressed',l?'true':'false');b.textContent=l?'☀':'◐';syncMetaTheme();}function syncMetaTheme(){try{var cs=getComputedStyle(document.documentElement);var m=document.querySelector('meta[name="theme-color"]');if(m){var bg=cs.getPropertyValue('--bg').trim();if(bg)m.setAttribute('content',bg);}}catch(e){}}if(b)b.addEventListener('click',function(){var h=document.documentElement;h.classList.toggle('light');try{localStorage.setItem('om-theme',h.classList.contains('light')?'light':'dark');}catch(e){}syncT();});syncT();
 var hb=document.getElementById('hamb'),mm=document.getElementById('mmenu');if(hb&&mm){function setMenu(o){mm.classList.toggle('open',o);hb.setAttribute('aria-expanded',o?'true':'false');hb.textContent=o?'✕':'☰';}hb.addEventListener('click',function(){setMenu(!mm.classList.contains('open'));});mm.querySelectorAll('a').forEach(function(a){a.addEventListener('click',function(){setMenu(false);});});document.addEventListener('keydown',function(ev){if(ev.key==='Escape'&&mm.classList.contains('open')){setMenu(false);hb.focus();}});window.addEventListener('resize',function(){if(window.innerWidth>640)setMenu(false);});}
 document.querySelectorAll('.yr').forEach(function(y){y.textContent=new Date().getFullYear();});
 var io;try{io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}});},{threshold:.12});document.querySelectorAll('[data-reveal]').forEach(function(el){io.observe(el);});}catch(e){}
 var nv=document.querySelector('.nav');if(nv){var tick=false;function paintNav(){nv.classList.toggle('scrolled',window.scrollY>120);}function onScrollNav(){if(tick)return;tick=true;requestAnimationFrame(function(){paintNav();tick=false;});}window.addEventListener('scroll',onScrollNav,{passive:true});paintNav();var navInner=nv.querySelector('.nav-inner');try{nv.style.transition='none';if(navInner)navInner.style.transition='none';}catch(e){}function enableNavTrans(){try{nv.style.transition='';if(navInner)navInner.style.transition='';}catch(e){}}window.addEventListener('load',function(){setTimeout(function(){paintNav();enableNavTrans();},80);});setTimeout(enableNavTrans,2500);}
 var dmq=window.matchMedia?window.matchMedia('(prefers-reduced-motion: reduce)'):null;function dmReduced(){return !!(dmq&&dmq.matches);}if(!dmReduced()){try{document.documentElement.style.scrollBehavior='auto';}catch(e){}}try{document.querySelectorAll('a[href^="#"]').forEach(function(a){var id=a.getAttribute('href');if(!id||id.length<2)return;var t=document.querySelector(id);if(!t)return;a.addEventListener('click',function(ev){ev.preventDefault();var y=t.getBoundingClientRect().top+window.scrollY-96;function focusT(){try{t.setAttribute('tabindex','-1');t.focus({preventScroll:true});}catch(e){}}if(dmReduced()){window.scrollTo(0,y);focusT();return;}var from=window.scrollY,d=y-from;if(Math.abs(d)<4){focusT();return;}var start=null;function step(ts){if(!start)start=ts;var p=Math.min((ts-start)/900,1);var e=p<.5?4*p*p*p:1-Math.pow(-2*p+2,3)/2;try{window.scrollTo(0,from+d*e);}catch(e){window.scrollTo(0,y);focusT();return;}if(p<1){requestAnimationFrame(step);}else{focusT();}}requestAnimationFrame(step);});});}catch(e){}
-document.querySelectorAll(".copy-btn").forEach(function(btn){btn.addEventListener("click",function(){var text=btn.dataset.copy||"";var done=function(){if(btn.dataset.done)return;btn.dataset.done="1";var old=btn.innerHTML;btn.classList.add("copied");btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><span>copied!</span>';setTimeout(function(){btn.classList.remove("copied");btn.innerHTML=old;delete btn.dataset.done;},1600);};if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).then(done).catch(done);else{var ta=document.createElement("textarea");ta.value=text;document.body.appendChild(ta);ta.select();try{document.execCommand("copy");}catch(e){}document.body.removeChild(ta);done();}});});
+document.querySelectorAll(".copy-btn").forEach(function(btn){btn.addEventListener("click",function(){var text=btn.dataset.copy||"";var done=function(){if(btn.dataset.done)return;btn.dataset.done="1";var old=btn.innerHTML;btn.classList.add("copied");try{btn.setAttribute("aria-label","Copied!");}catch(e){}btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><span>copied!</span>';setTimeout(function(){btn.classList.remove("copied");btn.innerHTML=old;try{btn.setAttribute("aria-label","Copy code");}catch(e){}delete btn.dataset.done;},1600);};if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).then(done).catch(done);else{var ta=document.createElement("textarea");ta.value=text;document.body.appendChild(ta);ta.select();try{document.execCommand("copy");}catch(e){}document.body.removeChild(ta);done();}});});
 // active TOC on scroll
 var links=[].slice.call(document.querySelectorAll(".toc a"));
 var ids=links.map(function(a){return a.getAttribute("href").slice(1);});
 var heads=ids.map(function(id){return document.getElementById(id);}).filter(Boolean);
-function onScroll(){var top=window.scrollY+140,cur=heads[0];for(var i=0;i<heads.length;i++){if(heads[i].offsetTop<=top)cur=heads[i];}links.forEach(function(a){a.classList.toggle("active",a.getAttribute("href")==="#"+(cur&&cur.id));});}
+function onScroll(){var top=window.scrollY+140,cur=heads[0];for(var i=0;i<heads.length;i++){if(heads[i].offsetTop<=top)cur=heads[i];}links.forEach(function(a){var on=a.getAttribute("href")==="#"+(cur&&cur.id);a.classList.toggle("active",on);if(on)a.setAttribute("aria-current","true");else a.removeAttribute("aria-current");});}
 window.addEventListener("scroll",onScroll,{passive:true});onScroll();
 })();
 </script>
@@ -376,16 +376,16 @@ ${BRAND_HTML(r)}
 <div class="hero" data-reveal>
   <h1>Run it, <em>route it</em>, read the numbers.</h1>
   <p class="lede">Everything you need to put Marbor in front of your cluster -- connect your tools, ship to production, and understand exactly what it's saving you.</p>
-  <div class="breadcrumb" aria-label="Breadcrumb"><a href="../index.html">Home</a><span class="sep">/</span><span class="current">Docs</span></div>
+  <nav class="breadcrumb" aria-label="Breadcrumb"><ol><li><a href="../index.html">Home</a></li><li aria-hidden="true"><span class="sep">/</span></li><li><span class="current" aria-current="page">Docs</span></li></ol></nav>
 </div>
 <div class="doc-shell two-col">
-<aside class="doc-sidebar" aria-label="Documentation navigation" data-reveal>
+<nav class="doc-sidebar" aria-label="Documentation navigation" data-reveal>
 <div class="doc-side-head">Docs · <b>${total} pages</b></div>
 <div class="doc-side-body">
 ${DOC_GROUPS.map((g) => `
     <div class="nav-group"><p class="nav-group-title">${g.title}</p>${g.items.map((it) => `<a class="doc-nav-link" href="${it.slug}.html">${it.label}</a>`).join("")}</div>`).join("")}
 </div>
-</aside>
+</nav>
 <div class="doc-main">
   ${DOC_GROUPS.map((g) => `
     <section class="doc-card" data-reveal>
@@ -405,7 +405,7 @@ ${DOC_GROUPS.map((g) => `
 
 ${siteFooter(r)}
 <script>
-(function(){var b=document.getElementById('themeBtn');function syncT(){if(!b)return;var l=document.documentElement.classList.contains('light');b.setAttribute('aria-pressed',l?'true':'false');b.textContent=l?'☀':'◐';}if(b)b.addEventListener('click',function(){var h=document.documentElement;h.classList.toggle('light');try{localStorage.setItem('om-theme',h.classList.contains('light')?'light':'dark');}catch(e){}syncT();});syncT();
+(function(){var b=document.getElementById('themeBtn');function syncT(){if(!b)return;var l=document.documentElement.classList.contains('light');b.setAttribute('aria-pressed',l?'true':'false');b.textContent=l?'☀':'◐';syncMetaTheme();}function syncMetaTheme(){try{var cs=getComputedStyle(document.documentElement);var m=document.querySelector('meta[name="theme-color"]');if(m){var bg=cs.getPropertyValue('--bg').trim();if(bg)m.setAttribute('content',bg);}}catch(e){}}if(b)b.addEventListener('click',function(){var h=document.documentElement;h.classList.toggle('light');try{localStorage.setItem('om-theme',h.classList.contains('light')?'light':'dark');}catch(e){}syncT();});syncT();
 var hb=document.getElementById('hamb'),mm=document.getElementById('mmenu');if(hb&&mm){function setMenu(o){mm.classList.toggle('open',o);hb.setAttribute('aria-expanded',o?'true':'false');hb.textContent=o?'✕':'☰';}hb.addEventListener('click',function(){setMenu(!mm.classList.contains('open'));});mm.querySelectorAll('a').forEach(function(a){a.addEventListener('click',function(){setMenu(false);});});document.addEventListener('keydown',function(ev){if(ev.key==='Escape'&&mm.classList.contains('open')){setMenu(false);hb.focus();}});window.addEventListener('resize',function(){if(window.innerWidth>640)setMenu(false);});}
 document.querySelectorAll('.yr').forEach(function(y){y.textContent=new Date().getFullYear();});
 var io;try{io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}});},{threshold:.12});document.querySelectorAll('[data-reveal]').forEach(function(el){el.classList.add('in');});}catch(e){}
