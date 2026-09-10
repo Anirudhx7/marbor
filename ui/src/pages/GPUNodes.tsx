@@ -47,7 +47,9 @@ const LIVE_VRAM_TOOL_SOURCES = new Set(['nvidia-smi', 'rocm-smi', 'xpu-smi', 'sy
 
 // SIGNAL_DEFS backs the placement-signal filter chips above the node grid -
 // the fleet-page version of the landing page's live-trace signal grid. Same
-// AND semantics as the site: a lit node matches every active signal.
+// AND semantics as the site: a shown node matches every active signal.
+// Unlike the site (which dims), non-matches are filtered out so a 100-GPU
+// fleet stays scannable without hunting for lit cards.
 const SIGNAL_DEFS: { id: string; label: string; matches: (n: GPUNode) => boolean }[] = [
   // health/degraded exclude draining nodes, mirroring computeFleetHealth in
   // Dashboard.tsx - a draining node lights the Draining chip, not Healthy.
@@ -285,7 +287,7 @@ function NodeCardSkeleton() {
   );
 }
 
-function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePrewarm, onEdit, onUnload, onConfigureModel, onManageAgent, isHighlighted, highlightSource, dimmed }: {
+function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePrewarm, onEdit, onUnload, onConfigureModel, onManageAgent, isHighlighted, highlightSource }: {
   node: GPUNode;
   pinnedModels: string[];
   onRemove: (name: string) => void;
@@ -298,9 +300,6 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
   onManageAgent: (node: GPUNode) => void;
   isHighlighted?: boolean;
   highlightSource?: string | null;
-  // dimmed greys a card that fails the active signal filter - layout stays
-  // put, only the light goes out (landing-page trace behavior).
-  dimmed?: boolean;
 }) {
   const healthColor = {
     healthy: 'text-primary',
@@ -394,8 +393,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
   return (
     <div
       id={`node-card-${node.name}`}
-      aria-disabled={dimmed || undefined}
-      className={`bg-card border shadow-sm rounded-xl p-5 scroll-mt-28 transition-[box-shadow,border-color,opacity] duration-200 ease-out ${isHighlighted ? 'ring-2 ring-primary/50 ring-offset-2 ring-offset-background border-primary/40 shadow-lg bg-primary/[0.035]' : 'hover:shadow-md hover:border-primary/20'} ${node.draining ? 'border-amber-500/20 hover:border-amber-500/40 bg-amber-500/[0.02]' : 'border-border'} ${dimmed ? 'opacity-50 saturate-50' : ''}`}
+      className={`bg-card border shadow-sm rounded-xl p-5 scroll-mt-28 transition-[box-shadow,border-color] duration-200 ease-out ${isHighlighted ? 'ring-2 ring-primary/50 ring-offset-2 ring-offset-background border-primary/40 shadow-lg bg-primary/[0.035]' : 'hover:shadow-md hover:border-primary/20'} ${node.draining ? 'border-amber-500/20 hover:border-amber-500/40 bg-amber-500/[0.02]' : 'border-border'}`}
     >
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-4">
@@ -1391,7 +1389,7 @@ export function GPUNodes() {
   }));
   const activeSignalDefs = SIGNAL_DEFS.filter((s) => activeSignals.has(s.id));
   const nodeMatchesSignals = (node: GPUNode) => activeSignalDefs.every((s) => s.matches(node));
-  const litCount = filteredNodes.filter(nodeMatchesSignals).length;
+  const visibleNodes = filteredNodes.filter(nodeMatchesSignals);
 
   const handleAddNode = async () => {
     if (!newNode.name || !newNode.host) return;
@@ -1990,7 +1988,7 @@ export function GPUNodes() {
           resultText={
             activeSignals.size === 0
               ? `${filteredNodes.length} of ${nodes.length} shown`
-              : `${litCount} of ${filteredNodes.length} shown match${litCount === 1 ? 'es' : ''}`
+              : `${visibleNodes.length} of ${filteredNodes.length} shown match${visibleNodes.length === 1 ? 'es' : ''}`
           }
         />
       )}
@@ -2000,12 +1998,12 @@ export function GPUNodes() {
         {fleetLoading ? (
           [...Array(skeletonNodes)].map((_, i) => <NodeCardSkeleton key={i} />)
         ) : (
-          filteredNodes.map((node) => (
-          <NodeCard key={node.id} node={node} pinnedModels={pinnedByNode[node.name] ?? []} onRemove={(name) => { setActionError(null); setNodeToDelete(name); }} onDrain={(name) => { setActionError(null); setNodeToDrain(name); }} onUndrain={(name) => { setActionError(null); setNodeToUndrain(name); }} onTogglePrewarm={(name, disabled) => { setActionError(null); setPrewarmToToggle({ name, disabled }); }} onEdit={openEditModal} onUnload={(nodeName, model) => { setActionError(null); setModelToUnload({ nodeName, model }); }} onConfigureModel={(modelName, nodeName, runtime) => setConfigTarget({ model: modelName, node: nodeName, runtime })}           onManageAgent={openAgentModal} isHighlighted={highlightedNodes.has(node.name)} highlightSource={highlightSource} dimmed={!nodeMatchesSignals(node)} />
+          visibleNodes.map((node) => (
+          <NodeCard key={node.id} node={node} pinnedModels={pinnedByNode[node.name] ?? []} onRemove={(name) => { setActionError(null); setNodeToDelete(name); }} onDrain={(name) => { setActionError(null); setNodeToDrain(name); }} onUndrain={(name) => { setActionError(null); setNodeToUndrain(name); }} onTogglePrewarm={(name, disabled) => { setActionError(null); setPrewarmToToggle({ name, disabled }); }} onEdit={openEditModal} onUnload={(nodeName, model) => { setActionError(null); setModelToUnload({ nodeName, model }); }} onConfigureModel={(modelName, nodeName, runtime) => setConfigTarget({ model: modelName, node: nodeName, runtime })}           onManageAgent={openAgentModal} isHighlighted={highlightedNodes.has(node.name)} highlightSource={highlightSource} />
           )))}
       </div>
 
-      {!fleetLoading && filteredNodes.length === 0 && (
+      {!fleetLoading && visibleNodes.length === 0 && (
         nodes.length === 0 ? (
           <EmptyState
             icon={Server}
@@ -2022,7 +2020,7 @@ export function GPUNodes() {
               </button>
             }
           />
-        ) : (
+        ) : filteredNodes.length === 0 ? (
           <EmptyState
             icon={Server}
             title="No nodes match your search"
@@ -2038,22 +2036,21 @@ export function GPUNodes() {
               ) : undefined
             }
           />
+        ) : (
+          <EmptyState
+            icon={Server}
+            title="No nodes match these signals"
+            copy="No shown node matches every active signal."
+            action={
+              <button
+                onClick={() => setActiveSignals(new Set())}
+                className="text-sm font-medium text-primary hover:underline"
+              >
+                Clear signals
+              </button>
+            }
+          />
         )
-      )}
-      {!fleetLoading && filteredNodes.length > 0 && litCount === 0 && (
-        <EmptyState
-          icon={Server}
-          title="Every node is dimmed out"
-          copy="No shown node matches the active signals."
-          action={
-            <button
-              onClick={() => setActiveSignals(new Set())}
-              className="text-sm font-medium text-primary hover:underline"
-            >
-              Clear signals
-            </button>
-          }
-        />
       )}
 
       {/* Model fit Section */}

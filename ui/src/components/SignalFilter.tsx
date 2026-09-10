@@ -1,9 +1,9 @@
 import { Check } from 'lucide-react';
 
 // SignalFilter - interactive placement-signal chips, ported from the landing
-// page's live-trace signal grid. Tapping a signal dims (never hides) items
-// that don't match, so grid layout stays stable. Controlled: the parent owns
-// active ids and computes per-signal counts + the result line.
+// page's live-trace signal grid, but as a true filter: non-matching items are
+// removed so large fleets stay scannable. Controlled: the parent owns active
+// ids and computes per-signal counts + the result line.
 export interface SignalOption {
   id: string;
   label: string;
