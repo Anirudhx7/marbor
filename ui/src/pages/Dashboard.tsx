@@ -128,7 +128,9 @@ function NodeCardSkeleton() {
 
 // VRAM_PRESSURE_THRESHOLD matches VramBar's red band (>90%): a node whose
 // real measured used/total ratio crosses it is flagged here too.
-const VRAM_PRESSURE_THRESHOLD = 0.9;
+// Shared with GPUNodes' signal filter - one definition of "VRAM pressure" for
+// the whole app (imported, never re-typed, so the two can't drift apart).
+export const VRAM_PRESSURE_THRESHOLD = 0.9;
 
 // MAX_DOWN_BADGES caps per-node down badges in the strip so a large outage
 // degrades to "+N more" instead of wrapping the strip into a wall of red.

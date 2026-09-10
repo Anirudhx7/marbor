@@ -14,6 +14,7 @@ import { ModelConfigModal } from '../components/ModelConfigModal';
 import { CustomSelect } from '../components/Select';
 import { mockGPUNodes, mockRuntimeLogLines } from '../lib/mockData';
 import { readLastNodeCount, writeLastNodeCount } from '../lib/nodeCount';
+import { VRAM_PRESSURE_THRESHOLD } from './Dashboard';
 import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, probeNodeTLS, fetchModelFit, unloadModel, getPinned, getMarborAgent, enableMarborAgent, regenerateMarborAgentToken, disableMarborAgent, checkNodeHealth, getNodeControl, acceptNodeControl, clearNodeControl, startNodeRuntime, stopNodeRuntime, restartNodeRuntime, getNodeRuntimeLogs } from '../lib/api';
 import type { MarborAgentStatus, NodeHealthCheckResult, NodeControlStatus } from '../lib/api';
 import type { GPUNode, ModelFitResponse, NodeFit, FitStatus } from '../types';
@@ -48,13 +49,15 @@ const LIVE_VRAM_TOOL_SOURCES = new Set(['nvidia-smi', 'rocm-smi', 'xpu-smi', 'sy
 // the fleet-page version of the landing page's live-trace signal grid. Same
 // AND semantics as the site: a lit node matches every active signal.
 const SIGNAL_DEFS: { id: string; label: string; matches: (n: GPUNode) => boolean }[] = [
-  { id: 'healthy', label: 'Healthy', matches: (n) => n.health === 'healthy' },
-  { id: 'degraded', label: 'Degraded', matches: (n) => n.health === 'degraded' },
+  // health/degraded exclude draining nodes, mirroring computeFleetHealth in
+  // Dashboard.tsx - a draining node lights the Draining chip, not Healthy.
+  { id: 'healthy', label: 'Healthy', matches: (n) => n.health === 'healthy' && !n.draining },
+  { id: 'degraded', label: 'Degraded', matches: (n) => n.health === 'degraded' && !n.draining },
   { id: 'draining', label: 'Draining', matches: (n) => n.draining },
   { id: 'down', label: 'Down', matches: (n) => n.health === 'down' },
   { id: 'agent', label: 'Agent', matches: (n) => !!n.agentPresent },
   { id: 'warm', label: 'Warm', matches: (n) => (n.loadedModels ?? []).length > 0 },
-  { id: 'pressure', label: 'VRAM pressure', matches: (n) => n.vramTotalMB > 0 && n.vramUsedMB / n.vramTotalMB > 0.7 },
+  { id: 'pressure', label: 'VRAM pressure', matches: (n) => n.vramSource !== 'none' && n.vramTotalMB > 0 && n.vramUsedMB / n.vramTotalMB >= VRAM_PRESSURE_THRESHOLD },
 ];
 
 function FitBadge({ fit }: { fit: FitStatus }) {
