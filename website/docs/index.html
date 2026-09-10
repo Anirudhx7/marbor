@@ -78,6 +78,9 @@ a:hover{text-decoration:underline}
 .mobile-menu a{display:block;padding:10px 4px;color:var(--text-muted);font-weight:550;border-bottom:1px solid var(--border-subtle)}
 a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+/* Headings only ever receive programmatic focus (TOC glides) - never Tab focus -
+   so their rings are pure artifact while AT focus still lands. */
+.doc-content h2:focus,.doc-content h3:focus{outline:none!important;box-shadow:none!important}
 .doc-sidebar nav{display:block}
 @media print{:root{color-scheme:light}body{background:#fff!important;color:#000!important}body::before,.nav,.toc-card,.copy-btn{display:none!important}.doc-card,.toc-card{box-shadow:none!important}}
 /* ---- mobile hardening (all viewports, no visual change on desktop) ---- */
