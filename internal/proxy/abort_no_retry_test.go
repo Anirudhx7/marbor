@@ -13,8 +13,8 @@ import (
 	"github.com/Anirudhx7/marbor/internal/router"
 )
 
-// TestRetryNeverFiresAfterFirstResponseByte pins the guarantee investigated by
-// P425's audit: once a backend has written response headers and body bytes,
+// TestRetryNeverFiresAfterFirstResponseByte pins a guarantee this proxy
+// relies on: once a backend has written response headers and body bytes,
 // a mid-stream failure must never be retried against a second node. Today
 // that guarantee is inherited from an undocumented stdlib detail -
 // httputil.ReverseProxy calls ErrorHandler only for a pre-header RoundTrip
