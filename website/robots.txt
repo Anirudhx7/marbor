@@ -34,4 +34,4 @@ Allow: /
 User-agent: cohere-ai
 Allow: /
 
-Sitemap: https://anirudh.social/marbor/sitemap.xml
+Sitemap: https://marbor.in/sitemap.xml

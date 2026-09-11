@@ -14,9 +14,9 @@
 </p>
 
 <p align="center">
-  <a href="https://anirudh.social/marbor/"><img src="https://img.shields.io/badge/WEBSITE-0a0a0a?style=for-the-badge&logo=firefox&logoColor=d4a853" alt="Website" /></a>
-  <a href="https://anirudh.social/marbor/docs/"><img src="https://img.shields.io/badge/DOCS-0a0a0a?style=for-the-badge&logo=gitbook&logoColor=d4a853" alt="Documentation" /></a>
-  <a href="https://anirudh.social/marbor/demo/"><img src="https://img.shields.io/badge/LIVE_DEMO-0a0a0a?style=for-the-badge&logo=github&logoColor=d4a853" alt="Live Demo" /></a>
+  <a href="https://marbor.in/"><img src="https://img.shields.io/badge/WEBSITE-0a0a0a?style=for-the-badge&logo=firefox&logoColor=d4a853" alt="Website" /></a>
+  <a href="https://marbor.in/docs/"><img src="https://img.shields.io/badge/DOCS-0a0a0a?style=for-the-badge&logo=gitbook&logoColor=d4a853" alt="Documentation" /></a>
+  <a href="https://marbor.in/demo/"><img src="https://img.shields.io/badge/LIVE_DEMO-0a0a0a?style=for-the-badge&logo=github&logoColor=d4a853" alt="Live Demo" /></a>
   <a href="https://github.com/Anirudhx7/marbor/releases/latest"><img src="https://img.shields.io/badge/RELEASES-0a0a0a?style=for-the-badge&logo=github&logoColor=d4a853" alt="Releases" /></a>
   <a href="https://github.com/Anirudhx7/marbor/issues"><img src="https://img.shields.io/badge/ISSUES-0a0a0a?style=for-the-badge&logo=github&logoColor=d4a853" alt="Issues" /></a>
 </p>
@@ -46,7 +46,7 @@
 </p>
 ---
 
-> **[Try the live demo](https://anirudh.social/marbor/demo/)** - see the real admin dashboard (read-only) with live cluster telemetry, VRAM state, and request logs. No install required.
+> **[Try the live demo](https://marbor.in/demo/)** - see the real admin dashboard (read-only) with live cluster telemetry, VRAM state, and request logs. No install required.
 
 ## Quick Start
 

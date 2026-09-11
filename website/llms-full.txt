@@ -2,9 +2,9 @@
 > The private AI inference control plane for self-hosted GPU fleets. One OpenAI-compatible endpoint across Ollama, vLLM, TGI, llama.cpp, MLX. Local first, cloud overflow metered, single Go binary, SQLite, Apache-2.0.
 
 ## Canonical Links
-- Site: https://anirudh.social/marbor/
-- Docs: https://anirudh.social/marbor/docs/
-- Demo: https://anirudh.social/marbor/demo/
+- Site: https://marbor.in/
+- Docs: https://marbor.in/docs/
+- Demo: https://marbor.in/demo/
 - GitHub: https://github.com/Anirudhx7/marbor
 - Releases: https://github.com/Anirudhx7/marbor/releases
 - Raw install: https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh
@@ -48,20 +48,20 @@ Peer clients, none talks to agent directly. Every capability exists in Admin API
 - Enterprise: separate commercial layer for governance, trigger is inbound "can we pay", benchmark LiteLLM ~$250/mo
 
 ## Documentation Index
-- https://anirudh.social/marbor/docs/INTEGRATIONS.html
-- https://anirudh.social/marbor/docs/LIMITATIONS.html
-- https://anirudh.social/marbor/docs/SAVINGS-MATH.html
-- https://anirudh.social/marbor/docs/USE-CASES.html
-- https://anirudh.social/marbor/docs/backup.html
-- https://anirudh.social/marbor/docs/cli.html
-- https://anirudh.social/marbor/docs/PRODUCTION.html
-- https://anirudh.social/marbor/docs/deploy/aws-ec2.html
-- https://anirudh.social/marbor/docs/deploy/gpu-node-registration.html
-- https://anirudh.social/marbor/docs/deploy/marbor-agent-enrollment.html
-- https://anirudh.social/marbor/docs/integrations/continue.html
-- https://anirudh.social/marbor/docs/integrations/librechat.html
-- https://anirudh.social/marbor/docs/integrations/litellm.html
-- https://anirudh.social/marbor/docs/integrations/open-webui.html
+- https://marbor.in/docs/INTEGRATIONS.html
+- https://marbor.in/docs/LIMITATIONS.html
+- https://marbor.in/docs/SAVINGS-MATH.html
+- https://marbor.in/docs/USE-CASES.html
+- https://marbor.in/docs/backup.html
+- https://marbor.in/docs/cli.html
+- https://marbor.in/docs/PRODUCTION.html
+- https://marbor.in/docs/deploy/aws-ec2.html
+- https://marbor.in/docs/deploy/gpu-node-registration.html
+- https://marbor.in/docs/deploy/marbor-agent-enrollment.html
+- https://marbor.in/docs/integrations/continue.html
+- https://marbor.in/docs/integrations/librechat.html
+- https://marbor.in/docs/integrations/litellm.html
+- https://marbor.in/docs/integrations/open-webui.html
 
 ## Content Digest
 ### The Control Plane for Self-Hosted AI Inference
