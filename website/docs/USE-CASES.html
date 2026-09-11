@@ -254,7 +254,7 @@ section,#install{scroll-margin-top:96px}
     
     <div class="nav-group">
       <div class="nav-group-title">Guides</div>
-      <a class="doc-nav-link" href="../docs/INTEGRATIONS.html">Integrations</a><a class="doc-nav-link" href="../docs/LIMITATIONS.html">Known limitations</a><a class="doc-nav-link" href="../docs/SAVINGS-MATH.html">Savings math</a><a class="doc-nav-link active" aria-current="page" href="../docs/USE-CASES.html">Ollama alternatives & use cases</a><a class="doc-nav-link" href="../docs/backup.html">Backup & Restore</a>
+      <a class="doc-nav-link" href="../docs/INTEGRATIONS.html">Integrations</a><a class="doc-nav-link" href="../docs/LIMITATIONS.html">Known limitations</a><a class="doc-nav-link" href="../docs/SAVINGS-MATH.html">Savings math</a><a class="doc-nav-link active" aria-current="page" href="../docs/USE-CASES.html">Ollama alternatives & use cases</a><a class="doc-nav-link" href="../docs/OLLAMA-REVERSE-PROXY.html">Ollama/vLLM reverse proxy</a><a class="doc-nav-link" href="../docs/backup.html">Backup & Restore</a>
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Deployment</div>
@@ -323,7 +323,7 @@ section,#install{scroll-margin-top:96px}
 <ul><li>GPU metrics (VRAM/temperature/power) for the local node come from <code>nvidia-smi</code> on the marbor host directly. Remote nodes get real GPU telemetry only if the optional marbor agent is installed on them (opt-in, not auto-deployed) - without it, remote GPU metrics fall back to operator-declared <code>vram_total_mb</code> or show "-". Warm-model detection works for all nodes regardless (it uses Ollama's own <code>/api/ps</code>).</li><li>Analytics and the request log are in-memory and reset on restart. Prometheus metrics persist, and the audit log persists to the <code>audit_log</code> table in <code>marbor.db</code> with configurable retention.</li><li>Cost savings are computed from real token counts parsed from responses. When a response carries no token data, the dashboard shows "-", never an estimate.</li></ul>
 
       <div class="doc-foot-edit">
-        <nav class="pager" aria-label="Documentation pages"><a class="page-card prev" rel="prev" href="../docs/SAVINGS-MATH.html"><span class="dir">← Previous</span><span class="lbl">Savings math</span></a><a class="page-card next" rel="next" href="../docs/backup.html"><span class="dir">Next →</span><span class="lbl">Backup &amp; Restore</span></a></nav>
+        <nav class="pager" aria-label="Documentation pages"><a class="page-card prev" rel="prev" href="../docs/SAVINGS-MATH.html"><span class="dir">← Previous</span><span class="lbl">Savings math</span></a><a class="page-card next" rel="next" href="../docs/OLLAMA-REVERSE-PROXY.html"><span class="dir">Next →</span><span class="lbl">Ollama/vLLM reverse proxy</span></a></nav>
       <div class="edit-link"><a href="https://github.com/Anirudhx7/marbor/blob/main/docs/USE-CASES.md" target="_blank" rel="noopener">View on GitHub →</a></div>
       </div>
     </div></article>
