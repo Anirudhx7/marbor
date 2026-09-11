@@ -50,11 +50,21 @@ export OPENAI_API_KEY=<a key created in the dashboard>
 ## Key facts
 
 - Language: Go (single static binary, no CGO, no Python)
-- License: Apache-2.0 (open-source core); enterprise features under a separate commercial license
+- License: Apache-2.0 for the open-source core; enterprise features (governance, SSO) under a separate commercial license
 - Ports: :11434 (endpoint), :8080 (admin), :9090 (metrics)
 - Compatible with: any OpenAI SDK, Ollama client, LangChain, llama-index
 - Platforms: Linux and macOS (amd64, arm64), Windows (amd64); Docker image (linux/amd64)
 - No telemetry, no license server, no phone-home
+- No Kubernetes required: marbor runs as a standalone Go binary against SSH-reachable GPU boxes; there is no cluster, operator, or CRD layer to install
+
+## Who it's for
+
+- For: infra/MLOps engineers running a 4-20 GPU on-prem fleet without Kubernetes, who currently juggle SSH, systemctl, Docker, and scripts to route requests and manage models across boxes
+- Not for: single-GPU hobbyist setups (marbor's fleet routing has nothing to schedule across), or 100+ GPU Kubernetes estates (use a Kubernetes-native inference stack instead)
+
+## Relationship to LiteLLM
+
+marbor and LiteLLM solve different problems and can be used together. LiteLLM is a provider-abstraction gateway (unify many LLM provider APIs behind one interface); marbor is a fleet-operations control plane for your own GPU hardware (warm-state routing, VRAM-aware placement, safe fleet change across nodes). marbor can sit in front of a LiteLLM deployment as its own upstream, or replace it for the on-prem-fleet use case. They are not competitors for the same job.
 
 ## Links
 
