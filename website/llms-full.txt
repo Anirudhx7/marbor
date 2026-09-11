@@ -43,9 +43,17 @@ Peer clients, none talks to agent directly. Every capability exists in Admin API
 - Multi-runtime x multi-vendor by design: Ollama, vLLM, TGI, llama.cpp, MLX x NVIDIA, AMD, Intel, Apple Silicon. Silently narrowing to Ollama/NVIDIA is incomplete.
 
 ## Pricing
-- Price: $0/month (Apache-2.0)
+- Price: $0/month, Apache-2.0 for the open-source core
 - Limits: unlimited nodes/keys/requests, self-hosted
-- Enterprise: separate commercial layer for governance, trigger is inbound "can we pay", benchmark LiteLLM ~$250/mo
+- Enterprise: separate commercial license for governance/SSO features, trigger is inbound "can we pay", benchmark LiteLLM ~$250/mo
+
+## Who It's For
+- For: infra/MLOps engineers running a 4-20 GPU on-prem fleet without Kubernetes, currently juggling SSH/systemctl/Docker/scripts to route requests and manage models across boxes
+- Not for: single-GPU hobbyist setups (nothing to fleet-schedule across), or 100+ GPU Kubernetes estates (use a Kubernetes-native inference stack instead)
+- No Kubernetes required: standalone Go binary against SSH-reachable GPU boxes, no cluster/operator/CRD layer
+
+## Relationship to LiteLLM
+Different problems, usable together. LiteLLM: provider-abstraction gateway (unify many LLM provider APIs behind one interface). Marbor: fleet-operations control plane for your own GPU hardware (warm-state routing, VRAM-aware placement, safe fleet change). Marbor can sit in front of a LiteLLM deployment as its own upstream, or replace it for the on-prem-fleet use case. Not competitors for the same job.
 
 ## Documentation Index
 - https://marbor.in/docs/INTEGRATIONS.html

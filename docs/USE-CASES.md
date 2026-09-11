@@ -67,6 +67,8 @@ Platform teams often attempt to orchestrate local GPU nodes using generic networ
 | **Financial Visibility** | None (separate billing auditing required) | **Real-time savings dashboard tracked by actual token counts** |
 | **Deployment Footprint** | External load balancers, configs, and scripts | **Single static Go binary; zero external dependencies** |
 
+For a deeper look at exactly what breaks in a hand-rolled vLLM/Ollama + nginx setup - and what it actually takes to fix it yourself - see [vLLM/Ollama Reverse Proxy: The DIY Pain](REVERSE-PROXY.md).
+
 ---
 
 ## Where does LiteLLM fit?
