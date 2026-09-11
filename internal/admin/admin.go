@@ -3060,7 +3060,7 @@ func (s *Server) handleTestCloudProvider(w http.ResponseWriter, r *http.Request)
 	client := &http.Client{Timeout: cloudProviderTestTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
-		writeJSONError(w, http.StatusBadGateway, "could not reach base_url: "+err.Error())
+		writeCorrelatedError(w, r, http.StatusBadGateway, "could not reach base_url", err)
 		return
 	}
 	defer resp.Body.Close()
@@ -7601,7 +7601,7 @@ func (s *Server) handleNodeTLSProbe(w http.ResponseWriter, r *http.Request) {
 	dialer := &net.Dialer{}
 	rawConn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(host, port))
 	if err != nil {
-		writeJSONError(w, http.StatusBadGateway, fmt.Sprintf("could not reach %s:%s: %v", host, port, err))
+		writeCorrelatedError(w, r, http.StatusBadGateway, "could not reach marbor agent", err)
 		return
 	}
 	defer rawConn.Close()
@@ -7612,7 +7612,7 @@ func (s *Server) handleNodeTLSProbe(w http.ResponseWriter, r *http.Request) {
 	// confirmation. It never decides trust itself.
 	tlsConn := tls.Client(rawConn, &tls.Config{InsecureSkipVerify: true, ServerName: host})
 	if err := tlsConn.HandshakeContext(ctx); err != nil {
-		writeJSONError(w, http.StatusBadGateway, fmt.Sprintf("TLS handshake with %s:%s failed: %v", host, port, err))
+		writeCorrelatedError(w, r, http.StatusBadGateway, "TLS handshake with marbor agent failed", err)
 		return
 	}
 	defer tlsConn.Close()
