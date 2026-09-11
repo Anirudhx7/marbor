@@ -189,7 +189,7 @@ const DESCRIPTIONS = {
   "LIMITATIONS": "What marbor does not yet do, what has been validated against real hardware, and what to plan around before production.",
   "SAVINGS-MATH": "The financial model behind marbor's savings tracking: how local GPU inference costs are measured against cloud API spend.",
   "USE-CASES": "Looking for an Ollama alternative for a multi-GPU fleet? Compare marbor's warm-aware routing, LiteLLM fit, and real use cases for secure multi-tenant access.",
-  "OLLAMA-REVERSE-PROXY": "How to replace a hand-rolled nginx or HAProxy reverse proxy in front of Ollama and vLLM nodes with one warm-aware binary.",
+  "REVERSE-PROXY": "How to replace a hand-rolled nginx or HAProxy load balancer in front of vLLM and Ollama nodes with one warm-aware binary.",
   "backup": "How to back up and restore marbor's SQLite database, which holds every node, API key, routing rule, and warm-state record.",
   "PRODUCTION": "Deploy marbor in production: no config file, SQLite-backed DB-first setup, and how to configure nodes, keys, and routing via the admin API.",
   "deploy/aws-ec2": "Deploy one marbor endpoint in front of one or more Ollama GPU instances on AWS EC2, step by step.",
@@ -209,7 +209,7 @@ const DOC_GROUPS = [
     { slug: "LIMITATIONS", label: "Known limitations" },
     { slug: "SAVINGS-MATH", label: "Savings math" },
     { slug: "USE-CASES", label: "Ollama alternatives & use cases" },
-    { slug: "OLLAMA-REVERSE-PROXY", label: "Ollama/vLLM reverse proxy" },
+    { slug: "REVERSE-PROXY", label: "vLLM/Ollama reverse proxy" },
     { slug: "backup", label: "Backup & Restore" },
   ]},
   { title: "Deployment", items: [
