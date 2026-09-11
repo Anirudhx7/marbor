@@ -178,7 +178,7 @@ function excerpt(s, n) {
 
 // Shared footer - identical to the landing page footer (paths relative via r).
 function siteFooter(r) {
-  return `<footer><div class="page foot-grid"><div>${BRAND_HTML(r)}<div style="margin-top:10px">© <span class="yr">2026</span> Anirudh Mehandru · Apache-2.0</div></div><div class="foot-links"><a href="${r}index.html#install">Install</a><a href="${r}index.html#features">Features</a><a href="${r}index.html#how">How</a><a href="${r}index.html#compare">Compare</a><a href="${r}docs/index.html">Docs</a><a href="https://marbor.in/demo/" target="_blank" rel="noopener">Demo</a><a href="https://github.com/Anirudhx7/marbor" target="_blank" rel="noopener">GitHub</a><a href="${r}llms.txt">llms.txt</a></div></div></footer>`;
+  return `<footer><div class="page foot-grid"><div>${BRAND_HTML(r)}<div style="margin-top:10px">© <span class="yr">2026</span> Anirudh Mehandru · Apache-2.0</div></div><div class="foot-links"><a href="${r}index.html#install">Install</a><a href="${r}index.html#features">Features</a><a href="${r}index.html#how">How</a><a href="${r}index.html#compare">Compare</a><a href="${r}docs/index.html">Docs</a><a href="https://marbor.in/demo/" target="_blank" rel="noopener">Demo</a><a href="https://github.com/Anirudhx7/marbor" target="_blank" rel="noopener">GitHub</a><a href="${r}llms.txt">llms.txt</a><a href="${r}llms-full.txt">llms-full.txt</a></div></div></footer>`;
 }
 
 // Per-page meta descriptions (70-160 chars, unique, written for search snippets -
