@@ -5559,6 +5559,7 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		"cloud_monthly_usd_cap":     strconv.FormatFloat(incoming.CloudBudget.MonthlyUSDCap, 'f', -1, 64),
 		"metrics_enabled":           strconv.FormatBool(incoming.Metrics.Enabled),
 		"metrics_port":              strconv.Itoa(incoming.Metrics.Port),
+		"metrics_bind_address":      incoming.Metrics.BindAddress,
 		"huggingface_token":         incoming.HuggingFace.Token,
 
 		// Admin & Security (2026-07 config.yaml elimination - Phase 2).

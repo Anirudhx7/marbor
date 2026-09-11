@@ -6,12 +6,27 @@ import (
 	"math"
 	"net"
 	"net/url"
+	"os"
 	"runtime"
 	"strconv"
 	"strings"
 	"time"
 	_ "time/tzdata"
 )
+
+// isRunningInDocker reports whether the process is inside a Docker
+// container, via the standard /.dockerenv marker file every Docker Engine
+// container gets at its filesystem root. Used only to pick a safe default
+// for Metrics.BindAddress: this repo's own docker-compose.monitoring.yml
+// scrapes marbor's metrics port container-to-container by service name
+// (prometheus/prometheus.yml: targets: ["marbor:9090"]), which cannot reach
+// a loopback-only bind from a sibling container - so the shipped Docker
+// stack needs the port reachable on the container's real interface, while a
+// bare-metal/systemd install should default to loopback-only.
+var isRunningInDocker = func() bool {
+	_, err := os.Stat("/.dockerenv")
+	return err == nil
+}
 
 // ValidateNodeURL checks that raw is a usable http(s) backend URL and rejects
 // link-local / cloud-metadata hosts (169.254.0.0/16 including the
@@ -467,6 +482,16 @@ type ThermalWatchdogConfig struct {
 type MetricsConfig struct {
 	Enabled bool `yaml:"enabled" json:"enabled"`
 	Port    int  `yaml:"port" json:"port"`
+	// BindAddress is the listen address for the /metrics endpoint. Defaults
+	// to loopback-only ("127.0.0.1:<port>") because, unlike the admin
+	// dashboard, this endpoint has no authentication at all - an operator
+	// who wants Prometheus scraping from another host must opt in
+	// explicitly by setting this to the desired interface. Exception: inside
+	// Docker (see isRunningInDocker) it defaults to every interface, since
+	// the shipped docker-compose.monitoring.yml scrapes it container-to-
+	// container by service name and a loopback bind would be unreachable
+	// from that sibling container.
+	BindAddress string `yaml:"bind_address,omitempty" json:"bind_address,omitempty"`
 }
 
 type LiteLLMConfig struct {
@@ -623,6 +648,19 @@ func (c *Config) Validate() error {
 	}
 	if c.Metrics.Port == 0 {
 		c.Metrics.Port = 9090
+	}
+	if c.Metrics.BindAddress == "" {
+		if isRunningInDocker() {
+			// The shipped monitoring overlay scrapes container-to-container
+			// by service name (see isRunningInDocker's doc comment) - a
+			// loopback-only bind here would be unreachable from that sibling
+			// container, so default to every interface inside Docker only.
+			c.Metrics.BindAddress = fmt.Sprintf("0.0.0.0:%d", c.Metrics.Port)
+		} else {
+			c.Metrics.BindAddress = fmt.Sprintf("127.0.0.1:%d", c.Metrics.Port)
+		}
+	} else if _, _, err := net.SplitHostPort(c.Metrics.BindAddress); err != nil {
+		return fmt.Errorf("metrics.bind_address %q is not a valid host:port: %w", c.Metrics.BindAddress, err)
 	}
 	// 0 is a deliberate, valid choice here (keep audit_log rows forever /
 	// disable pruning) - unlike other zero-valued fields in this func, it is

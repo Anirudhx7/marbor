@@ -348,6 +348,7 @@ export interface Settings {
   pollingInterval: number;
   prometheusEnabled: boolean;
   prometheusPort: number;
+  prometheusBindAddress: string;
   logLevel: 'debug' | 'info' | 'warn' | 'error';
   timezone: string;
   cloudDailyUsdCap: number;
