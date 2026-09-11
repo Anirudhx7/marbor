@@ -1160,6 +1160,7 @@ func (s *Server) Handler() http.Handler {
 
 	reg("GET /admin/keys", s.cors(s.adminAuth(s.handleKeys)))
 	reg("POST /admin/keys", s.cors(s.adminAuth(s.handleAddKey)))
+	reg("POST /admin/keys/{name}/rotate", s.cors(s.adminAuth(s.handleRotateKey)))
 	reg("PATCH /admin/keys/{name}", s.cors(s.adminAuth(s.handlePatchKey)))
 	reg("DELETE /admin/keys/{name}", s.cors(s.adminAuth(s.handleRevokeKey)))
 	reg("GET /admin/spill", s.cors(s.adminAuth(s.handleSpillCounters)))
@@ -5087,6 +5088,19 @@ func (s *Server) handleAddKey(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	// A duplicate name here is almost always an accidental re-POST (double
+	// click, retried request), not a deliberate rotation - reject it rather
+	// than silently overwriting the existing key's token and handing back a
+	// fresh plaintext secret for what the caller thought was a create.
+	// Deliberate rotation goes through POST /admin/keys/{name}/rotate below.
+	if existing, ok, err := s.findKeyRecord(k.Name); err != nil {
+		writeServerError(w, r, err)
+		return
+	} else if ok {
+		w.Header().Set("Location", "/admin/keys/"+existing.Name)
+		writeJSONError(w, http.StatusConflict, fmt.Sprintf("key %q already exists", k.Name))
+		return
+	}
 	if k.Key == "" {
 		key, err := generateAPIKey(k.Name)
 		if err != nil {
@@ -5095,6 +5109,31 @@ func (s *Server) handleAddKey(w http.ResponseWriter, r *http.Request) {
 		}
 		k.Key = key
 	}
+	s.persistKey(k)
+	s.logSystemChange(r, "add_key", k.Name, fmt.Sprintf("RateLimit: %d, DailyLimit: %d, MonthlyLimit: %d, DailyUsdCap: %f, MonthlyUsdCap: %f, Models: %v, LocalOnly: %v, AllowLocalDegradation: %v", k.RateLimit, k.DailyLimit, k.MonthlyLimit, k.DailyUsdCap, k.MonthlyUsdCap, k.Models, k.LocalOnly, k.AllowLocalDegradation))
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(k)
+}
+
+// findKeyRecord looks up a key by name in the store. ok is false, err is nil
+// when no such key exists.
+func (s *Server) findKeyRecord(name string) (store.KeyRecord, bool, error) {
+	keys, err := s.st.AllKeys()
+	if err != nil {
+		return store.KeyRecord{}, false, err
+	}
+	for _, k := range keys {
+		if k.Name == name {
+			return k, true, nil
+		}
+	}
+	return store.KeyRecord{}, false, nil
+}
+
+// persistKey writes k to the in-memory auth middleware and the store. Shared
+// by handleAddKey (create) and handleRotateKey (explicit rotate).
+func (s *Server) persistKey(k config.KeyConfig) {
 	if s.auth != nil {
 		s.auth.AddKey(k)
 	}
@@ -5112,9 +5151,47 @@ func (s *Server) handleAddKey(w http.ResponseWriter, r *http.Request) {
 		LocalOnly:             k.LocalOnly,
 		AllowLocalDegradation: k.AllowLocalDegradation,
 	})
-	s.logSystemChange(r, "add_key", k.Name, fmt.Sprintf("RateLimit: %d, DailyLimit: %d, MonthlyLimit: %d, DailyUsdCap: %f, MonthlyUsdCap: %f, Models: %v, LocalOnly: %v, AllowLocalDegradation: %v", k.RateLimit, k.DailyLimit, k.MonthlyLimit, k.DailyUsdCap, k.MonthlyUsdCap, k.Models, k.LocalOnly, k.AllowLocalDegradation))
+}
+
+// handleRotateKey issues a new plaintext token for an existing key,
+// replacing the old one immediately while preserving its policy fields
+// (limits, models, expiry). This is the deliberate, single-purpose way to
+// rotate a key - POST /admin/keys itself now 409s on a duplicate name
+// instead of rotating silently.
+// POST /admin/keys/{name}/rotate
+func (s *Server) handleRotateKey(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	existing, ok, err := s.findKeyRecord(name)
+	if err != nil {
+		writeServerError(w, r, err)
+		return
+	}
+	if !ok {
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("key %q not found", name))
+		return
+	}
+	newKey, err := generateAPIKey(name)
+	if err != nil {
+		writeServerError(w, r, err)
+		return
+	}
+	k := config.KeyConfig{
+		Name:                  name,
+		Key:                   newKey,
+		RateLimit:             existing.RateLimit,
+		DailyLimit:            existing.DailyLimit,
+		MonthlyLimit:          existing.MonthlyLimit,
+		DailyUsdCap:           existing.DailyUsdCap,
+		MonthlyUsdCap:         existing.MonthlyUsdCap,
+		Models:                existing.Models,
+		ExpiresAt:             existing.ExpiresAt,
+		LocalOnly:             existing.LocalOnly,
+		AllowLocalDegradation: existing.AllowLocalDegradation,
+	}
+	s.persistKey(k)
+	s.logSystemChange(r, "rotate_key", name, "")
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
+	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(k)
 }
 
