@@ -1,4 +1,4 @@
-# marbor agent enrollment (Ansible or any script)
+# marbor agent enrollment
 
 Enroll and install the marbor agent on many already-registered GPU nodes at once,
 without clicking through the dashboard per node. Every step below is a plain REST
