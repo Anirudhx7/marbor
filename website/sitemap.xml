@@ -32,7 +32,7 @@
   </url>
   <url>
     <loc>https://marbor.in/docs/USE-CASES.html</loc>
-    <lastmod>2026-06-24</lastmod>
+    <lastmod>2026-09-12</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -87,6 +87,12 @@
   <url>
     <loc>https://marbor.in/docs/deploy/marbor-agent-enrollment.html</loc>
     <lastmod>2026-08-29</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://marbor.in/docs/REVERSE-PROXY.html</loc>
+    <lastmod>2026-09-12</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
