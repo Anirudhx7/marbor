@@ -247,9 +247,8 @@ section.block,#install,#main{scroll-margin-top:88px}
 /* Sections/main only ever receive programmatic focus (landing glides, skip link)
    - never Tab focus - so their rings are pure artifact (notably the stuck ring
    after cross-page arrivals) while AT focus still lands. Real tab stops below
-   keep their visible rings. :not(:focus-visible) so a future genuinely
-   focusable/tabbable element nested here isn't silently stripped of its ring. */
-section.block:focus:not(:focus-visible),main:focus:not(:focus-visible){outline:none!important;box-shadow:none!important}
+   keep their visible rings. */
+section.block:focus,main:focus{outline:none!important;box-shadow:none!important}
 /* Same stuck-ring guard for the install box (arrival focuses it directly).
    Unconditional: the box is never a Tab stop (tabindex is added for arrival
    focus and removed on blur), so a focus-visible exception only leaks the
