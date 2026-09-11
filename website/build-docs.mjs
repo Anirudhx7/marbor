@@ -276,6 +276,51 @@ function breadcrumb(slug, title) {
   return crumbs.join('<li aria-hidden="true"><span class="sep">/</span></li>');
 }
 
+// BreadcrumbList JSON-LD mirrors the visual breadcrumb's linked entries only
+// (Home, Docs, current page) - the intermediate folder crumb (e.g. "deploy")
+// has no real URL of its own, same reason breadcrumb() renders it as a plain
+// <span> instead of an <a>.
+function breadcrumbJsonLd(slug, title) {
+  const items = [
+    { name: "Home", url: "https://marbor.in/" },
+    { name: "Docs", url: "https://marbor.in/docs/" },
+    { name: title, url: `https://marbor.in/docs/${slug}.html` },
+  ];
+  return JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: items.map((it, i) => ({ "@type": "ListItem", position: i + 1, name: it.name, item: it.url })),
+  });
+}
+
+// FAQPage JSON-LD, opt-in per slug. Only real question-shaped headings with
+// their actual doc content as the answer - never invented Q&A (R1 honesty).
+const FAQ_SCHEMAS = {
+  "USE-CASES": [
+    {
+      q: "Who is marbor for?",
+      a: "marbor is the infrastructure control plane neither Ollama nor a bare vLLM deployment ships: secure multi-tenant access, hardware-aware load balancing, cost-aware cloud overflow, and real-time GPU telemetry, plus a marbor agent for remote telemetry, model operations, and node-side maintenance. vLLM+marbor is the primary stack this is built around; Ollama support is real and works the same way, not an afterthought.",
+    },
+    {
+      q: "Where does LiteLLM fit?",
+      a: "LiteLLM is a popular and excellent gateway for provider abstraction, enterprise authentication, and user-level rate limiting. Rather than a competitor, marbor operates as a complementary layer beneath LiteLLM. When deployed together, LiteLLM manages developer access, unified schemas, and cloud provider API keys, while marbor slots in directly below it as the physical scheduling and GPU orchestration layer.",
+    },
+  ],
+};
+function faqJsonLd(slug) {
+  const entries = FAQ_SCHEMAS[slug];
+  if (!entries) return null;
+  return JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: entries.map((e) => ({
+      "@type": "Question",
+      name: e.q,
+      acceptedAnswer: { "@type": "Answer", text: e.a },
+    })),
+  });
+}
+
 const DOC_CSS = readFileSync(join(__dirname, "docs.css"), "utf8");
 
 function page({ slug, title, contentHtml, headings }) {
@@ -304,7 +349,8 @@ function page({ slug, title, contentHtml, headings }) {
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="${escapeHtml(title)} · Marbor docs" />
 <meta name="twitter:image" content="https://marbor.in/screenshots/dashboard.png" />
-<link rel="preconnect" href="https://fonts.googleapis.com" />
+<script type="application/ld+json">${breadcrumbJsonLd(slug, title)}</script>
+${faqJsonLd(slug) ? `<script type="application/ld+json">${faqJsonLd(slug)}</script>\n` : ""}<link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400..700&family=Playfair+Display:ital,wght@0,400..800;1,400..800&family=JetBrains+Mono:wght@400..700&display=swap" rel="stylesheet" />
 <meta name="theme-color" content="#d4a853" />
