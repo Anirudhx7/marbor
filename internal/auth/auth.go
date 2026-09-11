@@ -2,6 +2,8 @@ package auth
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -13,6 +15,16 @@ import (
 	"github.com/Anirudhx7/marbor/internal/config"
 	"github.com/Anirudhx7/marbor/internal/metrics"
 )
+
+// hashToken maps a raw API key token to its lookup key in m.keys. Indexing by
+// digest instead of the raw token means lookup timing depends only on the
+// digest, never on how many leading bytes of the presented token matched a
+// real key - closing the H6 timing side channel without an O(n) scan over
+// every configured key.
+func hashToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
 
 // authAPIError is the OpenAI-compatible error envelope used by auth middleware.
 type authAPIError struct {
@@ -299,7 +311,7 @@ func NewMiddleware(cfg config.AuthConfig) *Middleware {
 			localOnly:             k.LocalOnly,
 			allowLocalDegradation: k.AllowLocalDegradation,
 		}
-		m.keys[k.Key] = ks
+		m.keys[hashToken(k.Key)] = ks
 		m.byName[k.Name] = ks
 	}
 	return m
@@ -384,9 +396,9 @@ func (m *Middleware) AddKey(k config.KeyConfig) {
 	// than staying valid alongside the new one until the next Reload/restart
 	// (B1 ADMIN-02: a compromised key "rotated" this way must not survive).
 	if existing, ok := m.byName[k.Name]; ok && existing.key != k.Key {
-		delete(m.keys, existing.key)
+		delete(m.keys, hashToken(existing.key))
 	}
-	m.keys[k.Key] = ks
+	m.keys[hashToken(k.Key)] = ks
 	m.byName[k.Name] = ks
 	m.mu.Unlock()
 }
@@ -422,7 +434,7 @@ func (m *Middleware) Reload(cfg config.AuthConfig) {
 			}
 			existing.expiresAt = k.ExpiresAt
 			existing.mu.Unlock()
-			newKeys[k.Key] = existing
+			newKeys[hashToken(k.Key)] = existing
 			newByName[k.Name] = existing
 		} else {
 			// New key or rotated token - fresh state.
@@ -440,7 +452,7 @@ func (m *Middleware) Reload(cfg config.AuthConfig) {
 				localOnly:             k.LocalOnly,
 				allowLocalDegradation: k.AllowLocalDegradation,
 			}
-			newKeys[k.Key] = ks
+			newKeys[hashToken(k.Key)] = ks
 			newByName[k.Name] = ks
 		}
 	}
@@ -456,7 +468,7 @@ func (m *Middleware) RevokeKey(name string) {
 	if !ok {
 		return
 	}
-	delete(m.keys, ks.key)
+	delete(m.keys, hashToken(ks.key))
 	delete(m.byName, name)
 }
 
@@ -556,7 +568,7 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 			if hdr := r.Header.Get("Authorization"); hdr != "" {
 				parts := strings.SplitN(hdr, " ", 2)
 				if len(parts) == 2 && strings.ToLower(parts[0]) == "bearer" {
-					ks, ok = m.keys[parts[1]]
+					ks, ok = m.keys[hashToken(parts[1])]
 				}
 			}
 			m.mu.RUnlock()
@@ -581,7 +593,7 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 		}
 		token := parts[1]
 		m.mu.RLock()
-		ks, ok := m.keys[token]
+		ks, ok := m.keys[hashToken(token)]
 		m.mu.RUnlock()
 		if !ok {
 			w.Header().Set("WWW-Authenticate", `Bearer realm="marbor"`)
