@@ -455,6 +455,15 @@ type RequestLog struct {
 	// requests without a round-trip to SQLite.
 	RoutingReason string `json:"routingReason,omitempty"`
 	RoutingDetail string `json:"-"`
+	// PrefillMs is Ollama's real prompt_eval_duration in milliseconds (see
+	// proxy.statusRecorder.promptEvalDurationMs) - the prefill half of a
+	// request's total latency, as opposed to generation time. 0 means
+	// unavailable: cloud requests never report it, and non-Ollama local
+	// runtimes have no equivalent per-request field on this response-parsing
+	// path (their engine telemetry is a separate, node-level aggregate
+	// scrape, not attributable to one request). Never a fabricated real
+	// zero - a genuine prefill always takes non-zero time.
+	PrefillMs int64 `json:"prefillMs,omitempty"`
 }
 
 type nodeResp struct {
@@ -1744,6 +1753,7 @@ func (s *Server) handleRequests(w http.ResponseWriter, r *http.Request) {
 		LatencyMs     int       `json:"latency_ms"`
 		Cloud         bool      `json:"cloud"`
 		RoutingReason string    `json:"routingReason,omitempty"`
+		PrefillMs     int64     `json:"prefillMs,omitempty"`
 	}
 	s.mu.RLock()
 	reqs := make([]RequestLog, len(s.requests))
@@ -1769,6 +1779,7 @@ func (s *Server) handleRequests(w http.ResponseWriter, r *http.Request) {
 			LatencyMs:     req.Latency,
 			Cloud:         isCloud,
 			RoutingReason: req.RoutingReason,
+			PrefillMs:     req.PrefillMs,
 		}
 	}
 	// Reverse so newest entries come first.
@@ -5633,7 +5644,7 @@ func (s *Server) IncrSpill(keyName, servedBy string) {
 // decision is the routing explanation from the router for this
 // request's chosen node; nil for cloud-fallback requests, which have no
 // router.RoutingDecision.
-func (s *Server) LogRequest(requestID, apiKey, sourceIP, model, node, status string, httpStatus int, latencyMs int, tokens int64, decision *router.RoutingDecision) {
+func (s *Server) LogRequest(requestID, apiKey, sourceIP, model, node, status string, httpStatus int, latencyMs int, tokens int64, prefillMs int64, decision *router.RoutingDecision) {
 	var tps float64
 	if tokens > 0 && latencyMs > 0 {
 		tps = float64(tokens) / (float64(latencyMs) / 1000.0)
@@ -5678,6 +5689,7 @@ func (s *Server) LogRequest(requestID, apiKey, sourceIP, model, node, status str
 		Time:          now,
 		RoutingReason: routingReason,
 		RoutingDetail: routingDetail,
+		PrefillMs:     prefillMs,
 	})
 	if len(s.requests) > 50 {
 		s.requests = s.requests[len(s.requests)-50:]
@@ -5726,6 +5738,7 @@ func (s *Server) LogRequest(requestID, apiKey, sourceIP, model, node, status str
 		TS:            now,
 		RoutingReason: routingReason,
 		RoutingDetail: routingDetail,
+		PrefillMs:     prefillMs,
 	}:
 	default:
 		// Prevent blocking the proxy path if SQLite writes are completely backed up.

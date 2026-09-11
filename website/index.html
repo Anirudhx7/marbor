@@ -2,54 +2,70 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<script>(function(){try{var s=localStorage.getItem("om-theme");if(s==="light"||(!s&&window.matchMedia&&window.matchMedia("(prefers-color-scheme: light)").matches))document.documentElement.classList.add("light");}catch(e){}})();</script>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="color-scheme" content="dark light" />
+<script>(function(){try{var s=localStorage.getItem("marbor-theme")||localStorage.getItem("om-theme");if(s==="light"||(!s&&window.matchMedia&&window.matchMedia("(prefers-color-scheme: light)").matches))document.documentElement.classList.add("light");}catch(e){}})();</script>
 <title>Marbor - The intelligent control plane for self-hosted AI inference</title>
-<meta name="description" content="Marbor understands your GPU fleet - runtimes, models, capacity, health, and deployment constraints - and places each inference request intelligently. One OpenAI-compatible endpoint across Ollama, vLLM, TGI, llama.cpp, and MLX, with cost-metered cloud overflow." />
+<meta name="description" content="One OpenAI-compatible endpoint across Ollama, vLLM, TGI, llama.cpp and MLX. Marbor places each request where your GPUs serve it best." />
+<link rel="canonical" href="https://anirudh.social/marbor/" />
 <link rel="icon" type="image/svg+xml" href="favicon.svg" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400..800;1,400..800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
 <meta name="theme-color" content="#d4a853" />
 <meta property="og:type" content="website" />
+<meta property="og:site_name" content="Marbor" />
+<meta property="og:url" content="https://anirudh.social/marbor/" />
 <meta property="og:title" content="Marbor - The intelligent control plane for self-hosted AI inference" />
 <meta property="og:description" content="Marbor understands your GPU fleet and places each request intelligently. One OpenAI-compatible endpoint across Ollama, vLLM, TGI, llama.cpp and MLX." />
+<meta property="og:image" content="https://anirudh.social/marbor/screenshots/dashboard.png" />
+<meta property="og:image:alt" content="Marbor admin dashboard showing GPU fleet placement" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Marbor - The intelligent control plane for self-hosted AI inference" />
+<meta name="twitter:description" content="One OpenAI-compatible endpoint across Ollama, vLLM, TGI, llama.cpp and MLX." />
+<meta name="twitter:image" content="https://anirudh.social/marbor/screenshots/dashboard.png" />
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Marbor","url":"https://anirudh.social/marbor/","applicationCategory":"DeveloperApplication","operatingSystem":"Linux, macOS, Windows","license":"https://www.apache.org/licenses/LICENSE-2.0","offers":{"@type":"Offer","price":"0"},"author":{"@type":"Person","name":"Anirudh Mehandru"}}</script>
+<noscript><style>[data-reveal]{opacity:1!important;transform:none!important}</style></noscript>
 <style>
+@view-transition{navigation:auto}
 :root{
 --bg:#0f0e0c;--bg-elevated:#1a1815;--bg-surface:#24221e;--bg-input:#2e2b26;
 --border:#3a3630;--border-subtle:#2a2723;
 --text:#e8e4df;--text-muted:#98917f;--text-faint:#a79f8f;
---accent:#d4a853;--accent-dim:#b8933f;--accent-bg:rgba(212,168,83,.08);--accent-bg-hover:rgba(212,168,83,.14);
---accent2:#7cb97c;--accent3:#c97c7c;--amber:#cf9440;
+--accent:#d4a853;--accent-dim:#b8933f;--accent-bg:color-mix(in srgb,var(--accent) 8%,transparent);--accent-bg-hover:color-mix(in srgb,var(--accent) 14%,transparent);
+--accent2:#7cb97c;--accent3:#c97c7c;--amber:#cf9440;--on-accent:#161307;--brand-chip:#1a1714;--brand-mark:#d4a853;
 --font-display:"Playfair Display",Georgia,"Times New Roman",serif;
 --font-sans:"Plus Jakarta Sans",-apple-system,BlinkMacSystemFont,"Segoe UI","Helvetica Neue",Arial,sans-serif;
 --font-mono:"JetBrains Mono","SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
---r-lg:14px;--r-md:10px;--r-sm:7px;
+--r-lg:14px;--r-md:10px;--r-xl:18px;
 --ease:cubic-bezier(.16,1,.3,1);
 --shadow:0 24px 60px -24px rgba(0,0,0,.55),0 2px 8px rgba(0,0,0,.35);
 }
-html.light{--bg:#f0ede4;--bg-elevated:#f9f6ef;--bg-surface:#e6e2d9;--bg-input:#e0dbd0;--border:#d8d2c5;--border-subtle:#e0dbd0;--text:#2b2924;--text-muted:#4a4740;--text-faint:#6e6960;--accent:#664e14;--accent-dim:#54400f;--accent-bg:rgba(102,78,20,.06);--accent-bg-hover:rgba(102,78,20,.11);--accent2:#1d4d1d;--accent3:#702626;--amber:#8a5f16;--shadow:0 24px 50px -28px rgba(60,50,20,.35),0 2px 8px rgba(60,50,20,.12)}
+html.light{--bg:#f5f2e9;--bg-elevated:#faf7ee;--bg-surface:#e9e4d4;--bg-input:#e3ddcb;--border:#d9d2bd;--border-subtle:#d5cdb4;--text:#2b2924;--text-muted:#4a4740;--text-faint:#6e6960;--accent:#4c3a19;--accent-dim:#3a2f16;--accent-bg:rgba(76,58,25,.08);--accent-bg-hover:rgba(76,58,25,.14);--accent2:#1d4d1d;--accent3:#702626;--amber:#8a5f16;--on-accent:#f5f2e9;--brand-chip:#2e2413;--brand-mark:#f5f2e9;--shadow:0 24px 50px -28px rgba(60,50,20,.35),0 2px 8px rgba(60,50,20,.12)}
+html.light ::selection{background:var(--accent);color:var(--bg)}
+html.light .btn-gold{background:var(--accent);border-color:var(--accent);color:var(--on-accent);box-shadow:0 12px 26px -14px color-mix(in srgb,var(--accent) 60%,transparent)}
+html.light .btn-gold:hover{background:var(--accent-dim);border-color:var(--accent-dim);color:var(--on-accent)}
 *{box-sizing:border-box}
 html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-sans);font-size:15.5px;line-height:1.7;-webkit-font-smoothing:antialiased;transition:background .2s,color .2s}
-body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;background:radial-gradient(900px 480px at 50% -8%,rgba(212,168,83,.10),transparent 65%),radial-gradient(700px 500px at 88% 22%,rgba(212,168,83,.05),transparent 60%)}
-html.light body::before{background:radial-gradient(900px 480px at 50% -8%,rgba(102,78,20,.08),transparent 65%)}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;background:radial-gradient(900px 480px at 50% -8%,color-mix(in srgb,var(--accent) 10%,transparent),transparent 65%),radial-gradient(700px 500px at 88% 22%,color-mix(in srgb,var(--accent) 5%,transparent),transparent 60%)}
+html.light body::before{background:radial-gradient(900px 480px at 50% -8%,var(--accent-bg),transparent 65%)}
 a{color:var(--accent);text-decoration:none;text-underline-offset:3px}
 a:hover{text-decoration:underline}
-::selection{background:var(--accent);color:#111}
-.skip{position:absolute;left:16px;top:-48px;z-index:200;background:var(--accent);color:#141310;font-weight:700;font-size:13px;padding:8px 14px;border-radius:8px}
+::selection{background:var(--accent);color:var(--bg)}
+.skip{position:absolute;left:16px;top:-48px;z-index:200;background:var(--accent);color:var(--on-accent);font-weight:700;font-size:13px;padding:8px 14px;border-radius:8px}
 .skip:focus{top:12px;text-decoration:none}
 .page{max-width:1180px;margin:0 auto;padding:0 28px;position:relative;z-index:1}
 /* NAV */
-.nav{position:sticky;top:0;z-index:100;background:color-mix(in srgb,var(--bg) 90%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--border-subtle);transition:background-color .45s ease,border-color .45s ease,padding .55s var(--ease-out)}
-.nav-inner{max-width:1180px;margin:0 auto;padding:17px 28px;display:flex;align-items:center;justify-content:space-between;gap:14px;transition:margin .55s var(--ease-out),padding .55s var(--ease-out),border-radius .55s var(--ease-out),background-color .55s var(--ease-out),border-color .55s var(--ease-out),box-shadow .55s var(--ease-out)}
-.nav.scrolled{background:transparent;border-bottom-color:transparent;backdrop-filter:none;-webkit-backdrop-filter:none;padding:12px 0 0}
-.nav.scrolled .nav-inner{max-width:1180px;margin:0 auto;padding:10px 10px 10px 20px;border:1px solid var(--border);border-radius:99px;background:color-mix(in srgb,var(--bg-elevated) 88%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:var(--shadow)}
+.nav{position:sticky;top:0;z-index:100;background:var(--bg);background:color-mix(in srgb,var(--bg) 90%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--border-subtle);transition:background-color .4s var(--ease),border-color .4s var(--ease),padding .4s var(--ease);padding-top:env(safe-area-inset-top)}
+.nav-inner{max-width:1180px;margin:0 auto;padding:17px 28px;display:flex;align-items:center;justify-content:space-between;gap:14px;transition:margin .4s var(--ease),padding .4s var(--ease),border-radius .4s var(--ease),background-color .4s var(--ease),border-color .4s var(--ease),box-shadow .4s var(--ease)}
+.nav.scrolled{background:transparent;border-bottom-color:transparent;backdrop-filter:none;-webkit-backdrop-filter:none;padding:12px 0 0;padding-top:calc(12px + env(safe-area-inset-top))}
+.nav.scrolled .nav-inner{max-width:1180px;margin:0 auto;padding:10px 10px 10px 20px;border:1px solid var(--border);border-radius:99px;background:var(--bg-elevated);background:color-mix(in srgb,var(--bg-elevated) 88%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:var(--shadow)}
 .brand{display:flex;align-items:center;gap:10px;color:var(--text)}
 .brand:hover{text-decoration:none}
-.brand-chip{width:32px;height:32px;border-radius:8px;background:#1a1714;display:grid;place-items:center;border:1px solid var(--border-subtle);flex:none}
+.brand-chip{width:32px;height:32px;border-radius:8px;background:var(--brand-chip);display:grid;place-items:center;border:1px solid var(--border-subtle);flex:none;color:var(--brand-mark)}
 .brand-name{font-weight:650;letter-spacing:-.01em;font-size:16px}
-.brand-ver{font-size:10.5px;font-weight:600;letter-spacing:.02em;color:var(--text-faint);padding:2px 8px;border:1px solid var(--border);border-radius:99px;background:transparent;font-variant-numeric:tabular-nums}
+.brand-ver{font-size:11px;font-weight:600;letter-spacing:.02em;color:var(--text-faint);padding:2px 8px;border:1px solid var(--border);border-radius:99px;background:transparent;font-variant-numeric:tabular-nums}
 .nav-links{display:flex;align-items:center;gap:8px}
 .nav-links a.nl{position:relative;color:var(--text-muted);font-size:13.5px;font-weight:550;padding:8px 13px;border-radius:8px;transition:color .2s var(--ease)}
 .nav-links a.nl::after{content:"";position:absolute;left:13px;right:13px;bottom:4px;height:1.5px;border-radius:2px;background:var(--accent);transform:scaleX(0);transform-origin:left center;transition:transform .28s var(--ease)}
@@ -57,13 +73,13 @@ a:hover{text-decoration:underline}
 .nav-links a.nl:hover::after{transform:scaleX(1)}
 .nav-links a.nl:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .nav-links a.nl:focus-visible::after{transform:scaleX(1)}
-.btn{display:inline-flex;align-items:center;gap:8px;font-weight:650;font-size:13.5px;padding:10px 18px;border-radius:10px;border:1px solid var(--border);background:var(--bg-surface);color:var(--text);cursor:pointer;transition:transform .18s var(--ease),background .18s,border-color .18s}
+.btn{display:inline-flex;align-items:center;gap:8px;font-weight:650;font-size:13.5px;padding:10px 18px;border-radius:10px;border:1px solid var(--border);background:var(--bg-surface);color:var(--text);cursor:pointer;transition:transform .18s var(--ease),background-color .18s var(--ease),border-color .18s var(--ease)}
 .btn:hover{text-decoration:none;transform:translateY(-1px);border-color:var(--accent)}
 .btn:active{transform:translateY(1px) scale(.99)}
-.btn-gold{background:var(--accent);border-color:var(--accent);color:#161307}
+.btn:disabled,.btn[aria-disabled="true"]{opacity:.55;cursor:not-allowed;transform:none}
+.btn-gold{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
 .btn-gold:hover{background:var(--accent-dim);border-color:var(--accent-dim)}
-.btn-ghost{background:transparent}
-.btn-sm{display:inline-flex;align-items:center;height:36px;padding:0 15px;font-size:13px;border-radius:9px}
+.btn-sm{display:inline-flex;align-items:center;padding:0 15px;font-size:13px;border-radius:9px}
 .nav-cta{letter-spacing:.01em;border-radius:99px}
 .nav-links .icon-btn{border-radius:50%}
 .nav-cta:active{transform:translateY(1px)}
@@ -72,13 +88,14 @@ a:hover{text-decoration:underline}
 #themeBtn{background:transparent;border-color:transparent;color:var(--text-faint)}
 #themeBtn:hover{color:var(--text);border-color:var(--border)}
 .hamb{display:none}
-.mobile-menu{display:none;margin:8px 16px 0;border:1px solid var(--border);border-radius:16px;padding:8px 20px 14px;background:var(--bg-elevated)}
+.mobile-menu{display:none;position:absolute;top:100%;left:12px;right:12px;margin:8px 0 0;border:1px solid var(--border);border-radius:16px;padding:8px 20px calc(14px + env(safe-area-inset-bottom));background:var(--bg-elevated);z-index:101;max-height:calc(100vh - 90px);max-height:calc(100dvh - 90px);overflow-y:auto;box-shadow:var(--shadow)}
 .mobile-menu.open{display:block}
+.nav:has(.mobile-menu.open){background:var(--bg);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
 .mobile-menu a{display:block;padding:10px 4px;color:var(--text-muted);font-weight:550;border-bottom:1px solid var(--border-subtle)}
 /* HERO */
 .hero{padding:84px 0 34px;position:relative}
 .eyebrow{display:inline-flex;align-items:center;gap:9px;font-family:var(--font-mono);font-size:12px;color:var(--text-muted);border:1px solid var(--border);background:var(--bg-elevated);border-radius:99px;padding:6px 14px 6px 8px;margin-bottom:24px}
-.dot{width:8px;height:8px;border-radius:99px;background:var(--accent2);box-shadow:0 0 0 4px color-mix(in srgb,var(--accent2) 18%,transparent);margin-left:6px}
+.dot{width:8px;height:8px;border-radius:99px;background:var(--accent2);box-shadow:0 0 0 4px color-mix(in srgb,var(--accent2) 18%,transparent);margin-left:6px;flex:none}
 h1{font-family:var(--font-display);font-size:clamp(40px,5.8vw,64px);line-height:1.06;letter-spacing:-.01em;font-weight:600;margin:0 0 18px;text-wrap:balance;max-width:18ch}
 h1 em{font-style:italic;color:var(--accent);font-weight:600}
 .lede{font-size:17.5px;color:var(--text-muted);max-width:62ch;margin:0 0 26px;text-wrap:pretty}
@@ -86,11 +103,11 @@ h1 em{font-style:italic;color:var(--accent);font-weight:600}
 .cta-row{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:20px}
 .install{display:flex;align-items:center;background:var(--bg-elevated);border:1px solid var(--border);border-radius:12px;overflow:hidden;max-width:750px;box-shadow:var(--shadow)}
 .install .plabel{font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-faint);padding:0 4px 0 16px;flex:none}
-.install code{flex:1;min-width:0;font-family:var(--font-mono);font-size:12.8px;line-height:1.6;color:var(--text);padding:12px 12px 12px 8px;white-space:nowrap}
+.install code{flex:1;min-width:0;font-family:var(--font-mono);font-size:12.8px;line-height:1.6;color:var(--text);padding:12px 12px 12px 8px;white-space:nowrap;overflow-x:auto;text-overflow:ellipsis;scrollbar-width:thin}
 .install button{flex:none;align-self:stretch;border:0;border-left:1px solid var(--border);background:transparent;color:var(--accent);font-weight:700;font-size:13px;padding:0 18px;cursor:pointer}
 .install button:hover{background:var(--accent-bg)}
 .install.flash{animation-name:installPing;animation-duration:1.6s;animation-timing-function:cubic-bezier(.16,1,.3,1);animation-iteration-count:2}
-@keyframes installPing{0%{box-shadow:0 0 0 0 rgba(212,168,83,.55)}70%{box-shadow:0 0 0 14px rgba(212,168,83,0)}100%{box-shadow:0 0 0 0 rgba(212,168,83,0)}}
+@keyframes installPing{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 55%,transparent)}70%{box-shadow:0 0 0 14px transparent}100%{box-shadow:0 0 0 0 transparent}}
 /* PLACEMENT */
 .place{margin-top:38px;border:1px solid var(--border);border-radius:var(--r-lg);background:linear-gradient(180deg,var(--bg-elevated),var(--bg));box-shadow:var(--shadow);overflow:hidden}
 .place-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 24px;border-bottom:1px solid var(--border-subtle);flex-wrap:wrap}
@@ -98,7 +115,7 @@ h1 em{font-style:italic;color:var(--accent);font-weight:600}
 .place-head .t b{color:var(--accent)}
 .live{display:inline-flex;align-items:center;gap:7px;font-family:var(--font-mono);font-size:12px;font-weight:650;color:var(--accent2)}
 .place-grid{display:grid;grid-template-columns:300px 1fr;gap:0}
-.req-col{padding:24px;border-right:1px solid var(--border-subtle);background:color-mix(in srgb,var(--bg-surface) 55%,transparent)}
+.req-col{padding:24px;border-right:1px solid var(--border-subtle);background:var(--bg-surface);background:color-mix(in srgb,var(--bg-surface) 55%,transparent)}
 .req-card{border:1px solid var(--border);border-radius:var(--r-md);background:var(--bg);padding:14px;font-family:var(--font-sans);font-size:12.5px;font-weight:500;line-height:1.65}
 .req-card>div{display:flex;gap:10px}
 .req-card .k{flex:0 0 58px;color:var(--text-faint)}
@@ -106,7 +123,7 @@ h1 em{font-style:italic;color:var(--accent);font-weight:600}
 .signals{padding:24px}
 .sig-label{font-size:12px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text-faint);margin:0 0 12px}
 .sig-grid{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px}
-.chip{font-family:var(--font-sans);font-size:13px;font-weight:600;padding:7px 12px;border-radius:99px;border:1px solid var(--border);background:var(--bg-surface);color:var(--text-muted);cursor:pointer;transition:all .18s var(--ease)}
+.chip{font-family:var(--font-sans);font-size:13px;font-weight:600;padding:7px 12px;border-radius:99px;border:1px solid var(--border);background:var(--bg-surface);color:var(--text-muted);cursor:pointer;transition:color .18s var(--ease),border-color .18s var(--ease),background-color .18s var(--ease)}
 .chip:hover{border-color:var(--accent);color:var(--text)}
 .chip.on{border-color:var(--accent);color:var(--accent);background:var(--accent-bg)}
 .chip .s{font-weight:700;color:var(--accent)}
@@ -122,13 +139,13 @@ h1 em{font-style:italic;color:var(--accent);font-weight:600}
 .vram.hot i{background:linear-gradient(90deg,var(--amber),var(--accent3))}
 .node-meta{display:flex;justify-content:space-between;font-family:var(--font-sans);font-size:12px;font-weight:500;color:var(--text-muted)}
 .badge{font-family:var(--font-sans);font-size:12px;font-weight:700;padding:2px 9px;border-radius:99px}
-.b-ok{background:rgba(124,185,124,.14);color:var(--accent2);border:1px solid color-mix(in srgb,var(--accent2) 40%,transparent)}
-.b-warn{background:rgba(207,148,64,.13);color:var(--amber);border:1px solid color-mix(in srgb,var(--amber) 40%,transparent)}
-.b-bad{background:rgba(201,124,124,.13);color:var(--accent3);border:1px solid color-mix(in srgb,var(--accent3) 40%,transparent)}
+.b-ok{background:color-mix(in srgb,var(--accent2) 14%,transparent);color:var(--accent2);border:1px solid color-mix(in srgb,var(--accent2) 40%,transparent)}
+.b-warn{background:color-mix(in srgb,var(--amber) 13%,transparent);color:var(--amber);border:1px solid color-mix(in srgb,var(--amber) 40%,transparent)}
+.b-bad{background:color-mix(in srgb,var(--accent3) 13%,transparent);color:var(--accent3);border:1px solid color-mix(in srgb,var(--accent3) 40%,transparent)}
 .decision{display:flex;align-items:center;gap:12px;padding:15px 24px;border-top:1px solid var(--border-subtle);background:var(--accent-bg);font-size:13.5px;flex-wrap:wrap}
-.decision code{font-family:var(--font-sans);font-size:12.5px;font-weight:600;background:var(--bg);border:1px solid var(--border);padding:4px 10px;border-radius:8px}
+.decision code{font-family:var(--font-mono);font-size:12.5px;font-weight:600;background:var(--bg);border:1px solid var(--border);padding:4px 10px;border-radius:8px}
 .place-note{padding:12px 24px;border-top:1px solid var(--border-subtle);font-size:12.5px;color:var(--text-faint)}
-.place-proof{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--border-subtle);background:color-mix(in srgb,var(--bg-surface) 42%,transparent)}
+.place-proof{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--border-subtle);background:var(--bg-surface);background:color-mix(in srgb,var(--bg-surface) 42%,transparent)}
 .pp{padding:14px 20px;border-right:1px solid var(--border-subtle)}
 .pp:last-child{border-right:0}
 .pp .n{font-family:var(--font-sans);font-size:20px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
@@ -136,7 +153,7 @@ h1 em{font-style:italic;color:var(--accent);font-weight:600}
 .pp .l{font-size:11.5px;color:var(--text-muted);margin-top:2px}
 /* SECTIONS */
 section.block{padding:56px 0}
-.kicker{font-family:var(--font-mono);font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin:0 0 12px}
+.kicker{font-family:var(--font-mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin:0 0 12px}
 h2{font-family:var(--font-display);font-size:clamp(28px,3.6vw,40px);font-weight:600;letter-spacing:-.015em;line-height:1.08;margin:0 0 12px;text-wrap:balance}
 .sub{color:var(--text-muted);max-width:64ch;margin:0 0 28px;font-size:16px}
 .feat-list{border-top:1px solid var(--border)}
@@ -147,18 +164,18 @@ h2{font-family:var(--font-display);font-size:clamp(28px,3.6vw,40px);font-weight:
 .sigpath{width:100%;height:auto;display:block}
 .sigpath .wire{stroke:var(--border);stroke-width:1.5}
 .sigpath .tick{stroke:var(--text-faint);stroke-width:1.5}
-.sigpath text{font-family:var(--font-mono);font-size:9.5px;fill:var(--text-faint);letter-spacing:.04em}
+.sigpath text{font-family:var(--font-mono);font-size:11px;fill:var(--text-faint);letter-spacing:.04em}
 .sigpath .req{fill:var(--bg-surface);stroke:var(--text-faint);stroke-width:1.5}
 .sigpath .dec{fill:var(--accent)}
 .sigpath .decl{fill:var(--accent);font-weight:700}
 .crow{position:relative;overflow:hidden;padding:36px 4px;border-bottom:1px solid var(--border-subtle);outline:none}
 .crow-body{position:relative;max-width:72ch}
-.fnum{position:absolute;top:50%;right:-14px;transform:translateY(-50%);font-family:var(--font-display);font-size:170px;font-weight:600;font-style:italic;letter-spacing:-.02em;line-height:1;color:color-mix(in srgb,var(--text) 7%,transparent);transition:color .25s var(--ease);pointer-events:none}
-.crow:hover .fnum,.crow:focus-visible .fnum{color:color-mix(in srgb,var(--accent) 26%,transparent)}
+.fnum{position:absolute;top:50%;right:-14px;transform:translateY(-50%);font-family:var(--font-display);font-size:170px;font-weight:600;font-style:italic;letter-spacing:-.02em;line-height:1;color:var(--border-subtle);color:color-mix(in srgb,var(--text) 7%,transparent);transition:color .25s var(--ease);pointer-events:none}
+.crow:hover .fnum,.crow:focus-visible .fnum{color:var(--accent-dim);color:color-mix(in srgb,var(--accent) 26%,transparent)}
 .crow h3{margin:0 0 6px;font-size:19px;letter-spacing:-.015em;font-weight:650;text-wrap:balance}
 .crow p{margin:0;font-size:14.5px;color:var(--text-muted)}
 .crow code{font-family:var(--font-mono);font-size:.92em;color:var(--text)}
-.spec{max-height:0;opacity:0;overflow:hidden;margin:10px 0 0;font-family:var(--font-mono);font-size:12px;color:var(--accent);transition:opacity .18s var(--ease)}
+.spec{max-height:0;opacity:0;overflow:hidden;margin:10px 0 0;font-family:var(--font-mono);font-size:12px;color:var(--accent);transition:opacity .18s var(--ease),max-height .18s var(--ease)}
 .crow:hover .spec,.crow:focus-visible .spec{max-height:44px;opacity:1}
 .cmp{border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden;background:var(--bg-elevated)}
 .cmp table{width:100%;border-collapse:collapse;font-size:13.8px}
@@ -166,7 +183,7 @@ h2{font-family:var(--font-display);font-size:clamp(28px,3.6vw,40px);font-weight:
 .cmp th{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-faint);font-weight:700}
 .cmp tr:last-child td{border-bottom:0}
 .cmp th:nth-child(2),.cmp td:nth-child(2){background:var(--accent-bg)}
-.cmp tr.grp td{background:transparent;font-family:var(--font-mono);font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--accent);padding:14px 18px 6px}
+.cmp tr.grp td{background:transparent;font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);padding:14px 18px 6px}
 .cmp-notes{margin:0;padding:14px 4px 0;list-style:none;font-family:var(--font-sans);font-size:12.5px;line-height:1.8;color:var(--text-muted)}
 .cmp-notes li{padding-left:18px;position:relative}
 .cmp-notes li::before{content:"*";position:absolute;left:4px;color:var(--accent)}
@@ -179,17 +196,19 @@ h2{font-family:var(--font-display);font-size:clamp(28px,3.6vw,40px);font-weight:
 .srow{display:flex;width:100%;background:none;border:0;border-radius:0;text-align:left;font:inherit;color:inherit;cursor:pointer;align-items:flex-start;gap:13px;padding:16px 0}
 .srow:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .srow{transition:background-color .2s ease}
-.srow:hover{background:color-mix(in srgb,var(--bg-surface) 50%,transparent);border-radius:10px}
+.srow:hover{background:var(--bg-surface);background:color-mix(in srgb,var(--bg-surface) 50%,transparent);border-radius:10px}
+.srow:active{background:var(--bg-surface)}
+.srow>div{min-width:0;flex:1}
 .scheck{transition:background-color .25s ease,border-color .25s ease,color .25s ease}
 .ssub{transition:color .25s ease}
-.sbar i{transition:width .5s ease-out}
+.sbar i{transition:width .5s var(--ease)}
 .srow+.srow{border-top:1px solid var(--border-subtle)}
 .scheck{flex:none;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;margin-top:1px}
 .scheck.done{background:transparent;border:1px solid var(--accent);color:var(--accent);font-size:12px;font-weight:700}
 .scheck.todo{border:1px solid var(--border);background:var(--bg-surface)}
 .scheck.todo i{width:8px;height:8px;border-radius:50%;border:1.5px solid var(--text-faint)}
-.stitle{margin:0;font-family:var(--font-sans);font-size:15px;font-weight:600;letter-spacing:-.005em}
-.ssub{margin:2px 0 0;font-size:12.5px}
+.stitle{display:block;margin:0;font-family:var(--font-sans);font-size:16px;font-weight:600;letter-spacing:-.01em}
+.ssub{display:block;margin:2px 0 0;font-size:12.5px}
 .ssub.done{color:var(--text-muted)}
 .ssub.todo{color:var(--text-muted)}
 .sbar{height:8px;border-radius:99px;background:var(--bg-input);overflow:hidden;margin:18px 0 8px}
@@ -205,12 +224,12 @@ summary::-webkit-details-marker{display:none}
 summary:hover{color:var(--accent)}
 summary span{color:var(--accent);font-family:var(--font-mono);font-size:13px;flex:none}
 details p{padding:0 4px 20px;margin:0;font-size:13.8px;color:var(--text-muted);max-width:72ch}
-.faq-toggle{margin-top:18px;margin-bottom:12px;position:relative;display:flex;width:100%;align-items:center;justify-content:center;gap:8px;background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 7%,transparent),color-mix(in srgb,var(--accent) 2%,transparent));border:0;border-radius:10px;padding:14px;color:var(--accent);font-weight:600;font-size:13.5px;letter-spacing:.02em;cursor:pointer;text-decoration:none;transition:background-color .2s var(--ease)}
-.faq-toggle::before{content:"";position:absolute;inset:0;border-radius:10px;padding:1px;background:radial-gradient(ellipse at center,color-mix(in srgb,var(--accent) 26%,transparent) 52%,color-mix(in srgb,var(--accent) 0%,transparent) 78%);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude;pointer-events:none}
-.faq-toggle:hover{background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 11%,transparent),color-mix(in srgb,var(--accent) 4%,transparent));text-decoration:none}
+.faq-toggle{margin-top:18px;margin-bottom:12px;position:relative;display:flex;width:100%;align-items:center;justify-content:center;gap:8px;background:var(--accent-bg);background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 7%,transparent),color-mix(in srgb,var(--accent) 2%,transparent));border:1px solid var(--border);border-radius:10px;padding:14px;color:var(--accent);font-weight:600;font-size:13.5px;letter-spacing:.02em;cursor:pointer;text-decoration:none;min-height:48px}
+.faq-toggle::before{content:"";position:absolute;inset:0;border-radius:10px;padding:1px;background:radial-gradient(ellipse at center,rgba(212,168,83,.26) 52%,transparent 78%);background:radial-gradient(ellipse at center,color-mix(in srgb,var(--accent) 26%,transparent) 52%,color-mix(in srgb,var(--accent) 0%,transparent) 78%);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude;pointer-events:none}
+.faq-toggle:hover{background:var(--accent-bg-hover);background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 11%,transparent),color-mix(in srgb,var(--accent) 4%,transparent));text-decoration:none}
 .faq-toggle:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .faq-toggle:hover,.faq-toggle:focus,.faq-toggle:active{text-decoration:none!important}
-.cta-band{border:1px solid var(--border);border-radius:18px;background:var(--bg-elevated);padding:40px 36px;box-shadow:var(--shadow);display:grid;grid-template-columns:1.4fr 1fr;gap:28px;align-items:center}
+.cta-band{border:1px solid var(--border);border-radius:var(--r-xl);background:var(--bg-elevated);padding:40px 36px;box-shadow:var(--shadow);display:grid;grid-template-columns:1.4fr 1fr;gap:28px;align-items:center}
 .cta-band h2{margin:0 0 10px}
 .cta-band p{color:var(--text-muted);margin:0;max-width:52ch}
 .cta-act{display:flex;flex-direction:column;gap:10px;align-items:stretch}
@@ -224,15 +243,36 @@ footer{border-top:1px solid var(--border-subtle);padding:30px 0 40px;margin-top:
 [data-reveal].in{opacity:1;transform:none}
 /* native fragment jumps (cross-page footer links, new tabs) must clear the sticky nav */
 section.block,#install,#main{scroll-margin-top:88px}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+/* Sections/main only ever receive programmatic focus (landing glides, skip link)
+   - never Tab focus - so their rings are pure artifact (notably the stuck ring
+   after cross-page arrivals) while AT focus still lands. Real tab stops below
+   keep their visible rings. :not(:focus-visible) so a future genuinely
+   focusable/tabbable element nested here isn't silently stripped of its ring. */
+section.block:focus:not(:focus-visible),main:focus:not(:focus-visible){outline:none!important;box-shadow:none!important}
+/* Same stuck-ring guard for the install box (arrival focuses it directly).
+   Outline only: the intended flash halo is a box-shadow animation and must survive. */
+.install:focus:not(:focus-visible){outline:none!important}
+.crow:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.crow{outline:none}
+.sigscroll:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.cmp th:first-child,.cmp td:first-child{position:sticky;left:0;background:var(--bg-elevated);z-index:1}
+.cmp td:nth-child(2){background:var(--accent-bg)}
+.cmp,.sigscroll{scrollbar-width:thin}
+@media print{:root{color-scheme:light}body{background:#fff!important;color:#000!important}body::before,.nav,.cta-row,.install button,.mobile-menu,#themeBtn,#hamb{display:none!important}.page,.place,.setup,.cmp,.cta-band{box-shadow:none!important}[data-reveal]{opacity:1!important;transform:none!important}}
 /* ---- mobile hardening (all viewports, no visual change on desktop) ---- */
 @supports (overflow:clip){html,body{overflow-x:clip}}
+@supports not (overflow:clip){body{overflow-x:hidden}}
 img,svg{max-width:100%}
 a,button{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .btn{min-height:44px}
-.mobile-menu{overflow:hidden}
+.icon-btn{width:44px;height:44px}
+.mobile-menu{overflow-y:auto}
 .mobile-menu a{padding:14px 4px;min-height:48px;display:flex;align-items:center}
 .cmp{overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:thin}
+.cmp:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .sigscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:thin;margin:0 -4px;padding:0 4px 6px}
 .req-card>div{min-width:0}
 .req-card .v{min-width:0;overflow-wrap:anywhere;word-break:break-word}
@@ -240,50 +280,53 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-off
 .node-meta{flex-wrap:wrap;gap:8px;align-items:center}
 .decision code{max-width:100%;overflow-wrap:anywhere;word-break:break-word}
 .stack-note code,.install code{overflow-wrap:anywhere;word-break:break-word}
-.foot-links a{padding:8px 4px}
-.chip{min-height:36px}
+.foot-links a{padding:8px 4px;min-height:44px;display:inline-flex;align-items:center}
+.chip{min-height:44px}
+footer{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
 @media(max-width:900px){.place-grid{grid-template-columns:1fr}.req-col{border-right:0;border-bottom:1px solid var(--border-subtle)}.place-proof{grid-template-columns:repeat(2,1fr)}.pp:nth-child(2){border-right:0}.pp{border-top:1px solid var(--border-subtle)}.pp:nth-child(1),.pp:nth-child(2){border-top:0}.setup{padding:20px 18px 16px}.faq{grid-template-columns:1fr}.req-col,.signals{padding:20px}}
-@media(max-width:640px){.page{padding:0 18px}.nav-inner{margin:0;padding:10px 14px;gap:10px}.nav.scrolled{padding:8px 12px 0}.nav.scrolled .nav-inner{margin:0 auto;padding:6px 6px 6px 14px;max-width:calc(100% - 0px)}.nav-links{gap:6px}.nav-links a.nl,.nav-links .btn-ghost{display:none}.hamb{display:grid}.icon-btn{width:44px;height:44px}#themeBtn{width:44px;height:44px}.nav-cta{height:44px;padding:0 14px;font-size:12.5px;white-space:nowrap}.brand-name{font-size:15px}.hero{padding:48px 0 20px}h1{font-size:clamp(32px,9vw,40px);line-height:1.1}.lede{font-size:16px}.eyebrow{font-size:11px;max-width:100%;flex-wrap:wrap;border-radius:16px;padding:8px 12px 8px 8px;line-height:1.5}.cta-row{align-items:stretch}.cta-row .btn{flex:1 1 100%;justify-content:center;min-height:48px;font-size:14px}.nodes{grid-template-columns:1fr}.lead{padding:32px 0 28px}.crow{padding:24px 60px 24px 0}.fnum{font-size:56px;right:0;opacity:.9}.spec{max-height:none;opacity:1;margin-top:10px}.install{flex-direction:column;align-items:stretch;max-width:none}.install .plabel{padding:10px 14px 0}.install code{font-size:11.5px;white-space:normal;padding:8px 14px 12px}.install button{align-self:auto;border-left:0;border-top:1px solid var(--border);min-height:48px;font-size:14px}.place-head,.signals{padding-left:16px;padding-right:16px}.req-col{padding:16px}.decision,.place-note{padding-left:16px;padding-right:16px}.pp{padding:12px 16px}.pp .n{font-size:18px}.chip{font-size:13px;padding:10px 14px;min-height:44px}.sigpath{min-width:560px}.cmp table{min-width:560px;font-size:13px}.cmp th,.cmp td{padding:11px 12px}.srow{padding:14px 10px;margin:0 -10px}.stitle{font-size:14.5px}summary{font-size:15px;padding:16px 4px;min-height:56px}.cta-band{grid-template-columns:1fr;padding:28px 20px}.cta-band .btn{min-height:48px}.cta-act .btn{width:100%}.foot-links{gap:8px}.foot-links a{min-height:44px;display:inline-flex;align-items:center}section.block{padding:40px 0}}
-@media(max-width:400px){.page{padding:0 14px}.brand-ver{display:none}.nav-cta{padding:0 12px}.hero{padding:36px 0 16px}h1{font-size:clamp(30px,9.5vw,34px)}.place-proof{grid-template-columns:1fr}.pp{border-right:0!important;border-top:1px solid var(--border-subtle)!important}.pp:nth-child(1){border-top:0!important}.pp .n{font-size:19px}.eyebrow{font-size:10.5px}.cta-band{padding:24px 16px}.setup{padding:18px 14px 14px}}
-@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}[data-reveal]{opacity:1;transform:none;transition:none}.install.flash{animation:none}.btn,.chip,.nav-links a.nl{transition:none}}
+@media(max-width:640px){.page{padding:0 18px}.nav-inner{margin:0;padding:10px 14px;gap:10px}.nav.scrolled{padding:8px 12px 0;padding-top:calc(8px + env(safe-area-inset-top))}.nav.scrolled .nav-inner{margin:0 auto;padding:6px 6px 6px 14px;max-width:calc(100% - 0px)}.nav-links{gap:6px}.nav-links a.nl{display:none}.hamb{display:grid}.icon-btn{width:44px;height:44px}#themeBtn{width:44px;height:44px}.nav-cta{height:44px;padding:0 14px;font-size:12.5px;white-space:nowrap}.brand-name{font-size:15px}.hero{padding:48px 0 20px}h1{font-size:clamp(32px,9vw,40px);line-height:1.1}h2{font-size:clamp(24px,7vw,28px)}.lede{font-size:16px}.eyebrow{font-size:11px;max-width:100%;flex-wrap:wrap;border-radius:16px;padding:8px 12px 8px 8px;line-height:1.5;align-items:flex-start}.cta-row{align-items:stretch}.cta-row .btn{flex:1 1 100%;justify-content:center;min-height:48px;font-size:14px}.nodes{grid-template-columns:1fr}.lead{padding:32px 0 28px}.crow{padding:24px 72px 24px 0}.fnum{font-size:48px;right:0;opacity:.9}.spec{max-height:none;opacity:1;margin-top:10px}.install{flex-direction:column;align-items:stretch;max-width:none}.install .plabel{padding:10px 14px 0}.install code{font-size:11.5px;white-space:normal;padding:8px 14px 12px}.install button{align-self:auto;border-left:0;border-top:1px solid var(--border);min-height:48px;font-size:14px}.place-head,.signals{padding-left:16px;padding-right:16px}.req-col{padding:16px}.decision,.place-note{padding-left:16px;padding-right:16px}.pp{padding:12px 16px}.pp .n{font-size:18px}.chip{font-size:13px;padding:10px 14px;min-height:44px}.sigpath{min-width:560px}.cmp table{min-width:560px;font-size:13px}.cmp th,.cmp td{padding:11px 12px}.srow{padding:14px 10px;margin:0 -10px}.stitle{font-size:15px}summary{font-size:15px;padding:16px 4px;min-height:56px}.cta-band{grid-template-columns:1fr;padding:28px 20px}.cta-band .btn{min-height:48px}.cta-act .btn{width:100%}.foot-links{gap:8px}.foot-links a{min-height:44px;display:inline-flex;align-items:center}.foot-grid{flex-direction:column}section.block{padding:40px 0}}
+@media(max-width:560px){.place-proof{grid-template-columns:1fr}.pp{border-right:0!important;border-top:1px solid var(--border-subtle)!important}.pp:nth-child(1){border-top:0!important}.pp .n{font-size:19px}}
+@media(max-width:400px){.page{padding:0 14px}.brand-ver{display:none}.nav-cta{padding:0 12px}.hero{padding:36px 0 16px}h1{font-size:clamp(30px,9.5vw,34px)}.eyebrow{font-size:10.5px}.cta-band{padding:24px 16px}.setup{padding:18px 14px 14px}}
+@media(max-width:380px){.nav-cta{display:none}}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}@view-transition{navigation:none}[data-reveal]{opacity:1;transform:none;transition:none}.install.flash{animation:none}.btn,.chip,.nav-links a.nl,.nav,.nav-inner,.fnum,.spec,.node,.scheck,.ssub,.sbar i{transition:none}}
 @media (pointer:coarse){.btn{min-height:48px}.chip{min-height:44px}.icon-btn{width:44px;height:44px}summary{min-height:56px}.srow{padding-top:14px;padding-bottom:14px}}
 </style>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
 <header class="nav"><div class="nav-inner">
-<a class="brand" href="#" aria-label="Marbor home"><span class="brand-chip" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 100 100" fill="none"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="#d4a853" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></span><span class="brand-name">Marbor</span><span class="brand-ver" data-version>v0.20.0</span></a>
-<nav class="nav-links" aria-label="Primary"><a class="nl" href="#features">Features</a><a class="nl" href="#how">How it works</a><a class="nl" href="#compare">Compare</a><a class="nl" href="docs/">Docs</a><a class="btn btn-gold btn-sm nav-cta" href="demo/">Live demo →</a><button class="icon-btn" id="themeBtn" aria-label="Toggle theme">◐</button><button class="icon-btn hamb" id="hamb" aria-label="Menu" aria-expanded="false">☰</button></nav>
-</div><div class="mobile-menu" id="mmenu"><a href="#features">Features</a><a href="#how">How it works</a><a href="#compare">Compare</a><a href="#faq">FAQ</a><a href="docs/">Docs</a><a href="demo/">Live demo</a><a href="https://github.com/Anirudhx7/marbor">GitHub</a></div></header>
-<main id="main"><div class="page">
+<a class="brand" href="#main" aria-label="Marbor home"><span class="brand-chip" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 100 100" fill="none"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="currentColor" opacity=".65"/></svg></span><span class="brand-name">Marbor</span><span class="brand-ver" data-version>v0.20.0</span></a>
+<nav class="nav-links" aria-label="Primary"><a class="nl" href="#features">Features</a><a class="nl" href="#how">How it works</a><a class="nl" href="#compare">Compare</a><a class="nl" href="docs/">Docs</a><a class="btn btn-gold btn-sm nav-cta" href="demo/">Live demo →</a><button type="button" class="icon-btn" id="themeBtn" aria-label="Toggle theme" aria-pressed="false">◐</button><button type="button" class="icon-btn hamb" id="hamb" aria-label="Menu" aria-expanded="false" aria-controls="mmenu">☰</button></nav>
+</div><nav class="mobile-menu" id="mmenu" aria-label="Mobile"><a href="#features">Features</a><a href="#how">How it works</a><a href="#compare">Compare</a><a href="#faq">FAQ</a><a href="docs/">Docs</a><a href="demo/">Live demo</a><a href="https://github.com/Anirudhx7/marbor">GitHub</a></nav></header>
+<main id="main" tabindex="-1"><div class="page">
 <div class="hero">
-<div class="eyebrow"><span class="dot"></span><span data-version>v0.20.0</span>&nbsp;· 5 runtimes · apache-2.0 · self-hosted</div>
+<div class="eyebrow"><span class="dot" aria-hidden="true"></span><span data-version>v0.20.0</span>&nbsp;· 5 runtimes · apache-2.0 · self-hosted</div>
 <h1>The <em>intelligent control plane</em> for self-hosted AI inference.</h1>
 <p class="lede">Marbor understands your GPU fleet, <strong>models, runtimes, capacity, deployments, and inference state</strong>, then places each request where it can be served best. Run Ollama, vLLM, TGI, llama.cpp, and MLX behind one OpenAI-compatible endpoint, with cost-metered cloud overflow that stays off until your hardware is full.</p>
 <div class="cta-row"><a class="btn btn-gold" href="#install">↓ Install in one command</a><a class="btn" href="demo/">Open live demo</a></div>
-<div class="install" id="install"><span class="plabel">install</span><code id="cmd">curl -fsSL raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | sh</code><button id="copyBtn">Copy</button></div>
+<div class="install" id="install"><span class="plabel">install</span><code id="cmd">curl -fsSL raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | sh</code><button type="button" id="copyBtn" aria-live="polite">Copy</button></div>
 <div class="place" id="trace" data-reveal>
-<div class="place-head"><span class="t">Inference-aware placement · <b>live trace</b></span><span class="live"><span class="dot"></span>evaluating 7 signals</span></div>
+<div class="place-head"><span class="t">Inference-aware placement · <b>live trace</b></span><span class="live"><span class="dot" aria-hidden="true"></span>evaluating 7 signals</span></div>
 <div class="place-grid">
 <div class="req-col"><p class="sig-label">Incoming request</p><div class="req-card"><div><span class="k">POST </span><span class="v">/v1/chat/completions</span></div><div><span class="k">model </span><span class="v">llama-3.1-8b</span></div><div><span class="k">runtime </span><span class="v">any · vllm preferred</span></div><div><span class="k">needs </span><span class="v">~10gb · ctx 8k</span></div><div><span class="k">policy </span><span class="v">local-first, overflow metered</span></div></div>
 <p class="sig-label" style="margin-top:16px">Tap a signal to filter nodes</p></div>
 <div class="signals"><p class="sig-label">Placement signals: warm state is one of seven</p>
 <div class="sig-grid" id="sigs">
-<button class="chip on" data-f="model">model <span class="s">✓</span></button>
-<button class="chip on" data-f="runtime">runtime <span class="s">✓</span></button>
-<button class="chip on" data-f="deploy">deployment <span class="s">✓</span></button>
-<button class="chip on" data-f="group">gpu-group <span class="s">✓</span></button>
-<button class="chip on" data-f="cap">capacity <span class="s">✓</span></button>
-<button class="chip on" data-f="health">health·load <span class="s">✓</span></button>
-<button class="chip" data-f="warm">warm-state <span class="s">·1 signal</span></button>
+<button type="button" class="chip on" data-f="model" aria-pressed="true">model <span class="s" aria-hidden="true">✓</span></button>
+<button type="button" class="chip on" data-f="runtime" aria-pressed="true">runtime <span class="s" aria-hidden="true">✓</span></button>
+<button type="button" class="chip on" data-f="deploy" aria-pressed="true">deployment <span class="s" aria-hidden="true">✓</span></button>
+<button type="button" class="chip on" data-f="group" aria-pressed="true">gpu-group <span class="s" aria-hidden="true">✓</span></button>
+<button type="button" class="chip on" data-f="cap" aria-pressed="true">capacity <span class="s" aria-hidden="true">✓</span></button>
+<button type="button" class="chip on" data-f="health" aria-pressed="true">health·load <span class="s" aria-hidden="true">✓</span></button>
+<button type="button" class="chip" data-f="warm" aria-pressed="false">warm-state <span class="s" aria-hidden="true">·1 signal</span></button>
 </div>
 <div class="nodes" id="nodes">
-<div class="node sel" data-tags="model runtime deploy group cap health"><div class="node-top"><span class="node-name">gpu-01 · vllm</span><span class="node-rt">llama-3.1-8b</span></div><div class="vram"><i style="width:46%"></i></div><div class="node-meta"><span>vram 11/24gb</span><span class="badge b-ok">selected</span></div></div>
+<div class="node sel" data-tags="model runtime deploy group cap health warm"><div class="node-top"><span class="node-name">gpu-01 · vllm</span><span class="node-rt">llama-3.1-8b</span></div><div class="vram"><i style="width:46%"></i></div><div class="node-meta"><span>vram 11/24gb</span><span class="badge b-ok">selected</span></div></div>
 <div class="node" data-tags="model runtime deploy group health"><div class="node-top"><span class="node-name">gpu-02 · vllm</span><span class="node-rt">llama-3.1-8b</span></div><div class="vram"><i style="width:78%"></i></div><div class="node-meta"><span>vram 18/24gb · queue 6</span><span class="badge b-warn">loaded</span></div></div>
 <div class="node" data-tags="model group cap health"><div class="node-top"><span class="node-name">gpu-03 · ollama</span><span class="node-rt">mistral-7b</span></div><div class="vram"><i style="width:30%"></i></div><div class="node-meta"><span>wrong model resident</span><span class="badge b-bad">skip</span></div></div>
 <div class="node" data-tags="runtime deploy"><div class="node-top"><span class="node-name">gpu-04 · drained</span><span class="node-rt">maintenance</span></div><div class="vram hot"><i style="width:92%"></i></div><div class="node-meta"><span>unhealthy · excluded</span><span class="badge b-bad">excluded</span></div></div>
 </div></div></div>
-<div class="decision"><span>Decision →</span><code>gpu-01 · model ✓ runtime ✓ capacity ✓ health ✓</code><span style="color:var(--text-muted)">Marbor routes and observes. Sharding, parallelism, and KV transport stay inside the runtime.</span></div>
+<div class="decision" role="status" aria-live="polite"><span>Decision →</span><code>gpu-01 · model ✓ runtime ✓ capacity ✓ health ✓</code><span style="color:var(--text-muted)">Marbor routes and observes. Sharding, parallelism, and KV transport stay inside the runtime.</span></div>
 <div class="place-note">Polls each agent every 2s. New signals (GPU groups, deployment constraints) slot into the same evaluation without redesign.</div>
 <div class="place-proof"><div class="pp"><div class="n">17.3<span class="g">s</span></div><div class="l">Median cold TTFT · measured v0.13.1 (11.5–18.1s)</div></div><div class="pp"><div class="n">0.4<span class="g">s</span></div><div class="l">Fastest warm TTFT · 8.1s typical · 43× best case</div></div><div class="pp"><div class="n">2<span class="g"> binaries</span></div><div class="l">marbor + marbor-agent · SQLite only · zero deps</div></div><div class="pp"><div class="n">5<span class="g"> runtimes</span></div><div class="l">Ollama · vLLM · TGI · llama.cpp · MLX</div></div></div>
 </div>
@@ -300,17 +343,17 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-off
 <section class="block" id="how" data-reveal><p class="kicker">How it works</p><h2>One control plane, one optional agent.</h2><p class="sub">No Kubernetes. No distributed state. Up in minutes.</p>
 <div class="setup" data-reveal>
 <div class="setup-head"><div><h3>Get started with Marbor</h3><p>Complete these steps to start serving models.</p></div><span class="setup-count">4/5</span></div>
-<div class="srow" role="button" tabindex="0" aria-pressed="true" data-done="Your first inference node is connected." data-pending="Add your first GPU node to Marbor."><span class="scheck done" aria-hidden="true">✓</span><div><p class="stitle">Add a GPU node</p><p class="ssub done">Your first inference node is connected.</p></div></div>
-<div class="srow" role="button" tabindex="0" aria-pressed="true" data-done="Agent is reporting healthy." data-pending="Install the marbor agent on your GPU node."><span class="scheck done" aria-hidden="true">✓</span><div><p class="stitle">Install marbor agent</p><p class="ssub done">Agent is reporting healthy.</p></div></div>
-<div class="srow" role="button" tabindex="0" aria-pressed="true" data-done="llama3.2 is warm on your fleet." data-pending="Pull a model to your fleet."><span class="scheck done" aria-hidden="true">✓</span><div><p class="stitle">Pull a model</p><p class="ssub done">llama3.2 is warm on your fleet.</p></div></div>
-<div class="srow" role="button" tabindex="0" aria-pressed="true" data-done="An active API key is ready for inference." data-pending="Create an API key to authenticate requests."><span class="scheck done" aria-hidden="true">✓</span><div><p class="stitle">Create an API key</p><p class="ssub done">An active API key is ready for inference.</p></div></div>
-<div class="srow" role="button" tabindex="0" aria-pressed="false" data-done="Your first inference request was served." data-pending="Send your first inference request to Marbor."><span class="scheck todo" aria-hidden="true"><i></i></span><div><p class="stitle">Serve your first request</p><p class="ssub todo">Send your first inference request to Marbor.</p></div></div>
-<div class="sbar" role="img" aria-label="Setup progress: 4 of 5 steps complete"><i></i></div>
+<button type="button" class="srow" aria-pressed="true" data-done="Your first inference node is connected." data-pending="Add your first GPU node to Marbor."><span class="scheck done" aria-hidden="true">✓</span><div><span class="stitle">Add a GPU node</span><span class="ssub done">Your first inference node is connected.</span></div></button>
+<button type="button" class="srow" aria-pressed="true" data-done="Agent is reporting healthy." data-pending="Install the marbor agent on your GPU node."><span class="scheck done" aria-hidden="true">✓</span><div><span class="stitle">Install marbor agent</span><span class="ssub done">Agent is reporting healthy.</span></div></button>
+<button type="button" class="srow" aria-pressed="true" data-done="llama3.2 is warm on your fleet." data-pending="Pull a model to your fleet."><span class="scheck done" aria-hidden="true">✓</span><div><span class="stitle">Pull a model</span><span class="ssub done">llama3.2 is warm on your fleet.</span></div></button>
+<button type="button" class="srow" aria-pressed="true" data-done="An active API key is ready for inference." data-pending="Create an API key to authenticate requests."><span class="scheck done" aria-hidden="true">✓</span><div><span class="stitle">Create an API key</span><span class="ssub done">An active API key is ready for inference.</span></div></button>
+<button type="button" class="srow" aria-pressed="false" data-done="Your first inference request was served." data-pending="Send your first inference request to Marbor."><span class="scheck todo" aria-hidden="true"><i></i></span><div><span class="stitle">Serve your first request</span><span class="ssub todo">Send your first inference request to Marbor.</span></div></button>
+<div class="sbar" role="progressbar" aria-label="Setup progress" aria-valuemin="0" aria-valuemax="5" aria-valuenow="4"><i></i></div>
 <div class="sfoot"><span>4/5</span></div>
 </div>
 <p class="shot-cap">The real setup checklist from your Marbor dashboard. Click a step to try it.</p></section>
 <section class="block" id="compare" data-reveal><p class="kicker">Why not a load balancer</p><h2>Load balancers guess. Marbor knows.</h2><p class="sub">TCP balancers see connections. Marbor sees deployments.</p>
-<div class="cmp"><table><thead><tr><th>Capability</th><th>Marbor</th><th>nginx / HAProxy / Traefik</th></tr></thead><tbody>
+<div class="cmp" tabindex="0" role="region" aria-label="Comparison table: scroll horizontally on small screens"><table><caption class="sr-only">Marbor versus plain load balancers across placement and safety capabilities</caption><thead><tr><th scope="col">Capability</th><th scope="col">Marbor</th><th scope="col">nginx / HAProxy / Traefik</th></tr></thead><tbody>
 <tr class="grp"><td colspan="3">Placement intelligence</td></tr>
 <tr><td>Model-aware routing</td><td class="y">Yes</td><td class="n">No</td></tr>
 <tr><td>Runtime compatibility checks</td><td class="y">Yes</td><td class="n">No</td></tr>
@@ -341,50 +384,62 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-off
 <div class="stack-note">What LiteLLM can't see from above: free VRAM per node, which runtime serves which model where, live load per GPU, which node already holds the model warm, whether a retry is stream-safe, which sessions must stay local, and which GPUs to prewarm or drain. That is the layer Marbor adds underneath.</div></section>
 <section class="block" id="faq" data-reveal><p class="kicker">FAQ</p><h2>What operators ask before installing.</h2><p class="sub">Short answers, no hype.</p>
 <div><div>
-<details open><summary>What is Marbor? <span>−</span></summary><p>Marbor is the control plane for self-hosted inference: a static binary on your gateway, with an optional marbor-agent on GPU nodes for live GPU telemetry. It places each request across Ollama, vLLM, TGI, llama.cpp, and MLX behind one OpenAI-compatible endpoint.</p></details>
-<details><summary>How is it different from nginx? <span>+</span></summary><p>Nginx routes connections blindly. Marbor reads live fleet state: model residency, runtime, VRAM, in-flight load, and health, and places each request where it can actually serve.</p></details>
-<details><summary>Does it do distributed inference (TP/PP/expert routing)? <span>+</span></summary><p>No, and it never claims to. Parallelism, sharding, and KV transport stay inside the runtime (e.g. vLLM). Marbor selects the right deployment and observes the result.</p></details>
-<details><summary>Can it replace cloud APIs? <span>+</span></summary><p>Marbor is designed to serve inference from your own GPUs first, with optional cloud overflow to OpenAI or Anthropic when local capacity is saturated, metered per token.</p></details>
+<details open><summary>What is Marbor? <span aria-hidden="true">−</span></summary><p>Marbor is the control plane for self-hosted inference: a static binary on your gateway, with an optional marbor-agent on GPU nodes for live GPU telemetry. It places each request across Ollama, vLLM, TGI, llama.cpp, and MLX behind one OpenAI-compatible endpoint.</p></details>
+<details><summary>How is it different from nginx? <span aria-hidden="true">+</span></summary><p>Nginx routes connections blindly. Marbor reads live fleet state: model residency, runtime, VRAM, in-flight load, and health, and places each request where it can actually serve.</p></details>
+<details><summary>Does it do distributed inference (TP/PP/expert routing)? <span aria-hidden="true">+</span></summary><p>No, and it never claims to. Parallelism, sharding, and KV transport stay inside the runtime (e.g. vLLM). Marbor selects the right deployment and observes the result.</p></details>
+<details><summary>Can it replace cloud APIs? <span aria-hidden="true">+</span></summary><p>Marbor is designed to serve inference from your own GPUs first, with optional cloud overflow to OpenAI or Anthropic when local capacity is saturated, metered per token.</p></details>
 <div id="faqMore" hidden>
-<details><summary>How does HA work? <span>+</span></summary><p>Unhealthy nodes are excluded automatically after consecutive failed polls; saturated queues spill to configured, metered cloud overflow or a 503. Marbor itself runs as a single process. For gateway redundancy, place two independent instances behind an L4 balancer; in-flight requests on a failed instance are lost.</p></details>
-<details><summary>Auth and limits? <span>+</span></summary><p>Bearer keys, per-key model allow-lists, daily/monthly quotas. Protect GPUs without app changes.</p></details>
-<details><summary>Does Marbor look at my prompts? <span>+</span></summary><p>No. Placement uses only the model name, session id, and request path. Prompt text is never parsed for routing, and KV data never moves between nodes.</p></details>
-<details><summary>What happens in a traffic burst? <span>+</span></summary><p>When the overflow queue is enabled and has room, bursts wait up to queue_timeout_ms (or your overflow SLA) for a slot, then try any configured local alternate, then spill to configured metered cloud or a 503.</p></details>
-<details><summary>What if a node dies mid-request? <span>+</span></summary><p>If nothing has streamed yet, the request retries on a healthy node. A stream in flight is never replayed.</p></details>
-<details><summary>Does Marbor learn my workload? <span>+</span></summary><p>Yes. Sequence and time-of-day patterns drive predictive prewarming (when size and headroom are known), pinned models are never evicted, and warm state is restored after restarts.</p></details>
-<details><summary>Can I see why a request landed where it did? <span>+</span></summary><p>Yes. Each locally-routed request records a routing explanation, reason plus score breakdown, viewable per request in the dashboard and via the requests explain API.</p></details>
+<details><summary>How does HA work? <span aria-hidden="true">+</span></summary><p>Unhealthy nodes are excluded automatically after consecutive failed polls; saturated queues spill to configured, metered cloud overflow or a 503. Marbor itself runs as a single process. For gateway redundancy, place two independent instances behind an L4 balancer; in-flight requests on a failed instance are lost.</p></details>
+<details><summary>Auth and limits? <span aria-hidden="true">+</span></summary><p>Bearer keys, per-key model allow-lists, daily/monthly quotas. Protect GPUs without app changes.</p></details>
+<details><summary>Does Marbor look at my prompts? <span aria-hidden="true">+</span></summary><p>No. Placement uses only the model name, session id, and request path. Prompt text is never parsed for routing, and KV data never moves between nodes.</p></details>
+<details><summary>What happens in a traffic burst? <span aria-hidden="true">+</span></summary><p>When the overflow queue is enabled and has room, bursts wait up to queue_timeout_ms (or your overflow SLA) for a slot, then try any configured local alternate, then spill to configured metered cloud or a 503.</p></details>
+<details><summary>What if a node dies mid-request? <span aria-hidden="true">+</span></summary><p>If nothing has streamed yet, the request retries on a healthy node. A stream in flight is never replayed.</p></details>
+<details><summary>Does Marbor learn my workload? <span aria-hidden="true">+</span></summary><p>Yes. Sequence and time-of-day patterns drive predictive prewarming (when size and headroom are known), pinned models are never evicted, and warm state is restored after restarts.</p></details>
+<details><summary>Can I see why a request landed where it did? <span aria-hidden="true">+</span></summary><p>Yes. Each locally-routed request records a routing explanation, reason plus score breakdown, viewable per request in the dashboard and via the requests explain API.</p></details>
 </div>
 <button type="button" class="faq-toggle" id="faqToggle" aria-expanded="false" aria-controls="faqMore">Show 7 more questions ↓</button>
 </div><div>
 <div class="cta-band"><div><h2>Find out what your fleet is actually doing.</h2><p>Install in one command. Point your OpenAI client at Marbor. Watch the first placed request.</p></div><div class="cta-act"><a class="btn btn-gold" href="#install">↓ Install Marbor</a><a class="docs-link" href="docs/">Read the docs →</a></div></div>
 </div></div></section>
 </div></main>
-<footer><div class="page foot-grid"><div><a class="brand" href="#" style="margin-bottom:10px"><span class="brand-chip"><svg width="22" height="22" viewBox="0 0 100 100" fill="none"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="#d4a853" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="#a87f3a"/></svg></span><span class="brand-name">Marbor</span></a><div>© <span id="yr">2026</span> Anirudh Mehandru · Apache-2.0</div></div><div class="foot-links"><a href="#install">Install</a><a href="#features">Features</a><a href="#how">How</a><a href="#compare">Compare</a><a href="docs/">Docs</a><a href="demo/">Demo</a><a href="https://github.com/Anirudhx7/marbor">GitHub</a></div></div></footer>
+<footer><div class="page foot-grid"><div><a class="brand" href="#main" aria-label="Marbor home" style="margin-bottom:10px"><span class="brand-chip" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 100 100" fill="none"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="currentColor" opacity=".65"/></svg></span><span class="brand-name">Marbor</span></a><div>© <span id="yr">2026</span> Anirudh Mehandru · Apache-2.0</div></div><div class="foot-links"><a href="#install">Install</a><a href="#features">Features</a><a href="#how">How</a><a href="#compare">Compare</a><a href="docs/">Docs</a><a href="demo/">Demo</a><a href="https://github.com/Anirudhx7/marbor">GitHub</a></div></div></footer>
 <script>
 (function(){/* Release version: single source, synced from latest git tag. Bump on release. Benchmark labels keep their measured version. */
 var MARBOR_VERSION='v0.20.0';document.querySelectorAll('[data-version]').forEach(function(el){el.textContent=MARBOR_VERSION;});
-var b=document.getElementById('themeBtn');if(b)b.addEventListener('click',function(){var h=document.documentElement;h.classList.toggle('light');try{localStorage.setItem('om-theme',h.classList.contains('light')?'light':'dark');}catch(e){}});
-var hb=document.getElementById('hamb'),mm=document.getElementById('mmenu');if(hb&&mm){function setMenu(o){mm.classList.toggle('open',o);hb.setAttribute('aria-expanded',o?'true':'false');hb.textContent=o?'✕':'☰';}hb.addEventListener('click',function(){setMenu(!mm.classList.contains('open'));});mm.querySelectorAll('a').forEach(function(a){a.addEventListener('click',function(){setMenu(false);});});document.addEventListener('keydown',function(ev){if(ev.key==='Escape')setMenu(false);});window.addEventListener('resize',function(){if(window.innerWidth>640)setMenu(false);});}
-var c=document.getElementById('copyBtn'),cmd=document.getElementById('cmd');if(c&&cmd)c.addEventListener('click',function(){var t=cmd.textContent;function done(){c.textContent='Copied';setTimeout(function(){c.textContent='Copy';},1400);}if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(done,function(){fallback();});}else{fallback();}function fallback(){try{var ta=document.createElement('textarea');ta.value=t;ta.setAttribute('readonly','');ta.style.position='absolute';ta.style.left='-9999px';document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);done();}catch(e){}}});
+var b=document.getElementById('themeBtn');function syncThemeBtn(){if(!b)return;var light=document.documentElement.classList.contains('light');b.setAttribute('aria-pressed',light?'true':'false');b.textContent=light?'☀':'◐';syncMetaTheme();}function syncMetaTheme(){try{var cs=getComputedStyle(document.documentElement);var m=document.querySelector('meta[name="theme-color"]');if(m){var bg=cs.getPropertyValue('--bg').trim();if(bg)m.setAttribute('content',bg);}}catch(e){}}if(b)b.addEventListener('click',function(){var h=document.documentElement;h.classList.toggle('light');try{localStorage.setItem('marbor-theme',h.classList.contains('light')?'light':'dark');}catch(e){}syncThemeBtn();});syncThemeBtn();
+var hb=document.getElementById('hamb'),mm=document.getElementById('mmenu');if(hb&&mm){function setMenu(o){mm.classList.toggle('open',o);hb.setAttribute('aria-expanded',o?'true':'false');hb.textContent=o?'✕':'☰';}hb.addEventListener('click',function(){setMenu(!mm.classList.contains('open'));});mm.querySelectorAll('a').forEach(function(a){a.addEventListener('click',function(){setMenu(false);hb.focus();});});document.addEventListener('keydown',function(ev){if(ev.key==='Escape'&&mm.classList.contains('open')){setMenu(false);hb.focus();}});window.addEventListener('resize',function(){if(window.innerWidth>640)setMenu(false);});}
+var c=document.getElementById('copyBtn'),cmd=document.getElementById('cmd');if(c&&cmd)c.addEventListener('click',function(){var t=cmd.textContent;var resetT=null;function say(s){c.textContent=s;try{c.setAttribute('aria-label',s==='Copy'?'Copy install command':'Install command '+s.toLowerCase());}catch(e){}}function done(){say('Copied');if(resetT)clearTimeout(resetT);resetT=setTimeout(function(){say('Copy');},1400);}function fail(){say('Failed');if(resetT)clearTimeout(resetT);resetT=setTimeout(function(){say('Copy');},1400);}if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(done,function(){fallback();});}else{fallback();}function fallback(){try{var ta=document.createElement('textarea');ta.value=t;ta.setAttribute('readonly','');ta.style.cssText='position:fixed;top:0;left:0;opacity:0;font-size:16px;';document.body.appendChild(ta);ta.select();var ok=false;try{ok=document.execCommand('copy');}catch(e){ok=false;}document.body.removeChild(ta);if(ok)done();else fail();}catch(e){fail();}}});
 var y=document.getElementById('yr');if(y)y.textContent=new Date().getFullYear();
 var io;try{io=new IntersectionObserver(function(es){es.forEach(function(e){if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}});},{threshold:.12});document.querySelectorAll('[data-reveal]').forEach(function(el){io.observe(el);});}catch(e){document.querySelectorAll('[data-reveal]').forEach(function(el){el.classList.add('in');});}
 var sigs=document.getElementById('sigs'),nodes=document.getElementById('nodes');
-if(sigs&&nodes){sigs.addEventListener('click',function(ev){var b=ev.target.closest('.chip');if(!b)return;b.classList.toggle('on');var active=Array.from(sigs.querySelectorAll('.chip.on')).map(function(x){return x.getAttribute('data-f');});var cards=nodes.querySelectorAll('.node');cards.forEach(function(n){var tags=(n.getAttribute('data-tags')||'').split(' ');var ok=active.every(function(a){return tags.indexOf(a)>-1;});n.classList.toggle('dim',!ok);});});}
+if(sigs&&nodes){var decCode=document.querySelector('.decision code');var decDefault=decCode?decCode.textContent:'';sigs.addEventListener('click',function(ev){var b=ev.target.closest('.chip');if(!b)return;b.classList.toggle('on');var on=b.classList.contains('on');b.setAttribute('aria-pressed',on?'true':'false');var active=Array.from(sigs.querySelectorAll('.chip.on')).map(function(x){return x.getAttribute('data-f');});var cards=nodes.querySelectorAll('.node');var dimmed=0;cards.forEach(function(n){var tags=(n.getAttribute('data-tags')||'').split(' ');var ok=active.length===0?true:active.some(function(a){return tags.indexOf(a)>-1;});n.classList.toggle('dim',!ok);if(!ok)dimmed++;});if(decCode){decCode.textContent=active.length===0?'showing all nodes · select a signal to filter':(dimmed>0?('filtered view · '+active.join(' + ')+' · '+dimmed+' dimmed'):decDefault);}});}
 document.querySelectorAll('details').forEach(function(d){d.addEventListener('toggle',function(){var s=d.querySelector('summary span');if(s)s.textContent=d.open?'−':'+';});});
 var faqT=document.getElementById('faqToggle'),faqM=document.getElementById('faqMore');
 if(faqT&&faqM){faqT.addEventListener('click',function(){var open=faqM.hidden;faqM.hidden=!open;faqT.setAttribute('aria-expanded',open?'true':'false');faqT.textContent=open?'Show fewer ↑':'Show 7 more questions ↓';});}
 var setup=document.querySelector('.setup');
-if(setup){var rows=Array.prototype.slice.call(setup.querySelectorAll('.srow'));var countEls=setup.querySelectorAll('.setup-count,.sfoot span');var bar=setup.querySelector('.sbar i');
-function paintSetup(){var done=rows.filter(function(r){return r.getAttribute('aria-pressed')==='true';}).length;countEls.forEach(function(el){el.textContent=done+'/5';});if(bar)bar.style.width=(done/5*100)+'%';}
+if(setup){var rows=Array.prototype.slice.call(setup.querySelectorAll('.srow'));var countEls=setup.querySelectorAll('.setup-count,.sfoot span');var bar=setup.querySelector('.sbar i');var sbarBox=setup.querySelector('.sbar');
+function paintSetup(){var done=rows.filter(function(r){return r.getAttribute('aria-pressed')==='true';}).length;var total=rows.length||1;countEls.forEach(function(el){el.textContent=done+'/'+total;});if(bar)bar.style.width=(done/total*100)+'%';if(sbarBox){sbarBox.setAttribute('aria-valuenow',String(done));sbarBox.setAttribute('aria-valuemax',String(total));sbarBox.setAttribute('aria-label','Setup progress: '+done+' of '+total+' steps complete');}}
 rows.forEach(function(r){function flip(){var on=r.getAttribute('aria-pressed')==='true';r.setAttribute('aria-pressed',on?'false':'true');var check=r.querySelector('.scheck'),sub=r.querySelector('.ssub');if(check){check.classList.toggle('done',!on);check.classList.toggle('todo',on);check.innerHTML=!on?'✓':'<i></i>';}if(sub){sub.textContent=!on?r.getAttribute('data-done'):r.getAttribute('data-pending');sub.classList.toggle('done',!on);sub.classList.toggle('todo',on);}paintSetup();}
-r.addEventListener('click',flip);r.addEventListener('keydown',function(ev){if(ev.key===' '||ev.key==='Enter'){ev.preventDefault();flip();}});});paintSetup();}
+r.addEventListener('click',flip);});paintSetup();}
 var nv=document.querySelector('.nav');
-if(nv){var tick=false;function onScroll(){if(tick)return;tick=true;requestAnimationFrame(function(){nv.classList.toggle('scrolled',window.scrollY>120);tick=false;});}window.addEventListener('scroll',onScroll,{passive:true});nv.classList.toggle('scrolled',window.scrollY>120);}
-document.documentElement.style.scrollBehavior='auto';
-var reduceMotion=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-document.querySelectorAll('a[href^="#"]').forEach(function(a){var id=a.getAttribute('href');if(!id)return;var t=id.length<2?document.body:document.querySelector(id);if(!t)return;a.addEventListener('click',function(ev){ev.preventDefault();var mm=document.getElementById('mmenu');if(mm)mm.classList.remove('open');var hb2=document.getElementById('hamb');if(hb2){hb2.setAttribute('aria-expanded','false');hb2.textContent='☰';}var y=(id.length<2||id==='#install')?0:t.getBoundingClientRect().top+window.scrollY-76;function flashInstall(){if(id==='#install'){var ib=document.getElementById('install');if(ib){ib.classList.remove('flash');void ib.offsetWidth;ib.classList.add('flash');setTimeout(function(){ib.classList.remove('flash');},3400);}}}function focusTarget(){if(t!==document.body&&t.setAttribute){try{t.setAttribute('tabindex','-1');t.focus({preventScroll:true});}catch(e){}}}if(reduceMotion){window.scrollTo(0,y);flashInstall();focusTarget();return;}var from=window.scrollY,d=y-from;if(Math.abs(d)<4){flashInstall();return;}var start=null,dur=window.innerWidth<=640?600:1100;function step(ts){if(!start)start=ts;var p=Math.min((ts-start)/dur,1);var e=p<.5?16*p*p*p*p*p:1-Math.pow(-2*p+2,5)/2;window.scrollTo(0,from+d*e);if(p<1){requestAnimationFrame(step);}else{flashInstall();focusTarget();}}requestAnimationFrame(step);});});
-/* cross-page footer links land here via native jump: keep the CTA's highlight cue + re-assert offset after fonts settle */
-try{if(location.hash){var ht0=document.querySelector(location.hash);if(ht0){if(location.hash==='#install'){var ib0=document.getElementById('install');ib0.classList.add('flash');setTimeout(function(){ib0.classList.remove('flash');},3400);}var fix0=function(){var tn=ht0.style.transition;ht0.style.transition='none';if(ht0.hasAttribute('data-reveal'))ht0.classList.add('in');var y=ht0.getBoundingClientRect().top+window.scrollY-88;ht0.style.transition=tn;if(Math.abs(window.scrollY-y)>2)window.scrollTo(0,y);};if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){setTimeout(fix0,60);});}window.addEventListener('load',function(){setTimeout(fix0,120);});}}}catch(e){}
+if(nv){var tick=false;function paintNav(){nv.classList.toggle('scrolled',window.scrollY>120);}function onScroll(){if(tick)return;tick=true;requestAnimationFrame(function(){paintNav();tick=false;});}window.addEventListener('scroll',onScroll,{passive:true});paintNav();var navInner=nv.querySelector('.nav-inner');try{nv.style.transition='none';if(navInner)navInner.style.transition='none';}catch(e){}function enableNavTrans(){try{nv.style.transition='';if(navInner)navInner.style.transition='';}catch(e){}}window.addEventListener('load',function(){setTimeout(function(){paintNav();enableNavTrans();},80);});setTimeout(enableNavTrans,2500);}
+var reduceMQ=window.matchMedia?window.matchMedia('(prefers-reduced-motion: reduce)'):null;
+function reduceMotionOn(){return !!(reduceMQ&&reduceMQ.matches);}
+if(!reduceMotionOn()){try{document.documentElement.style.scrollBehavior='auto';}catch(e){}}
+var NAV_OFFSET=88;
+function easeCubic(p){return p<.5?4*p*p*p:1-Math.pow(-2*p+2,3)/2;}
+/* Shared 0.9s easeInOutCubic glide. Same-page nav/footer clicks and cross-page
+   fragment arrivals both run through here so they feel identical. Isolated in
+   try/catch so no unrelated failure above can ever unbind it. CSS
+   html{scroll-behavior:smooth} remains as the no-JS fallback. */
+function smoothTo(y,onDone){onDone=onDone||function(){};if(reduceMotionOn()){try{window.scrollTo(0,y);}catch(e){}onDone();return;}var from=window.scrollY,d=y-from;if(Math.abs(d)<4){onDone();return;}var start=null,dur=900;function step(ts){if(!start)start=ts;var p=Math.min((ts-start)/dur,1);try{window.scrollTo(0,from+d*easeCubic(p));}catch(e){try{window.scrollTo(0,y);}catch(e2){}onDone();return;}if(p<1){requestAnimationFrame(step);}else{onDone();}}requestAnimationFrame(step);}
+function targetFor(id,t){return (id.length<2||id==='#install')?0:t.getBoundingClientRect().top+window.scrollY-NAV_OFFSET;}
+try{document.querySelectorAll('a[href^="#"]').forEach(function(a){var id=a.getAttribute('href');if(!id)return;var t=id.length<2?document.body:document.querySelector(id);if(!t)return;a.addEventListener('click',function(ev){ev.preventDefault();try{var mm=document.getElementById('mmenu');if(mm)mm.classList.remove('open');var hb2=document.getElementById('hamb');if(hb2){hb2.setAttribute('aria-expanded','false');hb2.textContent='☰';}}catch(e){}var y=targetFor(id,t);var flashT=null;function flashInstall(){if(id==='#install'){var ib=document.getElementById('install');if(ib){ib.classList.remove('flash');void ib.offsetWidth;ib.classList.add('flash');if(flashT)clearTimeout(flashT);flashT=setTimeout(function(){ib.classList.remove('flash');},3400);}}}function focusTarget(){if(t!==document.body&&t.setAttribute){try{if(!t.hasAttribute('data-had-tab')){if(t.hasAttribute('tabindex'))t.setAttribute('data-had-tab','1');}t.setAttribute('tabindex','-1');t.focus({preventScroll:true});t.addEventListener('blur',function cleanup(){if(!t.hasAttribute('data-had-tab'))t.removeAttribute('tabindex');t.removeEventListener('blur',cleanup);});}catch(e){}}}smoothTo(y,function(){flashInstall();focusTarget();});});});}catch(e){}
+/* Cross-page arrivals (docs nav/footer links, shared URLs, new tabs): hold the top,
+   then glide to the fragment with the same easing as same-page clicks instead of
+   appearing there instantly. scrollRestoration is set to manual only for hashed
+   arrivals so plain back/forward restoration keeps working. */
+try{if(location.hash){var ht0=document.querySelector(location.hash);if(ht0){var hashId=location.hash;try{history.scrollRestoration='manual';}catch(e){}try{window.scrollTo(0,0);}catch(e){}if(ht0.hasAttribute('data-reveal'))ht0.classList.add('in');var arrived=false;var arrive=function(){if(arrived)return;arrived=true;if(ht0.hasAttribute('data-reveal'))ht0.classList.add('in');var y=targetFor(hashId,ht0);smoothTo(y,function(){if(hashId==='#install'){var ib=document.getElementById('install');if(ib){ib.classList.remove('flash');void ib.offsetWidth;ib.classList.add('flash');setTimeout(function(){ib.classList.remove('flash');},3400);}}try{ht0.setAttribute('tabindex','-1');ht0.focus({preventScroll:true});}catch(e){}});};if(document.fonts&&document.fonts.ready){document.fonts.ready.then(function(){setTimeout(arrive,80);});}window.addEventListener('load',function(){setTimeout(arrive,140);});setTimeout(arrive,2500);}}}catch(e){}
 })();
 </script>
 </body>

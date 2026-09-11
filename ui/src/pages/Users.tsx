@@ -5,6 +5,7 @@ import { listUsers, createUser, approveUser, suspendUser, deleteUser, resetUserP
 import type { UserRecord, APIKey, ModelCatalog } from '../types';
 import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
+import { EmptyState } from '../components/EmptyState';
 import { CustomSelect } from '../components/Select';
 import { currentAppPath } from '../hooks/useDemoMode';
 import { useTimezone } from '../hooks/useTimezone';
@@ -504,9 +505,9 @@ export function Users() {
         {loading ? (
           <div className="p-8 text-center text-sm text-muted-foreground">Loading...</div>
         ) : users.length === 0 ? (
-          <div className="p-8 text-center text-sm text-muted-foreground">No users yet.</div>
+          <div className="px-8 pb-8"><EmptyState compact icon={UsersIcon} title="No users yet" copy="Operator accounts you create will be listed here." /></div>
         ) : (
-          <div className="hidden md:block overflow-x-auto">
+          <div className="hidden md:block overflow-x-auto scroll-region" tabIndex={0} role="region" aria-label="Users table: scroll horizontally for more columns">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-secondary/30">
