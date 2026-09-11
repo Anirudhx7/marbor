@@ -1,4 +1,4 @@
-# Cost Deflection Analysis: Local GPU Inference vs. Cloud API Spend
+# Cost Deflection: GPU vs Cloud API Spend
 
 This document is the financial model behind marbor's savings tracking. It is designed for infrastructure directors and finance teams evaluating the ROI of shifting LLM inference from third-party cloud APIs to owned GPU hardware routed through marbor.
 

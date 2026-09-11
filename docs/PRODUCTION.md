@@ -1,6 +1,6 @@
 # Production Deployment Guide
 
-This guide covers running marbor in a real production environment. There is no config file - marbor is DB-first (`marbor.db`, SQLite). Point it at a persistent path with `--db` (or `MARBOR_DB_PATH`), boot it once, and configure nodes/keys/routing/everything else through the admin dashboard or the `/admin/v1/...` REST API (see the [Configuration section of the README](../README.md#configuration)).
+This guide covers running marbor in a real production environment. There is no config file - marbor is DB-first (`marbor.db`, SQLite). Point it at a persistent path with `--db` (or `MARBOR_DB_PATH`), boot it once, and configure nodes/keys/routing/everything else through the admin dashboard or the `/admin/v1/...` REST API (see the [Configuration section of the README](https://github.com/Anirudhx7/marbor/blob/main/README.md#configuration)).
 
 ---
 

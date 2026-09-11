@@ -178,8 +178,28 @@ function excerpt(s, n) {
 
 // Shared footer - identical to the landing page footer (paths relative via r).
 function siteFooter(r) {
-  return `<footer><div class="page foot-grid"><div>${BRAND_HTML(r)}<div style="margin-top:10px">© <span class="yr">2026</span> Anirudh Mehandru · Apache-2.0</div></div><div class="foot-links"><a href="${r}index.html#install">Install</a><a href="${r}index.html#features">Features</a><a href="${r}index.html#how">How</a><a href="${r}index.html#compare">Compare</a><a href="${r}docs/index.html">Docs</a><a href="https://marbor.in/demo/" target="_blank" rel="noopener">Demo</a><a href="https://github.com/Anirudhx7/marbor" target="_blank" rel="noopener">GitHub</a></div></div></footer>`;
+  return `<footer><div class="page foot-grid"><div>${BRAND_HTML(r)}<div style="margin-top:10px">© <span class="yr">2026</span> Anirudh Mehandru · Apache-2.0</div></div><div class="foot-links"><a href="${r}index.html#install">Install</a><a href="${r}index.html#features">Features</a><a href="${r}index.html#how">How</a><a href="${r}index.html#compare">Compare</a><a href="${r}docs/index.html">Docs</a><a href="https://marbor.in/demo/" target="_blank" rel="noopener">Demo</a><a href="https://github.com/Anirudhx7/marbor" target="_blank" rel="noopener">GitHub</a><a href="${r}llms.txt">llms.txt</a></div></div></footer>`;
 }
+
+// Per-page meta descriptions (70-160 chars, unique, written for search snippets -
+// the old fallback template "Marbor documentation: {title}." was too short and
+// non-descriptive on every page; see .local/ai-audits SEO review).
+const DESCRIPTIONS = {
+  "INTEGRATIONS": "How marbor exposes Ollama's OpenAI-compatible API on port 11434, so existing tools and SDKs connect with zero code changes.",
+  "LIMITATIONS": "What marbor does not yet do, what has been validated against real hardware, and what to plan around before production.",
+  "SAVINGS-MATH": "The financial model behind marbor's savings tracking: how local GPU inference costs are measured against cloud API spend.",
+  "USE-CASES": "Real-world use cases for marbor: secure multi-tenant access, hardware-aware load balancing, and fleet-wide GPU utilization.",
+  "backup": "How to back up and restore marbor's SQLite database, which holds every node, API key, routing rule, and warm-state record.",
+  "PRODUCTION": "Deploy marbor in production: no config file, SQLite-backed DB-first setup, and how to configure nodes, keys, and routing via the admin API.",
+  "deploy/aws-ec2": "Deploy one marbor endpoint in front of one or more Ollama GPU instances on AWS EC2, step by step.",
+  "deploy/gpu-node-registration": "Register many GPU nodes' runtime endpoints with marbor in one pass, without clicking through the admin dashboard for each one.",
+  "deploy/marbor-agent-enrollment": "Enroll and install the marbor agent on many already-registered GPU nodes at once, via Ansible or any script of your choice.",
+  "integrations/continue": "Connect Continue, the open-source AI coding assistant, to marbor for warm-first routing across your GPU fleet.",
+  "integrations/librechat": "Point LibreChat's custom Ollama endpoint at marbor for warm-first routing and fleet-aware GPU placement.",
+  "integrations/litellm": "Use LiteLLM as a provider-abstraction gateway in front of marbor for enterprise auth and per-user rate limits.",
+  "integrations/open-webui": "Connect Open WebUI to marbor instead of a single Ollama box for warm-first routing across every GPU node.",
+  "cli": "Full reference for the marbor CLI, generated directly from the command registry so it never drifts from the real commands.",
+};
 
 // All docs in nav order, grouped.
 const DOC_GROUPS = [
@@ -258,6 +278,7 @@ const DOC_CSS = readFileSync(join(__dirname, "docs.css"), "utf8");
 
 function page({ slug, title, contentHtml, headings }) {
   const r = relRoot(slug);
+  const description = DESCRIPTIONS[slug] || `Marbor documentation: ${title}.`;
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -269,12 +290,13 @@ function page({ slug, title, contentHtml, headings }) {
   (function () { try { var s = localStorage.getItem("marbor-theme")||localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
 </script>
 <title>${escapeHtml(title)} · Marbor docs</title>
-<meta name="description" content="Marbor documentation: ${escapeHtml(title)}." />
+<meta name="description" content="${escapeAttr(description)}" />
+<link rel="canonical" href="https://marbor.in/docs/${slug}.html" />
 <link rel="icon" type="image/svg+xml" href="${r}favicon.svg" />
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="Marbor" />
 <meta property="og:title" content="${escapeHtml(title)} · Marbor docs" />
-<meta property="og:description" content="Marbor documentation: ${escapeHtml(title)}." />
+<meta property="og:description" content="${escapeAttr(description)}" />
 <meta property="og:image" content="https://marbor.in/screenshots/dashboard.png" />
 <meta property="og:image:alt" content="marbor admin dashboard" />
 <meta name="twitter:card" content="summary_large_image" />
@@ -358,6 +380,7 @@ function docsIndexPage() {
 </script>
 <title>Documentation · Marbor</title>
 <meta name="description" content="Marbor documentation -- integrations, production deployment, savings math, and use cases." />
+<link rel="canonical" href="https://marbor.in/docs/" />
 <link rel="icon" type="image/svg+xml" href="${r}favicon.svg" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -389,7 +412,7 @@ ${DOC_GROUPS.map((g) => `
 <div class="doc-main">
   ${DOC_GROUPS.map((g) => `
     <section class="doc-card" data-reveal>
-      <div class="doc-card-head"><span class="t">${g.title} · <b>${g.items.length} page${g.items.length === 1 ? "" : "s"}</b></span></div>
+      <div class="doc-card-head"><h2 class="t">${g.title} · <b>${g.items.length} page${g.items.length === 1 ? "" : "s"}</b></h2></div>
       <div class="doc-card-body"><div class="index-grid">
         ${g.items.map((it) => {
           const md = readFileSync(join(DOCS_SRC, it.slug + ".md"), "utf8");
@@ -398,7 +421,7 @@ ${DOC_GROUPS.map((g) => `
       }).join("")}
       </div></div>
     </section>`).join("")}
-  <div class="cta-band" data-reveal><div><h2>Find out what your fleet is actually doing.</h2><p>Install in one command. Point your OpenAI client at Marbor. Watch the first placed request.</p></div><div class="cta-act"><a class="btn btn-gold" href="${r}index.html#install">↓ Install Marbor</a><a class="docs-link" href="${r}index.html#features">Explore features →</a></div></div>
+  <div class="cta-band" data-reveal><div><h3>Find out what your fleet is actually doing.</h3><p>Install in one command. Point your OpenAI client at Marbor. Watch the first placed request.</p></div><div class="cta-act"><a class="btn btn-gold" href="${r}index.html#install">↓ Install Marbor</a><a class="docs-link" href="${r}index.html#features">Explore features →</a></div></div>
 </div>
 </div>
 </main>

@@ -8,17 +8,18 @@
 <script>
   (function () { try { var s = localStorage.getItem("marbor-theme")||localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
 </script>
-<title>marbor agent enrollment (Ansible or any script) · Marbor docs</title>
-<meta name="description" content="Marbor documentation: marbor agent enrollment (Ansible or any script)." />
+<title>marbor agent enrollment · Marbor docs</title>
+<meta name="description" content="Enroll and install the marbor agent on many already-registered GPU nodes at once, via Ansible or any script of your choice." />
+<link rel="canonical" href="https://marbor.in/docs/deploy/marbor-agent-enrollment.html" />
 <link rel="icon" type="image/svg+xml" href="../../favicon.svg" />
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="Marbor" />
-<meta property="og:title" content="marbor agent enrollment (Ansible or any script) · Marbor docs" />
-<meta property="og:description" content="Marbor documentation: marbor agent enrollment (Ansible or any script)." />
+<meta property="og:title" content="marbor agent enrollment · Marbor docs" />
+<meta property="og:description" content="Enroll and install the marbor agent on many already-registered GPU nodes at once, via Ansible or any script of your choice." />
 <meta property="og:image" content="https://marbor.in/screenshots/dashboard.png" />
 <meta property="og:image:alt" content="marbor admin dashboard" />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="marbor agent enrollment (Ansible or any script) · Marbor docs" />
+<meta name="twitter:title" content="marbor agent enrollment · Marbor docs" />
 <meta name="twitter:image" content="https://marbor.in/screenshots/dashboard.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -272,8 +273,8 @@ section,#install{scroll-margin-top:96px}
 
   <main class="doc-main" id="main">
     <article class="doc-content doc-card"><div class="doc-card-body">
-      <nav class="breadcrumb" aria-label="Breadcrumb"><ol><li><a href="../../index.html">Home</a></li><li aria-hidden="true"><span class="sep">/</span></li><li><a href="../../docs/index.html">Docs</a></li><li aria-hidden="true"><span class="sep">/</span></li><li><span>deploy</span></li><li aria-hidden="true"><span class="sep">/</span></li><li><span class="current" aria-current="page">marbor agent enrollment (Ansible or any script)</span></li></ol></nav>
-      <h1 id="marbor-agent-enrollment-ansible-or-any-script">marbor agent enrollment (Ansible or any script)<a class="anchor" href="#marbor-agent-enrollment-ansible-or-any-script" aria-label="Link to section">#</a></h1>
+      <nav class="breadcrumb" aria-label="Breadcrumb"><ol><li><a href="../../index.html">Home</a></li><li aria-hidden="true"><span class="sep">/</span></li><li><a href="../../docs/index.html">Docs</a></li><li aria-hidden="true"><span class="sep">/</span></li><li><span>deploy</span></li><li aria-hidden="true"><span class="sep">/</span></li><li><span class="current" aria-current="page">marbor agent enrollment</span></li></ol></nav>
+      <h1 id="marbor-agent-enrollment">marbor agent enrollment<a class="anchor" href="#marbor-agent-enrollment" aria-label="Link to section">#</a></h1>
 <p>Enroll and install the marbor agent on many already-registered GPU nodes at once, without clicking through the dashboard per node. Every step below is a plain REST call against the Admin API - the GPU Nodes dashboard page is a thin wrapper over the same endpoints, so anything the UI can do, a script with an authenticated admin session can do identically.</p>
 <p>A node must already be registered before its agent can be enrolled - see <a href="gpu-node-registration.html">GPU node registration</a> for that separate, first step.</p>
 <h2 id="authenticating-a-script">Authenticating a script<a class="anchor" href="#authenticating-a-script" aria-label="Link to section">#</a></h2>
@@ -413,7 +414,7 @@ done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2
   </aside></div>
 </div>
 
-<footer><div class="page foot-grid"><div><a href="../../index.html" class="brand" aria-label="Marbor home"><span class="brand-chip" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 100 100" fill="none"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="currentColor" opacity=".65"/></svg></span><span class="brand-name">Marbor</span><span class="brand-ver">{{VERSION}}</span></a><div style="margin-top:10px">© <span class="yr">2026</span> Anirudh Mehandru · Apache-2.0</div></div><div class="foot-links"><a href="../../index.html#install">Install</a><a href="../../index.html#features">Features</a><a href="../../index.html#how">How</a><a href="../../index.html#compare">Compare</a><a href="../../docs/index.html">Docs</a><a href="https://marbor.in/demo/" target="_blank" rel="noopener">Demo</a><a href="https://github.com/Anirudhx7/marbor" target="_blank" rel="noopener">GitHub</a></div></div></footer>
+<footer><div class="page foot-grid"><div><a href="../../index.html" class="brand" aria-label="Marbor home"><span class="brand-chip" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 100 100" fill="none"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="currentColor" opacity=".65"/></svg></span><span class="brand-name">Marbor</span><span class="brand-ver">{{VERSION}}</span></a><div style="margin-top:10px">© <span class="yr">2026</span> Anirudh Mehandru · Apache-2.0</div></div><div class="foot-links"><a href="../../index.html#install">Install</a><a href="../../index.html#features">Features</a><a href="../../index.html#how">How</a><a href="../../index.html#compare">Compare</a><a href="../../docs/index.html">Docs</a><a href="https://marbor.in/demo/" target="_blank" rel="noopener">Demo</a><a href="https://github.com/Anirudhx7/marbor" target="_blank" rel="noopener">GitHub</a><a href="../../llms.txt">llms.txt</a></div></div></footer>
 
 <script>
 (function(){var b=document.getElementById('themeBtn');function syncT(){if(!b)return;var l=document.documentElement.classList.contains('light');b.setAttribute('aria-pressed',l?'true':'false');b.textContent=l?'☀':'◐';syncMetaTheme();}function syncMetaTheme(){try{var cs=getComputedStyle(document.documentElement);var m=document.querySelector('meta[name="theme-color"]');if(m){var bg=cs.getPropertyValue('--bg').trim();if(bg)m.setAttribute('content',bg);}}catch(e){}}if(b)b.addEventListener('click',function(){var h=document.documentElement;h.classList.toggle('light');try{localStorage.setItem('marbor-theme',h.classList.contains('light')?'light':'dark');}catch(e){}syncT();});syncT();
