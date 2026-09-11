@@ -188,7 +188,7 @@ const DESCRIPTIONS = {
   "INTEGRATIONS": "How marbor exposes Ollama's OpenAI-compatible API on port 11434, so existing tools and SDKs connect with zero code changes.",
   "LIMITATIONS": "What marbor does not yet do, what has been validated against real hardware, and what to plan around before production.",
   "SAVINGS-MATH": "The financial model behind marbor's savings tracking: how local GPU inference costs are measured against cloud API spend.",
-  "USE-CASES": "Real-world use cases for marbor: secure multi-tenant access, hardware-aware load balancing, and fleet-wide GPU utilization.",
+  "USE-CASES": "Looking for an Ollama alternative for a multi-GPU fleet? Compare marbor's warm-aware routing, LiteLLM fit, and real use cases for secure multi-tenant access.",
   "backup": "How to back up and restore marbor's SQLite database, which holds every node, API key, routing rule, and warm-state record.",
   "PRODUCTION": "Deploy marbor in production: no config file, SQLite-backed DB-first setup, and how to configure nodes, keys, and routing via the admin API.",
   "deploy/aws-ec2": "Deploy one marbor endpoint in front of one or more Ollama GPU instances on AWS EC2, step by step.",
@@ -207,7 +207,7 @@ const DOC_GROUPS = [
     { slug: "INTEGRATIONS", label: "Integrations" },
     { slug: "LIMITATIONS", label: "Known limitations" },
     { slug: "SAVINGS-MATH", label: "Savings math" },
-    { slug: "USE-CASES", label: "Use cases" },
+    { slug: "USE-CASES", label: "Ollama alternatives & use cases" },
     { slug: "backup", label: "Backup & Restore" },
   ]},
   { title: "Deployment", items: [

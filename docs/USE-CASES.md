@@ -1,10 +1,23 @@
-# Who is marbor for?
+# Ollama Alternatives: Who Is marbor For?
 
-The infrastructure control plane Ollama doesn't ship: secure multi-tenant access, hardware-aware load balancing, cost-aware cloud overflow, and real-time GPU telemetry -- plus a marbor agent for remote telemetry, model operations, and node-side maintenance.
+Looking for an alternative to Ollama once you outgrow a single GPU box? marbor is the infrastructure control plane Ollama doesn't ship: secure multi-tenant access, hardware-aware load balancing, cost-aware cloud overflow, and real-time GPU telemetry -- plus a marbor agent for remote telemetry, model operations, and node-side maintenance.
 
 You point your apps at marbor instead of Ollama directly. Everything else stays the same: it speaks the Ollama API (and passes through Ollama's OpenAI-compatible `/v1` endpoints), so existing clients work unchanged.
 
 Where the marbor agent is installed on remote GPU hosts, marbor can surface richer live telemetry, perform node-side operations, and support maintenance workflows without changing the client-side API. Where it isn't installed, the core router still works and falls back to the best available telemetry.
+
+---
+
+## Where marbor fits among Ollama alternatives
+
+"Ollama alternative" covers a few different categories of tool, depending on what you actually need:
+
+- **Desktop chat UIs** (LM Studio, GPT4All, Jan): a friendlier front end for running one model on one machine. Good fit for a single user on a laptop or workstation - not built for a fleet of GPU nodes or multiple concurrent users.
+- **Bare inference servers** (vLLM, TGI, llama.cpp server): faster or more configurable serving of a single model on a single node than Ollama, but no cross-node routing, auth, or fleet visibility on their own.
+- **API gateways** (LiteLLM, Bifrost, Portkey): sit in front of multiple providers/models and handle developer auth, unified schemas, and rate limits - but they don't do hardware-aware scheduling across your own GPU nodes.
+- **marbor**: not a replacement for Ollama itself (it speaks Ollama's API and often runs alongside it on each node) and not a gateway - it's the control plane in between: warm-aware routing across N GPU nodes, VRAM-aware placement, cost-aware cloud overflow, and fleet operations, for the point where a single Ollama box or a hand-rolled nginx setup stops being enough.
+
+If you're a single user on one box, a desktop UI or plain Ollama is the right call - see "Who should NOT use this" below. If you're past that point, keep reading.
 
 ---
 

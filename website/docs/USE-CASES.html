@@ -8,18 +8,18 @@
 <script>
   (function () { try { var s = localStorage.getItem("marbor-theme")||localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
 </script>
-<title>Who is marbor for? · Marbor docs</title>
-<meta name="description" content="Real-world use cases for marbor: secure multi-tenant access, hardware-aware load balancing, and fleet-wide GPU utilization." />
+<title>Ollama Alternatives: Who Is marbor For? · Marbor docs</title>
+<meta name="description" content="Looking for an Ollama alternative for a multi-GPU fleet? Compare marbor's warm-aware routing, LiteLLM fit, and real use cases for secure multi-tenant access." />
 <link rel="canonical" href="https://marbor.in/docs/USE-CASES.html" />
 <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="Marbor" />
-<meta property="og:title" content="Who is marbor for? · Marbor docs" />
-<meta property="og:description" content="Real-world use cases for marbor: secure multi-tenant access, hardware-aware load balancing, and fleet-wide GPU utilization." />
+<meta property="og:title" content="Ollama Alternatives: Who Is marbor For? · Marbor docs" />
+<meta property="og:description" content="Looking for an Ollama alternative for a multi-GPU fleet? Compare marbor's warm-aware routing, LiteLLM fit, and real use cases for secure multi-tenant access." />
 <meta property="og:image" content="https://marbor.in/screenshots/dashboard.png" />
 <meta property="og:image:alt" content="marbor admin dashboard" />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="Who is marbor for? · Marbor docs" />
+<meta name="twitter:title" content="Ollama Alternatives: Who Is marbor For? · Marbor docs" />
 <meta name="twitter:image" content="https://marbor.in/screenshots/dashboard.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -254,7 +254,7 @@ section,#install{scroll-margin-top:96px}
     
     <div class="nav-group">
       <div class="nav-group-title">Guides</div>
-      <a class="doc-nav-link" href="../docs/INTEGRATIONS.html">Integrations</a><a class="doc-nav-link" href="../docs/LIMITATIONS.html">Known limitations</a><a class="doc-nav-link" href="../docs/SAVINGS-MATH.html">Savings math</a><a class="doc-nav-link active" aria-current="page" href="../docs/USE-CASES.html">Use cases</a><a class="doc-nav-link" href="../docs/backup.html">Backup & Restore</a>
+      <a class="doc-nav-link" href="../docs/INTEGRATIONS.html">Integrations</a><a class="doc-nav-link" href="../docs/LIMITATIONS.html">Known limitations</a><a class="doc-nav-link" href="../docs/SAVINGS-MATH.html">Savings math</a><a class="doc-nav-link active" aria-current="page" href="../docs/USE-CASES.html">Ollama alternatives & use cases</a><a class="doc-nav-link" href="../docs/backup.html">Backup & Restore</a>
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Deployment</div>
@@ -273,11 +273,16 @@ section,#install{scroll-margin-top:96px}
 
   <main class="doc-main" id="main">
     <article class="doc-content doc-card"><div class="doc-card-body">
-      <nav class="breadcrumb" aria-label="Breadcrumb"><ol><li><a href="../index.html">Home</a></li><li aria-hidden="true"><span class="sep">/</span></li><li><a href="../docs/index.html">Docs</a></li><li aria-hidden="true"><span class="sep">/</span></li><li><span class="current" aria-current="page">Who is marbor for?</span></li></ol></nav>
-      <h1 id="who-is-marbor-for">Who is marbor for?<a class="anchor" href="#who-is-marbor-for" aria-label="Link to section">#</a></h1>
-<p>The infrastructure control plane Ollama doesn't ship: secure multi-tenant access, hardware-aware load balancing, cost-aware cloud overflow, and real-time GPU telemetry -- plus a marbor agent for remote telemetry, model operations, and node-side maintenance.</p>
+      <nav class="breadcrumb" aria-label="Breadcrumb"><ol><li><a href="../index.html">Home</a></li><li aria-hidden="true"><span class="sep">/</span></li><li><a href="../docs/index.html">Docs</a></li><li aria-hidden="true"><span class="sep">/</span></li><li><span class="current" aria-current="page">Ollama Alternatives: Who Is marbor For?</span></li></ol></nav>
+      <h1 id="ollama-alternatives-who-is-marbor-for">Ollama Alternatives: Who Is marbor For?<a class="anchor" href="#ollama-alternatives-who-is-marbor-for" aria-label="Link to section">#</a></h1>
+<p>Looking for an alternative to Ollama once you outgrow a single GPU box? marbor is the infrastructure control plane Ollama doesn't ship: secure multi-tenant access, hardware-aware load balancing, cost-aware cloud overflow, and real-time GPU telemetry -- plus a marbor agent for remote telemetry, model operations, and node-side maintenance.</p>
 <p>You point your apps at marbor instead of Ollama directly. Everything else stays the same: it speaks the Ollama API (and passes through Ollama's OpenAI-compatible <code>/v1</code> endpoints), so existing clients work unchanged.</p>
 <p>Where the marbor agent is installed on remote GPU hosts, marbor can surface richer live telemetry, perform node-side operations, and support maintenance workflows without changing the client-side API. Where it isn't installed, the core router still works and falls back to the best available telemetry.</p>
+<hr/>
+<h2 id="where-marbor-fits-among-ollama-alternatives">Where marbor fits among Ollama alternatives<a class="anchor" href="#where-marbor-fits-among-ollama-alternatives" aria-label="Link to section">#</a></h2>
+<p>"Ollama alternative" covers a few different categories of tool, depending on what you actually need:</p>
+<ul><li><strong>Desktop chat UIs</strong> (LM Studio, GPT4All, Jan): a friendlier front end for running one model on one machine. Good fit for a single user on a laptop or workstation - not built for a fleet of GPU nodes or multiple concurrent users.</li><li><strong>Bare inference servers</strong> (vLLM, TGI, llama.cpp server): faster or more configurable serving of a single model on a single node than Ollama, but no cross-node routing, auth, or fleet visibility on their own.</li><li><strong>API gateways</strong> (LiteLLM, Bifrost, Portkey): sit in front of multiple providers/models and handle developer auth, unified schemas, and rate limits - but they don't do hardware-aware scheduling across your own GPU nodes.</li><li><strong>marbor</strong>: not a replacement for Ollama itself (it speaks Ollama's API and often runs alongside it on each node) and not a gateway - it's the control plane in between: warm-aware routing across N GPU nodes, VRAM-aware placement, cost-aware cloud overflow, and fleet operations, for the point where a single Ollama box or a hand-rolled nginx setup stops being enough.</li></ul>
+<p>If you're a single user on one box, a desktop UI or plain Ollama is the right call - see "Who should NOT use this" below. If you're past that point, keep reading.</p>
 <hr/>
 <h2 id="the-three-problems-it-solves">The three problems it solves<a class="anchor" href="#the-three-problems-it-solves" aria-label="Link to section">#</a></h2>
 <h3 id="1-ollama-is-busy-kills-your-app">1. "Ollama is busy" kills your app<a class="anchor" href="#1-ollama-is-busy-kills-your-app" aria-label="Link to section">#</a></h3>
@@ -326,7 +331,7 @@ section,#install{scroll-margin-top:96px}
 
   <div class="doc-toc-wrap"><aside class="toc-card" aria-label="On this page">
     <p class="toc-title">On this page</p>
-    <ul class="toc"><li class="lvl-2"><a href="#the-three-problems-it-solves">The three problems it solves</a></li><li class="lvl-3"><a href="#1-ollama-is-busy-kills-your-app">1. "Ollama is busy" kills your app</a></li><li class="lvl-3"><a href="#2-cold-starts-waste-30-seconds-per-model-load">2. Cold starts waste 30 seconds per model load</a></li><li class="lvl-3"><a href="#3-no-visibility-no-control">3. No visibility, no control</a></li><li class="lvl-2"><a href="#audience-in-order-of-fit">Audience, in order of fit</a></li><li class="lvl-2"><a href="#the-architecture-trade-offs-marbor-vs-plain-ollama-nginx">The Architecture Trade-offs: marbor vs. Plain Ollama + nginx</a></li><li class="lvl-2"><a href="#where-does-litellm-fit">Where does LiteLLM fit?</a></li><li class="lvl-2"><a href="#honest-limitations-current-state">Honest limitations (current state)</a></li></ul>
+    <ul class="toc"><li class="lvl-2"><a href="#where-marbor-fits-among-ollama-alternatives">Where marbor fits among Ollama alternatives</a></li><li class="lvl-2"><a href="#the-three-problems-it-solves">The three problems it solves</a></li><li class="lvl-3"><a href="#1-ollama-is-busy-kills-your-app">1. "Ollama is busy" kills your app</a></li><li class="lvl-3"><a href="#2-cold-starts-waste-30-seconds-per-model-load">2. Cold starts waste 30 seconds per model load</a></li><li class="lvl-3"><a href="#3-no-visibility-no-control">3. No visibility, no control</a></li><li class="lvl-2"><a href="#audience-in-order-of-fit">Audience, in order of fit</a></li><li class="lvl-2"><a href="#the-architecture-trade-offs-marbor-vs-plain-ollama-nginx">The Architecture Trade-offs: marbor vs. Plain Ollama + nginx</a></li><li class="lvl-2"><a href="#where-does-litellm-fit">Where does LiteLLM fit?</a></li><li class="lvl-2"><a href="#honest-limitations-current-state">Honest limitations (current state)</a></li></ul>
   </aside></div>
 </div>
 
