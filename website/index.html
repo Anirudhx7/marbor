@@ -11,7 +11,13 @@
 <link rel="icon" type="image/svg+xml" href="favicon.svg" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400..800;1,400..800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="https://fonts.gstatic.com/s/plusjakartasans/v12/LDIoaomQNQcsA88c7O9yZ4KMCoOg4Ko20yw.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="https://fonts.gstatic.com/s/playfairdisplay/v40/nuFiD-vYSZviVYUb_rj3ij__anPXDTzYgA.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="https://fonts.gstatic.com/s/playfairdisplay/v40/nuFkD-vYSZviVYUb_rj3ij__anPXDTnogkk7.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxDcwg.woff2" />
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400..800;1,400..800&family=JetBrains+Mono:wght@400;500;700&display=swap" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400..800;1,400..800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+<noscript><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400..800;1,400..800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" /></noscript>
 <meta name="theme-color" content="#d4a853" />
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="Marbor" />
@@ -101,7 +107,8 @@ h1 em{font-style:italic;color:var(--accent);font-weight:600}
 .lede{font-size:17.5px;color:var(--text-muted);max-width:62ch;margin:0 0 26px;text-wrap:pretty}
 .lede strong{color:var(--text);font-weight:650}
 .cta-row{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:20px}
-.install{display:flex;align-items:center;background:var(--bg-elevated);border:1px solid var(--border);border-radius:12px;overflow:hidden;max-width:750px;box-shadow:var(--shadow)}
+/* min-height reserves the row so a late font swap cannot resize the box and shift content below (CLS). 47px = code line-box + padding + border. */
+.install{display:flex;align-items:center;background:var(--bg-elevated);border:1px solid var(--border);border-radius:12px;overflow:hidden;max-width:750px;box-shadow:var(--shadow);min-height:47px}
 .install .plabel{font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-faint);padding:0 4px 0 16px;flex:none}
 .install code{flex:1;min-width:0;font-family:var(--font-mono);font-size:12.8px;line-height:1.6;color:var(--text);padding:12px 12px 12px 8px;white-space:nowrap;overflow-x:auto;text-overflow:ellipsis;scrollbar-width:thin}
 .install button{flex:none;align-self:stretch;border:0;border-left:1px solid var(--border);background:transparent;color:var(--accent);font-weight:700;font-size:13px;padding:0 18px;cursor:pointer}

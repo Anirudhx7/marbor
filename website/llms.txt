@@ -31,7 +31,7 @@ The control plane for self-hosted AI inference - a GPU-aware scheduler and OpenA
 curl -fsSL https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | sh
 ```
 
-Or download a binary from: https://github.com/Anirudhx7/marbor/releases
+Or download a binary from [GitHub releases](https://github.com/Anirudhx7/marbor/releases)
 
 Docker: `docker run -p 11434:11434 -p 8080:8080 ghcr.io/anirudhx7/marbor:latest`
 
@@ -56,9 +56,14 @@ export OPENAI_API_KEY=<a key created in the dashboard>
 - Platforms: Linux and macOS (amd64, arm64), Windows (amd64); Docker image (linux/amd64)
 - No telemetry, no license server, no phone-home
 
-## GitHub
+## Links
 
-https://github.com/Anirudhx7/marbor
+- [Website](https://marbor.in/)
+- [Docs](https://marbor.in/docs/)
+- [Live demo](https://marbor.in/demo/)
+- [GitHub repository](https://github.com/Anirudhx7/marbor)
+- [Releases](https://github.com/Anirudhx7/marbor/releases)
+- [Install script](https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh)
 
 ## Keywords
 
