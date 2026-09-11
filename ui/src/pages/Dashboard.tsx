@@ -611,6 +611,7 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">
+      <h1 className="sr-only">Marbor Dashboard</h1>
       {/* Top Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-6">
         <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-8">
