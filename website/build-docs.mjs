@@ -340,6 +340,9 @@ function page({ slug, title, contentHtml, headings }) {
 <meta name="description" content="${escapeAttr(description)}" />
 <link rel="canonical" href="https://marbor.in/docs/${slug}.html" />
 <link rel="icon" type="image/svg+xml" href="${r}favicon.svg" />
+<link rel="icon" type="image/png" sizes="48x48" href="${r}favicon-48.png" />
+<link rel="icon" type="image/png" sizes="96x96" href="${r}favicon-96.png" />
+<link rel="shortcut icon" href="${r}favicon.ico" />
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="Marbor" />
 <meta property="og:title" content="${escapeHtml(title)} · Marbor docs" />
@@ -430,6 +433,9 @@ function docsIndexPage() {
 <meta name="description" content="Marbor documentation -- integrations, production deployment, savings math, and use cases." />
 <link rel="canonical" href="https://marbor.in/docs/" />
 <link rel="icon" type="image/svg+xml" href="${r}favicon.svg" />
+<link rel="icon" type="image/png" sizes="48x48" href="${r}favicon-48.png" />
+<link rel="icon" type="image/png" sizes="96x96" href="${r}favicon-96.png" />
+<link rel="shortcut icon" href="${r}favicon.ico" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400..700&family=Playfair+Display:ital,wght@0,400..800;1,400..800&family=JetBrains+Mono:wght@400..700&display=swap" rel="stylesheet" />
