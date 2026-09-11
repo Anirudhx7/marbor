@@ -1459,7 +1459,7 @@ export function SettingsPage() {
               <p className="text-xs font-medium text-muted-foreground">
                 Full docs:{' '}
                 <a
-                  href="https://anirudh.social/marbor/docs/backup.html"
+                  href="https://marbor.in/docs/backup.html"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary hover:underline"

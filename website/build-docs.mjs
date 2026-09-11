@@ -178,7 +178,7 @@ function excerpt(s, n) {
 
 // Shared footer - identical to the landing page footer (paths relative via r).
 function siteFooter(r) {
-  return `<footer><div class="page foot-grid"><div>${BRAND_HTML(r)}<div style="margin-top:10px">© <span class="yr">2026</span> Anirudh Mehandru · Apache-2.0</div></div><div class="foot-links"><a href="${r}index.html#install">Install</a><a href="${r}index.html#features">Features</a><a href="${r}index.html#how">How</a><a href="${r}index.html#compare">Compare</a><a href="${r}docs/index.html">Docs</a><a href="https://anirudh.social/marbor/demo/" target="_blank" rel="noopener">Demo</a><a href="https://github.com/Anirudhx7/marbor" target="_blank" rel="noopener">GitHub</a></div></div></footer>`;
+  return `<footer><div class="page foot-grid"><div>${BRAND_HTML(r)}<div style="margin-top:10px">© <span class="yr">2026</span> Anirudh Mehandru · Apache-2.0</div></div><div class="foot-links"><a href="${r}index.html#install">Install</a><a href="${r}index.html#features">Features</a><a href="${r}index.html#how">How</a><a href="${r}index.html#compare">Compare</a><a href="${r}docs/index.html">Docs</a><a href="https://marbor.in/demo/" target="_blank" rel="noopener">Demo</a><a href="https://github.com/Anirudhx7/marbor" target="_blank" rel="noopener">GitHub</a></div></div></footer>`;
 }
 
 // All docs in nav order, grouped.
@@ -264,7 +264,7 @@ function page({ slug, title, contentHtml, headings }) {
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <meta name="color-scheme" content="dark light" />
-<script defer data-domain="anirudh.social" src="https://plausible.io/js/script.tagged-events.js"><\/script>
+<script defer data-domain="marbor.in,anirudh.social" src="https://plausible.io/js/script.tagged-events.js"><\/script>
 <script>
   (function () { try { var s = localStorage.getItem("marbor-theme")||localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
 </script>
@@ -275,11 +275,11 @@ function page({ slug, title, contentHtml, headings }) {
 <meta property="og:site_name" content="Marbor" />
 <meta property="og:title" content="${escapeHtml(title)} · Marbor docs" />
 <meta property="og:description" content="Marbor documentation: ${escapeHtml(title)}." />
-<meta property="og:image" content="https://anirudh.social/marbor/screenshots/dashboard.png" />
+<meta property="og:image" content="https://marbor.in/screenshots/dashboard.png" />
 <meta property="og:image:alt" content="marbor admin dashboard" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="${escapeHtml(title)} · Marbor docs" />
-<meta name="twitter:image" content="https://anirudh.social/marbor/screenshots/dashboard.png" />
+<meta name="twitter:image" content="https://marbor.in/screenshots/dashboard.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400..800;1,400..800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
@@ -290,8 +290,8 @@ function page({ slug, title, contentHtml, headings }) {
 <a class="skip" href="#main">Skip to content</a>
 <header class="nav"><div class="nav-inner">
 ${BRAND_HTML(r)}
-<nav class="nav-links" aria-label="Primary"><a class="nl" href="${r}index.html#features">Features</a><a class="nl" href="${r}index.html#how">How it works</a><a class="nl" href="${r}index.html#compare">Compare</a><a class="nl on" href="${r}docs/index.html">Docs</a><a class="btn btn-gold btn-sm nav-cta" href="https://anirudh.social/marbor/demo/" target="_blank" rel="noopener">Live demo →</a><button type="button" class="icon-btn" id="themeBtn" aria-label="Toggle theme" aria-pressed="false">◐</button><button type="button" class="icon-btn hamb" id="hamb" aria-label="Menu" aria-expanded="false" aria-controls="mmenu">☰</button></nav>
-</div><nav class="mobile-menu" id="mmenu" aria-label="Mobile"><a href="${r}index.html#features">Features</a><a href="${r}index.html#how">How it works</a><a href="${r}index.html#compare">Compare</a><a href="${r}docs/index.html">Docs</a><a href="https://anirudh.social/marbor/demo/" target="_blank" rel="noopener">Live demo</a><a href="https://github.com/Anirudhx7/marbor">GitHub</a></nav></header>
+<nav class="nav-links" aria-label="Primary"><a class="nl" href="${r}index.html#features">Features</a><a class="nl" href="${r}index.html#how">How it works</a><a class="nl" href="${r}index.html#compare">Compare</a><a class="nl on" href="${r}docs/index.html">Docs</a><a class="btn btn-gold btn-sm nav-cta" href="https://marbor.in/demo/" target="_blank" rel="noopener">Live demo →</a><button type="button" class="icon-btn" id="themeBtn" aria-label="Toggle theme" aria-pressed="false">◐</button><button type="button" class="icon-btn hamb" id="hamb" aria-label="Menu" aria-expanded="false" aria-controls="mmenu">☰</button></nav>
+</div><nav class="mobile-menu" id="mmenu" aria-label="Mobile"><a href="${r}index.html#features">Features</a><a href="${r}index.html#how">How it works</a><a href="${r}index.html#compare">Compare</a><a href="${r}docs/index.html">Docs</a><a href="https://marbor.in/demo/" target="_blank" rel="noopener">Live demo</a><a href="https://github.com/Anirudhx7/marbor">GitHub</a></nav></header>
 
 <div class="doc-shell">
 <nav class="doc-sidebar" id="docSidebar" aria-label="Documentation navigation">
@@ -352,7 +352,7 @@ function docsIndexPage() {
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <meta name="color-scheme" content="dark light" />
-<script defer data-domain="anirudh.social" src="https://plausible.io/js/script.tagged-events.js"><\/script>
+<script defer data-domain="marbor.in,anirudh.social" src="https://plausible.io/js/script.tagged-events.js"><\/script>
 <script>
   (function () { try { var s = localStorage.getItem("marbor-theme")||localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
 </script>
@@ -369,8 +369,8 @@ function docsIndexPage() {
 <a class="skip" href="#main">Skip to content</a>
 <header class="nav"><div class="nav-inner">
 ${BRAND_HTML(r)}
-<nav class="nav-links" aria-label="Primary"><a class="nl" href="${r}index.html#features">Features</a><a class="nl" href="${r}index.html#how">How it works</a><a class="nl" href="${r}index.html#compare">Compare</a><a class="nl on" href="index.html">Docs</a><a class="btn btn-gold btn-sm nav-cta" href="https://anirudh.social/marbor/demo/" target="_blank" rel="noopener">Live demo →</a><button type="button" class="icon-btn" id="themeBtn" aria-label="Toggle theme" aria-pressed="false">◐</button><button type="button" class="icon-btn hamb" id="hamb" aria-label="Menu" aria-expanded="false" aria-controls="mmenu">☰</button></nav>
-</div><nav class="mobile-menu" id="mmenu" aria-label="Mobile"><a href="${r}index.html#install">Install</a><a href="${r}index.html#features">Features</a><a href="${r}index.html#how">How it works</a><a href="${r}index.html#compare">Compare</a><a href="index.html">Docs</a><a href="https://anirudh.social/marbor/demo/" target="_blank" rel="noopener">Live demo</a><a href="https://github.com/Anirudhx7/marbor" target="_blank" rel="noopener">GitHub</a></nav></header>
+<nav class="nav-links" aria-label="Primary"><a class="nl" href="${r}index.html#features">Features</a><a class="nl" href="${r}index.html#how">How it works</a><a class="nl" href="${r}index.html#compare">Compare</a><a class="nl on" href="index.html">Docs</a><a class="btn btn-gold btn-sm nav-cta" href="https://marbor.in/demo/" target="_blank" rel="noopener">Live demo →</a><button type="button" class="icon-btn" id="themeBtn" aria-label="Toggle theme" aria-pressed="false">◐</button><button type="button" class="icon-btn hamb" id="hamb" aria-label="Menu" aria-expanded="false" aria-controls="mmenu">☰</button></nav>
+</div><nav class="mobile-menu" id="mmenu" aria-label="Mobile"><a href="${r}index.html#install">Install</a><a href="${r}index.html#features">Features</a><a href="${r}index.html#how">How it works</a><a href="${r}index.html#compare">Compare</a><a href="index.html">Docs</a><a href="https://marbor.in/demo/" target="_blank" rel="noopener">Live demo</a><a href="https://github.com/Anirudhx7/marbor" target="_blank" rel="noopener">GitHub</a></nav></header>
 
 <main class="doc-index" id="main">
 <div class="hero" data-reveal>

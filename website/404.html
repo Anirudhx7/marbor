@@ -6,7 +6,7 @@
 <meta name="color-scheme" content="dark light">
 <title>Page Not Found | Marbor</title>
 <meta name="robots" content="noindex, nofollow">
-<link rel="icon" type="image/svg+xml" href="/marbor/favicon.svg" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400..800;1,400..800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
@@ -14,15 +14,15 @@
 <script>
   // SPA redirect for GitHub Pages demo subpath.
   // Deep-link to /demo/* → redirect directly to SPA hash route.
-  // E.g. /marbor/demo/gpu-nodes → /marbor/demo/#/gpu-nodes
+  // E.g. /demo/gpu-nodes → /demo/#/gpu-nodes
   (function () {
     var l = window.location;
     var path = l.pathname;
-    if (path === '/marbor/demo') {
-      l.replace(l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') + '/marbor/demo/');
-    } else if (path.indexOf('/marbor/demo/') === 0) {
-      var subpath = path.slice(18); // strip '/marbor/demo/' (18 chars)
-      l.replace(l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') + '/marbor/demo/#/' + subpath + l.search + l.hash);
+    if (path === '/demo') {
+      l.replace(l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') + '/demo/');
+    } else if (path.indexOf('/demo/') === 0) {
+      var subpath = path.slice(6); // strip '/demo/' (6 chars)
+      l.replace(l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') + '/demo/#/' + subpath + l.search + l.hash);
     }
   })();
   (function(){try{var s=localStorage.getItem("marbor-theme")||localStorage.getItem("om-theme");if(s==="light"||(!s&&window.matchMedia&&window.matchMedia("(prefers-color-scheme: light)").matches))document.documentElement.classList.add("light");}catch(e){}})();
@@ -87,10 +87,10 @@ h1 em{font-style:italic;color:var(--accent);font-weight:600}
 <button type="button" class="icon-btn" id="themeBtn" aria-label="Toggle theme" aria-pressed="false">◐</button>
 <main id="main" tabindex="-1"><div class="card">
   <span class="brand-chip" aria-hidden="true"><svg width="40" height="40" viewBox="0 0 100 100" fill="none"><path d="M30 35 L30 65 M30 50 L50 35 L50 65 M50 50 L70 35 L70 65" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="75" cy="75" r="8" fill="currentColor" opacity=".65"/></svg></span><br>
-  <span class="eyebrow"><span class="dot" aria-hidden="true"></span>error · 404</span>
+  <span class="eyebrow"><span class="dot" aria-hidden="true"></span>Error · 404</span>
   <h1>Page <em>not found.</em></h1>
   <p class="lede">The page you're looking for doesn't exist. It may have moved or been removed.</p>
-  <div class="cta-row"><a class="btn btn-gold" href="/marbor/">← Back to Marbor</a><a class="btn" href="/marbor/docs/">Read the docs</a></div>
+  <div class="cta-row"><a class="btn btn-gold" href="https://marbor.in/">← Back to Marbor</a><a class="btn" href="https://marbor.in/docs/">Read the docs</a></div>
 </div></main>
 <script>
 (function(){function syncT(){var b=document.getElementById('themeBtn');if(!b)return;var l=document.documentElement.classList.contains('light');b.setAttribute('aria-pressed',l?'true':'false');b.textContent=l?'☀':'◐';try{var cs=getComputedStyle(document.documentElement);var m=document.querySelector('meta[name="theme-color"]');if(m){var bg=cs.getPropertyValue('--bg').trim();if(bg)m.setAttribute('content',bg);}}catch(e){}}var b=document.getElementById('themeBtn');if(b)b.addEventListener('click',function(){var h=document.documentElement;h.classList.toggle('light');try{localStorage.setItem('marbor-theme',h.classList.contains('light')?'light':'dark');}catch(e){}syncT();});syncT();})();
