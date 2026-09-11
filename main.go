@@ -194,6 +194,7 @@ func applyPersistedSettings(cfg *config.Config, st store.Store) {
 
 	cfg.Metrics.Enabled = store.GetBoolSetting(st, "metrics_enabled", cfg.Metrics.Enabled)
 	cfg.Metrics.Port = store.GetIntSetting(st, "metrics_port", cfg.Metrics.Port)
+	cfg.Metrics.BindAddress = store.GetStringSetting(st, "metrics_bind_address", cfg.Metrics.BindAddress)
 
 	cfg.LiteLLM.Enabled = store.GetBoolSetting(st, "litellm_enabled", cfg.LiteLLM.Enabled)
 	cfg.LiteLLM.URL = store.GetStringSetting(st, "litellm_url", cfg.LiteLLM.URL)
@@ -482,7 +483,7 @@ func main() {
 	log.Printf("Database        : %s", dbPath)
 	log.Printf("Proxy port      : %d", cfg.Proxy.Port)
 	log.Printf("Auth enabled    : %t", cfg.Auth.IsEnabled())
-	log.Printf("Metrics port    : %d", cfg.Metrics.Port)
+	log.Printf("Metrics address : %s", cfg.Metrics.BindAddress)
 	log.Printf("Poll interval   : %dms", cfg.Routing.PollIntervalMs)
 
 	authMw := auth.NewMiddleware(cfg.Auth)
@@ -833,15 +834,15 @@ func main() {
 		mux := http.NewServeMux()
 		mux.Handle("/metrics", promhttp.Handler())
 		metricsSrv = &http.Server{
-			Addr:              fmt.Sprintf(":%d", cfg.Metrics.Port),
-			Handler:           proxy.SecurityHeaders(mux),
+			Addr:              cfg.Metrics.BindAddress,
+			Handler:           proxy.RecoverMiddleware(proxy.SecurityHeaders(mux)),
 			ReadHeaderTimeout: 10 * time.Second,
 			ReadTimeout:       15 * time.Second,
 			WriteTimeout:      30 * time.Second,
 			IdleTimeout:       60 * time.Second,
 		}
 		go func() {
-			log.Printf("Metrics server listening on :%d/metrics", cfg.Metrics.Port)
+			log.Printf("Metrics server listening on %s/metrics", cfg.Metrics.BindAddress)
 			if err := metricsSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				log.Fatalf("Metrics server error: %v", err)
 			}

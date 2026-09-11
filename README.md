@@ -413,7 +413,7 @@ Set `local_only: true` on an API key (`PATCH /admin/v1/keys/{name}`, or the API 
 |------|---------|------|
 | `:11434` | Ollama-compatible endpoint - drop-in replacement | Per-key Bearer token |
 | `:8080` | Admin dashboard + REST API | Admin token |
-| `:9090` | Prometheus metrics | Unauthenticated (scrape target) |
+| `:9090` | Prometheus metrics | Unauthenticated (scrape target); binds `127.0.0.1` only by default outside Docker - widen via `metrics.bind_address` if Prometheus scrapes from another host. Inside Docker it binds every interface by default, matching the shipped monitoring overlay's container-to-container scrape. |
 
 ---
 

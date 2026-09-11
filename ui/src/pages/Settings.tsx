@@ -15,6 +15,28 @@ import { notifyTimezoneChanged } from '../hooks/useTimezone';
 
 
 
+// isValidBindAddress checks a metrics.bind_address value has the host:port
+// shape the backend's http.Server.Addr requires, so a typo'd value is caught
+// client-side instead of crashing the backend at listen time.
+const isValidBindAddress = (value: string): boolean => {
+  const trimmed = value.trim();
+  if (trimmed === '' || trimmed !== value) return false;
+  const idx = trimmed.lastIndexOf(':');
+  if (idx <= -1 || idx === trimmed.length - 1) return false;
+  const host = trimmed.slice(0, idx);
+  const port = trimmed.slice(idx + 1);
+  if (host === '' || !/^\d+$/.test(port)) return false;
+  const portNum = parseInt(port, 10);
+  return portNum >= 1 && portNum <= 65535;
+};
+
+// isLoopbackBindAddress reports whether a validated bind address only binds
+// the local machine - used to decide whether widening it needs a confirm.
+const isLoopbackBindAddress = (value: string): boolean => {
+  const host = value.slice(0, value.lastIndexOf(':'));
+  return host === '127.0.0.1' || host === 'localhost' || host === '::1';
+};
+
 const getTimezoneOffsetMinutes = (tz: string): number => {
   if (tz === 'Local') return -999999;
   try {
@@ -263,6 +285,7 @@ export function SettingsPage() {
           pollingInterval: settingsData.routing?.poll_interval_ms || 2000,
           prometheusEnabled: settingsData.metrics?.enabled || false,
           prometheusPort: settingsData.metrics?.port || 9090,
+          prometheusBindAddress: settingsData.metrics?.bind_address || '127.0.0.1:9090',
           logLevel: settingsData.proxy?.log_level || 'info',
           timezone: settingsData.timezone || 'Local',
           cloudDailyUsdCap: settingsData.cloud_budget?.daily_usd_cap || 0,
@@ -344,6 +367,19 @@ export function SettingsPage() {
   }, [demoMode, location.pathname]);
 
   const handleSave = async () => {
+    if (settings.prometheusEnabled && !isValidBindAddress(settings.prometheusBindAddress)) {
+      setError('Metrics bind address must be a valid host:port (e.g. 127.0.0.1:9090).');
+      return;
+    }
+    if (
+      settings.prometheusEnabled &&
+      !isLoopbackBindAddress(settings.prometheusBindAddress) &&
+      !window.confirm(
+        `This will expose the unauthenticated metrics endpoint on ${settings.prometheusBindAddress}, reachable by anyone who can reach that address. Continue?`
+      )
+    ) {
+      return;
+    }
     try {
       // Map UI settings to backend config format (also used in demo mode → localStorage)
       const payload = {
@@ -372,7 +408,7 @@ export function SettingsPage() {
             consecutive_breaches: settings.thermalWatchdogConsecutiveBreaches,
           },
         },
-        metrics: { enabled: settings.prometheusEnabled, port: settings.prometheusPort },
+        metrics: { enabled: settings.prometheusEnabled, port: settings.prometheusPort, bind_address: settings.prometheusBindAddress },
         litellm: { enabled: settings.liteLLMEnabled, url: settings.liteLLMEndpoint, api_key: settings.liteLLMApiKey },
         huggingface: { token: settings.huggingFaceToken || '' },
         cloud_budget: { daily_usd_cap: settings.cloudDailyUsdCap, monthly_usd_cap: settings.cloudMonthlyUsdCap, soft_budget_pct: settings.cloudSoftBudgetPct },
@@ -1283,16 +1319,35 @@ export function SettingsPage() {
             </div>
 
             {settings.prometheusEnabled && (
-              <div className="animate-fade-in">
-                <label className="block text-sm font-medium text-muted-foreground mb-1.5">
-                  Prometheus Port
-                </label>
-                <input
-                  type="number"
-                  value={settings.prometheusPort}
-                  onChange={(e) => setSettings({ ...settings, prometheusPort: parseInt(e.target.value) || settings.prometheusPort })}
-                  className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
-                />
+              <div className="animate-fade-in space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+                    Prometheus Port
+                  </label>
+                  <input
+                    type="number"
+                    value={settings.prometheusPort}
+                    onChange={(e) => setSettings({ ...settings, prometheusPort: parseInt(e.target.value) || settings.prometheusPort })}
+                    className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="metrics-bind-address" className="block text-sm font-medium text-muted-foreground mb-1.5">
+                    Bind Address
+                  </label>
+                  <input
+                    id="metrics-bind-address"
+                    type="text"
+                    value={settings.prometheusBindAddress}
+                    onChange={(e) => setSettings({ ...settings, prometheusBindAddress: e.target.value })}
+                    placeholder="127.0.0.1:9090"
+                    aria-describedby="metrics-bind-address-help"
+                    className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+                  />
+                  <p id="metrics-bind-address-help" className="text-xs text-muted-foreground mt-1.5">
+                    This endpoint has no authentication - defaults to loopback-only outside Docker (every interface inside Docker, for the bundled monitoring overlay). Only widen it (e.g. to 0.0.0.0:9090) on a trusted network.
+                  </p>
+                </div>
               </div>
             )}
 

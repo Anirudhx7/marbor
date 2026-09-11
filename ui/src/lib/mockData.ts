@@ -468,6 +468,7 @@ export const defaultSettings: Settings = {
   pollingInterval: 2000,
   prometheusEnabled: true,
   prometheusPort: 9090,
+  prometheusBindAddress: '127.0.0.1:9090',
   logLevel: 'info',
   timezone: 'Local',
   cloudDailyUsdCap: 25,

@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"testing"
 )
@@ -57,6 +58,83 @@ func TestDefaults(t *testing.T) {
 	}
 	if cfg.Routing.PollIntervalMs != 2000 {
 		t.Errorf("default poll = %d, want 2000", cfg.Routing.PollIntervalMs)
+	}
+}
+
+// TestMetricsBindAddressDefaultsLoopback guards the H1 fix: outside Docker
+// (this test process is not, and CI's non-container job isn't either) the
+// unauthenticated metrics endpoint must default to loopback-only, never
+// every interface.
+func TestMetricsBindAddressDefaultsLoopback(t *testing.T) {
+	cfg := Config{
+		Nodes: []NodeConfig{{Name: "a", URL: "http://localhost:1"}},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+	want := fmt.Sprintf("127.0.0.1:%d", cfg.Metrics.Port)
+	if cfg.Metrics.BindAddress != want {
+		t.Errorf("default metrics bind address = %q, want %q", cfg.Metrics.BindAddress, want)
+	}
+}
+
+// TestMetricsBindAddressExplicitValuePreserved guards that an operator- or
+// settings-supplied bind address is never overwritten by the default logic.
+func TestMetricsBindAddressExplicitValuePreserved(t *testing.T) {
+	cfg := Config{
+		Nodes:   []NodeConfig{{Name: "a", URL: "http://localhost:1"}},
+		Metrics: MetricsConfig{BindAddress: "0.0.0.0:9090"},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+	if cfg.Metrics.BindAddress != "0.0.0.0:9090" {
+		t.Errorf("explicit metrics bind address = %q, want unchanged %q", cfg.Metrics.BindAddress, "0.0.0.0:9090")
+	}
+}
+
+// TestMetricsBindAddressDefaultsAllInterfacesInDocker guards the other half
+// of the H1 fix: the shipped docker-compose.monitoring.yml sidecar scrapes
+// marbor's metrics port container-to-container by service name, which a
+// loopback-only bind can never satisfy - so inside Docker the default must
+// widen to every interface. isRunningInDocker is a package-level var
+// specifically so this branch is exercisable without an actual container.
+func TestMetricsBindAddressDefaultsAllInterfacesInDocker(t *testing.T) {
+	orig := isRunningInDocker
+	isRunningInDocker = func() bool { return true }
+	defer func() { isRunningInDocker = orig }()
+
+	cfg := Config{
+		Nodes: []NodeConfig{{Name: "a", URL: "http://localhost:1"}},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+	want := fmt.Sprintf("0.0.0.0:%d", cfg.Metrics.Port)
+	if cfg.Metrics.BindAddress != want {
+		t.Errorf("in-Docker metrics bind address = %q, want %q", cfg.Metrics.BindAddress, want)
+	}
+}
+
+// TestMetricsBindAddressRejectsMalformedValue guards that a typo'd or
+// unparseable operator-supplied bind address fails Validate() with a clear
+// error, instead of reaching http.Server.Addr and crashing the whole
+// process at ListenAndServe() time.
+func TestMetricsBindAddressRejectsMalformedValue(t *testing.T) {
+	cases := []string{
+		"not-an-address",
+		"   ",
+		"127.0.0.1",             // missing port
+		"http://127.0.0.1:9090", // scheme not allowed in an Addr value
+	}
+	for _, bad := range cases {
+		cfg := Config{
+			Nodes:   []NodeConfig{{Name: "a", URL: "http://localhost:1"}},
+			Metrics: MetricsConfig{BindAddress: bad},
+		}
+		if err := cfg.Validate(); err == nil {
+			t.Errorf("validate with bind address %q: want error, got nil", bad)
+		}
 	}
 }
 
