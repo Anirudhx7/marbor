@@ -296,7 +296,7 @@ export function Analytics() {
           </div>
         ) : (
           <>
-            <div className="hidden md:block overflow-x-auto">
+            <div className="hidden md:block overflow-x-auto scroll-region" tabIndex={0} role="region" aria-label="Analytics table: scroll horizontally for more columns">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-secondary/50 text-muted-foreground">
@@ -417,7 +417,7 @@ export function Analytics() {
           </div>
         ) : (
           <>
-            <div className="hidden md:block overflow-x-auto">
+            <div className="hidden md:block overflow-x-auto scroll-region" tabIndex={0} role="region" aria-label="Analytics table: scroll horizontally for more columns">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-secondary/50 text-muted-foreground">

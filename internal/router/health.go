@@ -176,11 +176,13 @@ func (r *Router) pollNode(n *NodeState) {
 			r.markFailure(n)
 			return
 		}
-		n.mu.Lock()
-		n.Runtime = detected
-		n.probe = runtimepkg.NewProbe(detected, r.client)
-		n.autoDetect = false
-		n.mu.Unlock()
+		func() {
+			n.mu.Lock()
+			defer n.mu.Unlock()
+			n.Runtime = detected
+			n.probe = runtimepkg.NewProbe(detected, r.client)
+			n.autoDetect = false
+		}()
 		log.Printf("auto-detect: node %s resolved to runtime %q", n.Name, detected)
 	}
 
@@ -208,17 +210,21 @@ func (r *Router) pollNode(n *NodeState) {
 		// internal/runtime/detect.go). Surface that real, observed fact so
 		// the node doesn't just sit silently unhealthy forever; never
 		// claim it IS MLX, only report what was actually seen.
-		n.mu.Lock()
-		if n.Runtime == "llamacpp" && strings.Contains(err.Error(), "/health returned 404") {
-			n.RuntimeMismatchHint = "currently running as llamacpp, but /health returned 404 (no such route) - this is the exact signature of an MLX (mlx_lm.server) node, which cannot be auto-detected and must be set manually via runtime: mlx (a 404 here could also mean a llama.cpp build without /health, or a broken reverse proxy)"
-		}
-		n.mu.Unlock()
+		func() {
+			n.mu.Lock()
+			defer n.mu.Unlock()
+			if n.Runtime == "llamacpp" && strings.Contains(err.Error(), "/health returned 404") {
+				n.RuntimeMismatchHint = "currently running as llamacpp, but /health returned 404 (no such route) - this is the exact signature of an MLX (mlx_lm.server) node, which cannot be auto-detected and must be set manually via runtime: mlx (a 404 here could also mean a llama.cpp build without /health, or a broken reverse proxy)"
+			}
+		}()
 		r.markFailure(n)
 		return
 	}
-	n.mu.Lock()
-	n.RuntimeMismatchHint = ""
-	n.mu.Unlock()
+	func() {
+		n.mu.Lock()
+		defer n.mu.Unlock()
+		n.RuntimeMismatchHint = ""
+	}()
 	// Convert runtime.LoadedModel slice to []ModelInfo (router's internal type).
 	models := make([]ModelInfo, len(result.LoadedModels))
 	for i, m := range result.LoadedModels {
@@ -239,97 +245,102 @@ func (r *Router) pollNode(n *NodeState) {
 		r.nvidiaMu.RUnlock()
 	}
 
-	n.mu.Lock()
-	prevModels := n.LoadedModels
-	n.LoadedModels = models
-	n.Failures = 0
-	if !n.Healthy {
-		// Flapping hysteresis: require N consecutive successes before putting
-		// a previously-unhealthy node back into rotation, so one lucky poll
-		// after a real outage doesn't immediately re-route traffic to it.
-		n.ConsecutiveSuccesses++
-		if n.ConsecutiveSuccesses >= r.healthSuccessThreshold {
-			n.Healthy = true
+	var prevModels []ModelInfo
+	var shouldThermalDrain bool
+	var nodeName string
+	var nowHealthy bool
+	func() {
+		n.mu.Lock()
+		defer n.mu.Unlock()
+		prevModels = n.LoadedModels
+		n.LoadedModels = models
+		n.Failures = 0
+		if !n.Healthy {
+			// Flapping hysteresis: require N consecutive successes before putting
+			// a previously-unhealthy node back into rotation, so one lucky poll
+			// after a real outage doesn't immediately re-route traffic to it.
+			n.ConsecutiveSuccesses++
+			if n.ConsecutiveSuccesses >= r.healthSuccessThreshold {
+				n.Healthy = true
+			}
 		}
-	}
-	n.LastPollAt = time.Now()
-	n.Uptime = formatUptime(time.Since(n.FirstSeenAt))
-	shouldThermalDrain := false
-	switch {
-	case hasGPU:
-		// Richest source: live local nvidia-smi (total, used, temp, power).
-		n.VRAMTotalMB = gpu.VRAMTotalMB
-		n.VRAMUsedMB = gpu.VRAMUsedMB
-		n.PowerDrawW = gpu.PowerDrawW
-		temp := gpu.TempCelsius
-		n.Temperature = &temp
-		n.VRAMSource = "nvidia"
+		n.LastPollAt = time.Now()
+		n.Uptime = formatUptime(time.Since(n.FirstSeenAt))
+		switch {
+		case hasGPU:
+			// Richest source: live local nvidia-smi (total, used, temp, power).
+			n.VRAMTotalMB = gpu.VRAMTotalMB
+			n.VRAMUsedMB = gpu.VRAMUsedMB
+			n.PowerDrawW = gpu.PowerDrawW
+			temp := gpu.TempCelsius
+			n.Temperature = &temp
+			n.VRAMSource = "nvidia"
 
-		// Sustained Degradation Auto-Drain: count consecutive polls at/above
-		// the configured threshold and drain via the existing DrainNode path
-		// once met. One-directional - recovery requires an admin to undrain
-		// manually, since a temperature dip doesn't confirm the underlying
-		// hardware issue is resolved. Only flips the existing Draining bool
-		// (already a Hard-Constraint exclusion) - no routing/scoring change.
-		if r.thermalWatchdog.Enabled && r.thermalWatchdog.MaxTempCelsius > 0 {
-			if temp >= r.thermalWatchdog.MaxTempCelsius {
-				n.ThermalBreaches++
-				if n.ThermalBreaches >= r.thermalWatchdog.ConsecutiveBreaches && !n.Draining {
-					shouldThermalDrain = true
-				}
-			} else {
-				n.ThermalBreaches = 0
-			}
-		}
-	default:
-		// Remote node (or no local GPU): used-VRAM is real, summed from the
-		// node's own /api/ps when the runtime reports one (Ollama today).
-		// Total is operator-declared if present. Temp/power unknown from
-		// this path.
-		//
-		// For a non-Ollama runtime, psUsedMB is always 0 (see
-		// internal/runtime/{vllm,tgi,llamacpp,mlx}.go - none of those
-		// probes can observe VRAM). pollNode and pollAgentHosts run
-		// concurrently on the same poll tick (Router.Start runs them
-		// alongside each other, not one nested in the other), so if this
-		// branch unconditionally set VRAMUsedMB/VRAMSource from a
-		// permanently-zero psUsedMB, it would stomp a real agent-reported
-		// reading (applyAgentTelemetry, agent_poll.go) back to
-		// zero/unknown on every single cycle whenever this goroutine
-		// happens to finish after that one - a real reading would flicker
-		// rather than settle. A genuine psUsedMB>0 reading (Ollama) always
-		// wins regardless - it is this poll's own live, non-guessed
-		// measurement and must never be shadowed by a possibly-stale agent
-		// figure.
-		n.PowerDrawW = 0
-		n.Temperature = nil
-		if psUsedMB > 0 {
-			n.VRAMUsedMB = psUsedMB
-		} else if n.VRAMSource != "agent" {
-			n.VRAMUsedMB = 0
-		}
-		if psUsedMB > 0 || n.VRAMSource != "agent" {
-			if n.VRAMTotalMBConfig > 0 {
-				n.VRAMTotalMB = n.VRAMTotalMBConfig
-				n.VRAMSource = "declared"
-			} else {
-				n.VRAMTotalMB = 0
-				if psUsedMB > 0 {
-					n.VRAMSource = "api"
+			// Sustained Degradation Auto-Drain: count consecutive polls at/above
+			// the configured threshold and drain via the existing DrainNode path
+			// once met. One-directional - recovery requires an admin to undrain
+			// manually, since a temperature dip doesn't confirm the underlying
+			// hardware issue is resolved. Only flips the existing Draining bool
+			// (already a Hard-Constraint exclusion) - no routing/scoring change.
+			if r.thermalWatchdog.Enabled && r.thermalWatchdog.MaxTempCelsius > 0 {
+				if temp >= r.thermalWatchdog.MaxTempCelsius {
+					n.ThermalBreaches++
+					if n.ThermalBreaches >= r.thermalWatchdog.ConsecutiveBreaches && !n.Draining {
+						shouldThermalDrain = true
+					}
 				} else {
-					n.VRAMSource = "none"
+					n.ThermalBreaches = 0
+				}
+			}
+		default:
+			// Remote node (or no local GPU): used-VRAM is real, summed from the
+			// node's own /api/ps when the runtime reports one (Ollama today).
+			// Total is operator-declared if present. Temp/power unknown from
+			// this path.
+			//
+			// For a non-Ollama runtime, psUsedMB is always 0 (see
+			// internal/runtime/{vllm,tgi,llamacpp,mlx}.go - none of those
+			// probes can observe VRAM). pollNode and pollAgentHosts run
+			// concurrently on the same poll tick (Router.Start runs them
+			// alongside each other, not one nested in the other), so if this
+			// branch unconditionally set VRAMUsedMB/VRAMSource from a
+			// permanently-zero psUsedMB, it would stomp a real agent-reported
+			// reading (applyAgentTelemetry, agent_poll.go) back to
+			// zero/unknown on every single cycle whenever this goroutine
+			// happens to finish after that one - a real reading would flicker
+			// rather than settle. A genuine psUsedMB>0 reading (Ollama) always
+			// wins regardless - it is this poll's own live, non-guessed
+			// measurement and must never be shadowed by a possibly-stale agent
+			// figure.
+			n.PowerDrawW = 0
+			n.Temperature = nil
+			if psUsedMB > 0 {
+				n.VRAMUsedMB = psUsedMB
+			} else if n.VRAMSource != "agent" {
+				n.VRAMUsedMB = 0
+			}
+			if psUsedMB > 0 || n.VRAMSource != "agent" {
+				if n.VRAMTotalMBConfig > 0 {
+					n.VRAMTotalMB = n.VRAMTotalMBConfig
+					n.VRAMSource = "declared"
+				} else {
+					n.VRAMTotalMB = 0
+					if psUsedMB > 0 {
+						n.VRAMSource = "api"
+					} else {
+						n.VRAMSource = "none"
+					}
 				}
 			}
 		}
-	}
-	attributeSoleModelVRAM(n)
-	n.HealthHistory = append(n.HealthHistory, 100.0)
-	if len(n.HealthHistory) > 60 {
-		n.HealthHistory = n.HealthHistory[len(n.HealthHistory)-60:]
-	}
-	nodeName := n.Name
-	nowHealthy := n.Healthy
-	n.mu.Unlock()
+		attributeSoleModelVRAM(n)
+		n.HealthHistory = append(n.HealthHistory, 100.0)
+		if len(n.HealthHistory) > 60 {
+			n.HealthHistory = n.HealthHistory[len(n.HealthHistory)-60:]
+		}
+		nodeName = n.Name
+		nowHealthy = n.Healthy
+	}()
 	for _, m := range models {
 		r.recordLastKnownVRAM(nodeName, m.Name, m.SizeVRAM)
 		// Residency is now confirmed by real poll data - drop any hot-path or

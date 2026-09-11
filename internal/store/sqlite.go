@@ -591,6 +591,12 @@ func (s *sqliteStore) migrate() error {
 		// blob keyed by plain model name - mirrors the gpu_indices column's
 		// JSON-blob convention above. Empty string means "nothing declared".
 		`ALTER TABLE node_overrides ADD COLUMN vram_overrides TEXT NOT NULL DEFAULT ''`,
+		// Prefill time for Ollama-native requests, parsed from the response's
+		// prompt_eval_duration field. 0 for rows predating this migration and
+		// for any request where the source engine didn't report it (vLLM,
+		// cloud fallback, streaming without a JSON tail) - not distinguished
+		// from a genuinely-zero prefill, matching gen_duration_ms's convention.
+		`ALTER TABLE request_log ADD COLUMN prefill_ms INTEGER NOT NULL DEFAULT 0`,
 	} {
 		// Idempotent: a rerun against an already-migrated DB hits "duplicate
 		// column name" for every statement here, which is benign and must be
@@ -866,9 +872,9 @@ func (s *sqliteStore) AppendRequest(r RequestRecord) error {
 	}
 	_, err := s.db.Exec(
 		`INSERT OR IGNORE INTO request_log
-			(id, key_name, model, node_name, status_code, latency_ms, tokens_used, cost_usd, routed_to, is_cloud, ts, routing_reason, routing_detail)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		r.ID, r.KeyName, r.Model, r.NodeName, r.StatusCode, r.LatencyMs, r.TokensUsed, r.CostUSD, r.RoutedTo, isCloud, r.TS.Unix(), r.RoutingReason, r.RoutingDetail,
+			(id, key_name, model, node_name, status_code, latency_ms, tokens_used, cost_usd, routed_to, is_cloud, ts, routing_reason, routing_detail, prefill_ms)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		r.ID, r.KeyName, r.Model, r.NodeName, r.StatusCode, r.LatencyMs, r.TokensUsed, r.CostUSD, r.RoutedTo, isCloud, r.TS.Unix(), r.RoutingReason, r.RoutingDetail, r.PrefillMs,
 	)
 	if err != nil {
 		return fmt.Errorf("store: AppendRequest: %w", err)
@@ -888,7 +894,7 @@ func (s *sqliteStore) AppendRequest(r RequestRecord) error {
 
 func (s *sqliteStore) LastRequests(n int) ([]RequestRecord, error) {
 	rows, err := s.db.Query(
-		`SELECT id, key_name, model, node_name, status_code, latency_ms, tokens_used, cost_usd, routed_to, is_cloud, ts, routing_reason, routing_detail
+		`SELECT id, key_name, model, node_name, status_code, latency_ms, tokens_used, cost_usd, routed_to, is_cloud, ts, routing_reason, routing_detail, prefill_ms
 		 FROM request_log ORDER BY ts DESC LIMIT ?`, n,
 	)
 	if err != nil {
@@ -904,7 +910,7 @@ func (s *sqliteStore) LastRequests(n int) ([]RequestRecord, error) {
 		var reason, detail sql.NullString
 		if err := rows.Scan(
 			&r.ID, &r.KeyName, &r.Model, &r.NodeName, &r.StatusCode,
-			&r.LatencyMs, &r.TokensUsed, &r.CostUSD, &r.RoutedTo, &isCloud, &ts, &reason, &detail,
+			&r.LatencyMs, &r.TokensUsed, &r.CostUSD, &r.RoutedTo, &isCloud, &ts, &reason, &detail, &r.PrefillMs,
 		); err != nil {
 			return nil, fmt.Errorf("store: LastRequests scan: %w", err)
 		}
@@ -933,11 +939,11 @@ func (s *sqliteStore) GetRequest(id string) (RequestRecord, bool, error) {
 	var ts int64
 	var reason, detail sql.NullString
 	err := s.db.QueryRow(
-		`SELECT id, key_name, model, node_name, status_code, latency_ms, tokens_used, cost_usd, routed_to, is_cloud, ts, routing_reason, routing_detail
+		`SELECT id, key_name, model, node_name, status_code, latency_ms, tokens_used, cost_usd, routed_to, is_cloud, ts, routing_reason, routing_detail, prefill_ms
 		 FROM request_log WHERE id = ?`, id,
 	).Scan(
 		&r.ID, &r.KeyName, &r.Model, &r.NodeName, &r.StatusCode,
-		&r.LatencyMs, &r.TokensUsed, &r.CostUSD, &r.RoutedTo, &isCloud, &ts, &reason, &detail,
+		&r.LatencyMs, &r.TokensUsed, &r.CostUSD, &r.RoutedTo, &isCloud, &ts, &reason, &detail, &r.PrefillMs,
 	)
 	if err == sql.ErrNoRows {
 		return RequestRecord{}, false, nil

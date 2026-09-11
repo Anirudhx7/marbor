@@ -728,7 +728,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if modelName != requestedModelName {
 			loggedModel = requestedModelName + " -> " + modelName
 		}
-		h.admin.LogRequest(requestID, keyName, clientIP, loggedModel, node.Name, status, rec.StatusCode(), latencyMs, tokens, decision)
+		h.admin.LogRequest(requestID, keyName, clientIP, loggedModel, node.Name, status, rec.StatusCode(), latencyMs, tokens, rec.promptEvalDurationMs(), decision)
 		if tokens >= 0 {
 			h.admin.TrackLocalRequestModel(keyName, modelName, tokens, rec.evalDurationMs())
 			h.modelLimiter.recordTokens(modelName, node.Name, int64(tokens))
@@ -1188,7 +1188,7 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 				clientIP = fwd2
 			}
 		}
-		h.admin.LogRequest(requestID, keyName, clientIP, loggedModel, nodeName, status, rec.StatusCode(), latencyMs, logTokens, nil)
+		h.admin.LogRequest(requestID, keyName, clientIP, loggedModel, nodeName, status, rec.StatusCode(), latencyMs, logTokens, 0, nil)
 		if tokens >= 0 {
 			h.admin.TrackCloudCostModel(keyName, cloud.Name, modelName, cloud.CostPer1KTokens, tokens)
 			// Model-config rpm/tpm caps are keyed to a specific local marbor
@@ -1432,6 +1432,35 @@ func (r *statusRecorder) evalDurationMs() int64 {
 		}
 		if t.EvalDuration > 0 {
 			return t.EvalDuration / int64(time.Millisecond)
+		}
+	}
+	return 0
+}
+
+// promptEvalDurationMs parses Ollama's real prompt_eval_duration (nanoseconds
+// spent processing the prompt, excluding generation) from the response tail
+// - the prefill half of evalDurationMs's generation half. Only present on
+// Ollama-native responses; returns 0 (unavailable) for anything else,
+// including OpenAI usage blocks and requests with no prompt to process
+// (Ollama omits the field entirely rather than reporting a real zero in
+// that case). 0 always means "not present", same convention as
+// evalDurationMs.
+func (r *statusRecorder) promptEvalDurationMs() int64 {
+	lines := bytes.Split(r.tail, []byte("\n"))
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := bytes.TrimSpace(lines[i])
+		line = bytes.TrimPrefix(line, []byte("data: ")) // SSE framing
+		if len(line) == 0 || line[0] != '{' {
+			continue
+		}
+		var t struct {
+			PromptEvalDuration int64 `json:"prompt_eval_duration"`
+		}
+		if err := json.Unmarshal(line, &t); err != nil {
+			continue
+		}
+		if t.PromptEvalDuration > 0 {
+			return t.PromptEvalDuration / int64(time.Millisecond)
 		}
 	}
 	return 0

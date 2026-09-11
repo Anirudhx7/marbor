@@ -4,6 +4,7 @@ import { Activity as ActivityIcon, Search, RefreshCw, Eye, Calendar, User, Globe
 import { fetchSystemAuditFiltered, fetchPredictiveDecisions } from '../lib/api';
 import type { SystemAuditEntry, PredictiveDecision } from '../types';
 import { Modal } from '../components/Modal';
+import { EmptyState } from '../components/EmptyState';
 import { CustomSelect } from '../components/Select';
 import { CustomDateTimePicker } from '../components/DateTimePicker';
 import { ClearableInput, FilterField, FilterBar, FilterBarGrid, FilterBarClear } from '../components/FilterField';
@@ -513,21 +514,24 @@ export function Activity() {
             {error}
           </div>
         ) : filteredEntries.length === 0 ? (
-          <div className="p-12 text-center text-muted-foreground text-sm flex flex-col items-center justify-center gap-2">
-            <Search className="w-6 h-6 text-muted-foreground/50" />
-            No activity records found matching your filters.
-            {hasActiveFilters && (
-              <button
-                onClick={clearAllFilters}
-                className="text-primary hover:underline text-xs mt-1"
-              >
-                Clear filters
-              </button>
-            )}
-          </div>
+<EmptyState
+  icon={Search}
+  title="No activity records found"
+  copy={hasActiveFilters ? 'Nothing matches the active filters.' : 'Admin actions will appear here as they happen.'}
+  action={
+    hasActiveFilters ? (
+      <button
+        onClick={clearAllFilters}
+        className="text-sm font-medium text-primary hover:underline"
+      >
+        Clear filters
+      </button>
+    ) : undefined
+  }
+/>
         ) : (
-          <div className="hidden md:block">
-          <div className="overflow-x-auto">
+<div className="hidden md:block">
+<div className="overflow-x-auto scroll-region" tabIndex={0} role="region" aria-label="Activity table: scroll horizontally for more columns">
             <table className="w-full border-collapse text-left text-sm">
               <thead>
                 <tr className="border-b border-border bg-secondary/30 text-muted-foreground font-medium text-xs uppercase tracking-wider">
@@ -607,7 +611,7 @@ export function Activity() {
               <div
                 key={`${e.time}-${e.action}-${e.username}-${index}-card`}
                 onClick={() => setSelectedEntry(e)}
-                className="bg-card border border-border rounded-xl p-4 cursor-pointer hover:bg-secondary/30 transition-all duration-150"
+                className="bg-card border border-border rounded-xl p-4 cursor-pointer hover:bg-secondary/30 transition-colors duration-150"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-1.5 flex-wrap">

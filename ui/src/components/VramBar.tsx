@@ -106,12 +106,12 @@ export function VramBar({ used, total, source, agentGpuVendor, size = 'md', pend
       </div>
       <div className={`w-full bg-secondary rounded-full overflow-hidden ${barHeight} flex`}>
         <div
-          className={`h-full transition-all duration-500 ease-out ${getStatusColor()}`}
+          className={`h-full transition-[width,background-color] duration-500 ease-out ${getStatusColor()}`}
           style={{ width: `${percentage}%` }}
         />
         {pendingPercentage > 0 && (
           <div
-            className="h-full bg-primary/25 [background-image:repeating-linear-gradient(45deg,rgba(255,255,255,0.25)_0,rgba(255,255,255,0.25)_2px,transparent_2px,transparent_6px)] transition-all duration-500 ease-out"
+            className="h-full bg-primary/25 [background-image:repeating-linear-gradient(45deg,rgba(255,255,255,0.25)_0,rgba(255,255,255,0.25)_2px,transparent_2px,transparent_6px)] transition-[width,background-color] duration-500 ease-out"
             style={{ width: `${pendingPercentage}%` }}
             title={`~${pending.toFixed(1)}GB reserved for pending prewarm`}
           />

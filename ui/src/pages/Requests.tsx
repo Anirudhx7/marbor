@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, Fragment } from 'react';
 import { useLocation } from 'react-router-dom';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, Inbox } from 'lucide-react';
 import { CustomSelect, CustomCombobox } from '../components/Select';
 import { CustomDateTimePicker } from '../components/DateTimePicker';
 import { ClearableInput, FilterField, FilterBar, FilterBarGrid, FilterBarClear } from '../components/FilterField';
@@ -11,6 +11,7 @@ import { filterMockRequests, mockGPUNodes, mockAPIKeys, mockExplainForRequest } 
 import { formatRelativeTime } from '../lib/time';
 import { useTimezone } from '../hooks/useTimezone';
 import { wallDateTimeToUtcIso } from '../lib/time';
+import { EmptyState } from '../components/EmptyState';
 
 const REASON_LABELS: Record<string, string> = {
   session_affinity: 'Session affinity',
@@ -46,7 +47,7 @@ function ScrollableValue({ value, valueClassName }: { value: string; valueClassN
 function ReasonBadge({ reason }: { reason?: string }) {
   if (!reason) return <span className="text-muted-foreground/40 text-xs">-</span>;
   return (
-    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border bg-secondary text-foreground/80 border-border">
+    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border bg-secondary text-foreground/80 border-border">
       {REASON_LABELS[reason] ?? reason}
     </span>
   );
@@ -65,18 +66,26 @@ function ExplainPanel({ state }: { state: RoutingDecision | 'loading' | 'error' 
   }
   return (
     <div className="space-y-2 text-sm">
+      {/* Decision strip - landing-page trace language: where it landed and why */}
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-muted-foreground">Reason:</span>
+        <span className="sr-only">Decision: </span>
+        <span className="font-mono text-xs text-muted-foreground" aria-hidden="true">Decision →</span>
+        <span className="font-mono text-xs font-semibold text-foreground">{state.node}</span>
         <ReasonBadge reason={state.reason} />
+        {typeof state.score === 'number' && (
+          <span className="font-mono text-xs text-muted-foreground tabular-nums">
+            score {state.score.toFixed(2)}
+          </span>
+        )}
         {state.affinityLost && (
-          <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400">
+          <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
             affinity lost
           </span>
         )}
       </div>
       {state.detail && <div className="text-muted-foreground text-xs">{state.detail}</div>}
       {state.components && state.components.length > 0 && (
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto scroll-region" tabIndex={0} role="region" aria-label="Score components table: scroll horizontally for more columns">
           <table className="text-xs font-mono">
             <thead>
               <tr className="text-muted-foreground">
@@ -473,7 +482,7 @@ export function Requests() {
       {/* Table (md and up) - parity: same card + header + row treatment as Activity */}
       <div className="hidden md:block">
         <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto scroll-region" tabIndex={0} role="region" aria-label="Request log table: scroll horizontally for more columns">
             {/*
               table-fixed with colgroup percentages, deliberately proportional
               (not a fixed px table width) - the table fills its card exactly
@@ -514,6 +523,7 @@ export function Requests() {
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Node</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">Latency</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">Prefill</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Why</th>
                 </tr>
               </thead>
@@ -522,18 +532,23 @@ export function Requests() {
                   [...Array(5)].map((_, i) => <SkeletonRow key={i} />)
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-12 text-center text-muted-foreground text-sm">
-                      <div className="flex flex-col items-center gap-2">
-                        <span>{hasActiveFilter ? 'No requests match your filter.' : 'No requests yet. Send a request through the proxy to see it here.'}</span>
-                        {hasActiveFilter && (
-                          <button
-                            onClick={clearAllFilters}
-                            className="text-primary hover:underline text-xs"
-                          >
-                            Clear filters
-                          </button>
-                        )}
-                      </div>
+                    <td colSpan={9} className="px-4">
+                      <EmptyState
+                        compact
+                        icon={Inbox}
+                        title={hasActiveFilter ? 'No requests match your filter' : 'No requests yet'}
+                        copy={hasActiveFilter ? 'Try widening the time range or clearing a filter.' : 'Send a request through the proxy to see it here.'}
+                        action={
+                          hasActiveFilter ? (
+                            <button
+                              onClick={clearAllFilters}
+                              className="text-sm font-medium text-primary hover:underline"
+                            >
+                              Clear filters
+                            </button>
+                          ) : undefined
+                        }
+                      />
                     </td>
                   </tr>
                 ) : (
@@ -585,6 +600,9 @@ export function Requests() {
                       <td className="px-4 py-3 text-right font-mono text-xs text-muted-foreground">
                         {entry.latency_ms} ms
                       </td>
+                      <td className="px-4 py-3 text-right font-mono text-xs text-muted-foreground">
+                        {entry.prefillMs ? `${entry.prefillMs} ms` : '-'}
+                      </td>
                       <td className="px-4 py-3">
                         <button
                           type="button"
@@ -598,7 +616,7 @@ export function Requests() {
                     </tr>
                     {expandedId === entry.id && (
                       <tr className="border-b border-border last:border-0 bg-secondary/20">
-                        <td colSpan={8} className="px-4 py-3">
+                        <td colSpan={9} className="px-4 py-3">
                           <ExplainPanel state={explainData[entry.id]} />
                         </td>
                       </tr>
@@ -630,18 +648,22 @@ export function Requests() {
             </div>
           ))
         ) : filtered.length === 0 ? (
-          <div className="bg-card/50 backdrop-blur-sm border border-border/60 rounded-xl p-8 text-center text-muted-foreground text-sm">
-            {hasActiveFilter
-              ? 'No requests match your filter.'
-              : 'No requests yet. Send a request through the proxy to see it here.'}
-            {hasActiveFilter && (
-              <button
-                onClick={clearAllFilters}
-                className="block mx-auto text-primary hover:underline text-xs mt-1"
-              >
-                Clear filters
-              </button>
-            )}
+          <div className="bg-card/50 backdrop-blur-sm border border-border/60 rounded-xl px-4">
+            <EmptyState
+              icon={Inbox}
+              title={hasActiveFilter ? 'No requests match your filter' : 'No requests yet'}
+              copy={hasActiveFilter ? 'Try widening the time range or clearing a filter.' : 'Send a request through the proxy to see it here.'}
+              action={
+                hasActiveFilter ? (
+                  <button
+                    onClick={clearAllFilters}
+                    className="text-sm font-medium text-primary hover:underline"
+                  >
+                    Clear filters
+                  </button>
+                ) : undefined
+              }
+            />
           </div>
         ) : (
           filtered.map((entry) => (
@@ -663,6 +685,10 @@ export function Requests() {
                 <div>
                   <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Latency</div>
                   <div className="text-sm text-foreground font-mono">{entry.latency_ms} ms</div>
+                </div>
+                <div>
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Prefill</div>
+                  <div className="text-sm text-foreground font-mono">{entry.prefillMs ? `${entry.prefillMs} ms` : '-'}</div>
                 </div>
                 <div>
                   <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Model</div>

@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { Plus, Copy, Trash2, Key, Pencil } from 'lucide-react';
 import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
+import { EmptyState } from '../components/EmptyState';
 import { SearchInput } from '../components/SearchInput';
 import { mockAPIKeys } from '../lib/mockData';
 import { fetchKeys, createKey, revokeKey, patchKey, fetchModels } from '../lib/api';
@@ -427,8 +428,8 @@ export function APIKeys() {
       </div>
 
       {/* Keys Table (desktop/tablet) */}
-      <div className="hidden md:block bg-card border border-border shadow-sm rounded-xl overflow-hidden">
-        <div className="overflow-x-auto">
+<div className="hidden md:block bg-card border border-border shadow-sm rounded-xl overflow-hidden">
+<div className="overflow-x-auto scroll-region" tabIndex={0} role="region" aria-label="API keys table: scroll horizontally for more columns">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-secondary/30 border-b border-border text-muted-foreground">
@@ -616,10 +617,11 @@ export function APIKeys() {
       </div>
 
       {filteredKeys.length === 0 && (
-        <div className="text-center py-12">
-          <Key className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
-          <p className="text-muted-foreground">No API keys found matching your search.</p>
-        </div>
+        <EmptyState
+          icon={Key}
+          title="No API keys found"
+          copy="Keys you create will appear here - or refine the search."
+        />
       )}
 
       {/* Create Key Modal */}

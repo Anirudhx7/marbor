@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Plus, Trash2, Server, Thermometer, Cpu, Clock, Activity, Pencil, X, Pin, Flame, Settings2, Radio, Copy, Fan, MemoryStick, HardDrive } from 'lucide-react';
@@ -7,11 +7,14 @@ import { VramBar } from '../components/VramBar';
 import { Badge } from '../components/Badge';
 import { Sparkline } from '../components/Sparkline';
 import { SearchInput } from '../components/SearchInput';
+import { SignalFilter } from '../components/SignalFilter';
+import { EmptyState } from '../components/EmptyState';
 import { Modal } from '../components/Modal';
 import { ModelConfigModal } from '../components/ModelConfigModal';
 import { CustomSelect } from '../components/Select';
 import { mockGPUNodes, mockRuntimeLogLines } from '../lib/mockData';
 import { readLastNodeCount, writeLastNodeCount } from '../lib/nodeCount';
+import { VRAM_PRESSURE_THRESHOLD } from './Dashboard';
 import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, probeNodeTLS, fetchModelFit, unloadModel, getPinned, getMarborAgent, enableMarborAgent, regenerateMarborAgentToken, disableMarborAgent, checkNodeHealth, getNodeControl, acceptNodeControl, clearNodeControl, startNodeRuntime, stopNodeRuntime, restartNodeRuntime, getNodeRuntimeLogs } from '../lib/api';
 import type { MarborAgentStatus, NodeHealthCheckResult, NodeControlStatus } from '../lib/api';
 import type { GPUNode, ModelFitResponse, NodeFit, FitStatus } from '../types';
@@ -42,6 +45,25 @@ function formatBytes(bytes: number): string {
 // "unknown" are visually distinct.
 const LIVE_VRAM_TOOL_SOURCES = new Set(['nvidia-smi', 'rocm-smi', 'xpu-smi', 'system_profiler', 'agent', 'api']);
 
+// SIGNAL_DEFS backs the placement-signal filter chips above the node grid -
+// the fleet-page version of the landing page's live-trace signal grid, but
+// with OR semantics: a shown node matches any active signal. (The site keeps
+// AND because a *request* must satisfy every signal to land; an operator
+// *querying* nodes needs union, and health chips are mutually exclusive, so
+// AND would empty-set Degraded + Down.) Non-matches are filtered out so a
+// 100-GPU fleet stays scannable without hunting for lit cards.
+const SIGNAL_DEFS: { id: string; label: string; matches: (n: GPUNode) => boolean }[] = [
+  // health/degraded exclude draining nodes, mirroring computeFleetHealth in
+  // Dashboard.tsx - a draining node lights the Draining chip, not Healthy.
+  { id: 'healthy', label: 'Healthy', matches: (n) => n.health === 'healthy' && !n.draining },
+  { id: 'degraded', label: 'Degraded', matches: (n) => n.health === 'degraded' && !n.draining },
+  { id: 'draining', label: 'Draining', matches: (n) => n.draining },
+  { id: 'down', label: 'Down', matches: (n) => n.health === 'down' },
+  { id: 'agent', label: 'Agent', matches: (n) => !!n.agentPresent },
+  { id: 'warm', label: 'Warm', matches: (n) => (n.loadedModels ?? []).length > 0 },
+  { id: 'pressure', label: 'VRAM pressure', matches: (n) => n.vramSource !== 'none' && n.vramTotalMB > 0 && n.vramUsedMB / n.vramTotalMB >= VRAM_PRESSURE_THRESHOLD },
+];
+
 function FitBadge({ fit }: { fit: FitStatus }) {
   const styles: Record<FitStatus, string> = {
     green:   'bg-green-500/15 text-green-600 dark:text-green-400 border border-green-500/30',
@@ -56,7 +78,7 @@ function FitBadge({ fit }: { fit: FitStatus }) {
     unknown: 'Unknown',
   };
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${styles[fit]}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${styles[fit]}`}>
       {labels[fit]}
     </span>
   );
@@ -65,16 +87,16 @@ function FitBadge({ fit }: { fit: FitStatus }) {
 function ModelFitTable({ nodeFit }: { nodeFit: NodeFit }) {
   if (nodeFit.models.length === 0) {
     return (
-      <p className="text-xs text-muted-foreground py-2">No downloaded models found on this node.</p>
+      <EmptyState compact icon={Server} title="No downloaded models" copy="Models downloaded to this node will be listed here for fit analysis." />
     );
   }
   return (
     <>
-      <div className="hidden md:block overflow-x-auto">
+      <div className="hidden md:block overflow-x-auto scroll-region" tabIndex={0} role="region" aria-label="Model fit table: scroll horizontally for more columns">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border">
-              <th className="text-left text-xs font-medium text-muted-foreground pb-2 pr-4">Model</th>
+              <th className="sticky left-0 z-10 bg-card text-left text-xs font-medium text-muted-foreground pb-2 pr-4">Model</th>
               <th className="text-left text-xs font-medium text-muted-foreground pb-2 pr-4">Size</th>
               <th className="text-left text-xs font-medium text-muted-foreground pb-2 pr-4">Est. VRAM</th>
               <th className="text-left text-xs font-medium text-muted-foreground pb-2 pr-4">Fit</th>
@@ -84,7 +106,7 @@ function ModelFitTable({ nodeFit }: { nodeFit: NodeFit }) {
           <tbody>
             {nodeFit.models.map((m) => (
               <tr key={m.name} className="border-b border-border/50 last:border-0">
-                <td className="py-2 pr-4 font-mono text-xs text-foreground">{m.name}</td>
+                <td className="sticky left-0 z-10 bg-card py-2 pr-4 font-mono text-xs text-foreground">{m.name}</td>
                 <td className="py-2 pr-4 text-xs text-muted-foreground">{formatBytes(m.size_bytes)}</td>
                 <td className="py-2 pr-4 text-xs text-muted-foreground">{formatBytes(m.vram_estimate_bytes)}</td>
                 <td className="py-2 pr-4"><FitBadge fit={m.fit} /></td>
@@ -373,7 +395,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
   return (
     <div
       id={`node-card-${node.name}`}
-      className={`bg-card border shadow-sm rounded-xl p-5 scroll-mt-28 will-change-transform transition-all duration-500 ease-out ${isHighlighted ? 'ring-2 ring-primary/50 ring-offset-2 ring-offset-background border-primary/40 shadow-lg bg-primary/[0.035]' : 'hover:shadow-md hover:border-primary/20'} ${node.draining ? 'border-amber-500/20 hover:border-amber-500/40 bg-amber-500/[0.02]' : 'border-border'}`}
+      className={`bg-card border shadow-sm rounded-xl p-5 scroll-mt-28 transition-[box-shadow,border-color] duration-200 ease-out ${isHighlighted ? 'ring-2 ring-primary/50 ring-offset-2 ring-offset-background border-primary/40 shadow-lg bg-primary/[0.035]' : 'hover:shadow-md hover:border-primary/20'} ${node.draining ? 'border-amber-500/20 hover:border-amber-500/40 bg-amber-500/[0.02]' : 'border-border'}`}
     >
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-4">
@@ -647,6 +669,15 @@ export function GPUNodes() {
   const [fleetLoading, setFleetLoading] = useState(!demoMode);
   const [skeletonNodes] = useState<number>(() => readLastNodeCount());
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeSignals, setActiveSignals] = useState<Set<string>>(new Set());
+  const toggleSignal = (id: string) => {
+    setActiveSignals((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
   const [highlightedNodes, setHighlightedNodes] = useState<Set<string>>(new Set());
   const [highlightSource, setHighlightSource] = useState<string | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -1348,10 +1379,28 @@ export function GPUNodes() {
     return () => clearTimeout(t);
   }, [location.search]);
 
-  const filteredNodes = nodes.filter(node =>
+  const filteredNodes = useMemo(() => nodes.filter(node =>
     (node.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
     (node.gpuModel || '').toLowerCase().includes(searchQuery.toLowerCase())
+  ), [nodes, searchQuery]);
+
+  const signalOptions = useMemo(() => SIGNAL_DEFS.map((s) => ({
+    id: s.id,
+    label: s.label,
+    count: filteredNodes.filter(s.matches).length,
+  })), [filteredNodes]);
+  const activeSignalDefs = useMemo(
+    () => SIGNAL_DEFS.filter((s) => activeSignals.has(s.id)),
+    [activeSignals]
   );
+  const visibleNodes = useMemo(() => {
+    // OR semantics, deliberately NOT the landing page's AND: health chips are
+    // mutually exclusive, so AND would empty-set the classic triage query
+    // (Degraded + Down = "everything on fire"). OR gathers, AND would mislead.
+    const nodeMatchesSignals = (node: GPUNode) =>
+      activeSignalDefs.length === 0 || activeSignalDefs.some((s) => s.matches(node));
+    return filteredNodes.filter(nodeMatchesSignals);
+  }, [filteredNodes, activeSignalDefs]);
 
   const handleAddNode = async () => {
     if (!newNode.name || !newNode.host) return;
@@ -1940,21 +1989,79 @@ export function GPUNodes() {
         />
       </div>
 
+      {/* Placement signals - landing-page trace language: dim, don't remove */}
+      {nodes.length > 0 && (
+        <SignalFilter
+          signals={signalOptions}
+          activeIds={activeSignals}
+          onToggle={toggleSignal}
+          onClear={() => setActiveSignals(new Set())}
+          resultText={
+            activeSignals.size === 0
+              ? `${filteredNodes.length} of ${nodes.length} shown`
+              : `${visibleNodes.length} of ${filteredNodes.length} shown match${visibleNodes.length === 1 ? 'es' : ''}`
+          }
+        />
+      )}
+
       {/* Nodes Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {fleetLoading ? (
           [...Array(skeletonNodes)].map((_, i) => <NodeCardSkeleton key={i} />)
         ) : (
-          filteredNodes.map((node) => (
+          visibleNodes.map((node) => (
           <NodeCard key={node.id} node={node} pinnedModels={pinnedByNode[node.name] ?? []} onRemove={(name) => { setActionError(null); setNodeToDelete(name); }} onDrain={(name) => { setActionError(null); setNodeToDrain(name); }} onUndrain={(name) => { setActionError(null); setNodeToUndrain(name); }} onTogglePrewarm={(name, disabled) => { setActionError(null); setPrewarmToToggle({ name, disabled }); }} onEdit={openEditModal} onUnload={(nodeName, model) => { setActionError(null); setModelToUnload({ nodeName, model }); }} onConfigureModel={(modelName, nodeName, runtime) => setConfigTarget({ model: modelName, node: nodeName, runtime })}           onManageAgent={openAgentModal} isHighlighted={highlightedNodes.has(node.name)} highlightSource={highlightSource} />
           )))}
       </div>
 
-      {!fleetLoading && filteredNodes.length === 0 && (
-        <div className="text-center py-12">
-          <Server className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
-          <p className="text-muted-foreground">No inference nodes found matching your search.</p>
-        </div>
+      {!fleetLoading && visibleNodes.length === 0 && (
+        nodes.length === 0 ? (
+          <EmptyState
+            icon={Server}
+            title="No inference nodes yet"
+            copy="Add your first GPU node to put Marbor in front of real hardware."
+            action={
+              <button
+                onClick={() => { setActionError(null); setIsAddModalOpen(true); }}
+                disabled={!isLive && !demoMode}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground font-medium rounded-lg transition-colors shadow-sm"
+              >
+                <Plus className="w-4 h-4" />
+                Add Node
+              </button>
+            }
+          />
+        ) : filteredNodes.length === 0 ? (
+          <EmptyState
+            icon={Server}
+            title="No nodes match your search"
+            copy={searchQuery ? `Nothing in this fleet matches "${searchQuery}".` : 'No inference nodes found.'}
+            action={
+              searchQuery ? (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="text-sm font-medium text-primary hover:underline"
+                >
+                  Clear search
+                </button>
+              ) : undefined
+            }
+          />
+        ) : (
+          <EmptyState
+            icon={Server}
+            title="No nodes match these signals"
+            copy="No shown node matches any active signal."
+            action={
+              <button
+                onClick={() => setActiveSignals(new Set())}
+                className="text-sm font-medium text-primary hover:underline"
+              >
+                Clear signals
+              </button>
+            }
+          />
+        )
       )}
 
       {/* Model fit Section */}
@@ -2009,7 +2116,7 @@ export function GPUNodes() {
           ))}
 
           {modelFit && modelFit.nodes.length === 0 && !modelFitLoading && (
-            <div className="text-center py-8 text-muted-foreground text-sm">No nodes available for model fit analysis.</div>
+            <EmptyState compact icon={Server} title="Nothing to analyze yet" copy="Nodes with downloaded models will appear here for fit analysis." />
           )}
         </div>
       )}
@@ -3111,7 +3218,7 @@ export function GPUNodes() {
                   </button>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">No control method auto-discovered on this node yet.</p>
+                <EmptyState compact icon={Settings2} title="Nothing auto-discovered" copy="No control method was found on this node yet - configure one manually below." />
               ))}
 
               <div className="flex flex-wrap items-end gap-2 pt-2 border-t border-border">
@@ -3500,10 +3607,13 @@ export function GPUNodes() {
           </p>
           {logsBusy && <p className="text-sm text-muted-foreground">Loading...</p>}
           {logsError && <p className="text-sm text-destructive">{logsError}</p>}
-          {!logsBusy && !logsError && logsLines && (
+          {!logsBusy && !logsError && logsLines && logsLines.length > 0 && (
             <pre className="text-xs font-mono whitespace-pre-wrap break-all max-h-96 overflow-y-auto bg-secondary/30 border border-border rounded-lg p-3">
-              {logsLines.length > 0 ? logsLines.join('\n') : 'No log lines returned.'}
+              {logsLines.join('\n')}
             </pre>
+          )}
+          {!logsBusy && !logsError && logsLines && logsLines.length === 0 && (
+            <EmptyState compact icon={Server} title="No log lines returned" copy="The runtime produced no output in this snapshot window." />
           )}
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
             <button
