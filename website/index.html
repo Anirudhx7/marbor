@@ -251,8 +251,13 @@ section.block,#install,#main{scroll-margin-top:88px}
    focusable/tabbable element nested here isn't silently stripped of its ring. */
 section.block:focus:not(:focus-visible),main:focus:not(:focus-visible){outline:none!important;box-shadow:none!important}
 /* Same stuck-ring guard for the install box (arrival focuses it directly).
+   Unconditional: the box is never a Tab stop (tabindex is added for arrival
+   focus and removed on blur), so a focus-visible exception only leaks the
+   browser default ring when arrival follows keyboard use, and that ring then
+   sticks until focus moves. The flash halo plus scroll position already mark
+   the location, and AT focus still lands.
    Outline only: the intended flash halo is a box-shadow animation and must survive. */
-.install:focus:not(:focus-visible){outline:none!important}
+.install:focus{outline:none!important}
 .crow:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .crow{outline:none}
 .sigscroll:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
