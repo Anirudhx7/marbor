@@ -749,7 +749,7 @@ See [ROADMAP.md](ROADMAP.md) for the full open-core strategy.
 
 - [Production Deployment Guide](docs/PRODUCTION.md)
 - [Savings Math](docs/SAVINGS-MATH.md) - how every dollar figure is computed
-- [Use Cases](docs/USE-CASES.md)
+- [Ollama Alternatives & Use Cases](docs/USE-CASES.md)
 - [Security](SECURITY.md)
 - [Changelog](CHANGELOG.md)
 - [Contributing](CONTRIBUTING.md)
