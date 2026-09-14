@@ -104,6 +104,13 @@ jobs:
         working-directory: ./ui
         run: npm ci
 
+      - name: Audit UI dependencies
+        # govulncheck only covers the Go module graph - the UI's npm dependencies get
+        # weekly Dependabot bumps but zero automated vuln scanning otherwise.
+        # --omit=dev: only scans what actually ships. 0 findings as of 2026-09-15.
+        working-directory: ./ui
+        run: npm audit --omit=dev
+
       - name: Lint UI
         # Non-blocking: typescript-eslint does not support TypeScript 7.0.2 (pinned in
         # ui/package.json) - typescript-eslint/typescript-eslint#12518, closed not-planned
