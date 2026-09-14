@@ -1,7 +1,8 @@
 package hygiene
 
-// binary_separation_test.go is the standing guard for Architecture Law 4:
-// marbor (control plane + CLI) and marbor-agent are two static binaries,
+// binary_separation_test.go is the standing guard for the permanent product
+// promise that marbor (control plane + CLI) and marbor-agent are two static
+// binaries,
 // neither capable of the other's role. That separation holds today by
 // inspection only - nothing previously stopped it from silently breaking
 // as the codebase grows. This test checks the real, transitive Go import
@@ -67,7 +68,7 @@ func TestMarborAgentNeverImportsControlPlanePackages(t *testing.T) {
 		for _, dep := range deps {
 			for _, forbidden := range controlPlanePackages {
 				if dep == forbidden {
-					t.Errorf("%s transitively imports %s - marbor-agent must never be capable of the control plane's role (Architecture Law 4)", pkg, dep)
+					t.Errorf("%s transitively imports %s - marbor-agent must never be capable of the control plane's role", pkg, dep)
 				}
 			}
 		}
