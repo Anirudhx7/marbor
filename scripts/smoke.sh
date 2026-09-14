@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # smoke.sh - gates the `make demo` path with real pass/fail assertions.
-# Brings up the demo stack, hits auth/routing/streaming/admin/metrics/CLI, tears down, exits 0/1.
+# Brings up the demo stack, hits UI boot/auth/routing/streaming/admin/metrics/CLI, tears down, exits 0/1.
 set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -21,7 +21,7 @@ trap cleanup EXIT
 
 fail() { echo ""; echo "SMOKE FAILED: $*" >&2; exit 1; }
 
-echo "=== [0/6] marbor.demo.db drift check (schema vs live migrate() + seed_demo.sql) ==="
+echo "=== [0/7] marbor.demo.db drift check (schema vs live migrate() + seed_demo.sql) ==="
 if ! command -v sqlite3 &>/dev/null; then
   echo "sqlite3 not found on PATH, skipping drift check" >&2
 elif ! command -v go &>/dev/null; then
@@ -47,7 +47,7 @@ else
   fi
 fi
 
-echo "=== [1/6] Build + start demo stack (all 5 runtimes) ==="
+echo "=== [1/7] Build + start demo stack (all 5 runtimes) ==="
 $COMPOSE build || fail "demo-build failed"
 # --wait blocks until every listed service reports healthy (or the timeout
 # fails the command) - covers the 4 multi-runtime nodes' own healthchecks in
@@ -57,7 +57,7 @@ $COMPOSE up -d --wait --wait-timeout 90 \
   ollama-node-a ollama-node-b vllm-node tgi-node llamacpp-node mlx-node marbor \
   || fail "compose up failed (a node or marbor never reported healthy)"
 
-echo "=== [2/6] Wait for marbor health ==="
+echo "=== [2/7] Wait for marbor health ==="
 ok=0
 for i in $(seq 1 30); do
   if curl -fsS "http://localhost:8080/health" >/dev/null 2>&1; then
@@ -68,7 +68,26 @@ for i in $(seq 1 30); do
 done
 [ "$ok" = "1" ] || fail "marbor /health never became ready after 30s"
 
-echo "=== [3/6] Auth check: bad API key must be rejected ==="
+echo "=== [3/7] UI boot check: dashboard renders (root element + non-empty JS bundle) ==="
+# Closes the exact hole that let a dependency update ship a blank dashboard
+# while every other check (including the /health ping above) said "all
+# good" - that check only pings the data API, it never loads the page a
+# real user's browser would. Light version: no browser automation, just
+# confirms the HTML has its root mount point and the JS bundle it
+# references actually has content.
+ui_status=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8080/")
+[ "$ui_status" = "200" ] || fail "expected 200 from GET /, got $ui_status"
+
+ui_body=$(curl -fsS "http://localhost:8080/") || fail "GET / unreachable"
+echo "$ui_body" | grep -q 'id="root"' || fail "dashboard HTML missing root mount element (id=\"root\")"
+
+bundle_path=$(echo "$ui_body" | grep -oE '/assets/[^"]+\.js' | head -1)
+[ -n "$bundle_path" ] || fail "dashboard HTML has no referenced JS bundle"
+
+bundle_size=$(curl -fsS "http://localhost:8080${bundle_path}" | wc -c) || fail "JS bundle ${bundle_path} unreachable"
+[ "$bundle_size" -gt 0 ] || fail "JS bundle ${bundle_path} is empty"
+
+echo "=== [4/7] Auth check: bad API key must be rejected ==="
 status=$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:11434/api/generate" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $BAD_KEY" \
@@ -78,10 +97,10 @@ case "$status" in
   *) fail "expected 401/403 for bad API key, got $status" ;;
 esac
 
-echo "=== [4/6] Routing + streaming check: run demotraffic ==="
+echo "=== [5/7] Routing + streaming check: run demotraffic ==="
 $COMPOSE run --rm demotraffic || fail "demotraffic reported failed requests"
 
-echo "=== [5/6] Admin + metrics check ==="
+echo "=== [6/7] Admin + metrics check ==="
 summary_status=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8080/admin/metrics/summary" \
   -H "Authorization: Bearer $ADMIN_TOKEN")
 [ "$summary_status" = "200" ] || fail "expected 200 from /admin/metrics/summary, got $summary_status"
@@ -89,7 +108,7 @@ summary_status=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8080/a
 metrics_body=$(curl -fsS "http://localhost:9090/metrics") || fail "metrics endpoint on :9090 unreachable"
 echo "$metrics_body" | grep -q "marbor_" || fail "metrics body missing marbor_ prefix"
 
-echo "=== [6/6] marbor CLI check: version/status/nodes/models against the live demo stack ==="
+echo "=== [7/7] marbor CLI check: version/status/nodes/models against the live demo stack ==="
 if ! command -v go &>/dev/null; then
   echo "go not found on PATH, skipping marbor CLI check" >&2
 else
