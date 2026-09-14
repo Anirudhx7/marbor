@@ -80,11 +80,22 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install UI Dependencies and Build
+      - name: Install UI Dependencies
         working-directory: ./ui
-        run: |
-          npm ci
-          npm run build
+        run: npm ci
+
+      - name: Lint UI
+        # Non-blocking: typescript-eslint does not support TypeScript 7.0.2 (pinned in
+        # ui/package.json) - typescript-eslint/typescript-eslint#12518, closed not-planned
+        # upstream, needs a TypeScript 7.1 API that doesn't exist yet. Revisit once
+        # typescript-eslint ships TS 7 support or that issue reopens.
+        working-directory: ./ui
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Build UI
+        working-directory: ./ui
+        run: npm run build
 
       - name: Build demo mode (GitHub Pages regression check)
         working-directory: ./ui
