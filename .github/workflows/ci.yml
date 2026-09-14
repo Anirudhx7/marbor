@@ -7,6 +7,13 @@ on:
     branches: [ "main" ]
   workflow_dispatch:
 
+# Cancel a now-obsolete in-progress run for the same branch/PR when a newer
+# push lands, instead of letting it finish burning minutes on a diff that's
+# already been superseded.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -54,6 +61,12 @@ jobs:
         run: |
           mkdir -p internal/admin/web/dist/assets
           touch internal/admin/web/dist/index.html
+
+      - name: go mod verify
+        # Cheap integrity check on the downloaded dependency cache - catches
+        # rare corruption/tampering before it causes a confusing build failure
+        # further down the pipeline.
+        run: go mod verify
 
       - name: Go vet
         run: go vet ./...
