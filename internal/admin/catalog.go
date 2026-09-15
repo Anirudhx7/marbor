@@ -1496,7 +1496,7 @@ func (s *Server) handleModelSearch(w http.ResponseWriter, r *http.Request) {
 		}
 		models, err := s.fetchHFModelList(r.Context(), targetURL)
 		if err != nil {
-			writeJSONError(w, http.StatusBadGateway, err.Error())
+			writeCorrelatedError(w, r, http.StatusBadGateway, "failed to fetch Hugging Face model list", err)
 			return
 		}
 		hfModels = models
@@ -1620,14 +1620,14 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 	targetURL := fmt.Sprintf("https://huggingface.co/api/models/%s?blobs=true", repoID)
 	resp, err := hfAuthedGet(r.Context(), targetURL, s.cfg.HuggingFace.Token)
 	if err != nil {
-		writeJSONError(w, http.StatusBadGateway, err.Error())
+		writeCorrelatedError(w, r, http.StatusBadGateway, "failed to fetch Hugging Face repo info", err)
 		return
 	}
 	defer resp.Body.Close()
 
 	var repo HFRepoResponse
 	if err := json.NewDecoder(resp.Body).Decode(&repo); err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "decode Hugging Face response: "+err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 

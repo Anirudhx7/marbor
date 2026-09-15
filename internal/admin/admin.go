@@ -2665,6 +2665,13 @@ func (s *Server) handleNodeRuntimeAction(w http.ResponseWriter, r *http.Request,
 	ctx, cancel := context.WithTimeout(r.Context(), nodeRuntimeActionTimeout)
 	defer cancel()
 	if err := s.runtimeActionViaAgent(ctx, nodeURL, agentCfg, action, ctrl); err != nil {
+		// The agent's own error text (a domain message like "systemd:
+		// restart ollama.service: Unit not found") is meant to surface to
+		// the client - see runtimeActionViaAgent's doc comment for why a
+		// transport-level failure calling the agent never reaches this
+		// branch with raw network/TLS internals (that case is sanitized at
+		// the source instead of here, since it can't be told apart from a
+		// legitimate agent message once it's just an `error` value).
 		writeJSONError(w, http.StatusBadGateway, err.Error())
 		return
 	}
@@ -2704,7 +2711,13 @@ func (s *Server) runtimeActionViaAgent(ctx context.Context, nodeURL string, agen
 
 	resp, err := s.router.HTTPClientForNode(nodeRuntimeActionTimeout).Do(req)
 	if err != nil {
-		return fmt.Errorf("agent runtime %s failed: %w", action, err)
+		// Do() failing is a transport-level problem (dial/TLS/timeout) and
+		// its text can carry network internals - never let it reach the
+		// client verbatim (that's what the caller does with this error's
+		// Error() text). Log it server-side and return a generic message
+		// instead, same class of fix as commit 9aff1df.
+		log.Printf("admin: agent runtime %s call to node failed: %v", action, err)
+		return fmt.Errorf("could not reach agent for runtime %s", action)
 	}
 	defer resp.Body.Close()
 
@@ -2785,6 +2798,9 @@ func (s *Server) handleNodeRuntimeLogs(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	logLines, err := s.runtimeLogsViaAgent(ctx, nodeURL, agentCfg, ctrl, lines)
 	if err != nil {
+		// See handleNodeRuntimeAction's comment above its own agent-error
+		// passthrough: the agent's own message is meant to reach the client;
+		// transport failures are sanitized inside runtimeLogsViaAgent.
 		writeJSONError(w, http.StatusBadGateway, err.Error())
 		return
 	}
@@ -2822,7 +2838,8 @@ func (s *Server) runtimeLogsViaAgent(ctx context.Context, nodeURL string, agentC
 
 	resp, err := s.router.HTTPClientForNode(nodeRuntimeActionTimeout).Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("agent runtime logs failed: %w", err)
+		log.Printf("admin: agent runtime logs call to node failed: %v", err)
+		return nil, errors.New("could not reach agent for runtime logs")
 	}
 	defer resp.Body.Close()
 
@@ -3343,10 +3360,9 @@ func (s *Server) handleUnloadModel(w http.ResponseWriter, r *http.Request) {
 			// primitive for runtime \"vllm\"") is exactly what should surface -
 			// it is what turns a non-Ollama runtime into a clear "not
 			// supported" message in the UI instead of a correlation-id-only
-			// generic failure, matching deleteModelViaAgent's/
-			// listModelsViaAgent's convention (unlike the pre-existing direct
-			// path below, which keeps writeCorrelatedError for its own
-			// Ollama-HTTP-level failures).
+			// generic failure. Transport-level failures calling the agent
+			// are sanitized at the source inside unloadModelViaAgent, so
+			// err.Error() here is always safe to send as-is.
 			writeJSONError(w, http.StatusBadGateway, err.Error())
 			return
 		}
@@ -3363,13 +3379,11 @@ func (s *Server) handleUnloadModel(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if errors.Is(err, router.ErrModelPinned) {
-			w.WriteHeader(http.StatusConflict)
-			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			writeCorrelatedError(w, r, http.StatusConflict, err.Error(), err)
 			return
 		}
 		if errors.Is(err, router.ErrUnloadUnsupported) {
-			w.WriteHeader(http.StatusUnprocessableEntity)
-			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			writeCorrelatedError(w, r, http.StatusUnprocessableEntity, err.Error(), err)
 			return
 		}
 		if err != nil {
@@ -3771,7 +3785,7 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 				if strings.Contains(err.Error(), "not found") {
 					status = http.StatusNotFound
 				}
-				writeJSONError(w, status, err.Error())
+				writeCorrelatedError(w, r, status, err.Error(), err)
 				return false
 			}
 		}
@@ -3783,7 +3797,7 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 				} else if strings.Contains(err.Error(), "invalid URL") || strings.Contains(err.Error(), "must be http") || strings.Contains(err.Error(), "link-local") {
 					status = http.StatusBadRequest
 				}
-				writeJSONError(w, status, err.Error())
+				writeCorrelatedError(w, r, status, err.Error(), err)
 				return false
 			}
 			_ = s.st.UpdateNodeURL(name, *patch.URL)
@@ -5087,7 +5101,7 @@ func (s *Server) handleAddKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := validateExpiresAt(k.ExpiresAt); err != nil {
-		writeJSONError(w, http.StatusBadRequest, err.Error())
+		writeCorrelatedError(w, r, http.StatusBadRequest, err.Error(), err)
 		return
 	}
 	// A duplicate name here is almost always an accidental re-POST (double
@@ -5221,7 +5235,7 @@ func (s *Server) handlePatchKey(w http.ResponseWriter, r *http.Request) {
 	}
 	if patch.ExpiresAt != nil {
 		if err := validateExpiresAt(*patch.ExpiresAt); err != nil {
-			writeJSONError(w, http.StatusBadRequest, err.Error())
+			writeCorrelatedError(w, r, http.StatusBadRequest, err.Error(), err)
 			return
 		}
 	}
@@ -5355,7 +5369,7 @@ func (s *Server) handleSetRoutingStrategy(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if err := s.router.SetStrategy(req.Strategy); err != nil {
-		writeJSONError(w, http.StatusBadRequest, err.Error())
+		writeCorrelatedError(w, r, http.StatusBadRequest, err.Error(), err)
 		return
 	}
 	_ = s.st.SetSetting("routing_strategy", req.Strategy)
@@ -5493,7 +5507,7 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := incoming.Validate(); err != nil {
-		http.Error(w, fmt.Sprintf("validation failed: %v", err), http.StatusBadRequest)
+		writeCorrelatedError(w, r, http.StatusBadRequest, "validation failed: "+err.Error(), err)
 		return
 	}
 
@@ -7232,6 +7246,9 @@ func (s *Server) handleNodeModels(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	models, err := s.listModelsViaAgent(ctx, nodeURL, agentCfg)
 	if err != nil {
+		// See handleNodeRuntimeAction's comment: agent-reported message is
+		// meant to reach the client; transport failures are sanitized
+		// inside listModelsViaAgent.
 		writeJSONError(w, http.StatusBadGateway, err.Error())
 		return
 	}
@@ -7257,7 +7274,8 @@ func (s *Server) listModelsViaAgent(ctx context.Context, nodeURL string, agentCf
 
 	resp, err := s.router.HTTPClientForNode(nodeModelsListTimeout).Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("agent list models failed: %w", err)
+		log.Printf("admin: agent list models call to node failed: %v", err)
+		return nil, errors.New("could not reach agent to list models")
 	}
 	defer resp.Body.Close()
 
@@ -7486,6 +7504,9 @@ func (s *Server) handleNodeDeleteModel(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	ctrl, _ := s.router.NodeControlSetting(nodeName)
 	if err := s.deleteModelViaAgent(ctx, nodeURL, agentCfg, model, ctrl); err != nil {
+		// See handleNodeRuntimeAction's comment: agent-reported message is
+		// meant to reach the client; transport failures are sanitized
+		// inside deleteModelViaAgent.
 		writeJSONError(w, http.StatusBadGateway, err.Error())
 		return
 	}
@@ -7522,7 +7543,8 @@ func (s *Server) deleteModelViaAgent(ctx context.Context, nodeURL string, agentC
 
 	resp, err := s.router.HTTPClientForNode(nodeDeleteModelTimeout).Do(req)
 	if err != nil {
-		return fmt.Errorf("agent delete model failed: %w", err)
+		log.Printf("admin: agent delete model call to node failed: %v", err)
+		return errors.New("could not reach agent to delete model")
 	}
 	defer resp.Body.Close()
 
@@ -7690,6 +7712,9 @@ func (s *Server) handleNodeHealthCheck(w http.ResponseWriter, r *http.Request) {
 
 	result, err := s.healthCheckViaAgent(ctx, nodeURL, agentCfg)
 	if err != nil {
+		// See handleNodeRuntimeAction's comment: agent-reported message is
+		// meant to reach the client; transport failures are sanitized
+		// inside healthCheckViaAgent.
 		writeJSONError(w, http.StatusBadGateway, err.Error())
 		return
 	}
@@ -7720,7 +7745,8 @@ func (s *Server) healthCheckViaAgent(ctx context.Context, nodeURL string, agentC
 
 	resp, err := s.router.HTTPClientForNode(nodeHealthCheckTimeout).Do(req)
 	if err != nil {
-		return nodeHealthCheckResult{}, fmt.Errorf("agent health check failed: %w", err)
+		log.Printf("admin: agent health check call to node failed: %v", err)
+		return nodeHealthCheckResult{}, errors.New("could not reach agent for health check")
 	}
 	defer resp.Body.Close()
 
@@ -7775,7 +7801,8 @@ func (s *Server) unloadModelViaAgent(ctx context.Context, nodeURL string, agentC
 
 	resp, err := s.router.HTTPClientForNode(nodeUnloadModelTimeout).Do(req)
 	if err != nil {
-		return fmt.Errorf("agent unload model failed: %w", err)
+		log.Printf("admin: agent unload model call to node failed: %v", err)
+		return errors.New("could not reach agent to unload model")
 	}
 	defer resp.Body.Close()
 
@@ -8051,7 +8078,7 @@ func (s *Server) handleListBackups(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]any{"backups": []backupFileInfo{}})
 			return
 		}
-		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("could not list backups: %v", err))
+		writeServerError(w, r, err)
 		return
 	}
 	var files []backupFileInfo
@@ -8107,7 +8134,7 @@ func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := store.ValidateBackupFile(fullPath); err != nil {
-		writeJSONError(w, http.StatusUnprocessableEntity, fmt.Sprintf("backup file failed validation: %v", err))
+		writeCorrelatedError(w, r, http.StatusUnprocessableEntity, "backup file failed validation: "+err.Error(), err)
 		return
 	}
 
@@ -8144,7 +8171,7 @@ func (s *Server) handleBackupNow(w http.ResponseWriter, r *http.Request) {
 	defer os.Remove(tmpPath)
 
 	if err := s.st.BackupTo(tmpPath); err != nil {
-		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("backup failed: %v", err))
+		writeServerError(w, r, err)
 		return
 	}
 
@@ -8178,7 +8205,7 @@ func (s *Server) handleUploadBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := os.MkdirAll(targetDir, 0o755); err != nil {
-		writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("create backup target directory: %v", err))
+		writeServerError(w, r, err)
 		return
 	}
 
@@ -8219,7 +8246,7 @@ func (s *Server) handleUploadBackup(w http.ResponseWriter, r *http.Request) {
 
 	if err := store.ValidateBackupFile(tmpPath); err != nil {
 		os.Remove(tmpPath)
-		writeJSONError(w, http.StatusUnprocessableEntity, fmt.Sprintf("not a valid marbor.db backup: %v", err))
+		writeCorrelatedError(w, r, http.StatusUnprocessableEntity, "not a valid marbor.db backup: "+err.Error(), err)
 		return
 	}
 
