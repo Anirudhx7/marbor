@@ -27,40 +27,37 @@ var errorLeakSinkPattern = regexp.MustCompile(`writeJSONError\(|http\.Error\(|En
 var rawErrRefPattern = regexp.MustCompile(`\berr\b`)
 
 // errorLeakExceptions lists file:line pairs of known raw-error-to-client
-// leaks, found while wiring this test (2026-09-15) via manual audit of
-// internal/admin. These are the same bug class as commit 9aff1df ("stop
-// leaking raw dial/TLS errors to cloud-test and probe clients") - just not
-// all fixed yet. Reported separately as its own finding for per-site
-// severity review (an error leaked to an authenticated admin-only endpoint
-// is lower severity than one leaked to an unauthenticated path) and its own
-// reviewed fix commit(s), rather than bundled into wiring this guard.
+// leaks that are exempted from this guard with a documented reason.
+//
+// The six entries below are all "agent action" call sites (runtime
+// start/stop/restart/logs, list/delete node models, health check, unload
+// model): each dispatches to a *ViaAgent helper whose error can be either a
+// clean agent-reported domain message (e.g. "unsupported: no unload
+// primitive for runtime \"vllm\"", or a systemd/process driver failure
+// text) that is deliberately meant to surface to the client - locked in by
+// TestHandleNodeRuntimeAction_AgentErrorPassthrough,
+// TestHandleNodeRuntimeLogs_AgentErrorPassthrough, and
+// TestHandleUnloadModel_AgentUnsupportedRuntimeReturnsError - or a
+// transport-level failure (dial/TLS/timeout) reaching the agent. The two
+// can't be told apart once collapsed into a single Go `error` at this call
+// site, so the fix is applied at the source instead: every *ViaAgent
+// helper's HTTP-client Do() failure branch already logs the real error
+// server-side and returns a generic sentinel message (see
+// runtimeActionViaAgent, runtimeLogsViaAgent, listModelsViaAgent,
+// deleteModelViaAgent, healthCheckViaAgent, unloadModelViaAgent) - so
+// err.Error() at these six call sites is always one of those two safe
+// forms, never raw network/TLS internals.
 //
 // Do not add a new entry here without a documented reason - a genuine new
 // leak found by this test should be fixed by routing through
 // writeServerError/writeCorrelatedError, not exempted.
 var errorLeakExceptions = map[string]bool{
-	"internal/admin/admin.go:2668":   true,
-	"internal/admin/admin.go:2788":   true,
-	"internal/admin/admin.go:3350":   true,
-	"internal/admin/admin.go:3367":   true,
-	"internal/admin/admin.go:3372":   true,
-	"internal/admin/admin.go:3774":   true,
-	"internal/admin/admin.go:3786":   true,
-	"internal/admin/admin.go:5090":   true,
-	"internal/admin/admin.go:5224":   true,
-	"internal/admin/admin.go:5358":   true,
-	"internal/admin/admin.go:5496":   true,
-	"internal/admin/admin.go:7235":   true,
-	"internal/admin/admin.go:7489":   true,
-	"internal/admin/admin.go:7693":   true,
-	"internal/admin/catalog.go:1499": true,
-	"internal/admin/catalog.go:1623": true,
-	"internal/admin/catalog.go:1630": true,
-	"internal/admin/admin.go:8054":   true,
-	"internal/admin/admin.go:8110":   true,
-	"internal/admin/admin.go:8147":   true,
-	"internal/admin/admin.go:8181":   true,
-	"internal/admin/admin.go:8222":   true,
+	"internal/admin/admin.go:2675": true,
+	"internal/admin/admin.go:2804": true,
+	"internal/admin/admin.go:3366": true,
+	"internal/admin/admin.go:7252": true,
+	"internal/admin/admin.go:7510": true,
+	"internal/admin/admin.go:7718": true,
 }
 
 // adminGoFiles returns the repo root and every non-test .go file tracked
