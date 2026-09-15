@@ -3379,11 +3379,11 @@ func (s *Server) handleUnloadModel(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if errors.Is(err, router.ErrModelPinned) {
-			writeCorrelatedError(w, r, http.StatusConflict, err.Error(), err)
+			writeJSONError(w, http.StatusConflict, err.Error())
 			return
 		}
 		if errors.Is(err, router.ErrUnloadUnsupported) {
-			writeCorrelatedError(w, r, http.StatusUnprocessableEntity, err.Error(), err)
+			writeJSONError(w, http.StatusUnprocessableEntity, err.Error())
 			return
 		}
 		if err != nil {
@@ -3785,7 +3785,7 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 				if strings.Contains(err.Error(), "not found") {
 					status = http.StatusNotFound
 				}
-				writeCorrelatedError(w, r, status, err.Error(), err)
+				writeJSONError(w, status, err.Error())
 				return false
 			}
 		}
@@ -3797,7 +3797,7 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 				} else if strings.Contains(err.Error(), "invalid URL") || strings.Contains(err.Error(), "must be http") || strings.Contains(err.Error(), "link-local") {
 					status = http.StatusBadRequest
 				}
-				writeCorrelatedError(w, r, status, err.Error(), err)
+				writeJSONError(w, status, err.Error())
 				return false
 			}
 			_ = s.st.UpdateNodeURL(name, *patch.URL)
@@ -5101,7 +5101,7 @@ func (s *Server) handleAddKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := validateExpiresAt(k.ExpiresAt); err != nil {
-		writeCorrelatedError(w, r, http.StatusBadRequest, err.Error(), err)
+		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	// A duplicate name here is almost always an accidental re-POST (double
@@ -5235,7 +5235,7 @@ func (s *Server) handlePatchKey(w http.ResponseWriter, r *http.Request) {
 	}
 	if patch.ExpiresAt != nil {
 		if err := validateExpiresAt(*patch.ExpiresAt); err != nil {
-			writeCorrelatedError(w, r, http.StatusBadRequest, err.Error(), err)
+			writeJSONError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 	}
@@ -5369,7 +5369,7 @@ func (s *Server) handleSetRoutingStrategy(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if err := s.router.SetStrategy(req.Strategy); err != nil {
-		writeCorrelatedError(w, r, http.StatusBadRequest, err.Error(), err)
+		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	_ = s.st.SetSetting("routing_strategy", req.Strategy)
@@ -5507,7 +5507,7 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := incoming.Validate(); err != nil {
-		writeCorrelatedError(w, r, http.StatusBadRequest, "validation failed: "+err.Error(), err)
+		writeJSONError(w, http.StatusBadRequest, "validation failed: "+err.Error())
 		return
 	}
 
@@ -8134,7 +8134,7 @@ func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := store.ValidateBackupFile(fullPath); err != nil {
-		writeCorrelatedError(w, r, http.StatusUnprocessableEntity, "backup file failed validation: "+err.Error(), err)
+		writeJSONError(w, http.StatusUnprocessableEntity, "backup file failed validation: "+err.Error())
 		return
 	}
 
@@ -8246,7 +8246,7 @@ func (s *Server) handleUploadBackup(w http.ResponseWriter, r *http.Request) {
 
 	if err := store.ValidateBackupFile(tmpPath); err != nil {
 		os.Remove(tmpPath)
-		writeCorrelatedError(w, r, http.StatusUnprocessableEntity, "not a valid marbor.db backup: "+err.Error(), err)
+		writeJSONError(w, http.StatusUnprocessableEntity, "not a valid marbor.db backup: "+err.Error())
 		return
 	}
 
