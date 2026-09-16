@@ -1,0 +1,37 @@
+[extend]
+useDefault = true
+
+# Confirmed false positives from a full-history scan (see git log for verification
+# notes). Each entry is an exact, deliberately-fake literal - not a path exemption -
+# so a real secret added later in any of these files still gets caught.
+[[allowlist]]
+description = "Documentation and mock-data placeholder keys, never live credentials"
+regexes = [
+  '''sk-marbor-abc123''',
+  '''sk-mesh-abc123''',
+  '''sk-mesh-xyz789''',
+  '''sk-mesh-agent001''',
+  '''sk-mesh-eng-001''',
+  '''sk-mesh-ds-001''',
+  '''sk-mesh-agent-001''',
+  '''sk-mesh-2f8a9c1d4e5b''',
+  '''sk-mesh-9a3b7c2d8e1f''',
+  '''sk-mesh-4d5e6f7a8b9c''',
+  '''sk-mesh-1a2b3c4d5e6f''',
+  '''sk-prod-abcdef1234567890abcdef1234567890abcdef12''',
+  '''sk-agent-test-token''',
+  '''readonly\.Xk9fA1b2C3d4''',
+  '''operator\.Xk9fA1b2C3d4''',
+  '''admin\.Xk9fA1b2C3d4''',
+  '''sekret-marbor-agent-token''',
+]
+
+# curl-auth-header false-positives on plain doc example commands with no actual
+# Authorization header value - scoped to doc paths only, not disabled repo-wide.
+[[rules.allowlist]]
+id = "curl-auth-header"
+paths = [
+  '''docs/.*''',
+  '''website/docs/.*''',
+  '''README\.md''',
+]
