@@ -38,6 +38,27 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  # SAST: static dataflow analysis of our own Go source - injection, path traversal,
+  # SSRF, auth-bypass patterns. Distinct from gitleaks (secrets) and govulncheck
+  # (known CVEs in dependencies): this looks for bugs in code we wrote ourselves.
+  codeql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
+        with:
+          languages: go
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
+
   # Fastest signal first: vet + gofmt + race tests. Independent of the UI build -
   # Go compiles against the committed internal/admin/web embed, not ui/dist.
   go-checks:
