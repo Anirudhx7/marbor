@@ -2424,7 +2424,7 @@ func (s *Server) handleDisableMarborAgent(w http.ResponseWriter, r *http.Request
 		n.RUnlock()
 		if sameHost && fp != "" {
 			s.router.PatchNode(nodeName, router.NodePatch{TLSFingerprint: &empty})
-			if err := s.st.UpsertNodeOverride(nodeName, nil, nil, nil, nil, nil, &empty, nil, nil, nil); err != nil {
+			if err := s.st.UpsertNodeOverride(nodeName, nil, nil, nil, nil, nil, &empty, nil, nil, nil, nil); err != nil {
 				log.Printf("admin: failed to persist cleared TLS fingerprint override for %s: %v", nodeName, err)
 			}
 		}
@@ -3723,6 +3723,11 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "parallelism_type and parallelism_width must be set together or cleared together")
 		return
 	}
+	// NOTE: replica_peers admin API wiring (validation, PatchNode/
+	// UpsertNodeOverride plumbing, response fields) is deliberately deferred
+	// to a follow-up checkpoint - this pass only lands the core scheduling-
+	// role/closure-algorithm layer (router/store/placement). Do not wire
+	// patch.ReplicaPeers into this handler until that checkpoint.
 	// Derive resulting gpu_indices for cross-field validation - need existing value when patch doesn't carry new one.
 	if patch.ParallelismType != nil && *patch.ParallelismType != "" && patch.ParallelismWidth != nil && *patch.ParallelismWidth > 0 {
 		var resultingGPUIndices []int
@@ -3807,7 +3812,9 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 				writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
 				return false
 			}
-			if err := s.st.UpsertNodeOverride(name, patch.VRAMTotalMB, patch.GPUModel, patch.Runtime, patch.GPUIndices, patch.MaxInFlight, patch.TLSFingerprint, patch.ParallelismType, patch.ParallelismWidth, patch.VRAMOverrides); err != nil {
+			// replicaPeers param intentionally passed nil here - admin API
+			// wiring for replica_peers PATCH is a follow-up checkpoint.
+			if err := s.st.UpsertNodeOverride(name, patch.VRAMTotalMB, patch.GPUModel, patch.Runtime, patch.GPUIndices, patch.MaxInFlight, patch.TLSFingerprint, patch.ParallelismType, patch.ParallelismWidth, patch.VRAMOverrides, nil); err != nil {
 				log.Printf("admin: failed to persist node override for %s: %v", name, err)
 			}
 		}

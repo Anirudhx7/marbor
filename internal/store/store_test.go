@@ -390,7 +390,7 @@ func TestNodeOverrides(t *testing.T) {
 	gpu := "NVIDIA RTX 4090"
 	rt := "vllm"
 
-	if err := s.UpsertNodeOverride("node1", &vram, &gpu, &rt, nil, nil, nil, nil, nil, nil); err != nil {
+	if err := s.UpsertNodeOverride("node1", &vram, &gpu, &rt, nil, nil, nil, nil, nil, nil, nil); err != nil {
 		t.Fatalf("UpsertNodeOverride: %v", err)
 	}
 
@@ -430,7 +430,7 @@ func TestNodeOverrides_MaxInFlight(t *testing.T) {
 	s := openTestDB(t)
 
 	cap1 := 8
-	if err := s.UpsertNodeOverride("node1", nil, nil, nil, nil, &cap1, nil, nil, nil, nil); err != nil {
+	if err := s.UpsertNodeOverride("node1", nil, nil, nil, nil, &cap1, nil, nil, nil, nil, nil); err != nil {
 		t.Fatalf("UpsertNodeOverride: %v", err)
 	}
 	ovs, err := s.NodeOverrides()
@@ -448,7 +448,7 @@ func TestNodeOverrides_MaxInFlight(t *testing.T) {
 	// A merge update that only touches gpu_model must not clobber the
 	// previously-set max_in_flight (same merge discipline as vram_total_mb).
 	gpu := "NVIDIA RTX 4090"
-	if err := s.UpsertNodeOverride("node1", nil, &gpu, nil, nil, nil, nil, nil, nil, nil); err != nil {
+	if err := s.UpsertNodeOverride("node1", nil, &gpu, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
 		t.Fatalf("UpsertNodeOverride (merge): %v", err)
 	}
 	ovs, err = s.NodeOverrides()
@@ -463,7 +463,7 @@ func TestNodeOverrides_MaxInFlight(t *testing.T) {
 	// An explicit 0 (clearing back to "use global default") must round-trip
 	// as a non-nil pointer to 0, distinct from "never declared" (nil).
 	cap0 := 0
-	if err := s.UpsertNodeOverride("node1", nil, nil, nil, nil, &cap0, nil, nil, nil, nil); err != nil {
+	if err := s.UpsertNodeOverride("node1", nil, nil, nil, nil, &cap0, nil, nil, nil, nil, nil); err != nil {
 		t.Fatalf("UpsertNodeOverride (clear): %v", err)
 	}
 	ovs, err = s.NodeOverrides()
@@ -484,7 +484,7 @@ func TestNodeOverrides_GPUIndices(t *testing.T) {
 	s := openTestDB(t)
 
 	indices := []int{0, 1}
-	if err := s.UpsertNodeOverride("node1", nil, nil, nil, &indices, nil, nil, nil, nil, nil); err != nil {
+	if err := s.UpsertNodeOverride("node1", nil, nil, nil, &indices, nil, nil, nil, nil, nil, nil); err != nil {
 		t.Fatalf("UpsertNodeOverride: %v", err)
 	}
 
@@ -503,7 +503,7 @@ func TestNodeOverrides_GPUIndices(t *testing.T) {
 	// A merge update touching only gpu_model must not clobber the earlier
 	// gpu_indices declaration - same discipline as vram_total_mb/runtime.
 	gpu := "NVIDIA RTX 4090"
-	if err := s.UpsertNodeOverride("node1", nil, &gpu, nil, nil, nil, nil, nil, nil, nil); err != nil {
+	if err := s.UpsertNodeOverride("node1", nil, &gpu, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
 		t.Fatalf("UpsertNodeOverride (merge): %v", err)
 	}
 	ovs, err = s.NodeOverrides()
@@ -520,7 +520,7 @@ func TestNodeOverrides_GPUIndices(t *testing.T) {
 	// "nothing declared", so the round-tripped value only needs to be empty,
 	// not nil, to have the intended effect.
 	empty := []int{}
-	if err := s.UpsertNodeOverride("node1", nil, nil, nil, &empty, nil, nil, nil, nil, nil); err != nil {
+	if err := s.UpsertNodeOverride("node1", nil, nil, nil, &empty, nil, nil, nil, nil, nil, nil); err != nil {
 		t.Fatalf("UpsertNodeOverride (clear): %v", err)
 	}
 	ovs, err = s.NodeOverrides()
@@ -541,7 +541,7 @@ func TestNodeOverrides_VRAMOverrides(t *testing.T) {
 	s := openTestDB(t)
 
 	overrides := map[string]int64{"llama3.1:8b": 8192, "mixtral": 26000}
-	if err := s.UpsertNodeOverride("node1", nil, nil, nil, nil, nil, nil, nil, nil, &overrides); err != nil {
+	if err := s.UpsertNodeOverride("node1", nil, nil, nil, nil, nil, nil, nil, nil, &overrides, nil); err != nil {
 		t.Fatalf("UpsertNodeOverride: %v", err)
 	}
 
@@ -560,7 +560,7 @@ func TestNodeOverrides_VRAMOverrides(t *testing.T) {
 	// A merge update touching only gpu_model must not clobber the earlier
 	// vram_overrides declaration.
 	gpu := "NVIDIA RTX 4090"
-	if err := s.UpsertNodeOverride("node1", nil, &gpu, nil, nil, nil, nil, nil, nil, nil); err != nil {
+	if err := s.UpsertNodeOverride("node1", nil, &gpu, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
 		t.Fatalf("UpsertNodeOverride (merge): %v", err)
 	}
 	ovs, err = s.NodeOverrides()
@@ -574,7 +574,7 @@ func TestNodeOverrides_VRAMOverrides(t *testing.T) {
 
 	// An explicit non-nil empty map clears the declaration.
 	empty := map[string]int64{}
-	if err := s.UpsertNodeOverride("node1", nil, nil, nil, nil, nil, nil, nil, nil, &empty); err != nil {
+	if err := s.UpsertNodeOverride("node1", nil, nil, nil, nil, nil, nil, nil, nil, &empty, nil); err != nil {
 		t.Fatalf("UpsertNodeOverride (clear): %v", err)
 	}
 	ovs, err = s.NodeOverrides()
@@ -595,7 +595,7 @@ func TestNodeOverrides_TLSFingerprint(t *testing.T) {
 	s := openTestDB(t)
 
 	fp := "SHA256:aa:bb:cc:dd"
-	if err := s.UpsertNodeOverride("node1", nil, nil, nil, nil, nil, &fp, nil, nil, nil); err != nil {
+	if err := s.UpsertNodeOverride("node1", nil, nil, nil, nil, nil, &fp, nil, nil, nil, nil); err != nil {
 		t.Fatalf("UpsertNodeOverride: %v", err)
 	}
 	ovs, err := s.NodeOverrides()
@@ -615,7 +615,7 @@ func TestNodeOverrides_TLSFingerprint(t *testing.T) {
 	// column, and the whole reason this column round-trips through a
 	// read-merge instead of a blanket overwrite.
 	gpu := "NVIDIA RTX 4090"
-	if err := s.UpsertNodeOverride("node1", nil, &gpu, nil, nil, nil, nil, nil, nil, nil); err != nil {
+	if err := s.UpsertNodeOverride("node1", nil, &gpu, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
 		t.Fatalf("UpsertNodeOverride (merge): %v", err)
 	}
 	ovs, err = s.NodeOverrides()
@@ -630,7 +630,7 @@ func TestNodeOverrides_TLSFingerprint(t *testing.T) {
 	// Explicit clear (non-nil empty string) resets the pin to nil/NULL - this
 	// is the "reset pin" path, distinct from "never declared".
 	empty := ""
-	if err := s.UpsertNodeOverride("node1", nil, nil, nil, nil, nil, &empty, nil, nil, nil); err != nil {
+	if err := s.UpsertNodeOverride("node1", nil, nil, nil, nil, nil, &empty, nil, nil, nil, nil); err != nil {
 		t.Fatalf("UpsertNodeOverride (clear): %v", err)
 	}
 	ovs, err = s.NodeOverrides()
@@ -688,7 +688,7 @@ func TestNodeOverrides_UpsertDoesNotClobberUnknownColumn(t *testing.T) {
 		t.Fatalf("store.Open: %v", err)
 	}
 	fp := "SHA256:11:22:33:44"
-	if err := s1.UpsertNodeOverride("node1", nil, nil, nil, nil, nil, &fp, nil, nil, nil); err != nil {
+	if err := s1.UpsertNodeOverride("node1", nil, nil, nil, nil, nil, &fp, nil, nil, nil, nil); err != nil {
 		t.Fatalf("seed UpsertNodeOverride: %v", err)
 	}
 	if err := s1.Close(); err != nil {
