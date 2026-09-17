@@ -457,7 +457,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
                   Mismatched: {node.mismatchWarning}
                 </span>
               ) : null}
-              {(node.schedulingRole === 'worker' || node.schedulingRole === 'head') && node.replicaHead && node.replicaHead !== node.name ? (
+              {node.schedulingRole === 'worker' && node.replicaHead ? (
                 <button
                   type="button"
                   onClick={() => onGoToReplicaHead(node.replicaHead as string)}
