@@ -817,6 +817,22 @@ type replicaDecl struct {
 // number of declared-replica_peers edges, trivial at 4-20-node fleet scale.
 // Returns a map keyed by node name. Never mutates any NodeState.
 func (r *Router) resolveSchedulingRoles(nodes []*NodeState) map[string]SchedulingRole {
+	roles, _ := resolveSchedulingRolesAndHeads(nodes)
+	return roles
+}
+
+// resolveSchedulingRolesAndHeads is resolveSchedulingRoles' full computation,
+// additionally returning a name -> resolved-head-name map for every real
+// node in a valid (RoleHead/RoleWorker) component - the same head value
+// validateComponent already computes once per component, captured here
+// instead of thrown away. This lets a caller that needs every worker's head
+// name (e.g. an admin API node-list response) get it from the one fleet-wide
+// pass it already has to make, instead of re-running the whole closure
+// computation once per worker via componentFor. resolveSchedulingRoles
+// itself stays a thin wrapper over this so every existing caller/test is
+// unaffected - nothing about the role-resolution algorithm changes here,
+// only what is captured on the way out.
+func resolveSchedulingRolesAndHeads(nodes []*NodeState) (map[string]SchedulingRole, map[string]string) {
 	// nodeSet is every REAL node in this fleet snapshot - used to fail
 	// closed on a declaration naming a node that doesn't actually exist.
 	nodeSet := make(map[string]bool, len(nodes))
@@ -864,7 +880,7 @@ func (r *Router) resolveSchedulingRoles(nodes []*NodeState) map[string]Schedulin
 	}
 
 	if len(declBy) == 0 {
-		return nil // fast path: nobody in this fleet has declared anything
+		return nil, nil // fast path: nobody in this fleet has declared anything
 	}
 
 	// Group every name touched by union-find into its component, keyed by
@@ -880,6 +896,7 @@ func (r *Router) resolveSchedulingRoles(nodes []*NodeState) map[string]Schedulin
 	}
 
 	roles := make(map[string]SchedulingRole, len(nodes))
+	heads := make(map[string]string, len(nodes))
 	for _, members := range components {
 		valid, head := validateComponent(members, nodeSet, declBy)
 		for name := range members {
@@ -890,14 +907,14 @@ func (r *Router) resolveSchedulingRoles(nodes []*NodeState) map[string]Schedulin
 				roles[name] = RoleUnresolved
 				continue
 			}
+			roles[name] = RoleWorker
 			if name == head {
 				roles[name] = RoleHead
-			} else {
-				roles[name] = RoleWorker
 			}
+			heads[name] = head
 		}
 	}
-	return roles
+	return roles, heads
 }
 
 // validateComponent reports whether every real node inside members has an

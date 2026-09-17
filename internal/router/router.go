@@ -2087,12 +2087,26 @@ func (r *Router) SchedulingRoles(nodes []*NodeState) map[string]SchedulingRole {
 	return r.resolveSchedulingRoles(nodes)
 }
 
+// SchedulingRolesWithHeads is SchedulingRoles plus a name -> resolved-head-
+// name map for every RoleHead/RoleWorker node, computed in the same single
+// fleet-wide pass. Prefer this over calling SchedulingRoles followed by
+// ComponentFor per node: ComponentFor rebuilds the whole closure computation
+// from scratch on every call, so using it once per worker in a node-list
+// response is O(n) work per worker instead of the O(1) map lookup this
+// gives you for the same already-computed result.
+func (r *Router) SchedulingRolesWithHeads(nodes []*NodeState) (map[string]SchedulingRole, map[string]string) {
+	return resolveSchedulingRolesAndHeads(nodes)
+}
+
 // ComponentFor exposes componentFor (placement.go) to callers outside this
 // package that need the resolved head node name for a RoleHead/RoleWorker
 // node - e.g. the admin API's replicaHead response field. Only meaningful
 // when name's SchedulingRole (from SchedulingRoles) is RoleHead or
 // RoleWorker; callers must check that first, per componentFor's own
-// contract.
+// contract. Prefer SchedulingRolesWithHeads when resolving heads for more
+// than one node in the same request - this rebuilds the whole closure
+// computation from scratch on every call, which is fine for a single
+// lookup but wasteful in a loop.
 func ComponentFor(name string, allNodes []*NodeState) (members []*NodeState, head string) {
 	return componentFor(name, allNodes)
 }

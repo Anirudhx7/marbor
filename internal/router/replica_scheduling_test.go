@@ -3,6 +3,7 @@ package router
 import (
 	"testing"
 
+	"github.com/Anirudhx7/marbor/internal/config"
 	"github.com/Anirudhx7/marbor/internal/store"
 )
 
@@ -262,5 +263,65 @@ func TestFilterCandidates_ExistingReasonsWinPrecedence(t *testing.T) {
 		if ex.Node == "worker" && ex.Reason != ExcludeReasonUnhealthy {
 			t.Errorf("worker exclude reason = %q, want %q (existing check must win precedence)", ex.Reason, ExcludeReasonUnhealthy)
 		}
+	}
+}
+
+// TestRoute_StickySessionRejectsNowWorkerNode verifies Route's sticky-
+// session inline hard-validation rejects a pinned node that has since
+// become a confirmed replica worker - the sticky shortcut bypasses
+// filterCandidates entirely by design, so it needs its own guard against
+// exactly this: a stale affinity entry must never keep routing to a node
+// that is no longer independently schedulable.
+func TestRoute_StickySessionRejectsNowWorkerNode(t *testing.T) {
+	// Named so "aa-pinned-node" wins findBestByScore's alphabetical
+	// tiebreak between two otherwise-identical-scoring healthy nodes,
+	// matching the same naming trick TestMaxInFlightStickySessionDoesNotBypassCap
+	// uses to make the initial sticky pin deterministic.
+	r := New(config.RoutingConfig{SessionAffinity: true}, []config.NodeConfig{
+		{Name: "aa-pinned-node", URL: "http://pinned.invalid", Runtime: "ollama"},
+		{Name: "other-node", URL: "http://other.invalid", Runtime: "ollama"},
+	}, nil)
+
+	var pinnedNode, otherNode *NodeState
+	for _, n := range r.Nodes() {
+		n.Lock()
+		n.Healthy = true
+		n.Unlock()
+		switch n.Name {
+		case "aa-pinned-node":
+			pinnedNode = n
+		case "other-node":
+			otherNode = n
+		}
+	}
+	if pinnedNode == nil || otherNode == nil {
+		t.Fatal("expected both test nodes to be present")
+	}
+
+	// Establish a sticky-session pin to pinned-node while it's still standalone.
+	node, _, _ := r.Route("", "sess-1", "")
+	if node != pinnedNode {
+		t.Fatalf("expected initial route to pin sticky session to pinned-node, got %v", node)
+	}
+
+	// Between requests, the operator declares pinned-node as a confirmed
+	// worker of a valid replica headed by other-node.
+	decl := peers("other-node", "other-node", "aa-pinned-node")
+	otherNode.Lock()
+	otherNode.ReplicaPeers = decl
+	otherNode.Unlock()
+	pinnedNode.Lock()
+	pinnedNode.ReplicaPeers = decl
+	pinnedNode.Unlock()
+
+	node, _, decision := r.Route("", "sess-1", "")
+	if node == pinnedNode {
+		t.Fatal("sticky-session path returned a confirmed worker node - RoleWorker must be rejected even for a pinned session")
+	}
+	if node != otherNode {
+		t.Errorf("expected fallthrough to route to other-node (the only remaining eligible candidate), got %v", node)
+	}
+	if decision == nil || !decision.AffinityLost {
+		t.Error("expected AffinityLost=true once the pinned node's role made the prior affinity entry invalid")
 	}
 }
