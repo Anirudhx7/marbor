@@ -91,6 +91,11 @@ const (
 	ReasonSessionAffinity = "session_affinity"
 	ReasonPinnedWarm      = "pinned_warm"
 	ReasonScoreBased      = "score_based"
+	// ReasonNoCandidate means every node was removed by the pre-score hard
+	// filter, so no scoring ever ran. Node is empty; Excluded/ExcludedTotal
+	// carry the only useful information about why the request had nowhere
+	// to go.
+	ReasonNoCandidate = "no_candidate"
 )
 
 func sumComponents(components []ScoreComponent) float64 {

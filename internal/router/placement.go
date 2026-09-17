@@ -669,7 +669,11 @@ func (r *Router) findBestByScore(nodes []*NodeState, modelName string) (*NodeSta
 // If the model is pinned and warm on any healthy candidate, it is selected immediately.
 func (r *Router) selectBestNode(candidates []*NodeState, modelName string) (*NodeState, bool, *RoutingDecision) {
 	if len(candidates) == 0 {
-		return nil, false, nil
+		// No candidate survived the pre-score hard filter. A non-nil decision
+		// is still returned (Node empty) so applyExclusionExplainability has
+		// somewhere to attach Excluded/ExcludedTotal - this is the scenario
+		// an operator most needs that data for.
+		return nil, false, &RoutingDecision{Reason: ReasonNoCandidate}
 	}
 
 	// 1. Check pinned & warm nodes first
@@ -766,10 +770,11 @@ func (r *Router) filterCandidates(nodes []*NodeState, modelName, runtimeFilter s
 }
 
 // applyExclusionExplainability copies excluded/excludedTotal onto decision
-// (only if non-nil - selectBestNode returns a nil decision when healthy is
-// empty, and that no-candidate-survived contract is unchanged by this
-// function). ExcludedTotal is only set when the cap in filterCandidates
-// actually truncated the list.
+// (only if non-nil - findBestByScore cannot return a nil node for a non-empty
+// candidates slice, but selectBestNode's defensive nil check on that return
+// value is left in place, so a nil decision here remains theoretically
+// possible and is still handled as a no-op). ExcludedTotal is only set when
+// the cap in filterCandidates actually truncated the list.
 func applyExclusionExplainability(decision *RoutingDecision, excluded []ExcludedCandidate, excludedTotal int) {
 	if decision == nil {
 		return

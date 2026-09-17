@@ -200,9 +200,21 @@ func TestFilterCandidates_CapsExcludedListAndReportsTotal(t *testing.T) {
 		t.Fatalf("excludedTotal = %d, want 25", total)
 	}
 
-	_, _, decision := r.Route("model-x", "", "")
-	if decision != nil {
-		t.Fatal("expected nil decision - no candidates survived the filter")
+	node, _, decision := r.Route("model-x", "", "")
+	if node != nil {
+		t.Fatal("expected nil node - no candidates survived the filter")
+	}
+	if decision == nil {
+		t.Fatal("expected a non-nil decision carrying Excluded/ExcludedTotal even though no node was selected")
+	}
+	if decision.Reason != ReasonNoCandidate {
+		t.Errorf("decision.Reason = %q, want %q", decision.Reason, ReasonNoCandidate)
+	}
+	if len(decision.Excluded) != maxExcludedCandidates {
+		t.Errorf("decision.Excluded = %d entries, want %d", len(decision.Excluded), maxExcludedCandidates)
+	}
+	if decision.ExcludedTotal != 25 {
+		t.Errorf("decision.ExcludedTotal = %d, want 25", decision.ExcludedTotal)
 	}
 }
 

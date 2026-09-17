@@ -33,6 +33,23 @@ func excludedReasonText(reason string) string {
 	}
 }
 
+// printTable writes a tab-separated header line followed by rows through a
+// tabwriter and flushes it - the shared rendering path for the explain
+// view's two tables (score components, excluded candidates) instead of each
+// hand-rolling the same newTabWriter/Fprintln/Flush sequence.
+func printTable(stdout, stderr io.Writer, header string, rows []string) int {
+	tw := newTabWriter(stdout)
+	fmt.Fprintln(tw, header)
+	for _, row := range rows {
+		fmt.Fprintln(tw, row)
+	}
+	if err := tw.Flush(); err != nil {
+		fmt.Fprintln(stderr, err)
+		return ExitServerError
+	}
+	return ExitOK
+}
+
 // printRequestsUsage is a thin wrapper over the registry-backed writeHelp
 // (help.go).
 func printRequestsUsage(w io.Writer) { writeHelp(w, findCommand(root(), "requests")) }
@@ -121,27 +138,23 @@ func runRequestsExplain(flags *globalFlags, requestID string, stdout, stderr io.
 
 	if len(decision.Components) > 0 {
 		fmt.Fprintf(stdout, "Score:  %.2f\n\n", decision.Score)
-		tw := newTabWriter(stdout)
-		fmt.Fprintln(tw, "COMPONENT\tRAW\tWEIGHT\tVALUE\tPHASE")
-		for _, c := range decision.Components {
-			fmt.Fprintf(tw, "%s\t%.3f\t%.1f\t%.2f\t%s\n", c.Name, c.Raw, c.Weight, c.Value, c.Phase)
+		rows := make([]string, len(decision.Components))
+		for i, c := range decision.Components {
+			rows[i] = fmt.Sprintf("%s\t%.3f\t%.1f\t%.2f\t%s", c.Name, c.Raw, c.Weight, c.Value, c.Phase)
 		}
-		if err := tw.Flush(); err != nil {
-			fmt.Fprintln(stderr, err)
-			return ExitServerError
+		if code := printTable(stdout, stderr, "COMPONENT\tRAW\tWEIGHT\tVALUE\tPHASE", rows); code != ExitOK {
+			return code
 		}
 	}
 
 	if len(decision.Excluded) > 0 {
 		fmt.Fprintln(stdout, "\nEXCLUDED")
-		tw := newTabWriter(stdout)
-		fmt.Fprintln(tw, "NODE\tREASON")
-		for _, e := range decision.Excluded {
-			fmt.Fprintf(tw, "%s\t%s\n", e.Node, excludedReasonText(e.Reason))
+		rows := make([]string, len(decision.Excluded))
+		for i, e := range decision.Excluded {
+			rows[i] = fmt.Sprintf("%s\t%s", e.Node, excludedReasonText(e.Reason))
 		}
-		if err := tw.Flush(); err != nil {
-			fmt.Fprintln(stderr, err)
-			return ExitServerError
+		if code := printTable(stdout, stderr, "NODE\tREASON", rows); code != ExitOK {
+			return code
 		}
 		if decision.ExcludedTotal > len(decision.Excluded) {
 			fmt.Fprintf(stdout, "...and %d more\n", decision.ExcludedTotal-len(decision.Excluded))
