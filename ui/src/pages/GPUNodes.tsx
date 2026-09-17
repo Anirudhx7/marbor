@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Plus, Trash2, Server, Thermometer, Cpu, Clock, Activity, Pencil, X, Pin, Flame, Settings2, Radio, Copy, Fan, MemoryStick, HardDrive } from 'lucide-react';
 import { StatusDot } from '../components/StatusDot';
 import { VramBar } from '../components/VramBar';
@@ -289,7 +289,7 @@ function NodeCardSkeleton() {
   );
 }
 
-function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePrewarm, onEdit, onUnload, onConfigureModel, onManageAgent, isHighlighted, highlightSource }: {
+function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePrewarm, onEdit, onUnload, onConfigureModel, onManageAgent, onGoToReplicaHead, isHighlighted, highlightSource }: {
   node: GPUNode;
   pinnedModels: string[];
   onRemove: (name: string) => void;
@@ -300,6 +300,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
   onUnload: (nodeName: string, model: string) => void;
   onConfigureModel: (modelName: string, nodeName: string, runtime: string) => void;
   onManageAgent: (node: GPUNode) => void;
+  onGoToReplicaHead: (headName: string) => void;
   isHighlighted?: boolean;
   highlightSource?: string | null;
 }) {
@@ -390,6 +391,33 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
       </span>
     ) });
   }
+  // Multi-host replica scheduling role - worker/unresolved nodes stay
+  // listed here (never hidden/removed) but are never a placement target.
+  // Worker is informational (amber, sev 1, same class as draining): the
+  // operator doesn't need to act, the node is correctly excluded by
+  // design. Unresolved is destructive (red, sev 0, same class as a TLS
+  // mismatch): it means conflicting/asymmetric replica_peers declarations
+  // that need the operator to reconcile before this node (and its
+  // component) can ever be scheduled again.
+  if (node.schedulingRole === 'worker') {
+    statusPills.push({ sev: 1, key: 'replica-worker', el: (
+      <span
+        title={`This node is a confirmed member of a multi-host replica and is never a direct placement target - requests route to its head${node.replicaHead ? ` (${node.replicaHead})` : ''}.`}
+        className="text-xs font-medium px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 whitespace-nowrap"
+      >
+        Worker (non-schedulable)
+      </span>
+    ) });
+  } else if (node.schedulingRole === 'unresolved') {
+    statusPills.push({ sev: 0, key: 'replica-unresolved', el: (
+      <span
+        title="This node's replica_peers declaration conflicts with another node's (asymmetric members, conflicting head, or a reference to a node that doesn't exist) - excluded from placement until the operator reconciles the declarations."
+        className="text-xs font-medium px-1.5 py-0.5 rounded bg-destructive/10 text-destructive dark:text-red-400 border border-destructive/30 whitespace-nowrap"
+      >
+        Unresolved replica
+      </span>
+    ) });
+  }
   statusPills.sort((a, b) => a.sev - b.sev);
 
   return (
@@ -406,7 +434,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
               <h3 className="font-semibold text-foreground truncate">{node.name}</h3>
               {isHighlighted && (
                 <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-md bg-primary text-primary-foreground shadow-sm animate-pulse">
-                  {highlightSource === 'dashboard' ? 'From Dashboard' : highlightSource === 'models' ? 'From Models' : 'Highlighted'}
+                  {highlightSource === 'dashboard' ? 'From Dashboard' : highlightSource === 'models' ? 'From Models' : highlightSource === 'replica' ? 'Replica head' : 'Highlighted'}
                 </span>
               )}
               {statusPills.map((p) => (<span key={p.key} className="contents">{p.el}</span>))}
@@ -428,6 +456,15 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
                 <span title={node.mismatchWarning} className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
                   Mismatched: {node.mismatchWarning}
                 </span>
+              ) : null}
+              {node.schedulingRole === 'worker' && node.replicaHead ? (
+                <button
+                  type="button"
+                  onClick={() => onGoToReplicaHead(node.replicaHead as string)}
+                  className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-secondary text-muted-foreground border border-border hover:border-primary/40 hover:text-foreground transition-colors"
+                >
+                  Part of replica: {node.replicaHead}
+                </button>
               ) : null}
               {node.detectedSource === '' && node.agentPresent && !node.parallelismType ? (
                 <span title="Agent on this host cannot see runtime process - add docker.sock mount or run agent directly on host" className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-secondary text-muted-foreground border border-border">
@@ -661,6 +698,14 @@ import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 export function GPUNodes() {
   const { demoMode } = useDemoMode();
   const location = useLocation();
+  const navigate = useNavigate();
+  // Reuses the existing ?highlight=&from= scroll-to/highlight mechanism
+  // (the useEffect below keyed on location.search) for a worker/head card's
+  // "Part of replica: X" link - no new scroll/highlight code, just a new
+  // trigger for the existing one.
+  const goToReplicaHead = (headName: string) => {
+    navigate(`?highlight=${encodeURIComponent(headName)}&from=replica`);
+  };
   const [nodes, setNodes] = useState<GPUNode[]>(demoMode ? mockGPUNodes : []);
   const [isLive, setIsLive] = useState(!demoMode);
   // First-poll gate - same false-empty problem as the dashboard: a bare []
@@ -1563,9 +1608,15 @@ export function GPUNodes() {
   const [editParallelismType, setEditParallelismType] = useState('');
   const [editParallelismWidth, setEditParallelismWidth] = useState('');
   const [editVRAMOverrides, setEditVRAMOverrides] = useState('');
+  // Multi-host replica membership - editReplicaMembers is a comma-separated
+  // list of node names (including this node's own name), matching the
+  // gpu-indices/vram-override free-text convention already used in this
+  // panel. editReplicaHead is a single node name from that list.
+  const [editReplicaMembers, setEditReplicaMembers] = useState('');
+  const [editReplicaHead, setEditReplicaHead] = useState('');
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
-  const [pendingPatch, setPendingPatch] = useState<{ vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; parallelism_type?: string | null; parallelism_width?: number | null; vram_overrides?: Record<string, number> } | null>(null);
+  const [pendingPatch, setPendingPatch] = useState<{ vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; parallelism_type?: string | null; parallelism_width?: number | null; vram_overrides?: Record<string, number>; replica_peers?: { members: string[]; head: string } | null } | null>(null);
   // TLS fingerprint probe/pin state - probing only ever populates
   // tlsProbedFingerprint for display; pinning happens exclusively via the
   // "Confirm & Pin" click (patchNode), never automatically from a probe
@@ -1600,6 +1651,8 @@ export function GPUNodes() {
     setEditParallelismType(node.parallelismType ?? '');
     setEditParallelismWidth(node.parallelismWidth && node.parallelismWidth > 0 ? String(node.parallelismWidth) : '');
     setEditVRAMOverrides(vramOverridesToString(node.vramOverrides));
+    setEditReplicaMembers((node.replicaPeers?.members ?? []).join(', '));
+    setEditReplicaHead(node.replicaPeers?.head ?? '');
     setEditError('');
   };
 
@@ -1641,12 +1694,18 @@ export function GPUNodes() {
     if (editVRAMOverrides === vramOverridesToString(prev.vramOverrides)) {
       setEditVRAMOverrides(vramOverridesToString(fresh.vramOverrides));
     }
+    if (editReplicaMembers === (prev.replicaPeers?.members ?? []).join(', ')) {
+      setEditReplicaMembers((fresh.replicaPeers?.members ?? []).join(', '));
+    }
+    if (editReplicaHead === (prev.replicaPeers?.head ?? '')) {
+      setEditReplicaHead(fresh.replicaPeers?.head ?? '');
+    }
     setEditNode(fresh);
-  }, [nodes, editNode, editHost, editPort, editUseHttps, editVRAM, editGPUModel, editRuntime, editGPUIndices, editMaxInFlight, editParallelismType, editParallelismWidth, editVRAMOverrides]);
+  }, [nodes, editNode, editHost, editPort, editUseHttps, editVRAM, editGPUModel, editRuntime, editGPUIndices, editMaxInFlight, editParallelismType, editParallelismWidth, editVRAMOverrides, editReplicaMembers, editReplicaHead]);
 
-  const buildPatch = (): { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; parallelism_type?: string | null; parallelism_width?: number | null; vram_overrides?: Record<string, number> } | 'invalid' | null => {
+  const buildPatch = (): { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; parallelism_type?: string | null; parallelism_width?: number | null; vram_overrides?: Record<string, number>; replica_peers?: { members: string[]; head: string } | null } | 'invalid' | null => {
     if (!editNode) return null;
-    const patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; parallelism_type?: string | null; parallelism_width?: number | null; vram_overrides?: Record<string, number> } = {};
+    const patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; parallelism_type?: string | null; parallelism_width?: number | null; vram_overrides?: Record<string, number>; replica_peers?: { members: string[]; head: string } | null } = {};
     if (editVRAM.trim() !== '') {
       const v = parseFloat(editVRAM);
       if (isNaN(v) || v < 0) { setEditError(`VRAM must be a non-negative number (${editVRAMUnit})`); return 'invalid'; }
@@ -1741,6 +1800,25 @@ export function GPUNodes() {
     const vramOverridesChanged = Object.keys(newVRAMOverrides).length !== Object.keys(priorVRAMOverrides).length
       || Object.entries(newVRAMOverrides).some(([k, v]) => priorVRAMOverrides[k] !== v);
     if (vramOverridesChanged) patch.vram_overrides = newVRAMOverrides;
+    // Replica membership - whole-value replace, mirroring gpu_indices'
+    // whole-slice-replace convention. Structural validation only (members
+    // non-empty when set, head present in members) - the server is the
+    // authority on the fleet-wide symmetry invariant, same division of
+    // labor as every other cross-field check in this form.
+    const priorMembers = editNode.replicaPeers?.members ?? [];
+    const priorHead = editNode.replicaPeers?.head ?? '';
+    const newMembers = editReplicaMembers.split(',').map(s => s.trim()).filter(s => s !== '');
+    const newHead = editReplicaHead.trim();
+    if (newMembers.length > 0 && newHead === '') {
+      setEditError('Replica head is required when replica members is non-empty');
+      return 'invalid';
+    }
+    if (newMembers.length > 0 && !newMembers.includes(newHead)) {
+      setEditError('Replica head must be one of the declared replica members');
+      return 'invalid';
+    }
+    const membersChanged = newMembers.length !== priorMembers.length || newMembers.some((m, i) => m !== priorMembers[i]) || newHead !== priorHead;
+    if (membersChanged) patch.replica_peers = { members: newMembers, head: newMembers.length > 0 ? newHead : '' };
     if (Object.keys(patch).length === 0) return null;
     return patch;
   };
@@ -1749,7 +1827,7 @@ export function GPUNodes() {
   // backend would, so the modal (which holds its own editNode snapshot, not
   // a live reference into `nodes`) can reflect a save without needing to
   // close and reopen.
-  const mergeNodePatch = (n: GPUNode, patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; tls_fingerprint?: string; parallelism_type?: string | null; parallelism_width?: number | null; vram_overrides?: Record<string, number> }): GPUNode => {
+  const mergeNodePatch = (n: GPUNode, patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; tls_fingerprint?: string; parallelism_type?: string | null; parallelism_width?: number | null; vram_overrides?: Record<string, number>; replica_peers?: { members: string[]; head: string } | null }): GPUNode => {
     const scheme = patch.url ? (patch.url.startsWith('https://') ? 'https' as const : 'http' as const) : undefined;
     const derivedRequired = (() => {
       const width = patch.parallelism_width !== undefined ? (patch.parallelism_width ?? 0) : (n.parallelismWidth ?? 0);
@@ -1773,6 +1851,12 @@ export function GPUNodes() {
       parallelismType: patch.parallelism_type !== undefined ? (patch.parallelism_type || undefined) : n.parallelismType,
       parallelismWidth: patch.parallelism_width !== undefined ? (patch.parallelism_width || undefined) : n.parallelismWidth,
       vramOverrides: patch.vram_overrides ?? n.vramOverrides,
+      // replicaPeers merges like every other whole-value-replace field
+      // above; schedulingRole/replicaHead are NOT recomputed here (demo
+      // mode has no fleet-wide closure algorithm to run client-side) - they
+      // keep whatever the node already had until the next full node-list
+      // load/poll refreshes them from the server.
+      replicaPeers: patch.replica_peers !== undefined ? (patch.replica_peers && patch.replica_peers.members.length > 0 ? patch.replica_peers : undefined) : n.replicaPeers,
       effectiveRequiredGPUs: derivedRequired,
     };
   };
@@ -1782,7 +1866,7 @@ export function GPUNodes() {
   // by applyPatch (Runtime edits, editNode-scoped) and applyAgentTLSPatch
   // (Agent TLS pin/reset, agentNode-scoped) so a future fix to this shared
   // core doesn't have to be applied twice.
-  const sendNodePatch = async (nodeName: string, patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; tls_fingerprint?: string; parallelism_type?: string | null; parallelism_width?: number | null; vram_overrides?: Record<string, number> }) => {
+  const sendNodePatch = async (nodeName: string, patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; tls_fingerprint?: string; parallelism_type?: string | null; parallelism_width?: number | null; vram_overrides?: Record<string, number>; replica_peers?: { members: string[]; head: string } | null }) => {
     if (demoMode) {
       setNodes(prev => prev.map(n => n.name === nodeName ? mergeNodePatch(n, patch) : n));
       return;
@@ -1797,7 +1881,7 @@ export function GPUNodes() {
   // inside the still-open modal, not a form submit, so closing on success
   // would yank the operator out mid-workflow (they still may want to probe,
   // paste-verify, or reset again).
-  const applyPatch = async (patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; tls_fingerprint?: string; parallelism_type?: string | null; parallelism_width?: number | null; vram_overrides?: Record<string, number> }, closeOnSuccess = true) => {
+  const applyPatch = async (patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; tls_fingerprint?: string; parallelism_type?: string | null; parallelism_width?: number | null; vram_overrides?: Record<string, number>; replica_peers?: { members: string[]; head: string } | null }, closeOnSuccess = true) => {
     if (!editNode) return;
     if (demoMode) {
       await sendNodePatch(editNode.name, patch);
@@ -2010,7 +2094,7 @@ export function GPUNodes() {
           [...Array(skeletonNodes)].map((_, i) => <NodeCardSkeleton key={i} />)
         ) : (
           visibleNodes.map((node) => (
-          <NodeCard key={node.id} node={node} pinnedModels={pinnedByNode[node.name] ?? []} onRemove={(name) => { setActionError(null); setNodeToDelete(name); }} onDrain={(name) => { setActionError(null); setNodeToDrain(name); }} onUndrain={(name) => { setActionError(null); setNodeToUndrain(name); }} onTogglePrewarm={(name, disabled) => { setActionError(null); setPrewarmToToggle({ name, disabled }); }} onEdit={openEditModal} onUnload={(nodeName, model) => { setActionError(null); setModelToUnload({ nodeName, model }); }} onConfigureModel={(modelName, nodeName, runtime) => setConfigTarget({ model: modelName, node: nodeName, runtime })}           onManageAgent={openAgentModal} isHighlighted={highlightedNodes.has(node.name)} highlightSource={highlightSource} />
+          <NodeCard key={node.id} node={node} pinnedModels={pinnedByNode[node.name] ?? []} onRemove={(name) => { setActionError(null); setNodeToDelete(name); }} onDrain={(name) => { setActionError(null); setNodeToDrain(name); }} onUndrain={(name) => { setActionError(null); setNodeToUndrain(name); }} onTogglePrewarm={(name, disabled) => { setActionError(null); setPrewarmToToggle({ name, disabled }); }} onEdit={openEditModal} onUnload={(nodeName, model) => { setActionError(null); setModelToUnload({ nodeName, model }); }} onConfigureModel={(modelName, nodeName, runtime) => setConfigTarget({ model: modelName, node: nodeName, runtime })}           onManageAgent={openAgentModal} onGoToReplicaHead={goToReplicaHead} isHighlighted={highlightedNodes.has(node.name)} highlightSource={highlightSource} />
           )))}
       </div>
 
@@ -2481,6 +2565,52 @@ export function GPUNodes() {
               </p>
             </div>
           ) : null}
+          {/* Replica membership - declares this node as part of a multi-host
+              TP/PP deployment. Placed adjacent to Parallelism (they are
+              validated together - GPU scope/shape vs. cross-node identity -
+              but never merged into one field). Each member node must
+              declare the same members/head back for the fleet to resolve
+              this as a valid replica; declaring only one side is legal and
+              shows as "Unresolved replica" on both cards until the other
+              side is patched to match. */}
+          <div className="pt-2 border-t border-border space-y-3">
+            <label className="block text-sm font-medium text-muted-foreground">
+              Replica membership
+            </label>
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1">Members (comma-separated node names, including this node)</label>
+              <input
+                type="text"
+                value={editReplicaMembers}
+                onChange={(e) => setEditReplicaMembers(e.target.value)}
+                placeholder="e.g., node-a, node-b"
+                className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3 items-end">
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">Head (routes to this node)</label>
+                <CustomSelect
+                  value={editReplicaHead}
+                  onChange={(v) => setEditReplicaHead(v)}
+                  options={[
+                    { value: '', label: editReplicaMembers.trim() ? 'Select head...' : 'None' },
+                    ...editReplicaMembers.split(',').map(s => s.trim()).filter(s => s !== '').map(name => ({ value: name, label: name })),
+                  ]}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => { setEditReplicaMembers(''); setEditReplicaHead(''); }}
+                className="px-3 py-2 min-h-[40px] bg-secondary hover:bg-secondary/70 text-muted-foreground hover:text-foreground border border-border font-medium rounded-md text-xs transition-colors"
+              >
+                Clear
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Declares that this node is one host of a multi-host tensor/pipeline-parallel deployment spanning more than one physical machine. Marbor never launches or configures this deployment - it only routes correctly once every member node declares the same members and head back. Leave blank for a standalone node (the default, unchanged for every existing fleet).
+            </p>
+          </div>
           {editError && (
             <p className="text-sm text-destructive">{editError}</p>
           )}

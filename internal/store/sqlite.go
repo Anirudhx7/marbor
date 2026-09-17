@@ -574,6 +574,13 @@ func (s *sqliteStore) migrate() error {
 		// Nullable: NULL/"" means unconstrained (existing fleet unaffected).
 		`ALTER TABLE node_overrides ADD COLUMN parallelism_type TEXT`,
 		`ALTER TABLE node_overrides ADD COLUMN parallelism_width INTEGER`,
+		// Multi-host TP/PP replica membership. NULL means "not part of a
+		// declared multi-host replica" - the node resolves to a standalone
+		// replica, matching every existing row with zero migration. JSON
+		// object {"members": ["node-a","node-b"], "head": "node-a"}, same
+		// JSON-in-TEXT convention node_control.discovered_evidence already
+		// uses.
+		`ALTER TABLE node_overrides ADD COLUMN replica_peers TEXT`,
 		// Latency decomposition - tail percentiles alongside the
 		// existing p50/min/max, and TPOT p50. All 6 new columns are nullable:
 		// a row that predates this migration has no real p95/p99 sample data
@@ -1285,14 +1292,15 @@ func (s *sqliteStore) AllNodes() ([]NodeRecord, error) {
 // names; a column outside that list keeps its current stored value
 // regardless of what the calling binary knows about, which is what makes
 // a downgrade-then-write safe by construction going forward.
-func (s *sqliteStore) UpsertNodeOverride(name string, vramTotalMB *int64, gpuModel *string, runtime *string, gpuIndices *[]int, maxInFlight *int, tlsFingerprint *string, parallelismType *string, parallelismWidth *int, vramOverrides *map[string]int64) error {
+func (s *sqliteStore) UpsertNodeOverride(name string, vramTotalMB *int64, gpuModel *string, runtime *string, gpuIndices *[]int, maxInFlight *int, tlsFingerprint *string, parallelismType *string, parallelismWidth *int, vramOverrides *map[string]int64, replicaPeers *ReplicaPeers) error {
 	var existingVRAM sql.NullInt64
 	var existingGPU, existingRuntime, existingFingerprint, existingParallelismType sql.NullString
 	var existingIndices, existingVRAMOverrides string
+	var existingReplicaPeers sql.NullString
 	var existingMaxInFlight, existingParallelismWidth sql.NullInt64
 	if err := s.db.QueryRow(
-		`SELECT vram_total_mb, gpu_model, runtime, gpu_indices, max_in_flight, tls_fingerprint, parallelism_type, parallelism_width, vram_overrides FROM node_overrides WHERE name = ?`, name,
-	).Scan(&existingVRAM, &existingGPU, &existingRuntime, &existingIndices, &existingMaxInFlight, &existingFingerprint, &existingParallelismType, &existingParallelismWidth, &existingVRAMOverrides); err != nil && err != sql.ErrNoRows {
+		`SELECT vram_total_mb, gpu_model, runtime, gpu_indices, max_in_flight, tls_fingerprint, parallelism_type, parallelism_width, vram_overrides, replica_peers FROM node_overrides WHERE name = ?`, name,
+	).Scan(&existingVRAM, &existingGPU, &existingRuntime, &existingIndices, &existingMaxInFlight, &existingFingerprint, &existingParallelismType, &existingParallelismWidth, &existingVRAMOverrides, &existingReplicaPeers); err != nil && err != sql.ErrNoRows {
 		return err
 	}
 
@@ -1352,10 +1360,18 @@ func (s *sqliteStore) UpsertNodeOverride(name string, vramTotalMB *int64, gpuMod
 		}
 		vramOverridesVal = string(b)
 	}
+	replicaPeersVal := existingReplicaPeers
+	if replicaPeers != nil {
+		b, err := json.Marshal(*replicaPeers)
+		if err != nil {
+			return fmt.Errorf("store: UpsertNodeOverride: marshal replica_peers: %w", err)
+		}
+		replicaPeersVal = sql.NullString{String: string(b), Valid: true}
+	}
 
 	_, err := s.db.Exec(
-		`INSERT INTO node_overrides (name, vram_total_mb, gpu_model, runtime, gpu_indices, max_in_flight, tls_fingerprint, parallelism_type, parallelism_width, vram_overrides)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO node_overrides (name, vram_total_mb, gpu_model, runtime, gpu_indices, max_in_flight, tls_fingerprint, parallelism_type, parallelism_width, vram_overrides, replica_peers)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(name) DO UPDATE SET
 		   vram_total_mb = excluded.vram_total_mb,
 		   gpu_model = excluded.gpu_model,
@@ -1365,8 +1381,9 @@ func (s *sqliteStore) UpsertNodeOverride(name string, vramTotalMB *int64, gpuMod
 		   tls_fingerprint = excluded.tls_fingerprint,
 		   parallelism_type = excluded.parallelism_type,
 		   parallelism_width = excluded.parallelism_width,
-		   vram_overrides = excluded.vram_overrides`,
-		name, vram, gpu, rt, indices, maxInFlightVal, fingerprint, parallelismTypeVal, parallelismWidthVal, vramOverridesVal,
+		   vram_overrides = excluded.vram_overrides,
+		   replica_peers = excluded.replica_peers`,
+		name, vram, gpu, rt, indices, maxInFlightVal, fingerprint, parallelismTypeVal, parallelismWidthVal, vramOverridesVal, replicaPeersVal,
 	)
 	if err != nil {
 		return fmt.Errorf("store: UpsertNodeOverride: %w", err)
@@ -1376,7 +1393,7 @@ func (s *sqliteStore) UpsertNodeOverride(name string, vramTotalMB *int64, gpuMod
 
 func (s *sqliteStore) NodeOverrides() (map[string]NodeOverride, error) {
 	rows, err := s.db.Query(
-		`SELECT name, vram_total_mb, gpu_model, runtime, gpu_indices, max_in_flight, tls_fingerprint, parallelism_type, parallelism_width, vram_overrides FROM node_overrides`,
+		`SELECT name, vram_total_mb, gpu_model, runtime, gpu_indices, max_in_flight, tls_fingerprint, parallelism_type, parallelism_width, vram_overrides, replica_peers FROM node_overrides`,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("store: NodeOverrides: %w", err)
@@ -1389,8 +1406,9 @@ func (s *sqliteStore) NodeOverrides() (map[string]NodeOverride, error) {
 		var vram sql.NullInt64
 		var gpu, rt, fingerprint, parallelismType sql.NullString
 		var indicesJSON, vramOverridesJSON string
+		var replicaPeersJSON sql.NullString
 		var maxInFlight, parallelismWidth sql.NullInt64
-		if err := rows.Scan(&name, &vram, &gpu, &rt, &indicesJSON, &maxInFlight, &fingerprint, &parallelismType, &parallelismWidth, &vramOverridesJSON); err != nil {
+		if err := rows.Scan(&name, &vram, &gpu, &rt, &indicesJSON, &maxInFlight, &fingerprint, &parallelismType, &parallelismWidth, &vramOverridesJSON, &replicaPeersJSON); err != nil {
 			return nil, fmt.Errorf("store: NodeOverrides scan: %w", err)
 		}
 		var ov NodeOverride
@@ -1434,6 +1452,18 @@ func (s *sqliteStore) NodeOverrides() (map[string]NodeOverride, error) {
 			}
 			// Same discipline as gpu_indices above: a malformed blob drops
 			// this field only, never the whole row.
+		}
+		if replicaPeersJSON.Valid && replicaPeersJSON.String != "" {
+			var rp ReplicaPeers
+			if err := json.Unmarshal([]byte(replicaPeersJSON.String), &rp); err == nil {
+				ov.ReplicaPeers = &rp
+			}
+			// Same discipline as gpu_indices/vram_overrides above: a
+			// malformed replica_peers blob drops this field only, never the
+			// whole row - a node whose own declaration is unparseable must
+			// not silently look standalone to itself while other nodes'
+			// declarations naming it still count against it in the reverse
+			// scan.
 		}
 		out[name] = ov
 	}

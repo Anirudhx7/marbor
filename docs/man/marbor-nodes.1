@@ -17,7 +17,7 @@ SHA-256 fingerprint the operator has independently confirmed matches the node's 
 .RE
 .TP
 .B patch <node>
-update a node's deployment/placement fields (url, runtime, GPU, VRAM, parallelism, TLS pin clear)
+update a node's deployment/placement fields (url, runtime, GPU, VRAM, parallelism, replica membership, TLS pin clear)
 .RS
 .TP
 .B \-\-url string
@@ -49,6 +49,12 @@ per\-model VRAM size overrides in MB, comma\-separated model=mb pairs - REPLACES
 .TP
 .B \-\-tls-clear
 clear this node's pinned TLS fingerprint (setting a new one requires "nodes confirm\-tls", never this flag)
+.TP
+.B \-\-replica-members string
+declare this node as part of a multi\-host replica: comma\-separated node names, including this node's own name (e.g. node\-a,node\-b) - must be set together with \-\-replica-head (empty to clear the declaration)
+.TP
+.B \-\-replica-head string
+the node name (from \-\-replica-members) that clients/marbor route requests to for this replica - must be set together with \-\-replica-members
 .RE
 .TP
 .B tls\-probe <node>

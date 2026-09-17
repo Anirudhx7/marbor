@@ -121,7 +121,7 @@ func buildRoot() *Command {
 					},
 					{
 						Name:      "patch",
-						Short:     "update a node's deployment/placement fields (url, runtime, GPU, VRAM, parallelism, TLS pin clear)",
+						Short:     "update a node's deployment/placement fields (url, runtime, GPU, VRAM, parallelism, replica membership, TLS pin clear)",
 						NeedsAuth: true,
 						Args:      []ArgSpec{{Name: "node"}},
 						Flags: []FlagSpec{
@@ -135,6 +135,8 @@ func buildRoot() *Command {
 							{Name: "parallelism-width", Kind: FlagInt, Usage: "parallelism width 1..64 (0 to clear)"},
 							{Name: "vram-override", Kind: FlagString, Usage: "per-model VRAM size overrides in MB, comma-separated model=mb pairs - REPLACES the whole declared list, dropping any entry not listed here (empty to clear all)"},
 							{Name: "tls-clear", Kind: FlagBool, Usage: "clear this node's pinned TLS fingerprint (setting a new one requires \"nodes confirm-tls\", never this flag)"},
+							{Name: "replica-members", Kind: FlagString, Usage: "declare this node as part of a multi-host replica: comma-separated node names, including this node's own name (e.g. node-a,node-b) - must be set together with --replica-head (empty to clear the declaration)"},
+							{Name: "replica-head", Kind: FlagString, Usage: "the node name (from --replica-members) that clients/marbor route requests to for this replica - must be set together with --replica-members"},
 						},
 						Run: func(ctx *RunCtx) int {
 							return runNodesPatchWithCtx(ctx, ctx.Args[0])

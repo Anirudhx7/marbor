@@ -200,6 +200,12 @@ type NodeState struct {
 	// Guarded by mu like DeclaredGPUIndices.
 	ParallelismType  string
 	ParallelismWidth int
+	// ReplicaPeers is this node's own declared multi-host replica membership
+	// (nil = none declared). Guarded by mu like DeclaredGPUIndices/
+	// ParallelismType. Read by resolveSchedulingRoles (placement.go) - never
+	// consulted directly by any per-node eligibility check, since role
+	// resolution is inherently fleet-wide.
+	ReplicaPeers *store.ReplicaPeers
 	// Auto-discovered deployment from agent (in-memory only, not
 	// persisted - derived from agent Deployments report each poll). Declared
 	// above always overrides detected: effectiveRequiredGPUsLocked prefers
@@ -1800,6 +1806,10 @@ type NodePatch struct {
 	// config.NodeConfig.VRAMOverrides for why quant-variant qualification
 	// is deliberately deferred.
 	VRAMOverrides *map[string]int64 `json:"vram_overrides"`
+	// ReplicaPeers declares multi-host replica membership - nil means "not
+	// present in this PATCH, no change"; a non-nil pointer to a zero-value
+	// store.ReplicaPeers{} explicitly clears a prior declaration.
+	ReplicaPeers *store.ReplicaPeers `json:"replica_peers"`
 }
 
 // UpdateNodeURL rewrites a node's backend address. Unlike PatchNode's other
@@ -1852,6 +1862,7 @@ func (r *Router) UpdateNodeURL(name string, newURL string) error {
 	tlsFingerprint := old.TLSFingerprint
 	parallelismType := old.ParallelismType
 	parallelismWidth := old.ParallelismWidth
+	replicaPeers := old.ReplicaPeers
 	old.mu.Unlock()
 
 	newHost := ResultingHost(oldHost, oldURL, newURL)
@@ -1869,6 +1880,7 @@ func (r *Router) UpdateNodeURL(name string, newURL string) error {
 		TLSFingerprint:     tlsFingerprint,
 		ParallelismType:    parallelismType,
 		ParallelismWidth:   parallelismWidth,
+		ReplicaPeers:       replicaPeers,
 		Healthy:            true,
 		FirstSeenAt:        time.Now(),
 		Runtime:            runtime,
@@ -1959,6 +1971,11 @@ func (r *Router) PatchNode(name string, patch NodePatch) bool {
 					overrides[k] = v
 				}
 				n.VRAMOverrides = overrides
+			}
+			if patch.ReplicaPeers != nil {
+				rp := *patch.ReplicaPeers
+				rp.Members = append([]string(nil), patch.ReplicaPeers.Members...)
+				n.ReplicaPeers = &rp
 			}
 			n.mu.Unlock()
 			return true
@@ -2058,6 +2075,55 @@ func (r *Router) Nodes() []*NodeState {
 	out := make([]*NodeState, len(r.nodes))
 	copy(out, r.nodes)
 	return out
+}
+
+// SchedulingRoles exposes resolveSchedulingRoles (placement.go) to callers
+// outside this package - the admin API and CLI both need to compute every
+// node's replica-scheduling role once per request/list (never per node) to
+// surface it alongside the node's other declared/derived fields. Read-only
+// derivation, same guarantee as resolveSchedulingRoles itself: no side
+// effects, safe to call on every node-list request.
+func (r *Router) SchedulingRoles(nodes []*NodeState) map[string]SchedulingRole {
+	return r.resolveSchedulingRoles(nodes)
+}
+
+// SchedulingRolesWithHeads is SchedulingRoles plus a name -> resolved-head-
+// name map for every RoleHead/RoleWorker node, computed in the same single
+// fleet-wide pass. Prefer this over calling SchedulingRoles followed by
+// ComponentFor per node: ComponentFor rebuilds the whole closure computation
+// from scratch on every call, so using it once per worker in a node-list
+// response is O(n) work per worker instead of the O(1) map lookup this
+// gives you for the same already-computed result.
+func (r *Router) SchedulingRolesWithHeads(nodes []*NodeState) (map[string]SchedulingRole, map[string]string) {
+	return resolveSchedulingRolesAndHeads(nodes)
+}
+
+// ComponentFor exposes componentFor (placement.go) to callers outside this
+// package that need the resolved head node name for a RoleHead/RoleWorker
+// node - e.g. the admin API's replicaHead response field. Only meaningful
+// when name's SchedulingRole (from SchedulingRoles) is RoleHead or
+// RoleWorker; callers must check that first, per componentFor's own
+// contract. Prefer SchedulingRolesWithHeads when resolving heads for more
+// than one node in the same request - this rebuilds the whole closure
+// computation from scratch on every call, which is fine for a single
+// lookup but wasteful in a loop.
+func ComponentFor(name string, allNodes []*NodeState) (members []*NodeState, head string) {
+	return componentFor(name, allNodes)
+}
+
+// String renders a SchedulingRole as the lowercase form the admin API/CLI
+// wire format uses ("standalone"|"head"|"worker"|"unresolved").
+func (s SchedulingRole) String() string {
+	switch s {
+	case RoleHead:
+		return "head"
+	case RoleWorker:
+		return "worker"
+	case RoleUnresolved:
+		return "unresolved"
+	default:
+		return "standalone"
+	}
 }
 
 // NodeURLs returns a map of node name to URL for all configured nodes.

@@ -111,6 +111,16 @@ export interface GPUNode {
   detectedRuntime?: string;
   detectedEffectiveRequiredGPUs?: number;
   mismatchWarning?: string;
+  // Multi-host replica membership (tensor/pipeline-parallel deployments
+  // spanning more than one node). replicaPeers is this node's own raw
+  // declaration - undefined means none declared. schedulingRole is the
+  // fleet-wide resolved role: "standalone" | "head" | "worker" |
+  // "unresolved" - a worker/unresolved node is never a placement target
+  // but still appears in this list (visibility, not a filter). replicaHead
+  // is the resolved head node's name, present only for "head"/"worker".
+  replicaPeers?: { members: string[]; head: string };
+  schedulingRole?: 'standalone' | 'head' | 'worker' | 'unresolved';
+  replicaHead?: string;
   // Operator-declared per-model VRAM size override (MB), keyed by plain
   // model name - undefined/empty means nothing declared. Feeds
   // estimateModelSizeBytes' tier-3 fallback on the router side.
