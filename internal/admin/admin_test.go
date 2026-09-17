@@ -1289,9 +1289,11 @@ func TestHandleExplainRequest(t *testing.T) {
 		Detail: "score_based on node node-a",
 		Score:  42.5,
 		Components: []router.ScoreComponent{
-			{Name: "warm_model_resident", Raw: 0, Weight: 50, Value: 0},
-			{Name: "free_vram_headroom", Raw: 1, Weight: 20, Value: 20},
+			{Name: "warm_model_resident", Raw: 0, Weight: 50, Value: 0, Phase: router.PhaseLocality},
+			{Name: "free_vram_headroom", Raw: 1, Weight: 20, Value: 20, Phase: router.PhaseLocality},
 		},
+		Excluded:      []router.ExcludedCandidate{{Node: "node-b", Reason: router.ExcludeReasonOverCapacity}},
+		ExcludedTotal: 3,
 	}
 	s.LogRequest("req-explain-1", "key1", "127.0.0.1", "llama3", "node-a", "warm", 200, 12, 100, 0, decision)
 
@@ -1317,6 +1319,15 @@ func TestHandleExplainRequest(t *testing.T) {
 		}
 		if len(got.Components) != 2 {
 			t.Errorf("got %d components, want 2", len(got.Components))
+		}
+		if got.Components[0].Phase != router.PhaseLocality {
+			t.Errorf("Components[0].Phase = %q, want %q", got.Components[0].Phase, router.PhaseLocality)
+		}
+		if len(got.Excluded) != 1 || got.Excluded[0].Node != "node-b" || got.Excluded[0].Reason != router.ExcludeReasonOverCapacity {
+			t.Errorf("got Excluded = %+v, want one entry for node-b/over_capacity", got.Excluded)
+		}
+		if got.ExcludedTotal != 3 {
+			t.Errorf("got ExcludedTotal = %d, want 3", got.ExcludedTotal)
 		}
 	})
 

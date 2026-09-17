@@ -730,6 +730,7 @@ type ScoreComponent struct {
 	Raw    float64 `json:"raw"`
 	Weight float64 `json:"weight"`
 	Value  float64 `json:"value"`
+	Phase  string  `json:"phase,omitempty"`
 }
 
 // RoutingDecision mirrors router.RoutingDecision for per-request routing
@@ -738,12 +739,23 @@ type ScoreComponent struct {
 // into its own response types (see NodeResp) rather than depending on
 // internal packages.
 type RoutingDecision struct {
-	Node         string           `json:"node"`
-	Reason       string           `json:"reason"`
-	Detail       string           `json:"detail,omitempty"`
-	AffinityLost bool             `json:"affinityLost,omitempty"`
-	Score        float64          `json:"score,omitempty"`
-	Components   []ScoreComponent `json:"components,omitempty"`
+	Node          string              `json:"node"`
+	Reason        string              `json:"reason"`
+	Detail        string              `json:"detail,omitempty"`
+	AffinityLost  bool                `json:"affinityLost,omitempty"`
+	Score         float64             `json:"score,omitempty"`
+	Components    []ScoreComponent    `json:"components,omitempty"`
+	Excluded      []ExcludedCandidate `json:"excluded,omitempty"`
+	ExcludedTotal int                 `json:"excludedTotal,omitempty"`
+}
+
+// ExcludedCandidate mirrors router.ExcludedCandidate. Reason is the
+// machine-readable identifier from the Admin API (unhealthy, draining,
+// runtime_mismatch, ineligible_model, over_capacity, insufficient_gpu_group)
+// - excludedReasonText (requests.go) translates it for display.
+type ExcludedCandidate struct {
+	Node   string `json:"node"`
+	Reason string `json:"reason"`
 }
 
 // ExplainRequest calls GET /admin/v1/requests/{id}/explain, returning the
