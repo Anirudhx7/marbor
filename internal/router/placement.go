@@ -556,11 +556,11 @@ func (r *Router) scoreComponents(n *NodeState, model string) []ScoreComponent {
 	}
 
 	components := []ScoreComponent{
-		{Name: "warm_model_resident", Raw: warm, Weight: 50.0, Value: warm * 50.0},
-		{Name: "free_vram_headroom", Raw: freeVRAM, Weight: 20.0, Value: freeVRAM * 20.0},
-		{Name: "inverse_queue_depth", Raw: invQueue, Weight: 15.0, Value: invQueue * 15.0},
-		{Name: "node_health", Raw: health, Weight: 10.0, Value: health * 10.0},
-		{Name: "success_rate", Raw: success, Weight: 5.0, Value: success * 5.0},
+		{Name: "warm_model_resident", Raw: warm, Weight: 50.0, Value: warm * 50.0, Phase: PhaseLocality},
+		{Name: "free_vram_headroom", Raw: freeVRAM, Weight: 20.0, Value: freeVRAM * 20.0, Phase: PhaseLocality},
+		{Name: "inverse_queue_depth", Raw: invQueue, Weight: 15.0, Value: invQueue * 15.0, Phase: PhasePredictedPerformance},
+		{Name: "node_health", Raw: health, Weight: 10.0, Value: health * 10.0, Phase: PhaseReliability},
+		{Name: "success_rate", Raw: success, Weight: 5.0, Value: success * 5.0, Phase: PhaseReliability},
 	}
 	running := sumComponents(components)
 
@@ -578,7 +578,7 @@ func (r *Router) scoreComponents(n *NodeState, model string) []ScoreComponent {
 		running = next
 	}
 	components = append(components, ScoreComponent{
-		Name: "cooldown_penalty", Raw: boolToFloat(cooldownTriggered), Weight: -50.0, Value: cooldownValue,
+		Name: "cooldown_penalty", Raw: boolToFloat(cooldownTriggered), Weight: -50.0, Value: cooldownValue, Phase: PhaseReliability,
 	})
 
 	// Stale-telemetry penalty: markFailure only flips Healthy false after
@@ -604,7 +604,7 @@ func (r *Router) scoreComponents(n *NodeState, model string) []ScoreComponent {
 		running = next
 	}
 	components = append(components, ScoreComponent{
-		Name: "stale_telemetry_penalty", Raw: boolToFloat(staleTriggered), Weight: -50.0, Value: staleValue,
+		Name: "stale_telemetry_penalty", Raw: boolToFloat(staleTriggered), Weight: -50.0, Value: staleValue, Phase: PhaseReliability,
 	})
 
 	return components
@@ -717,6 +717,69 @@ func (r *Router) selectBestNode(candidates []*NodeState, modelName string) (*Nod
 	return bestNode, warm, decision
 }
 
+// filterCandidates applies the pre-score hard filter (runtime match, health,
+// draining, model eligibility, per-node capacity, GPU-group shape) that
+// routeInternal and RouteExcluding both need, recording which single
+// condition eliminated each excluded node - the first one that fails, in the
+// exact order the original boolean short-circuit already evaluated:
+// runtime filter -> health -> draining -> model eligibility -> capacity ->
+// GPU group. exclude may be nil (routeInternal has no retry-exclude set);
+// a node skipped via exclude is a caller-directed retry skip, not a hard-
+// filter exclusion, so it is not recorded as an ExcludedCandidate.
+func (r *Router) filterCandidates(nodes []*NodeState, modelName, runtimeFilter string, exclude map[string]bool) (healthy []*NodeState, excluded []ExcludedCandidate, excludedTotal int) {
+	for _, n := range nodes {
+		if exclude != nil && exclude[n.URL] {
+			continue
+		}
+		reason := ""
+		switch {
+		case runtimeFilter != "" && n.GetRuntime() != runtimeFilter:
+			reason = ExcludeReasonRuntimeMismatch
+		default:
+			n.mu.RLock()
+			isHealthy := n.Healthy
+			isDraining := n.Draining
+			n.mu.RUnlock()
+			switch {
+			case !isHealthy:
+				reason = ExcludeReasonUnhealthy
+			case isDraining:
+				reason = ExcludeReasonDraining
+			case !r.isEligibleForModel(n, modelName):
+				reason = ExcludeReasonIneligibleModel
+			case !r.isUnderCapacity(n):
+				reason = ExcludeReasonOverCapacity
+			case !r.isGPUGroupSufficient(n):
+				reason = ExcludeReasonInsufficientGPUGroup
+			}
+		}
+		if reason == "" {
+			healthy = append(healthy, n)
+			continue
+		}
+		excludedTotal++
+		if len(excluded) < maxExcludedCandidates {
+			excluded = append(excluded, ExcludedCandidate{Node: n.Name, Reason: reason})
+		}
+	}
+	return healthy, excluded, excludedTotal
+}
+
+// applyExclusionExplainability copies excluded/excludedTotal onto decision
+// (only if non-nil - selectBestNode returns a nil decision when healthy is
+// empty, and that no-candidate-survived contract is unchanged by this
+// function). ExcludedTotal is only set when the cap in filterCandidates
+// actually truncated the list.
+func applyExclusionExplainability(decision *RoutingDecision, excluded []ExcludedCandidate, excludedTotal int) {
+	if decision == nil {
+		return
+	}
+	decision.Excluded = excluded
+	if excludedTotal > len(excluded) {
+		decision.ExcludedTotal = excludedTotal
+	}
+}
+
 // routeInternal is the core weighted selection logic that Route delegates to.
 func (r *Router) routeInternal(modelName, runtimeFilter string) (*NodeState, bool, *RoutingDecision) {
 	r.mu.RLock()
@@ -724,20 +787,10 @@ func (r *Router) routeInternal(modelName, runtimeFilter string) (*NodeState, boo
 	copy(nodes, r.nodes)
 	r.mu.RUnlock()
 
-	var healthy []*NodeState
-	for _, n := range nodes {
-		if runtimeFilter != "" && n.GetRuntime() != runtimeFilter {
-			continue // skip nodes that don't match the requested runtime
-		}
-		n.mu.RLock()
-		isHealthy := n.Healthy
-		isDraining := n.Draining
-		n.mu.RUnlock()
-		if isHealthy && !isDraining && r.isEligibleForModel(n, modelName) && r.isUnderCapacity(n) && r.isGPUGroupSufficient(n) {
-			healthy = append(healthy, n)
-		}
-	}
-	return r.selectBestNode(healthy, modelName)
+	healthy, excluded, excludedTotal := r.filterCandidates(nodes, modelName, runtimeFilter, nil)
+	node, warm, decision := r.selectBestNode(healthy, modelName)
+	applyExclusionExplainability(decision, excluded, excludedTotal)
+	return node, warm, decision
 }
 
 // Route picks the best healthy node for modelName using weighted placement scoring.
@@ -816,23 +869,10 @@ func (r *Router) RouteExcluding(modelName, runtimeFilter string, exclude map[str
 	copy(nodes, r.nodes)
 	r.mu.RUnlock()
 
-	var healthy []*NodeState
-	for _, n := range nodes {
-		if exclude[n.URL] {
-			continue
-		}
-		if runtimeFilter != "" && n.GetRuntime() != runtimeFilter {
-			continue // skip nodes that don't match the requested runtime
-		}
-		n.mu.RLock()
-		isHealthy := n.Healthy
-		isDraining := n.Draining
-		n.mu.RUnlock()
-		if isHealthy && !isDraining && r.isEligibleForModel(n, modelName) && r.isUnderCapacity(n) && r.isGPUGroupSufficient(n) {
-			healthy = append(healthy, n)
-		}
-	}
-	return r.selectBestNode(healthy, modelName)
+	healthy, excluded, excludedTotal := r.filterCandidates(nodes, modelName, runtimeFilter, exclude)
+	node, warm, decision := r.selectBestNode(healthy, modelName)
+	applyExclusionExplainability(decision, excluded, excludedTotal)
+	return node, warm, decision
 }
 
 // pickLeastConns returns the node with the fewest active connections.
