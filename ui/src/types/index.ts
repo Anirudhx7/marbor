@@ -534,6 +534,18 @@ export interface ScoreComponent {
   raw: number;
   weight: number;
   value: number;
+  // Phase groups this term as "locality" | "predicted_performance" |
+  // "reliability" - a structural label only, no effect on the score.
+  phase?: string;
+}
+
+// ExcludedCandidate mirrors router.ExcludedCandidate (Go). reason is a
+// stable, machine-readable identifier (unhealthy, draining,
+// runtime_mismatch, ineligible_model, over_capacity, insufficient_gpu_group)
+// - translated to display text in Requests.tsx, not shown raw.
+export interface ExcludedCandidate {
+  node: string;
+  reason: string;
 }
 
 // RoutingDecision mirrors router.RoutingDecision (Go) - the routing-explain
@@ -545,6 +557,10 @@ export interface RoutingDecision {
   affinityLost?: boolean;
   score?: number;
   components?: ScoreComponent[];
+  excluded?: ExcludedCandidate[];
+  // excludedTotal is only present when the real excluded count exceeds
+  // excluded.length (server-side truncation past its cap).
+  excludedTotal?: number;
 }
 
 export interface HourlyBucket {

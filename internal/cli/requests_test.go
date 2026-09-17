@@ -49,6 +49,47 @@ func TestRun_RequestsExplain(t *testing.T) {
 	}
 }
 
+func TestRun_RequestsExplain_ExcludedCandidates(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{
+			"node": "gpu-0",
+			"reason": "score_based",
+			"score": 42.5,
+			"components": [
+				{"name": "warm_model_resident", "raw": 0, "weight": 50, "value": 0, "phase": "locality"}
+			],
+			"excluded": [
+				{"node": "gpu-1", "reason": "unhealthy"},
+				{"node": "gpu-2", "reason": "over_capacity"}
+			],
+			"excludedTotal": 5
+		}`))
+	}))
+	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"requests", "explain", "req-1", "--server", srv.URL}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "EXCLUDED") {
+		t.Errorf("expected an EXCLUDED section, got %q", out)
+	}
+	if !strings.Contains(out, "gpu-1") || !strings.Contains(out, "node is unhealthy") {
+		t.Errorf("expected gpu-1's translated reason, got %q", out)
+	}
+	if !strings.Contains(out, "gpu-2") || !strings.Contains(out, "over the per-node request cap") {
+		t.Errorf("expected gpu-2's translated reason, got %q", out)
+	}
+	if !strings.Contains(out, "...and 3 more") {
+		t.Errorf("expected truncation note for excludedTotal(5) - len(excluded)(2) = 3, got %q", out)
+	}
+}
+
 func TestRun_RequestsExplain_MissingID(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	code := Run([]string{"requests", "explain"}, &stdout, &stderr)

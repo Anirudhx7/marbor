@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, Fragment } from 'react';
+import { useState, useEffect, useMemo, Fragment, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { ChevronDown, ChevronRight, Inbox } from 'lucide-react';
 import { CustomSelect, CustomCombobox } from '../components/Select';
@@ -44,6 +44,54 @@ function ScrollableValue({ value, valueClassName }: { value: string; valueClassN
   );
 }
 
+// EXCLUDED_REASON_LABELS translates ExcludedCandidate.reason (a stable,
+// machine-readable identifier from the Admin API) into display text - kept
+// as a local mapping matching the same six identifiers the CLI's
+// excludedReasonText translates, rather than trusting the wire value to
+// already be a sentence.
+const EXCLUDED_REASON_LABELS: Record<string, string> = {
+  unhealthy: 'node is unhealthy',
+  draining: 'node is draining',
+  runtime_mismatch: 'runtime does not match the request',
+  ineligible_model: 'model not loaded on this node',
+  over_capacity: 'over the per-node request cap',
+  insufficient_gpu_group: "insufficient GPUs for this model's parallelism requirement",
+};
+
+// ExplainTable is the shared table shell for the explain panel's score
+// breakdown and excluded-candidates blocks - same scroll-region wrapper,
+// header styling, and cell padding, so a future visual tweak to one applies
+// to both instead of drifting between two hand-copied markup blocks.
+function ExplainTable({
+  ariaLabel,
+  columns,
+  children,
+}: {
+  ariaLabel: string;
+  columns: { label: string; align?: 'right' }[];
+  children: ReactNode;
+}) {
+  return (
+    <div className="overflow-x-auto scroll-region" tabIndex={0} role="region" aria-label={ariaLabel}>
+      <table className="text-xs font-mono">
+        <thead>
+          <tr className="text-muted-foreground">
+            {columns.map((col, i) => (
+              <th
+                key={col.label}
+                className={`${col.align === 'right' ? 'text-right' : 'text-left'} ${i < columns.length - 1 ? 'pr-4' : ''} py-1`}
+              >
+                {col.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>{children}</tbody>
+      </table>
+    </div>
+  );
+}
+
 function ReasonBadge({ reason }: { reason?: string }) {
   if (!reason) return <span className="text-muted-foreground/40 text-xs">-</span>;
   return (
@@ -85,32 +133,52 @@ function ExplainPanel({ state }: { state: RoutingDecision | 'loading' | 'error' 
       </div>
       {state.detail && <div className="text-muted-foreground text-xs">{state.detail}</div>}
       {state.components && state.components.length > 0 && (
-        <div className="overflow-x-auto scroll-region" tabIndex={0} role="region" aria-label="Score components table: scroll horizontally for more columns">
-          <table className="text-xs font-mono">
-            <thead>
-              <tr className="text-muted-foreground">
-                <th className="text-left pr-4 py-1">Component</th>
-                <th className="text-right pr-4 py-1">Raw</th>
-                <th className="text-right pr-4 py-1">Weight</th>
-                <th className="text-right py-1">Value</th>
+        <ExplainTable
+          ariaLabel="Score components table: scroll horizontally for more columns"
+          columns={[
+            { label: 'Component' },
+            { label: 'Raw', align: 'right' },
+            { label: 'Weight', align: 'right' },
+            { label: 'Value', align: 'right' },
+            { label: 'Phase' },
+          ]}
+        >
+          {state.components.map((c) => (
+            <tr key={c.name}>
+              <td className="pr-4 py-0.5">{c.name}</td>
+              <td className="text-right pr-4 py-0.5">{c.raw.toFixed(2)}</td>
+              <td className="text-right pr-4 py-0.5">{c.weight}</td>
+              <td className="text-right pr-4 py-0.5">{c.value.toFixed(2)}</td>
+              <td className="py-0.5">{c.phase}</td>
+            </tr>
+          ))}
+          <tr className="border-t border-border font-semibold">
+            <td className="pr-4 py-0.5">Score</td>
+            <td colSpan={2} />
+            <td className="text-right pr-4 py-0.5">{state.score?.toFixed(2)}</td>
+            <td />
+          </tr>
+        </ExplainTable>
+      )}
+      {state.excluded && state.excluded.length > 0 && (
+        <div>
+          <div className="text-xs font-mono text-muted-foreground pt-1">Excluded</div>
+          <ExplainTable
+            ariaLabel="Excluded candidates table: scroll horizontally for more columns"
+            columns={[{ label: 'Node' }, { label: 'Reason' }]}
+          >
+            {state.excluded.map((e) => (
+              <tr key={e.node}>
+                <td className="pr-4 py-0.5">{e.node}</td>
+                <td className="py-0.5">{EXCLUDED_REASON_LABELS[e.reason] ?? e.reason}</td>
               </tr>
-            </thead>
-            <tbody>
-              {state.components.map((c) => (
-                <tr key={c.name}>
-                  <td className="pr-4 py-0.5">{c.name}</td>
-                  <td className="text-right pr-4 py-0.5">{c.raw.toFixed(2)}</td>
-                  <td className="text-right pr-4 py-0.5">{c.weight}</td>
-                  <td className="text-right py-0.5">{c.value.toFixed(2)}</td>
-                </tr>
-              ))}
-              <tr className="border-t border-border font-semibold">
-                <td className="pr-4 py-0.5">Score</td>
-                <td colSpan={2} />
-                <td className="text-right py-0.5">{state.score?.toFixed(2)}</td>
-              </tr>
-            </tbody>
-          </table>
+            ))}
+          </ExplainTable>
+          {typeof state.excludedTotal === 'number' && state.excludedTotal > state.excluded.length && (
+            <div className="text-xs text-muted-foreground pt-1">
+              ...and {state.excludedTotal - state.excluded.length} more
+            </div>
+          )}
         </div>
       )}
     </div>
