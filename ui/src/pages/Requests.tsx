@@ -44,6 +44,20 @@ function ScrollableValue({ value, valueClassName }: { value: string; valueClassN
   );
 }
 
+// EXCLUDED_REASON_LABELS translates ExcludedCandidate.reason (a stable,
+// machine-readable identifier from the Admin API) into display text - kept
+// as a local mapping matching the same six identifiers the CLI's
+// excludedReasonText translates, rather than trusting the wire value to
+// already be a sentence.
+const EXCLUDED_REASON_LABELS: Record<string, string> = {
+  unhealthy: 'node is unhealthy',
+  draining: 'node is draining',
+  runtime_mismatch: 'runtime does not match the request',
+  ineligible_model: 'model not loaded on this node',
+  over_capacity: 'over the per-node request cap',
+  insufficient_gpu_group: "insufficient GPUs for this model's parallelism requirement",
+};
+
 function ReasonBadge({ reason }: { reason?: string }) {
   if (!reason) return <span className="text-muted-foreground/40 text-xs">-</span>;
   return (
@@ -111,6 +125,32 @@ function ExplainPanel({ state }: { state: RoutingDecision | 'loading' | 'error' 
               </tr>
             </tbody>
           </table>
+        </div>
+      )}
+      {state.excluded && state.excluded.length > 0 && (
+        <div className="overflow-x-auto scroll-region" tabIndex={0} role="region" aria-label="Excluded candidates table: scroll horizontally for more columns">
+          <div className="text-xs font-mono text-muted-foreground pt-1">Excluded</div>
+          <table className="text-xs font-mono">
+            <thead>
+              <tr className="text-muted-foreground">
+                <th className="text-left pr-4 py-1">Node</th>
+                <th className="text-left py-1">Reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              {state.excluded.map((e) => (
+                <tr key={e.node}>
+                  <td className="pr-4 py-0.5">{e.node}</td>
+                  <td className="py-0.5">{EXCLUDED_REASON_LABELS[e.reason] ?? e.reason}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {typeof state.excludedTotal === 'number' && state.excludedTotal > state.excluded.length && (
+            <div className="text-xs text-muted-foreground pt-1">
+              ...and {state.excludedTotal - state.excluded.length} more
+            </div>
+          )}
         </div>
       )}
     </div>

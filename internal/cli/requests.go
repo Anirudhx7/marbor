@@ -9,6 +9,30 @@ import (
 	"io"
 )
 
+// excludedReasonText translates ExcludedCandidate.Reason (a stable,
+// machine-readable identifier from the Admin API) into the sentence shown to
+// an operator. Kept as a local lookup rather than trusting the wire value to
+// already be display text, matching the same six identifiers
+// internal/router/explain.go defines.
+func excludedReasonText(reason string) string {
+	switch reason {
+	case "unhealthy":
+		return "node is unhealthy"
+	case "draining":
+		return "node is draining"
+	case "runtime_mismatch":
+		return "runtime does not match the request"
+	case "ineligible_model":
+		return "model not loaded on this node"
+	case "over_capacity":
+		return "over the per-node request cap"
+	case "insufficient_gpu_group":
+		return "insufficient GPUs for this model's parallelism requirement"
+	default:
+		return reason
+	}
+}
+
 // printRequestsUsage is a thin wrapper over the registry-backed writeHelp
 // (help.go).
 func printRequestsUsage(w io.Writer) { writeHelp(w, findCommand(root(), "requests")) }
@@ -94,18 +118,35 @@ func runRequestsExplain(flags *globalFlags, requestID string, stdout, stderr io.
 	if decision.AffinityLost {
 		fmt.Fprintln(stdout, "Note:   session affinity existed for this request but did not validate")
 	}
-	if len(decision.Components) == 0 {
-		return ExitOK
+
+	if len(decision.Components) > 0 {
+		fmt.Fprintf(stdout, "Score:  %.2f\n\n", decision.Score)
+		tw := newTabWriter(stdout)
+		fmt.Fprintln(tw, "COMPONENT\tRAW\tWEIGHT\tVALUE\tPHASE")
+		for _, c := range decision.Components {
+			fmt.Fprintf(tw, "%s\t%.3f\t%.1f\t%.2f\t%s\n", c.Name, c.Raw, c.Weight, c.Value, c.Phase)
+		}
+		if err := tw.Flush(); err != nil {
+			fmt.Fprintln(stderr, err)
+			return ExitServerError
+		}
 	}
-	fmt.Fprintf(stdout, "Score:  %.2f\n\n", decision.Score)
-	tw := newTabWriter(stdout)
-	fmt.Fprintln(tw, "COMPONENT\tRAW\tWEIGHT\tVALUE")
-	for _, c := range decision.Components {
-		fmt.Fprintf(tw, "%s\t%.3f\t%.1f\t%.2f\n", c.Name, c.Raw, c.Weight, c.Value)
+
+	if len(decision.Excluded) > 0 {
+		fmt.Fprintln(stdout, "\nEXCLUDED")
+		tw := newTabWriter(stdout)
+		fmt.Fprintln(tw, "NODE\tREASON")
+		for _, e := range decision.Excluded {
+			fmt.Fprintf(tw, "%s\t%s\n", e.Node, excludedReasonText(e.Reason))
+		}
+		if err := tw.Flush(); err != nil {
+			fmt.Fprintln(stderr, err)
+			return ExitServerError
+		}
+		if decision.ExcludedTotal > len(decision.Excluded) {
+			fmt.Fprintf(stdout, "...and %d more\n", decision.ExcludedTotal-len(decision.Excluded))
+		}
 	}
-	if err := tw.Flush(); err != nil {
-		fmt.Fprintln(stderr, err)
-		return ExitServerError
-	}
+
 	return ExitOK
 }
