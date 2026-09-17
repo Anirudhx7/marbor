@@ -200,6 +200,12 @@ type NodeState struct {
 	// Guarded by mu like DeclaredGPUIndices.
 	ParallelismType  string
 	ParallelismWidth int
+	// ReplicaPeers is this node's own declared multi-host replica membership
+	// (nil = none declared). Guarded by mu like DeclaredGPUIndices/
+	// ParallelismType. Read by resolveSchedulingRoles (placement.go) - never
+	// consulted directly by any per-node eligibility check, since role
+	// resolution is inherently fleet-wide.
+	ReplicaPeers *store.ReplicaPeers
 	// Auto-discovered deployment from agent (in-memory only, not
 	// persisted - derived from agent Deployments report each poll). Declared
 	// above always overrides detected: effectiveRequiredGPUsLocked prefers
@@ -1800,6 +1806,10 @@ type NodePatch struct {
 	// config.NodeConfig.VRAMOverrides for why quant-variant qualification
 	// is deliberately deferred.
 	VRAMOverrides *map[string]int64 `json:"vram_overrides"`
+	// ReplicaPeers declares multi-host replica membership - nil means "not
+	// present in this PATCH, no change"; a non-nil pointer to a zero-value
+	// store.ReplicaPeers{} explicitly clears a prior declaration.
+	ReplicaPeers *store.ReplicaPeers `json:"replica_peers"`
 }
 
 // UpdateNodeURL rewrites a node's backend address. Unlike PatchNode's other
@@ -1852,6 +1862,7 @@ func (r *Router) UpdateNodeURL(name string, newURL string) error {
 	tlsFingerprint := old.TLSFingerprint
 	parallelismType := old.ParallelismType
 	parallelismWidth := old.ParallelismWidth
+	replicaPeers := old.ReplicaPeers
 	old.mu.Unlock()
 
 	newHost := ResultingHost(oldHost, oldURL, newURL)
@@ -1869,6 +1880,7 @@ func (r *Router) UpdateNodeURL(name string, newURL string) error {
 		TLSFingerprint:     tlsFingerprint,
 		ParallelismType:    parallelismType,
 		ParallelismWidth:   parallelismWidth,
+		ReplicaPeers:       replicaPeers,
 		Healthy:            true,
 		FirstSeenAt:        time.Now(),
 		Runtime:            runtime,
@@ -1959,6 +1971,11 @@ func (r *Router) PatchNode(name string, patch NodePatch) bool {
 					overrides[k] = v
 				}
 				n.VRAMOverrides = overrides
+			}
+			if patch.ReplicaPeers != nil {
+				rp := *patch.ReplicaPeers
+				rp.Members = append([]string(nil), patch.ReplicaPeers.Members...)
+				n.ReplicaPeers = &rp
 			}
 			n.mu.Unlock()
 			return true

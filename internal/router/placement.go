@@ -721,16 +721,509 @@ func (r *Router) selectBestNode(candidates []*NodeState, modelName string) (*Nod
 	return bestNode, warm, decision
 }
 
+// --- Multi-host TP/PP replica scheduling ---
+//
+// A Replica is a computed view over one or more NodeState values - never its
+// own persisted table (the only persisted fact is node_overrides.replica_peers,
+// read into NodeState.ReplicaPeers). SchedulingRole is a topology label,
+// orthogonal to health/draining: RoleWorker/RoleUnresolved mean "this node is
+// never a direct placement target," nothing about whether the node itself is
+// healthy.
+
+// ReplicaMemberScope pins a GPU index list to the specific member it was read
+// from. GPU indices are only meaningful relative to the host that reported
+// them - index 0 on host A and index 0 on host B are different physical
+// devices - so this is the only shape GPU scope is allowed to take anywhere
+// in the Replica view. Never flattened to a bare []int.
+type ReplicaMemberScope struct {
+	Node *NodeState
+	GPUs []int
+}
+
+// Replica is a computed, request-time view over one or more NodeState
+// values participating in one schedulable deployment - never persisted as
+// its own row. Members/Head/GPUScopes/ParallelismType/Width/ModelVariant/
+// Capabilities are all derived from the member NodeStates' own existing
+// fields; replica_peers never carries a duplicate copy of any of them.
+type Replica struct {
+	Members          []*NodeState         // 1 for standalone; >1 for a multi-host TP/PP group
+	Head             *NodeState           // operator-declared - the node clients route to
+	GPUScopes        []ReplicaMemberScope // one entry per member; never compared/merged across members by index
+	ParallelismType  string               // standalone: that member's own value. multi-member: validated consistent across members
+	ParallelismWidth int                  // standalone: that member's own value. multi-member: the topology's total shape
+	ModelVariant     string               // validated consistent across members
+	Capabilities     []string             // the served model's own capability set (chat/embedding/vision/tools)
+}
+
+// SchedulingRole classifies a node's place in its (possibly single-member)
+// replica. It is a topology label, computed fresh every call from
+// replica_peers - not a health state, and has no "undo": a worker doesn't
+// stop being a worker by becoming healthy again.
+type SchedulingRole int
+
+const (
+	// RoleStandalone is the zero value: not part of any declared multi-host
+	// replica. Every node in today's existing fleets resolves here.
+	RoleStandalone SchedulingRole = iota
+	// RoleHead is the node clients/marbor route requests to - the only
+	// member of a multi-host replica ever selected as a placement target.
+	RoleHead
+	// RoleWorker is a confirmed non-head member of a valid multi-host
+	// replica. Never directly schedulable, regardless of its own health.
+	RoleWorker
+	// RoleUnresolved means this node is named in at least one replica_peers
+	// declaration, but the declarations disagree (asymmetric, conflicting
+	// members, conflicting head, or a declaration naming a nonexistent
+	// node) - excluded from placement identically to RoleWorker, never
+	// silently downgraded to RoleStandalone and never guessed into
+	// RoleWorker/RoleHead, until the operator reconciles the declarations.
+	RoleUnresolved
+)
+
+// replicaDecl is one node's own replica_peers declaration, normalized to a
+// set for order-independent membership comparison.
+type replicaDecl struct {
+	members map[string]bool
+	head    string
+}
+
+// resolveSchedulingRoles computes every node's SchedulingRole in one pass
+// over the given node list, as a graph-connectivity problem:
+//  1. Every node that declares replica_peers draws an edge to each of its
+//     declared members (whether or not that member exists in the fleet, or
+//     declares anything back - the edge exists because it was NAMED).
+//  2. Union-find (disjoint-set) groups every name transitively reachable
+//     through those edges into one connected component - this is what makes
+//     the result immune to node iteration order: union-find's output
+//     depends only on which edges exist, never the order they were added or
+//     the order components are later visited.
+//  3. Each component is validated ONCE, as a whole: every member of the
+//     component must be a real node in the fleet, must itself declare
+//     replica_peers, and that declaration's member set and head must be
+//     identical to every other member's. Any single mismatch invalidates
+//     the ENTIRE component - not just the node whose declaration triggered
+//     the check. This is deliberate: a node's own declaration alone never
+//     proves it is safe to schedule - the whole component it belongs to
+//     must be valid, because it can be pulled into an invalid component by
+//     another member's bad declaration.
+//  4. Every real node in a valid component becomes Head (if it is the
+//     agreed head) or Worker. Every real node in an invalid component
+//     becomes RoleUnresolved.
+//  5. A node touched by no declaration (never named, names nothing) is in
+//     no component at all and is absent from the returned map - callers
+//     treat absence as RoleStandalone.
+//
+// Computed once per routing call, not per candidate. Cost is linear in the
+// number of declared-replica_peers edges, trivial at 4-20-node fleet scale.
+// Returns a map keyed by node name. Never mutates any NodeState.
+func (r *Router) resolveSchedulingRoles(nodes []*NodeState) map[string]SchedulingRole {
+	// nodeSet is every REAL node in this fleet snapshot - used to fail
+	// closed on a declaration naming a node that doesn't actually exist.
+	nodeSet := make(map[string]bool, len(nodes))
+	for _, n := range nodes {
+		nodeSet[n.Name] = true
+	}
+
+	declBy := make(map[string]replicaDecl) // name -> that node's OWN declaration, only for names that declared one
+
+	// Union-find over every name that appears anywhere in any declaration
+	// (as declarer or as a named member) - deliberately not limited to
+	// names in nodeSet, so a reference to a nonexistent node still joins
+	// its component instead of silently vanishing.
+	parent := make(map[string]string)
+	var find func(string) string
+	find = func(x string) string {
+		if _, ok := parent[x]; !ok {
+			parent[x] = x
+		}
+		if parent[x] != x {
+			parent[x] = find(parent[x])
+		}
+		return parent[x]
+	}
+	union := func(a, b string) {
+		ra, rb := find(a), find(b)
+		if ra != rb {
+			parent[ra] = rb
+		}
+	}
+
+	for _, n := range nodes {
+		n.mu.RLock()
+		rp := n.ReplicaPeers
+		n.mu.RUnlock()
+		if rp == nil || len(rp.Members) == 0 {
+			continue
+		}
+		memberSet := make(map[string]bool, len(rp.Members))
+		for _, m := range rp.Members {
+			memberSet[m] = true
+			union(n.Name, m) // edge: n <-> every member it names, regardless of whether m exists or declares back
+		}
+		declBy[n.Name] = replicaDecl{members: memberSet, head: rp.Head}
+	}
+
+	if len(declBy) == 0 {
+		return nil // fast path: nobody in this fleet has declared anything
+	}
+
+	// Group every name touched by union-find into its component, keyed by
+	// that component's root. Order-independent: iterates union-find's own
+	// internal state, not the caller's nodes slice order.
+	components := make(map[string]map[string]bool) // root -> {every name in that component}
+	for name := range parent {
+		root := find(name)
+		if components[root] == nil {
+			components[root] = make(map[string]bool)
+		}
+		components[root][name] = true
+	}
+
+	roles := make(map[string]SchedulingRole, len(nodes))
+	for _, members := range components {
+		valid, head := validateComponent(members, nodeSet, declBy)
+		for name := range members {
+			if !nodeSet[name] {
+				continue // a name referenced by a declaration but not a real node - nothing to assign a role to
+			}
+			if !valid {
+				roles[name] = RoleUnresolved
+				continue
+			}
+			if name == head {
+				roles[name] = RoleHead
+			} else {
+				roles[name] = RoleWorker
+			}
+		}
+	}
+	return roles
+}
+
+// validateComponent reports whether every real node inside members has an
+// identical, reciprocal replica_peers declaration naming EXACTLY this
+// component's members (itself included) and the same head - the concrete
+// form of the fail-closed union/closure rule, decided once for the whole
+// component rather than accumulated per node. Returns the agreed head only
+// when valid is true.
+func validateComponent(members map[string]bool, nodeSet map[string]bool, declBy map[string]replicaDecl) (valid bool, head string) {
+	var agreedHead string
+	headSeen := false
+	for name := range members {
+		if !nodeSet[name] {
+			return false, "" // component references a node that does not exist in this fleet - fail closed
+		}
+		d, ok := declBy[name]
+		if !ok {
+			return false, "" // this member is IN the component (something else named it) but never declared back - one-sided
+		}
+		if len(d.members) != len(members) {
+			return false, "" // this member's declared set is a different size than the component - can't be identical
+		}
+		for m := range members {
+			if !d.members[m] {
+				return false, "" // this member's declared set doesn't include every name in the component (itself included)
+			}
+		}
+		if !headSeen {
+			agreedHead = d.head
+			headSeen = true
+		} else if d.head != agreedHead {
+			return false, "" // conflicting head between two members
+		}
+	}
+	if agreedHead == "" || !members[agreedHead] {
+		return false, "" // head must be declared and must be one of the component's own members
+	}
+	return true, agreedHead
+}
+
+// componentFor returns the full member NodeState list and agreed head name
+// for n's connected component, recomputing the same union-find/declBy state
+// resolveSchedulingRoles uses (resolveSchedulingRoles itself only returns
+// per-name roles, not the member list). Only meaningful when n's role is
+// RoleHead or RoleWorker; callers must check that first.
+func componentFor(name string, allNodes []*NodeState) (members []*NodeState, head string) {
+	byName := make(map[string]*NodeState, len(allNodes))
+	nodeSet := make(map[string]bool, len(allNodes))
+	for _, n := range allNodes {
+		byName[n.Name] = n
+		nodeSet[n.Name] = true
+	}
+
+	declBy := make(map[string]replicaDecl)
+	parent := make(map[string]string)
+	var find func(string) string
+	find = func(x string) string {
+		if _, ok := parent[x]; !ok {
+			parent[x] = x
+		}
+		if parent[x] != x {
+			parent[x] = find(parent[x])
+		}
+		return parent[x]
+	}
+	union := func(a, b string) {
+		ra, rb := find(a), find(b)
+		if ra != rb {
+			parent[ra] = rb
+		}
+	}
+	for _, n := range allNodes {
+		n.mu.RLock()
+		rp := n.ReplicaPeers
+		n.mu.RUnlock()
+		if rp == nil || len(rp.Members) == 0 {
+			continue
+		}
+		memberSet := make(map[string]bool, len(rp.Members))
+		for _, m := range rp.Members {
+			memberSet[m] = true
+			union(n.Name, m)
+		}
+		declBy[n.Name] = replicaDecl{members: memberSet, head: rp.Head}
+	}
+
+	if _, ok := parent[name]; !ok {
+		return []*NodeState{byName[name]}, ""
+	}
+	root := find(name)
+	var memberNames []string
+	for nm := range parent {
+		if find(nm) == root {
+			memberNames = append(memberNames, nm)
+		}
+	}
+	memberSet := make(map[string]bool, len(memberNames))
+	for _, nm := range memberNames {
+		memberSet[nm] = true
+	}
+	_, agreedHead := validateComponent(memberSet, nodeSet, declBy)
+	for _, nm := range memberNames {
+		if n, ok := byName[nm]; ok {
+			members = append(members, n)
+		}
+	}
+	return members, agreedHead
+}
+
+// effectiveGPUIndicesLocked returns n's effective GPU scope (declared,
+// falling back to detected) - same declared-wins-over-detected precedence
+// effectiveRequiredGPUsLocked already uses. Caller must hold n.mu (read or
+// write lock).
+func effectiveGPUIndicesLocked(n *NodeState) []int {
+	if len(n.DeclaredGPUIndices) > 0 {
+		return n.DeclaredGPUIndices
+	}
+	return n.DetectedGPUGroup
+}
+
+// primaryLoadedModelVariantLocked returns a simple content-identity string
+// for n's currently-loaded model set (name@digest of the first loaded
+// model), or "" if none is loaded. Caller must hold n.mu.
+func primaryLoadedModelVariantLocked(n *NodeState) string {
+	if len(n.LoadedModels) == 0 {
+		return ""
+	}
+	m := n.LoadedModels[0]
+	if m.Digest == "" {
+		return m.Name
+	}
+	return m.Name + "@" + m.Digest
+}
+
+// allMembersAgreeOnModel reports whether every member of a multi-host
+// replica resolves to the same primaryLoadedModelVariantLocked value. An
+// empty (nothing loaded yet) value on every member still counts as
+// agreement; a mix of empty and non-empty, or two different non-empty
+// values, does not.
+func allMembersAgreeOnModel(members []*NodeState) bool {
+	if len(members) == 0 {
+		return false
+	}
+	var first string
+	for i, m := range members {
+		m.mu.RLock()
+		v := primaryLoadedModelVariantLocked(m)
+		m.mu.RUnlock()
+		if i == 0 {
+			first = v
+			continue
+		}
+		if v != first {
+			return false
+		}
+	}
+	return true
+}
+
+// allMembersCompatibleParallelism reports whether every member declares the
+// same parallelism type. Width-arithmetic validation ("do the declared
+// widths describe one coherent total topology") is left to a future
+// consumer to refine once a real multi-host deployment's exact declaration
+// convention is observed in the field - this function only checks the
+// invariant that is unambiguous today: every member must agree on TYPE.
+func allMembersCompatibleParallelism(members []*NodeState) bool {
+	if len(members) == 0 {
+		return false
+	}
+	var first string
+	for i, m := range members {
+		m.mu.RLock()
+		t := m.ParallelismType
+		m.mu.RUnlock()
+		if i == 0 {
+			first = t
+			continue
+		}
+		if t != first {
+			return false
+		}
+	}
+	return first != ""
+}
+
+// resolvedTopologyShape returns the multi-member replica's ParallelismType
+// (agreed across members, per allMembersCompatibleParallelism) and
+// ParallelismWidth (the topology's total width - sum of each member's own
+// declared width, the natural reading for a TP/PP deployment sharded across
+// hosts where each member declares its own local share).
+func resolvedTopologyShape(members []*NodeState) (string, int) {
+	var t string
+	total := 0
+	for _, m := range members {
+		m.mu.RLock()
+		if t == "" {
+			t = m.ParallelismType
+		}
+		total += m.ParallelismWidth
+		m.mu.RUnlock()
+	}
+	return t, total
+}
+
+// capabilitiesForVariant returns the served model's own capability set for
+// a validated model variant identity. No Model Advisor capability-metadata
+// lookup is wired into this package yet, so this deliberately returns nil
+// (never fabricated) - a future consumer (e.g. P422) wires the real lookup
+// in without changing replicaFor's contract. Empty when variant is empty
+// (unresolved model identity), never guessed from one member.
+func capabilitiesForVariant(variant string) []string {
+	if variant == "" {
+		return nil
+	}
+	return nil
+}
+
+// replicaFor resolves n's full Replica view, built on the same closure
+// computation resolveSchedulingRoles uses - it never re-derives role
+// resolution independently, so the two can never disagree about a node's
+// role.
+//
+// Binding contract guardrail: a zero-valued field must never be
+// interpretable as a valid replica configuration. On a STANDALONE
+// (len(Members) == 1) NodeState, ParallelismType == "" / ParallelismWidth
+// == 0 legitimately means "unconstrained" - the existing, pre-replica
+// meaning of the zero value everywhere else in this codebase. On a
+// MULTI-MEMBER (len(Members) > 1) Replica returned here for a
+// RoleHead/RoleWorker node, those same zero values mean something
+// completely different - conflicting, validation failed, unknown - and
+// must never be read as "unconstrained." The distinction is by
+// len(Members), never by inspecting the value itself. SchedulingRole
+// (never any Replica field) is the sole authoritative schedulability
+// signal: filterCandidates never reads any Replica field, only
+// resolveSchedulingRoles's per-name role map, so no live routing decision
+// in this package is ever made from a Replica's zero-valued field. Any
+// future caller reading Replica.ModelVariant/.ParallelismType/.Width from a
+// multi-member Replica MUST treat an empty/zero value as "validation
+// failed for this replica - do not use this value for any capacity,
+// placement, or advisory decision," never as "unconstrained."
+func (r *Router) replicaFor(n *NodeState, allNodes []*NodeState) Replica {
+	roles := r.resolveSchedulingRoles(allNodes)
+	role := roles[n.Name] // zero value RoleStandalone if absent
+
+	if role == RoleStandalone {
+		n.mu.RLock()
+		defer n.mu.RUnlock()
+		return Replica{
+			Members:          []*NodeState{n},
+			Head:             n,
+			GPUScopes:        []ReplicaMemberScope{{Node: n, GPUs: effectiveGPUIndicesLocked(n)}},
+			ParallelismType:  n.ParallelismType,
+			ParallelismWidth: n.ParallelismWidth,
+			ModelVariant:     primaryLoadedModelVariantLocked(n),
+			Capabilities:     capabilitiesForVariant(primaryLoadedModelVariantLocked(n)),
+		}
+	}
+
+	if role == RoleUnresolved {
+		// No agreed member set or head to report, by definition
+		// (validateComponent already said so). Informational/debugging
+		// only - no live code path in this package calls replicaFor for a
+		// RoleUnresolved node for a placement decision; filterCandidates
+		// already excludes it before any Replica is ever assembled.
+		return Replica{Members: []*NodeState{n}, Head: nil}
+	}
+
+	// role is RoleHead or RoleWorker: a valid, agreed component exists.
+	members, headName := componentFor(n.Name, allNodes)
+
+	var headNode *NodeState
+	for _, m := range members {
+		if m.Name == headName {
+			headNode = m
+			break
+		}
+	}
+
+	// Model-identity validation: a mismatch does NOT change SchedulingRole
+	// (role is a topology label; this is a serving-state conflict) -
+	// ModelVariant is left at the zero value ("") rather than silently
+	// adopting the head's value, per the guardrail above.
+	modelVariant := ""
+	if headNode != nil && allMembersAgreeOnModel(members) {
+		headNode.mu.RLock()
+		modelVariant = primaryLoadedModelVariantLocked(headNode)
+		headNode.mu.RUnlock()
+	}
+
+	// Parallelism-compatibility validation: on disagreement, left at zero
+	// values, never the head's value adopted unanimously.
+	parallelismType, parallelismWidth := "", 0
+	if allMembersCompatibleParallelism(members) {
+		parallelismType, parallelismWidth = resolvedTopologyShape(members)
+	}
+
+	gpuScopes := make([]ReplicaMemberScope, 0, len(members))
+	for _, m := range members {
+		m.mu.RLock()
+		gpuScopes = append(gpuScopes, ReplicaMemberScope{Node: m, GPUs: effectiveGPUIndicesLocked(m)})
+		m.mu.RUnlock()
+	}
+
+	return Replica{
+		Members:          members,
+		Head:             headNode,
+		GPUScopes:        gpuScopes, // never flattened across members
+		ParallelismType:  parallelismType,
+		ParallelismWidth: parallelismWidth,
+		ModelVariant:     modelVariant,
+		Capabilities:     capabilitiesForVariant(modelVariant),
+	}
+}
+
 // filterCandidates applies the pre-score hard filter (runtime match, health,
 // draining, model eligibility, per-node capacity, GPU-group shape) that
 // routeInternal and RouteExcluding both need, recording which single
 // condition eliminated each excluded node - the first one that fails, in the
 // exact order the original boolean short-circuit already evaluated:
 // runtime filter -> health -> draining -> model eligibility -> capacity ->
-// GPU group. exclude may be nil (routeInternal has no retry-exclude set);
-// a node skipped via exclude is a caller-directed retry skip, not a hard-
-// filter exclusion, so it is not recorded as an ExcludedCandidate.
+// GPU group -> replica worker/unresolved. exclude may be nil (routeInternal
+// has no retry-exclude set); a node skipped via exclude is a caller-directed
+// retry skip, not a hard-filter exclusion, so it is not recorded as an
+// ExcludedCandidate.
 func (r *Router) filterCandidates(nodes []*NodeState, modelName, runtimeFilter string, exclude map[string]bool) (healthy []*NodeState, excluded []ExcludedCandidate, excludedTotal int) {
+	roles := r.resolveSchedulingRoles(nodes) // computed once for this call, not per node
 	for _, n := range nodes {
 		if exclude[n.URL] { // safe on a nil map: indexing returns the zero value, never panics
 			continue
@@ -755,6 +1248,15 @@ func (r *Router) filterCandidates(nodes []*NodeState, modelName, runtimeFilter s
 				reason = ExcludeReasonOverCapacity
 			case !r.isGPUGroupSufficient(n):
 				reason = ExcludeReasonInsufficientGPUGroup
+			// Appended after every existing hard-filter case, not inserted
+			// earlier - preserves existing ExcludeReason* precedence for a
+			// node that fails more than one check. Still absolute hard
+			// constraints; only their position in the "which single reason
+			// wins" tiebreak is last.
+			case roles[n.Name] == RoleWorker:
+				reason = ExcludeReasonReplicaWorker
+			case roles[n.Name] == RoleUnresolved:
+				reason = ExcludeReasonReplicaUnresolved
 			}
 		}
 		if reason == "" {
@@ -814,7 +1316,11 @@ func (r *Router) Route(modelName, sessionID, runtimeFilter string) (*NodeState, 
 	if sessionID != "" {
 		node, hadEntry := r.stickyNode(sessionID)
 		if node != nil {
-			hardValid := (runtimeFilter == "" || node.GetRuntime() == runtimeFilter) && r.isEligibleForModel(node, modelName) && r.isGPUGroupSufficient(node)
+			role := r.resolveSchedulingRoles(r.Nodes())[node.Name] // one extra call, same cost as one filterCandidates pass
+			hardValid := (runtimeFilter == "" || node.GetRuntime() == runtimeFilter) &&
+				r.isEligibleForModel(node, modelName) &&
+				r.isGPUGroupSufficient(node) &&
+				role != RoleWorker && role != RoleUnresolved
 			if hardValid && r.isUnderCapacity(node) {
 				r.RecordTransition(modelName, time.Now())
 				warm := r.isModelWarm(node, modelName)
