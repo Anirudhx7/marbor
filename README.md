@@ -185,6 +185,7 @@ Client Application (Agent / RAG / Copilot)
 | **GPU-Aware Routing** | Warm-first model routing | Polls `/api/ps` on every node every 2s. Routes to the node where the model is already resident in VRAM. Eliminates cold-start latency. |
 | | VRAM-fit placement | Cold requests route to the node with the most free VRAM. Prevents OOM under concurrent multi-model traffic. |
 | | Deployment-aware GPU-count placement | Nodes declare tensor/pipeline/expert/data-parallel width (or one-click "Adopt" what the marbor agent auto-detects). A model needing 8 GPUs for tensor-parallel inference can no longer be routed to a 4-GPU node - the scheduler gates on GPU count, not just VRAM. |
+| | Multi-host replica scheduling | Declare which nodes together form one tensor/pipeline-parallel deployment spanning more than one physical machine. The head node is the only one ever routed to; worker nodes stay visible in the fleet but are automatically excluded from routing and session-affinity revalidation. Conflicting or one-sided declarations show a clear "Unresolved replica" state instead of routing to a broken deployment. |
 | | Session affinity (KV-cache) | `X-Session-ID` header pins a conversation to a node. KV-cache stays hot - subsequent turns skip re-prefill. TTL-based eviction. |
 | | Proactive model warmup | `keep_alive` pings on a configurable schedule keep priority models resident between requests. |
 | **Financial Controls** | Real-time savings tracking | Every locally-served token valued against your cloud reference rate. Dashboard shows exact dollar savings vs pure-cloud baseline. |
@@ -471,7 +472,7 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor whoami` | show the CLI's saved identity (live-verified) |
 | `marbor nodes` | list nodes known to marbor (requires auth) |
 | `marbor nodes confirm-tls <node>` | pin a marbor agent's TLS certificate fingerprint (headless enrollment) (requires auth) |
-| `marbor nodes patch <node>` | update a node's deployment/placement fields (url, runtime, GPU, VRAM, parallelism, TLS pin clear) (requires auth) |
+| `marbor nodes patch <node>` | update a node's deployment/placement fields (url, runtime, GPU, VRAM, parallelism, replica membership, TLS pin clear) (requires auth) |
 | `marbor nodes tls-probe <node>` | read a node's Marbor Agent TLS certificate fingerprint without pinning it (requires auth) |
 | `marbor nodes add <name> <url>` | add (or update, by name) a node in the fleet (requires auth) |
 | `marbor nodes remove <node>` | remove a node from the fleet (requires auth) |
