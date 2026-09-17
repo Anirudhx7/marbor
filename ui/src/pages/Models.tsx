@@ -36,6 +36,138 @@ function totalVRAMFor(model: ModelEntry): number {
   return 0;
 }
 
+// Replica-aware instance count. Every warm node of one resolved replica
+// (same head) is ONE sharded instance, never N duplicate copies - each
+// remaining warm node is its own instance. Warm nodes with no topology entry
+// (standalone, unresolved, or a node the list fetch missed) each count as
+// their own instance, matching the old behavior for fleets without
+// replicas. Extra warm reports beyond the listed nodes (warm_count above the
+// listed warm chips) each count as one more instance so waste can never
+// undercount when the node list lags the catalog.
+function instancesFor(
+  model: ModelEntry,
+  replicaByNode: Record<string, { head: string; type?: string; width?: number }>,
+): { instances: number; shardedNodes: number; shardTotalNodes: number; shardInstances: number; shardShape: string | null; heads: string[] } {
+  const warmNodes = model.nodes.filter((n) => n.warm);
+  const groups = new Map<string, string[]>();
+  for (const n of warmNodes) {
+    const key = replicaByNode[n.name] ? `replica:${replicaByNode[n.name].head}` : `node:${n.name}`;
+    const g = groups.get(key);
+    if (g) g.push(n.name);
+    else groups.set(key, [n.name]);
+  }
+  let instances = groups.size;
+  const listedWarm = warmNodes.length;
+  if (model.warm_count > listedWarm) instances += model.warm_count - listedWarm;
+  const heads: string[] = [];
+  let shardedNodes = 0;
+  let shardInstances = 0;
+  // Parallelism shape shared by every sharded member (e.g. "TP=8") - shown
+  // on the badge when the whole group agrees, omitted when members differ.
+  const shapes = new Set<string>();
+  for (const [key, members] of groups) {
+    if (key.startsWith('replica:')) {
+      shardedNodes += members.length;
+      shardInstances += 1;
+      heads.push(key.slice('replica:'.length));
+      for (const name of members) {
+        const t = replicaByNode[name]?.type;
+        const w = replicaByNode[name]?.width;
+        if (t && w) shapes.add(`${t.toUpperCase()}=${w}`);
+      }
+    }
+  }
+  heads.sort();
+  // Total declared membership of each shard group (fleet-wide, independent of
+  // whether every member currently reports this model as warm) - the correct
+  // denominator for a "warm/total" fact about the deployment itself, as
+  // opposed to model.total_nodes which counts the whole fleet.
+  const totalMembersByHead = new Map<string, number>();
+  for (const nodeName in replicaByNode) {
+    const head = replicaByNode[nodeName].head;
+    totalMembersByHead.set(head, (totalMembersByHead.get(head) || 0) + 1);
+  }
+  // Summed across every distinct shard group this model happens to be warm
+  // on. In practice a given model is only ever part of one live replica
+  // deployment at a time, so this is normally a single group; if the same
+  // model name were ever warm on two unrelated replica deployments
+  // simultaneously, this intentionally reports their combined instance/node
+  // counts as one figure rather than picking one arbitrarily - a genuinely
+  // rare topology, not a miscalculation.
+  let shardTotalNodes = 0;
+  for (const head of heads) {
+    shardTotalNodes += totalMembersByHead.get(head) || 0;
+  }
+  return { instances, shardedNodes, shardTotalNodes: Math.max(shardTotalNodes, shardedNodes), shardInstances, shardShape: shapes.size === 1 ? [...shapes][0] : null, heads };
+}
+
+function wasteFor(
+  model: ModelEntry,
+  replicaByNode: Record<string, { head: string; type?: string; width?: number }>,
+): { copies: number; vram: number } {
+  const { instances } = instancesFor(model, replicaByNode);
+  const copies = instances > 1 ? instances - 1 : 0;
+  const vram = copies > 0 && model.size_vram ? copies * model.size_vram : 0;
+  return { copies, vram };
+}
+
+// Precomputed status data for ModelStatusBadges - all replica grouping and
+// waste math happens here (instancesFor/wasteFor), never inside the
+// presentation component below, so the badges can't drift into recomputing
+// their own version of this logic.
+interface ModelStatusData {
+  wasteCopies: number;
+  wasteVRAM: number;
+  shardedNodes: number;
+  shardTotalNodes: number;
+  shardInstances: number;
+  shardShape: string | null;
+  shardHeads: string[];
+}
+
+function modelStatusFor(
+  model: ModelEntry,
+  replicaByNode: Record<string, { head: string; type?: string; width?: number }>,
+): ModelStatusData {
+  const { copies: wasteCopies, vram: wasteVRAM } = wasteFor(model, replicaByNode);
+  const { shardedNodes, shardTotalNodes, shardInstances, shardShape, heads: shardHeads } = instancesFor(model, replicaByNode);
+  return { wasteCopies, wasteVRAM, shardedNodes, shardTotalNodes, shardInstances, shardShape, shardHeads };
+}
+
+// Single source of the sharded/waste badges - rendered by both the desktop
+// table and the card so they can never re-diverge in styling. Sharded is
+// informational (a correctly-sharded model, not a problem) so it uses the
+// `info` (blue) token; waste is actionable (reclaimable VRAM) so it keeps
+// the amber/warning treatment. Deliberately NOT `primary` here - this
+// brand's primary color is itself a gold/amber hue (see index.css), so a
+// "primary vs amber" pairing would barely read as different colors at all.
+function ModelStatusBadges({ data, hideSharded }: { data: ModelStatusData; hideSharded?: boolean }) {
+  const { wasteCopies, wasteVRAM, shardedNodes, shardInstances, shardShape, shardHeads } = data;
+  if (wasteCopies === 0 && (shardedNodes === 0 || hideSharded)) return null;
+  return (
+    <>
+      {shardedNodes > 0 && !hideSharded && (
+        <span
+          className="inline-flex items-center gap-1.5 px-2 py-1 bg-info/10 border border-info/20 rounded-md font-medium text-info"
+          title="One sharded instance across these nodes - fully in use, not a reclaimable copy."
+        >
+          <Layers className="w-3 h-3" />
+          Sharded{shardShape ? ` ${shardShape}` : ''}{shardHeads.length === 1 ? ` · ${shardHeads[0]}` : ''} · {shardedNodes} node{shardedNodes === 1 ? '' : 's'}, {shardInstances} instance{shardInstances === 1 ? '' : 's'}
+        </span>
+      )}
+      {wasteCopies > 0 && (
+        <span
+          className="inline-flex items-center gap-1.5 px-2 py-1 bg-amber-500/10 border border-amber-500/20 rounded-md font-medium text-amber-700 dark:text-amber-400"
+          title="Duplicated warm instances beyond 1 - VRAM that could hold a different model."
+        >
+          <Copy className="w-3 h-3" />
+          +{wasteCopies} dup · {wasteVRAM ? formatVRAM(wasteVRAM) : '-'} waste
+        </span>
+      )}
+    </>
+  );
+}
+
 function SkeletonCard() {
   return (
     <div className="bg-card border border-border shadow-sm rounded-xl p-5 animate-pulse">
@@ -49,13 +181,12 @@ function SkeletonCard() {
   );
 }
 
-function ModelFleetCard({ model, demoMode, onConfigure, onDeleted }: { model: ModelEntry; demoMode: boolean; onConfigure: () => void; onDeleted: (modelName: string, nodeName: string) => void }) {
+function ModelFleetCard({ model, demoMode, replicaByNode, onConfigure, onDeleted }: { model: ModelEntry; demoMode: boolean; replicaByNode: Record<string, { head: string; type?: string; width?: number }>; onConfigure: () => void; onDeleted: (modelName: string, nodeName: string) => void }) {
   const isWarm = model.warm_count > 0;
   const totalVRAM = totalVRAMFor(model);
   const isDrifted = !!model.digest_mismatch;
   const driftDetails = model.drift_details || '';
-  const wasteCopies = model.warm_count > 1 ? model.warm_count - 1 : 0;
-  const wasteVRAM = wasteCopies > 0 && model.size_vram ? wasteCopies * model.size_vram : 0;
+  const status = modelStatusFor(model, replicaByNode);
 
   const [selectedDeleteNode, setSelectedDeleteNode] = useState('');
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -85,6 +216,9 @@ function ModelFleetCard({ model, demoMode, onConfigure, onDeleted }: { model: Mo
       setDeleteBusy(false);
     }
   };
+
+  const shardNodes = model.nodes.filter((n) => replicaByNode[n.name]);
+  const otherNodes = model.nodes.filter((n) => !replicaByNode[n.name]);
 
   return (
     <div className={`bg-card border shadow-sm rounded-xl p-5 hover:border-primary/50 transition-[box-shadow,border-color] duration-200 ease-out hover:shadow-md flex flex-col h-full ${isWarm ? 'border-border' : 'border-border opacity-80'}`}>
@@ -139,22 +273,45 @@ function ModelFleetCard({ model, demoMode, onConfigure, onDeleted }: { model: Mo
 
       {/* Fleet residency summary - pinned height so single vs multi-chip rows stay aligned */}
       <div className="flex flex-wrap items-center gap-2 text-xs mb-3 min-h-[44px] content-start">
-        <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-secondary rounded-md font-medium text-foreground">
-          <Layers className="w-3 h-3 text-muted-foreground" />
-          {model.warm_count} / {model.total_nodes} nodes warm
-        </span>
+        {status.shardedNodes > 0 ? (
+          <>
+            <span
+              className="inline-flex items-center gap-1.5 px-2 py-1 bg-success/10 border border-success/20 rounded-md font-medium text-success"
+              title="Warm shard members vs. this deployment's own declared node count"
+            >
+              <Layers className="w-3 h-3" />
+              {status.shardedNodes} / {status.shardTotalNodes} nodes warm
+            </span>
+            <span
+              className="inline-flex items-center gap-1.5 px-2 py-1 bg-info/10 border border-info/20 rounded-md font-semibold text-info"
+              title="One deployment split across these nodes - not independent warm copies"
+            >
+              <Layers className="w-3 h-3" />
+              {status.shardInstances} instance{status.shardInstances === 1 ? '' : 's'}, sharded across {status.shardTotalNodes} node{status.shardTotalNodes === 1 ? '' : 's'}
+            </span>
+            {status.wasteCopies > 0 && (
+              <span
+                className="inline-flex items-center gap-1.5 px-2 py-1 bg-secondary rounded-md font-medium text-foreground"
+                title="This model is also warm on nodes outside this sharded deployment - see the duplication badge below"
+              >
+                <Layers className="w-3 h-3 text-muted-foreground" />
+                {model.warm_count} / {model.total_nodes} nodes warm fleet-wide
+              </span>
+            )}
+          </>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-secondary rounded-md font-medium text-foreground">
+            <Layers className="w-3 h-3 text-muted-foreground" />
+            {model.warm_count} / {model.total_nodes} nodes warm
+          </span>
+        )}
         {totalVRAM > 0 && (
           <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-secondary rounded-md font-medium text-foreground" title="Sum of VRAM across all warm copies (live, not estimated)">
             <Flame className="w-3 h-3 text-muted-foreground" />
             {formatVRAM(totalVRAM)} warm total
           </span>
         )}
-        {wasteCopies > 0 && (
-          <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-amber-500/10 border border-amber-500/20 rounded-md font-medium text-amber-700 dark:text-amber-400" title="Duplicated warm copies beyond 1 - VRAM that could hold a different model">
-            <Copy className="w-3 h-3" />
-            +{wasteCopies} dup · {wasteVRAM ? formatVRAM(wasteVRAM) : '-'} waste
-          </span>
-        )}
+        <ModelStatusBadges data={status} hideSharded />
         {isDrifted && driftDetails && (
           <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-warning/10 border border-warning/20 rounded-md font-mono text-[11px] text-warning" title="Distinct digests (short hex) seen across nodes for this model">
             <AlertTriangle className="w-3 h-3" />
@@ -172,7 +329,7 @@ function ModelFleetCard({ model, demoMode, onConfigure, onDeleted }: { model: Mo
           </Link>
         </div>
         <div className="flex flex-wrap gap-1.5">
-          {model.nodes.map((node) => (
+          {otherNodes.map((node) => (
             <Link
               key={node.name}
               to={`/gpu-nodes?highlight=${encodeURIComponent(node.name)}&from=models`}
@@ -180,7 +337,7 @@ function ModelFleetCard({ model, demoMode, onConfigure, onDeleted }: { model: Mo
               className="inline-flex items-center gap-1.5 px-2 py-1 bg-secondary hover:bg-secondary/80 border border-transparent hover:border-border rounded-md text-xs font-medium text-foreground transition-colors duration-200 ease-out"
             >
               <StatusDot status={node.healthy ? 'healthy' : 'down'} />
-              <span className="font-mono">{node.name}</span>
+              <span className="font-mono truncate max-w-[110px]">{node.name}</span>
               {node.runtime && (
                 <span className="text-[10px] px-1 py-0.5 bg-card border border-border rounded font-mono text-muted-foreground">
                   {node.runtime}
@@ -192,11 +349,34 @@ function ModelFleetCard({ model, demoMode, onConfigure, onDeleted }: { model: Mo
               <span className="text-[10px] font-mono text-muted-foreground" title={node.digest ? `Digest: ${node.digest}` : 'Digest unknown'}>
                 {shortDigest(node.digest)}
               </span>
-              {node.vram_bytes ? (
-                <span className="text-[10px] font-mono text-muted-foreground">{formatVRAM(node.vram_bytes)}</span>
-              ) : null}
             </Link>
           ))}
+          {shardNodes.length > 0 && (
+            <div
+              className="inline-flex flex-wrap items-center gap-1.5 p-1.5 border border-info/30 bg-info/5 rounded-lg"
+              title="These nodes together host one sharded deployment - not independent copies"
+            >
+              {shardNodes.map((node) => (
+                <Link
+                  key={node.name}
+                  to={`/gpu-nodes?highlight=${encodeURIComponent(node.name)}&from=models`}
+                  title={`${node.name} · ${node.runtime || 'runtime unknown'} · ${node.warm ? 'warm' : 'cold'} · shard of deployment headed by ${replicaByNode[node.name].head} · digest ${node.digest || '-'}${node.vram_bytes ? ` · ${formatVRAM(node.vram_bytes)}` : ''}`}
+                  className="inline-flex items-center gap-1.5 px-2 py-1 bg-card hover:bg-secondary/80 border border-transparent hover:border-info/40 rounded-md text-xs font-medium text-foreground transition-colors duration-200 ease-out"
+                >
+                  <StatusDot status={node.healthy ? 'healthy' : 'down'} />
+                  <span className="font-mono truncate max-w-[110px]">{node.name}</span>
+                  {node.runtime && (
+                    <span className="text-[10px] px-1 py-0.5 bg-card border border-border rounded font-mono text-muted-foreground">
+                      {node.runtime}
+                    </span>
+                  )}
+                  <span className="text-[10px] font-mono text-muted-foreground" title={node.digest ? `Digest: ${node.digest}` : 'Digest unknown'}>
+                    {shortDigest(node.digest)}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          )}
           {model.nodes.length === 0 && (
             <span className="text-xs text-muted-foreground">No node reports this model</span>
           )}
@@ -326,6 +506,13 @@ export function Models() {
   const [pullModelName, setPullModelName] = useState('');
   const [pullVerifyLoad, setPullVerifyLoad] = useState(true);
   const [runtimeByNode, setRuntimeByNode] = useState<Record<string, string>>({});
+  // Resolved replica topology per node name, joined from the same node-list
+  // fetch above. Lets the waste/shard math below tell one sharded instance
+  // (a resolved head + its workers) apart from genuinely duplicated warm
+  // copies. Unresolved nodes stay out of this map on purpose: their
+  // component disagrees, so each counts as its own instance until the
+  // operator reconciles the declarations on the GPU Nodes page.
+  const [replicaByNode, setReplicaByNode] = useState<Record<string, { head: string; type?: string; width?: number }>>({});
   const [configModel, setConfigModel] = useState<string | null>(null);
 
   const location = useLocation();
@@ -338,9 +525,15 @@ export function Models() {
         const list = demoMode ? mockGPUNodes : await fetchNodes();
         if (!active || currentAppPath() !== '/models') return;
         setRuntimeByNode(Object.fromEntries((list || []).map((n) => [n.name, n.runtime])));
+        setReplicaByNode(Object.fromEntries(
+          (list || [])
+            .filter((n) => (n.schedulingRole === 'head' || n.schedulingRole === 'worker') && n.replicaHead)
+            .map((n) => [n.name, { head: n.replicaHead as string, type: n.parallelismType, width: n.parallelismWidth }]),
+        ));
       } catch {
         if (!active || currentAppPath() !== '/models') return;
         setRuntimeByNode({});
+        setReplicaByNode({});
       }
     })();
     return () => { active = false; };
@@ -445,13 +638,8 @@ export function Models() {
   const totalWarmCopies = models.reduce((a, m) => a + m.warm_count, 0);
   const driftedModels = models.filter((m) => m.digest_mismatch);
   const driftedCount = driftedModels.length;
-  const duplicatedCopies = models.reduce((a, m) => a + (m.warm_count > 1 ? m.warm_count - 1 : 0), 0);
-  const duplicatedVRAM = models.reduce((a, m) => {
-    if (m.warm_count <= 1) return a;
-    const per = m.size_vram || 0;
-    if (per === 0) return a;
-    return a + per * (m.warm_count - 1);
-  }, 0);
+  const duplicatedCopies = models.reduce((a, m) => a + wasteFor(m, replicaByNode).copies, 0);
+  const duplicatedVRAM = models.reduce((a, m) => a + wasteFor(m, replicaByNode).vram, 0);
   const totalWarmVRAM = models.reduce((a, m) => a + totalVRAMFor(m), 0);
 
   const filteredModels = models.filter((m) => {
@@ -468,7 +656,7 @@ export function Models() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">Models</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Fleet residency · where warm, how many copies, total VRAM, drift. Catalog is secondary below.
+            Fleet residency · where warm, how many copies, total VRAM, drift.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -615,6 +803,7 @@ export function Models() {
                       {filteredModels.map((model) => {
                         const totalVRAM = totalVRAMFor(model);
                         const isDrifted = !!model.digest_mismatch;
+                        const status = modelStatusFor(model, replicaByNode);
                         return (
                           <tr key={model.name} className="border-b border-border last:border-0 hover:bg-secondary/30 transition-colors">
                             <td className="px-4 py-3 align-top">
@@ -623,12 +812,36 @@ export function Models() {
                               {model.family && <div className="text-[11px] text-muted-foreground/70 font-mono">{model.family}</div>}
                             </td>
                             <td className="px-4 py-3 align-top">
-                              <Badge variant={model.warm_count > 0 ? 'success' : 'muted'} size="sm">
-                                {model.warm_count}/{model.total_nodes}
-                              </Badge>
-                              {model.warm_count > 1 && model.size_vram > 0 && (
-                                <div className="text-[11px] text-amber-700 dark:text-amber-400 mt-1 font-medium">+{model.warm_count - 1} dup</div>
+                              {status.shardedNodes > 0 ? (
+                                <div className="flex flex-col items-start gap-1 max-w-[220px]">
+                                  <span title="Warm shard members vs. this deployment's own declared node count">
+                                    <Badge variant="success" size="sm">
+                                      {status.shardedNodes}/{status.shardTotalNodes}
+                                    </Badge>
+                                  </span>
+                                  <span
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 bg-info/10 border border-info/20 rounded-full text-[11px] font-semibold text-info"
+                                    title="One deployment split across these nodes - not independent warm copies"
+                                  >
+                                    {status.shardInstances} instance{status.shardInstances === 1 ? '' : 's'}, sharded across {status.shardTotalNodes} node{status.shardTotalNodes === 1 ? '' : 's'}
+                                  </span>
+                                  {status.wasteCopies > 0 && (
+                                    <span
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 bg-secondary rounded-full text-[11px] font-medium text-foreground"
+                                      title="This model is also warm on nodes outside this sharded deployment - see the duplication badge below"
+                                    >
+                                      {model.warm_count}/{model.total_nodes} fleet-wide
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <Badge variant={model.warm_count > 0 ? 'success' : 'muted'} size="sm">
+                                  {model.warm_count}/{model.total_nodes}
+                                </Badge>
                               )}
+                              <div className="flex flex-col items-start gap-1 mt-1.5 max-w-[220px]">
+                                <ModelStatusBadges data={status} hideSharded />
+                              </div>
                             </td>
                             <td className="px-4 py-3 align-top font-mono text-xs text-foreground">
                               {totalVRAM ? formatVRAM(totalVRAM) : '-'}
@@ -648,7 +861,7 @@ export function Models() {
                             </td>
                             <td className="px-4 py-3 align-top">
                               <div className="flex flex-wrap gap-1.5 max-w-[320px]">
-                                {model.nodes.map((node) => (
+                                {model.nodes.filter((n) => !replicaByNode[n.name]).map((node) => (
                                   <Link
                                     key={node.name}
                                     to={`/gpu-nodes?highlight=${encodeURIComponent(node.name)}&from=models`}
@@ -656,10 +869,29 @@ export function Models() {
                                     className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-secondary rounded text-xs font-medium hover:bg-secondary/80 transition-colors duration-200 ease-out"
                                   >
                                     <StatusDot status={node.healthy ? 'healthy' : 'down'} size="sm" />
-                                    <span className="font-mono">{node.name}</span>
+                                    <span className="font-mono truncate max-w-[90px]">{node.name}</span>
                                     <span className="text-[10px] font-mono text-muted-foreground">{shortDigest(node.digest)}</span>
                                   </Link>
                                 ))}
+                                {model.nodes.some((n) => replicaByNode[n.name]) && (
+                                  <div
+                                    className="inline-flex flex-wrap items-center gap-1 p-1 border border-info/30 bg-info/5 rounded"
+                                    title="These nodes together host one sharded deployment - not independent copies"
+                                  >
+                                    {model.nodes.filter((n) => replicaByNode[n.name]).map((node) => (
+                                      <Link
+                                        key={node.name}
+                                        to={`/gpu-nodes?highlight=${encodeURIComponent(node.name)}&from=models`}
+                                        title={`${node.name} ${node.runtime || ''} ${node.warm ? 'warm' : 'cold'} · shard of deployment headed by ${replicaByNode[node.name].head} · ${node.digest || ''}`}
+                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-card rounded text-xs font-medium hover:bg-secondary/80 transition-colors duration-200 ease-out"
+                                      >
+                                        <StatusDot status={node.healthy ? 'healthy' : 'down'} size="sm" />
+                                        <span className="font-mono truncate max-w-[90px]">{node.name}</span>
+                                        <span className="text-[10px] font-mono text-muted-foreground">{shortDigest(node.digest)}</span>
+                                      </Link>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                             </td>
                             <td className="px-4 py-3 align-top">
@@ -691,13 +923,8 @@ export function Models() {
               {/* Mobile cards - visible only below md, stacked, no horizontal scroll */}
               <div className="grid grid-cols-1 md:hidden gap-4 animate-fade-in">
                 {filteredModels.map((model) => (
-                  <ModelFleetCard key={model.name} model={model} demoMode={demoMode} onConfigure={() => setConfigModel(model.name)} onDeleted={handleModelDeleted} />
+                  <ModelFleetCard key={model.name} model={model} demoMode={demoMode} replicaByNode={replicaByNode} onConfigure={() => setConfigModel(model.name)} onDeleted={handleModelDeleted} />
                 ))}
-              </div>
-
-              {/* Desktop also show cards as secondary grid? Keep table as primary on desktop, but also provide card grid for quick scan on large screens - hidden, table is enough */}
-              <div className="hidden lg:hidden md:grid grid-cols-2 gap-6">
-                {/* This block intentionally empty - table covers md+ */}
               </div>
             </div>
           ) : (
@@ -770,7 +997,7 @@ export function Models() {
           ) : filteredModels.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-fr">
               {filteredModels.map((model) => (
-                <ModelFleetCard key={model.name} model={model} demoMode={demoMode} onConfigure={() => setConfigModel(model.name)} onDeleted={handleModelDeleted} />
+                <ModelFleetCard key={model.name} model={model} demoMode={demoMode} replicaByNode={replicaByNode} onConfigure={() => setConfigModel(model.name)} onDeleted={handleModelDeleted} />
               ))}
             </div>
           ) : (

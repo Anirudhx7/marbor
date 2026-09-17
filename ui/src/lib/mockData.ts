@@ -710,7 +710,7 @@ export const mockSavings: Savings = {
 };
 
 export const mockModelCatalog: ModelCatalog = {
-  total_models: 8,
+  total_models: 9,
   total_nodes: 6,
   healthy_nodes: 4,
   models: [
@@ -814,6 +814,27 @@ export const mockModelCatalog: ModelCatalog = {
       nodes: [
         { name: 'gpu-node-02', healthy: true, warm: true, vram_bytes: Math.round(0.6 * 1024 * 1024 * 1024), runtime: 'ollama' },
         { name: 'gpu-node-05', healthy: true, warm: true, vram_bytes: Math.round(0.6 * 1024 * 1024 * 1024), runtime: 'mlx' },
+      ],
+    },
+    {
+      // Demo parity for the replica-aware Models page: one model sharded
+      // TP=8 across the gpu-node-07/gpu-node-08 replica pair above (warm on
+      // both members by design - a single instance, zero duplication waste
+      // for that group) PLUS a separate, genuinely wasteful independent
+      // warm copy on gpu-node-01 unrelated to the shard. This mixed shape
+      // exercises the fleet-wide "also warm elsewhere" fact the Models page
+      // must not hide behind the shard-scoped ratio (see CHANGELOG).
+      name: 'meta-llama/Llama-3.1-405B-Instruct',
+      size_vram: Math.round(61.0 * 1024 * 1024 * 1024),
+      size_disk: Math.round(230.0 * 1024 * 1024 * 1024),
+      warm_count: 3,
+      total_nodes: 4,
+      total_vram_bytes: Math.round((61.0 + 58.4 + 61.0) * 1024 * 1024 * 1024),
+      family: 'llama',
+      nodes: [
+        { name: 'gpu-node-07', healthy: true, warm: true, vram_bytes: Math.round(61.0 * 1024 * 1024 * 1024), runtime: 'vllm' },
+        { name: 'gpu-node-08', healthy: true, warm: true, vram_bytes: Math.round(58.4 * 1024 * 1024 * 1024), runtime: 'vllm' },
+        { name: 'gpu-node-01', healthy: true, warm: true, vram_bytes: Math.round(61.0 * 1024 * 1024 * 1024), runtime: 'vllm' },
       ],
     },
   ],
