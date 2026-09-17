@@ -111,11 +111,20 @@ func runNodes(flags *globalFlags, stdout, stderr io.Writer) int {
 	}
 
 	tw := newTabWriter(stdout)
-	fmt.Fprintln(tw, "NAME\tHOST:PORT\tHEALTH\tRUNTIME\tGPU\tVRAM USED/TOTAL\tMODELS WARM\tDRAINING")
+	fmt.Fprintln(tw, "NAME\tHOST:PORT\tHEALTH\tRUNTIME\tGPU\tVRAM USED/TOTAL\tMODELS WARM\tDRAINING\tREPLICA ROLE\tREPLICA HEAD")
 	for _, n := range nodes {
-		fmt.Fprintf(tw, "%s\t%s:%d\t%s\t%s\t%s\t%s / %s\t%d\t%s\n",
+		role := n.SchedulingRole
+		if role == "" {
+			role = "standalone"
+		}
+		replicaHead := n.ReplicaHead
+		if replicaHead == "" {
+			replicaHead = "-"
+		}
+		fmt.Fprintf(tw, "%s\t%s:%d\t%s\t%s\t%s\t%s / %s\t%d\t%s\t%s\t%s\n",
 			n.Name, n.Host, n.Port, n.Health, n.Runtime, n.GPUModel,
-			fmtMB(n.VRAMUsedMB), fmtMB(n.VRAMTotalMB), len(n.LoadedModels), yesNo(n.Draining))
+			fmtMB(n.VRAMUsedMB), fmtMB(n.VRAMTotalMB), len(n.LoadedModels), yesNo(n.Draining),
+			role, replicaHead)
 	}
 	if err := tw.Flush(); err != nil {
 		fmt.Fprintln(stderr, err)
@@ -350,6 +359,8 @@ func runNodesPatchWithCtx(ctx *RunCtx, name string) int {
 	gpuIndicesSet := ctx.IsSet("gpu-indices")
 	maxInFlightSet := ctx.IsSet("max-in-flight")
 	clearTLS := ctx.Bool("tls-clear")
+	replicaMembersSet := ctx.IsSet("replica-members")
+	replicaHeadSet := ctx.IsSet("replica-head")
 
 	var vramOverrides map[string]int64
 	if vramOverrideSet {
@@ -369,10 +380,26 @@ func runNodesPatchWithCtx(ctx *RunCtx, name string) int {
 			return ExitUserError
 		}
 	}
+	replicaMembers := parseCommaList(ctx.String("replica-members"))
+	replicaHead := ctx.String("replica-head")
 
 	if !pTypeSet && !pWidthSet && !vramOverrideSet && !urlSet && !runtimeSet &&
-		!gpuModelSet && !vramTotalSet && !gpuIndicesSet && !maxInFlightSet && !clearTLS {
+		!gpuModelSet && !vramTotalSet && !gpuIndicesSet && !maxInFlightSet && !clearTLS &&
+		!replicaMembersSet && !replicaHeadSet {
 		fmt.Fprintln(ctx.Stderr, "error: at least one field flag is required (see \"nodes patch --help\")")
+		return ExitUserError
+	}
+	// For clearing, both must be explicitly set to empty (mirrors the
+	// parallelism-type/parallelism-width together-or-cleared-together rule
+	// below) - a lone --replica-head with no --replica-members (or vice
+	// versa) is ambiguous client-side input, rejected before it ever
+	// reaches the server's own structural validation.
+	if replicaMembersSet != replicaHeadSet {
+		fmt.Fprintln(ctx.Stderr, "error: --replica-members and --replica-head must be set together or cleared together")
+		return ExitUserError
+	}
+	if replicaMembersSet && len(replicaMembers) > 0 && replicaHead == "" {
+		fmt.Fprintln(ctx.Stderr, "error: --replica-head is required when --replica-members is non-empty")
 		return ExitUserError
 	}
 	// For clearing, both must be explicitly set to empty/0
@@ -441,6 +468,9 @@ func runNodesPatchWithCtx(ctx *RunCtx, name string) int {
 		v := ctx.Int("max-in-flight")
 		fields.MaxInFlight = &v
 	}
+	if replicaMembersSet {
+		fields.ReplicaPeers = &NodeReplicaPeers{Members: replicaMembers, Head: replicaHead}
+	}
 	if err := client.PatchNodeFields(name, fields); err != nil {
 		return reportError(err, ctx.Stderr)
 	}
@@ -473,6 +503,9 @@ func runNodesPatchWithCtx(ctx *RunCtx, name string) int {
 	}
 	if clearTLS {
 		result["tls_fingerprint"] = ""
+	}
+	if replicaMembersSet {
+		result["replica_peers"] = map[string]interface{}{"members": replicaMembers, "head": replicaHead}
 	}
 	if handled, code := emitJSON(ctx.Stdout, ctx.Stderr, ctx.Flags.jsonOutput, result); handled {
 		return code
@@ -523,6 +556,13 @@ func runNodesPatchWithCtx(ctx *RunCtx, name string) int {
 	}
 	if clearTLS {
 		fmt.Fprintf(ctx.Stdout, "node %q TLS fingerprint pin cleared\n", name)
+	}
+	if replicaMembersSet {
+		if len(replicaMembers) == 0 {
+			fmt.Fprintf(ctx.Stdout, "node %q replica membership cleared\n", name)
+		} else {
+			fmt.Fprintf(ctx.Stdout, "node %q replica membership set: members=%v head=%s\n", name, replicaMembers, replicaHead)
+		}
 	}
 	return ExitOK
 }
