@@ -26,6 +26,12 @@ export default defineConfig({
     proxy: {
       '/admin': 'http://localhost:8080',
       '/login': 'http://localhost:8080',
+      // The password-gate calls these bare paths (sessionAuth, shared by
+      // admin and user-portal sessions) - without proxy entries the dev
+      // server 404s both change and skip while production (same-origin
+      // serving from :8080, where both routes are registered) works fine.
+      '/change-password': 'http://localhost:8080',
+      '/skip-password-change': 'http://localhost:8080',
     },
   },
   build: {
