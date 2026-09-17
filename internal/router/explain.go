@@ -55,6 +55,14 @@ const (
 	ExcludeReasonIneligibleModel      = "ineligible_model"
 	ExcludeReasonOverCapacity         = "over_capacity"
 	ExcludeReasonInsufficientGPUGroup = "insufficient_gpu_group"
+	// ExcludeReasonReplicaWorker: this node is a confirmed non-head member
+	// of a declared multi-host replica - route to its replica's head
+	// instead. ExcludeReasonReplicaUnresolved: this node's replica_peers
+	// declaration conflicts (or is one-sided) with another node's - needs
+	// operator reconciliation before it can resolve to a role. Two distinct
+	// reasons because the operator-facing remediation differs.
+	ExcludeReasonReplicaWorker     = "replica_worker"
+	ExcludeReasonReplicaUnresolved = "replica_unresolved"
 )
 
 // maxExcludedCandidates bounds how many ExcludedCandidate entries a single

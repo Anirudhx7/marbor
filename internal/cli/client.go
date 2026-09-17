@@ -558,6 +558,21 @@ type NodeResp struct {
 	LoadedModels  []json.RawMessage `json:"loadedModels"`
 	ActiveConns   int32             `json:"activeConns"`
 	RequestsTotal int64             `json:"requestsTotal"`
+	// SchedulingRole is "standalone"|"head"|"worker"|"unresolved" - a
+	// worker/unresolved node is never a placement target but still appears
+	// in this list (visibility field, not a filter). ReplicaHead is the
+	// resolved head node's name, present only for "head"/"worker".
+	SchedulingRole string            `json:"schedulingRole,omitempty"`
+	ReplicaHead    string            `json:"replicaHead,omitempty"`
+	ReplicaPeers   *NodeReplicaPeers `json:"replicaPeers,omitempty"`
+}
+
+// NodeReplicaPeers mirrors store.ReplicaPeers' JSON shape as a local DTO
+// (this package's existing convention - see NodeResp/NodeAddRequest rather
+// than importing internal/store).
+type NodeReplicaPeers struct {
+	Members []string `json:"members"`
+	Head    string   `json:"head"`
 }
 
 // PatchNodeTLSFingerprint calls PATCH /admin/v1/nodes/{name} with
@@ -594,6 +609,11 @@ type NodePatchFields struct {
 	GPUIndices       *[]int
 	MaxInFlight      *int
 	ClearTLS         bool
+	// ReplicaPeers declares multi-host replica membership - nil means "flag
+	// not visited, no change"; a non-nil pointer to a zero-value
+	// NodeReplicaPeers{} explicitly clears a prior declaration, matching
+	// every other field's convention here.
+	ReplicaPeers *NodeReplicaPeers
 }
 
 // PatchNodeFields is the visited-aware variant for `marbor nodes patch` -
@@ -641,6 +661,12 @@ func (c *Client) PatchNodeFields(name string, f NodePatchFields) error {
 	}
 	if f.ClearTLS {
 		body["tls_fingerprint"] = ""
+	}
+	if f.ReplicaPeers != nil {
+		body["replica_peers"] = map[string]interface{}{
+			"members": f.ReplicaPeers.Members,
+			"head":    f.ReplicaPeers.Head,
+		}
 	}
 	resp, err := c.doRequestBody(http.MethodPatch, "/admin/v1/nodes/"+urlPathEscape(name), body)
 	if err != nil {

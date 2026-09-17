@@ -295,6 +295,76 @@ func TestRun_NodesPatch_NoFlags_Rejected(t *testing.T) {
 	}
 }
 
+func TestRun_NodesPatch_ReplicaMembers(t *testing.T) {
+	srv, gotBody := patchNodeTestServer(t)
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"nodes", "patch", "gpu-0", "--replica-members", "gpu-0,gpu-1", "--replica-head", "gpu-0", "--server", srv.URL}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("got %d %q", code, stderr.String())
+	}
+	rp, ok := (*gotBody)["replica_peers"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected replica_peers object in body, got %v", *gotBody)
+	}
+	members, ok := rp["members"].([]interface{})
+	if !ok || len(members) != 2 || members[0] != "gpu-0" || members[1] != "gpu-1" {
+		t.Errorf("expected members=[gpu-0 gpu-1], got %v", rp["members"])
+	}
+	if rp["head"] != "gpu-0" {
+		t.Errorf("expected head=gpu-0, got %v", rp["head"])
+	}
+}
+
+func TestRun_NodesPatch_ReplicaMembersClear(t *testing.T) {
+	srv, gotBody := patchNodeTestServer(t)
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"nodes", "patch", "gpu-0", "--replica-members", "", "--replica-head", "", "--server", srv.URL}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("got %d %q", code, stderr.String())
+	}
+	rp, ok := (*gotBody)["replica_peers"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected replica_peers object in body, got %v", *gotBody)
+	}
+	members, ok := rp["members"].([]interface{})
+	if !ok || len(members) != 0 {
+		t.Errorf("expected empty members on clear, got %v", rp["members"])
+	}
+	if rp["head"] != "" {
+		t.Errorf("expected head=\"\" on clear, got %v", rp["head"])
+	}
+}
+
+func TestRun_NodesPatch_ReplicaMembers_HeadRequiredTogether(t *testing.T) {
+	withTempConfigDir(t)
+	mustSaveSession(t, "http://x", "tok")
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"nodes", "patch", "gpu-0", "--replica-members", "gpu-0,gpu-1", "--server", "http://x"}, &stdout, &stderr)
+	if code != ExitUserError {
+		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitUserError, code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "--replica-members and --replica-head must be set together") {
+		t.Errorf("expected a replica-members/replica-head together error, got %q", stderr.String())
+	}
+}
+
+func TestRun_NodesPatch_ReplicaMembers_HeadEmptyRejected(t *testing.T) {
+	withTempConfigDir(t)
+	mustSaveSession(t, "http://x", "tok")
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"nodes", "patch", "gpu-0", "--replica-members", "gpu-0,gpu-1", "--replica-head", "", "--server", "http://x"}, &stdout, &stderr)
+	if code != ExitUserError {
+		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitUserError, code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "--replica-head is required") {
+		t.Errorf("expected a replica-head-required error, got %q", stderr.String())
+	}
+}
+
 func TestRun_NodesTLSProbe(t *testing.T) {
 	var gotMethod, gotPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
