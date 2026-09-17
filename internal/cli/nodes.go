@@ -342,6 +342,22 @@ func runNodesPrewarmSet(flags *globalFlags, name string, disabled bool, stdout, 
 	return ExitOK
 }
 
+// requirePairedFlags rejects setting exactly one of a two-flag pair (e.g.
+// --replica-members/--replica-head, --parallelism-type/--parallelism-width)
+// without the other - both must be explicitly set together or both left
+// unset/cleared together, since one flag alone is ambiguous client-side
+// input this CLI can catch before it ever reaches the server's own
+// structural validation. Prints a "%s and %s must be set together or
+// cleared together" error and returns false when aSet != bSet; returns
+// true (nothing printed) when the pair is consistent.
+func requirePairedFlags(stderr io.Writer, aSet, bSet bool, aFlag, bFlag string) bool {
+	if aSet == bSet {
+		return true
+	}
+	fmt.Fprintf(stderr, "error: %s and %s must be set together or cleared together\n", aFlag, bFlag)
+	return false
+}
+
 // runNodesPatchWithCtx implements `marbor nodes patch <node>` against every
 // field router.NodePatch supports except setting a new TLS fingerprint
 // (that stays exclusive to "nodes confirm-tls" - see NodePatchFields'
@@ -389,13 +405,11 @@ func runNodesPatchWithCtx(ctx *RunCtx, name string) int {
 		fmt.Fprintln(ctx.Stderr, "error: at least one field flag is required (see \"nodes patch --help\")")
 		return ExitUserError
 	}
-	// For clearing, both must be explicitly set to empty (mirrors the
-	// parallelism-type/parallelism-width together-or-cleared-together rule
-	// below) - a lone --replica-head with no --replica-members (or vice
-	// versa) is ambiguous client-side input, rejected before it ever
-	// reaches the server's own structural validation.
-	if replicaMembersSet != replicaHeadSet {
-		fmt.Fprintln(ctx.Stderr, "error: --replica-members and --replica-head must be set together or cleared together")
+	// For clearing, both must be explicitly set to empty - a lone
+	// --replica-head with no --replica-members (or vice versa) is
+	// ambiguous client-side input, rejected before it ever reaches the
+	// server's own structural validation.
+	if !requirePairedFlags(ctx.Stderr, replicaMembersSet, replicaHeadSet, "--replica-members", "--replica-head") {
 		return ExitUserError
 	}
 	if replicaMembersSet && len(replicaMembers) > 0 && replicaHead == "" {
@@ -403,8 +417,7 @@ func runNodesPatchWithCtx(ctx *RunCtx, name string) int {
 		return ExitUserError
 	}
 	// For clearing, both must be explicitly set to empty/0
-	if pTypeSet != pWidthSet {
-		fmt.Fprintln(ctx.Stderr, "error: --parallelism-type and --parallelism-width must be set together or cleared together")
+	if !requirePairedFlags(ctx.Stderr, pTypeSet, pWidthSet, "--parallelism-type", "--parallelism-width") {
 		return ExitUserError
 	}
 	if pType != "" {
