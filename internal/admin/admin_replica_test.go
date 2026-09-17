@@ -11,10 +11,12 @@ import (
 	"github.com/Anirudhx7/marbor/internal/router"
 )
 
-// TestHandlePatchNode_ReplicaPeersStructuralValidation exercises §6.4's
-// structural checks (non-empty members, head present in members, unique
-// members) - deliberately not the fleet-wide symmetry invariant, which is a
-// read-time property, not something one node's PATCH can validate.
+// TestHandlePatchNode_ReplicaPeersStructuralValidation exercises the PATCH
+// handler's structural checks on a declared replica_peers value (non-empty
+// members, head present in members, unique members, the declaring node's
+// own name present in members) - deliberately not the fleet-wide symmetry
+// invariant, which is a read-time property, not something one node's PATCH
+// can validate.
 func TestHandlePatchNode_ReplicaPeersStructuralValidation(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -50,8 +52,8 @@ func TestHandlePatchNode_ReplicaPeersStructuralValidation(t *testing.T) {
 // TestHandleNodes_SchedulingRoleFields exercises the admin API's node-list
 // response for all four SchedulingRole outcomes: standalone (no
 // declaration), head+worker (both sides agree), and unresolved (only one
-// side has declared so far - legal, transient, not a PATCH-time error per
-// §6.4).
+// side has declared so far - legal and transient, not a PATCH-time error,
+// since agreement is checked at read time, not write time).
 func TestHandleNodes_SchedulingRoleFields(t *testing.T) {
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
 		{Name: "standalone", URL: "http://standalone:11434", Runtime: "vllm"},
@@ -113,7 +115,7 @@ func TestHandleNodes_SchedulingRoleFields(t *testing.T) {
 	}
 }
 
-// TestHandleNodes_WorkerAndUnresolvedStillListed confirms the P420-frozen
+// TestHandleNodes_WorkerAndUnresolvedStillListed confirms the established
 // UI/API contract: a worker or unresolved node is a visibility field, never
 // a filter - it must still appear in the node list response.
 func TestHandleNodes_WorkerAndUnresolvedStillListed(t *testing.T) {

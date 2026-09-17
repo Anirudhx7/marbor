@@ -1451,13 +1451,15 @@ func (s *Server) adminAuth(next http.HandlerFunc) http.HandlerFunc {
 // counts, latency, warm-hit ratio) are computed by the caller, not here, since
 // handleNode has never included them (preserved to avoid changing its wire shape).
 //
-// allNodes/roles are the full fleet snapshot and its once-computed
-// SchedulingRole map (router.SchedulingRoles(allNodes)) - callers must
-// compute roles ONCE per request for the whole node list, not once per
-// node, since role resolution is fleet-wide (see router.SchedulingRoles'
-// doc comment). roles may be nil (nobody in the fleet has declared
+// roles/heads are the once-computed SchedulingRole and resolved-head-name
+// maps for the whole fleet (router.SchedulingRolesWithHeads(allNodes)) -
+// callers must compute these ONCE per request for the whole node list, not
+// once per node (and never via a per-node router.ComponentFor call, which
+// rebuilds the entire closure computation from scratch), since role
+// resolution is fleet-wide (see router.SchedulingRolesWithHeads' doc
+// comment). Both may be nil (nobody in the fleet has declared
 // replica_peers), in which case every node resolves RoleStandalone.
-func (s *Server) nodeStateToResp(n *router.NodeState, id string, allNodes []*router.NodeState, roles map[string]router.SchedulingRole) nodeResp {
+func (s *Server) nodeStateToResp(n *router.NodeState, id string, roles map[string]router.SchedulingRole, heads map[string]string) nodeResp {
 	host := ""
 	port := 0
 	scheme := "http"
@@ -1490,11 +1492,8 @@ func (s *Server) nodeStateToResp(n *router.NodeState, id string, allNodes []*rou
 
 	role := roles[n.Name] // zero value RoleStandalone if absent (nobody named this node)
 	var replicaHead string
-	switch role {
-	case router.RoleHead:
-		replicaHead = n.Name
-	case router.RoleWorker:
-		_, replicaHead = router.ComponentFor(n.Name, allNodes)
+	if role == router.RoleHead || role == router.RoleWorker {
+		replicaHead = heads[n.Name]
 	}
 
 	return nodeResp{
@@ -1575,11 +1574,11 @@ func (s *Server) nodeStateToResp(n *router.NodeState, id string, allNodes []*rou
 
 func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 	nodes := s.router.Nodes()
-	roles := s.router.SchedulingRoles(nodes) // computed once for the whole list, not per node
+	roles, heads := s.router.SchedulingRolesWithHeads(nodes) // computed once for the whole list, not per node
 	out := make([]nodeResp, len(nodes))
 	for i, n := range nodes {
 		n.RLock()
-		resp := s.nodeStateToResp(n, fmt.Sprintf("gpu-%d", i), nodes, roles)
+		resp := s.nodeStateToResp(n, fmt.Sprintf("gpu-%d", i), roles, heads)
 
 		avgLatencyNode := 0.0
 		latCount := atomic.LoadInt64(&n.LatencyCount)
@@ -1611,13 +1610,13 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleNode(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	nodes := s.router.Nodes()
-	roles := s.router.SchedulingRoles(nodes) // fleet-wide even for a single-node lookup - role resolution is inherently fleet-wide
+	roles, heads := s.router.SchedulingRolesWithHeads(nodes) // fleet-wide even for a single-node lookup - role resolution is inherently fleet-wide
 	for i, n := range nodes {
 		if n.Name != name {
 			continue
 		}
 		n.RLock()
-		out := s.nodeStateToResp(n, fmt.Sprintf("gpu-%d", i), nodes, roles)
+		out := s.nodeStateToResp(n, fmt.Sprintf("gpu-%d", i), roles, heads)
 		n.RUnlock()
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(out)
@@ -3792,6 +3791,16 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 		}
 		if !headInMembers {
 			writeJSONError(w, http.StatusBadRequest, "replica_peers.head must be present in replica_peers.members")
+			return
+		}
+		if !seen[name] {
+			// Not a routing-safety bug either way - the router already
+			// resolves a self-omitting declaration to RoleUnresolved (its
+			// declared set can never match the closure's component). This
+			// check exists purely so the operator gets PATCH-time feedback
+			// instead of a silent success and a confusing "Unresolved
+			// replica" badge with no explanation of why.
+			writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("replica_peers.members must include this node's own name (%q)", name))
 			return
 		}
 	} else if patch.ReplicaPeers != nil && len(patch.ReplicaPeers.Members) == 0 && patch.ReplicaPeers.Head != "" {
