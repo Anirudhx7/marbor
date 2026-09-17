@@ -1105,9 +1105,9 @@ func resolvedTopologyShape(members []*NodeState) (string, int) {
 // capabilitiesForVariant returns the served model's own capability set for
 // a validated model variant identity. No Model Advisor capability-metadata
 // lookup is wired into this package yet, so this deliberately returns nil
-// (never fabricated) - a future consumer (e.g. P422) wires the real lookup
-// in without changing replicaFor's contract. Empty when variant is empty
-// (unresolved model identity), never guessed from one member.
+// (never fabricated) - a future consumer wires the real lookup in without
+// changing replicaFor's contract. Empty when variant is empty (unresolved
+// model identity), never guessed from one member.
 func capabilitiesForVariant(variant string) []string {
 	if variant == "" {
 		return nil
