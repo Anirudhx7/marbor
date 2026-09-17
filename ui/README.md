@@ -21,6 +21,6 @@ make build         # full build (UI + both Go binaries)
 
 ## Notes
 
-- The dev server proxies `/admin` and `/login` calls to `http://localhost:8080` - start a marbor backend alongside it (`make backend && ./marbor`).
+- The dev server proxies `/admin`, `/login`, `/change-password`, and `/skip-password-change` calls to `http://localhost:8080` - start a marbor backend alongside it (`make backend && ./marbor`).
 - **The UI is embedded in the Go binary** (`//go:embed web/dist`). If you change UI code, rebuild it (`make ui` or `make build`) before rebuilding the binary, or the served dashboard will be stale.
 - Setting `VITE_FORCE_DEMO=true` builds the public demo instead: base path becomes `/marbor/demo/`, output goes to `ui/dist` rather than the embed directory; mock data lives in `src/lib/mockData.ts` and is unreachable in production builds.

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Plus, Trash2, Server, Thermometer, Cpu, Clock, Activity, Pencil, X, Pin, Flame, Settings2, Radio, Copy, Fan, MemoryStick, HardDrive } from 'lucide-react';
+import { Plus, Trash2, Server, Thermometer, Cpu, Clock, Activity, Pencil, X, Pin, Flame, Settings2, Radio, Copy, Fan, MemoryStick, HardDrive, ChevronRight } from 'lucide-react';
 import { StatusDot } from '../components/StatusDot';
 import { VramBar } from '../components/VramBar';
 import { Badge } from '../components/Badge';
@@ -289,9 +289,14 @@ function NodeCardSkeleton() {
   );
 }
 
-function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePrewarm, onEdit, onUnload, onConfigureModel, onManageAgent, onGoToReplicaHead, isHighlighted, highlightSource }: {
+function NodeCard({ node, pinnedModels, replicaWorkers, onRemove, onDrain, onUndrain, onTogglePrewarm, onEdit, onUnload, onConfigureModel, onManageAgent, onGoToReplicaHead, onGoToReplicaMember, isHighlighted, highlightSource }: {
   node: GPUNode;
   pinnedModels: string[];
+  // Names of confirmed worker nodes whose resolved head is this node - empty
+  // for every non-head role. Computed once in the parent from the full node
+  // list so the head card can mirror the worker's back-link with forward
+  // links, without each card scanning the fleet itself.
+  replicaWorkers: string[];
   onRemove: (name: string) => void;
   onDrain: (name: string) => void;
   onUndrain: (name: string) => void;
@@ -301,6 +306,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
   onConfigureModel: (modelName: string, nodeName: string, runtime: string) => void;
   onManageAgent: (node: GPUNode) => void;
   onGoToReplicaHead: (headName: string) => void;
+  onGoToReplicaMember: (memberName: string) => void;
   isHighlighted?: boolean;
   highlightSource?: string | null;
 }) {
@@ -393,17 +399,21 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
   }
   // Multi-host replica scheduling role - worker/unresolved nodes stay
   // listed here (never hidden/removed) but are never a placement target.
-  // Worker is informational (amber, sev 1, same class as draining): the
-  // operator doesn't need to act, the node is correctly excluded by
-  // design. Unresolved is destructive (red, sev 0, same class as a TLS
-  // mismatch): it means conflicting/asymmetric replica_peers declarations
-  // that need the operator to reconcile before this node (and its
-  // component) can ever be scheduled again.
+  // Worker/head are role identity, not a status to react to - they use the
+  // `info` (blue) token, distinct from the amber used for transient
+  // conditions (draining, MLX hint) so a card that is both draining and a
+  // replica worker still reads as two separate facts, not one amber blur.
+  // Deliberately not `primary`: this brand's primary color is itself gold/
+  // amber (see index.css), so it would barely read as different from the
+  // amber status pills. Unresolved is destructive (red, sev 0, same class
+  // as a TLS mismatch): it means conflicting/asymmetric replica_peers
+  // declarations that need the operator to reconcile before this node
+  // (and its component) can ever be scheduled again.
   if (node.schedulingRole === 'worker') {
     statusPills.push({ sev: 1, key: 'replica-worker', el: (
       <span
         title={`This node is a confirmed member of a multi-host replica and is never a direct placement target - requests route to its head${node.replicaHead ? ` (${node.replicaHead})` : ''}.`}
-        className="text-xs font-medium px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 whitespace-nowrap"
+        className="text-xs font-medium px-1.5 py-0.5 rounded bg-info/15 text-info border border-info/30 whitespace-nowrap"
       >
         Worker (non-schedulable)
       </span>
@@ -411,10 +421,25 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
   } else if (node.schedulingRole === 'unresolved') {
     statusPills.push({ sev: 0, key: 'replica-unresolved', el: (
       <span
-        title="This node's replica_peers declaration conflicts with another node's (asymmetric members, conflicting head, or a reference to a node that doesn't exist) - excluded from placement until the operator reconciles the declarations."
+        title="This node's replica membership declaration conflicts with another node's (asymmetric members, conflicting head, or a reference to a node that doesn't exist) - excluded from placement until the operator reconciles the declarations."
         className="text-xs font-medium px-1.5 py-0.5 rounded bg-destructive/10 text-destructive dark:text-red-400 border border-destructive/30 whitespace-nowrap"
       >
         Unresolved replica
+      </span>
+    ) });
+  } else if (node.schedulingRole === 'head') {
+    // Mirror of the worker badge above: a head card with no worker signal
+    // reads as standalone on a top-down scan. Same role-identity color as
+    // the worker pill - the topology is healthy, this is just orientation.
+    // Forward links reuse the existing highlight/scroll mechanism in the
+    // opposite direction.
+    const workerCount = replicaWorkers.length;
+    statusPills.push({ sev: 1, key: 'replica-head', el: (
+      <span
+        title={workerCount > 0 ? `Requests to this replica route here - ${replicaWorkers.join(', ')} serve as non-schedulable members.` : 'Requests to this replica route here.'}
+        className="text-xs font-medium px-1.5 py-0.5 rounded bg-info/15 text-info border border-info/30 whitespace-nowrap"
+      >
+        {workerCount > 0 ? `Replica head - ${workerCount} worker${workerCount === 1 ? '' : 's'}` : 'Replica head'}
       </span>
     ) });
   }
@@ -434,7 +459,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
               <h3 className="font-semibold text-foreground truncate">{node.name}</h3>
               {isHighlighted && (
                 <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-md bg-primary text-primary-foreground shadow-sm animate-pulse">
-                  {highlightSource === 'dashboard' ? 'From Dashboard' : highlightSource === 'models' ? 'From Models' : highlightSource === 'replica' ? 'Replica head' : 'Highlighted'}
+                  {highlightSource === 'dashboard' ? 'From Dashboard' : highlightSource === 'models' ? 'From Models' : highlightSource === 'replica' ? 'Replica head' : highlightSource === 'replica-member' ? 'Replica worker' : 'Highlighted'}
                 </span>
               )}
               {statusPills.map((p) => (<span key={p.key} className="contents">{p.el}</span>))}
@@ -444,7 +469,7 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
               <RuntimeBadge runtime={node.runtime} />
               <AgentBadge present={node.agentPresent} version={node.agentVersion} />
               {node.parallelismType && node.parallelismWidth ? (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
+                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-secondary text-muted-foreground border border-border">
                   {node.parallelismType.toUpperCase()}={node.parallelismWidth} {node.effectiveRequiredGPUs ? `(${node.effectiveRequiredGPUs} GPUs)` : ''}
                 </span>
               ) : node.detectedParallelismType && node.detectedParallelismWidth ? (
@@ -461,10 +486,35 @@ function NodeCard({ node, pinnedModels, onRemove, onDrain, onUndrain, onTogglePr
                 <button
                   type="button"
                   onClick={() => onGoToReplicaHead(node.replicaHead as string)}
-                  className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-secondary text-muted-foreground border border-border hover:border-primary/40 hover:text-foreground transition-colors"
+                  className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md text-xs font-medium bg-secondary text-muted-foreground border border-border hover:border-primary/40 hover:text-primary transition-colors"
                 >
                   Part of replica: {node.replicaHead}
+                  <ChevronRight className="w-3 h-3" />
                 </button>
+              ) : null}
+              {node.schedulingRole === 'head' && replicaWorkers.length > 0 ? (
+                <span className="inline-flex items-center gap-1 flex-wrap">
+                  {replicaWorkers.slice(0, 5).map((w) => (
+                    <button
+                      key={w}
+                      type="button"
+                      onClick={() => onGoToReplicaMember(w)}
+                      title={`Scroll to worker ${w}`}
+                      className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md text-xs font-medium bg-secondary text-muted-foreground border border-border hover:border-primary/40 hover:text-primary transition-colors"
+                    >
+                      Worker: {w}
+                      <ChevronRight className="w-3 h-3" />
+                    </button>
+                  ))}
+                  {replicaWorkers.length > 5 ? (
+                    <span
+                      title={replicaWorkers.slice(5).join(', ')}
+                      className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-secondary text-muted-foreground border border-border"
+                    >
+                      +{replicaWorkers.length - 5} more
+                    </span>
+                  ) : null}
+                </span>
               ) : null}
               {node.detectedSource === '' && node.agentPresent && !node.parallelismType ? (
                 <span title="Agent on this host cannot see runtime process - add docker.sock mount or run agent directly on host" className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-secondary text-muted-foreground border border-border">
@@ -705,6 +755,12 @@ export function GPUNodes() {
   // trigger for the existing one.
   const goToReplicaHead = (headName: string) => {
     navigate(`?highlight=${encodeURIComponent(headName)}&from=replica`);
+  };
+  // Forward direction of the link above: a head card's worker chips scroll
+  // to that worker. Separate `from` value so the highlighted card's pill
+  // reads correctly on both ends.
+  const goToReplicaMember = (memberName: string) => {
+    navigate(`?highlight=${encodeURIComponent(memberName)}&from=replica-member`);
   };
   const [nodes, setNodes] = useState<GPUNode[]>(demoMode ? mockGPUNodes : []);
   const [isLive, setIsLive] = useState(!demoMode);
@@ -1429,6 +1485,21 @@ export function GPUNodes() {
     (node.gpuModel || '').toLowerCase().includes(searchQuery.toLowerCase())
   ), [nodes, searchQuery]);
 
+  // Head name -> confirmed worker names, from the already-resolved roles.
+  // Only worker rows with a resolved head participate, so an unresolved
+  // component never lends a head a worker count it has not earned.
+  const workersByHead = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    for (const n of nodes) {
+      if (n.schedulingRole === 'worker' && n.replicaHead) {
+        if (!map[n.replicaHead]) map[n.replicaHead] = [];
+        map[n.replicaHead].push(n.name);
+      }
+    }
+    for (const k of Object.keys(map)) map[k].sort();
+    return map;
+  }, [nodes]);
+
   const signalOptions = useMemo(() => SIGNAL_DEFS.map((s) => ({
     id: s.id,
     label: s.label,
@@ -1614,6 +1685,13 @@ export function GPUNodes() {
   // panel. editReplicaHead is a single node name from that list.
   const [editReplicaMembers, setEditReplicaMembers] = useState('');
   const [editReplicaHead, setEditReplicaHead] = useState('');
+  // Progressive disclosure for the three rarely-touched sections below.
+  // Standalone nodes (the whole existing fleet) open with all closed, so
+  // the modal reads as connection + identity only. Auto-opened per node in
+  // openEditModal when that node already carries the relevant declaration.
+  const [overridesOpen, setOverridesOpen] = useState(false);
+  const [topologyOpen, setTopologyOpen] = useState(false);
+  const [replicaOpen, setReplicaOpen] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState('');
   const [pendingPatch, setPendingPatch] = useState<{ vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; parallelism_type?: string | null; parallelism_width?: number | null; vram_overrides?: Record<string, number>; replica_peers?: { members: string[]; head: string } | null } | null>(null);
@@ -1653,6 +1731,12 @@ export function GPUNodes() {
     setEditVRAMOverrides(vramOverridesToString(node.vramOverrides));
     setEditReplicaMembers((node.replicaPeers?.members ?? []).join(', '));
     setEditReplicaHead(node.replicaPeers?.head ?? '');
+    // VRAM total can't auto-open: the form prefills it from live telemetry
+    // too, so a value there doesn't prove an override was declared. The
+    // other two are declaration-only, so they can.
+    setOverridesOpen(!!((node.maxInFlight && node.maxInFlight > 0) || Object.keys(node.vramOverrides ?? {}).length));
+    setTopologyOpen(!!(node.parallelismType || node.detectedParallelismType || (node.gpuIndices ?? []).length));
+    setReplicaOpen(!!((node.replicaPeers?.members ?? []).length || (node.schedulingRole && node.schedulingRole !== 'standalone')));
     setEditError('');
   };
 
@@ -2094,7 +2178,7 @@ export function GPUNodes() {
           [...Array(skeletonNodes)].map((_, i) => <NodeCardSkeleton key={i} />)
         ) : (
           visibleNodes.map((node) => (
-          <NodeCard key={node.id} node={node} pinnedModels={pinnedByNode[node.name] ?? []} onRemove={(name) => { setActionError(null); setNodeToDelete(name); }} onDrain={(name) => { setActionError(null); setNodeToDrain(name); }} onUndrain={(name) => { setActionError(null); setNodeToUndrain(name); }} onTogglePrewarm={(name, disabled) => { setActionError(null); setPrewarmToToggle({ name, disabled }); }} onEdit={openEditModal} onUnload={(nodeName, model) => { setActionError(null); setModelToUnload({ nodeName, model }); }} onConfigureModel={(modelName, nodeName, runtime) => setConfigTarget({ model: modelName, node: nodeName, runtime })}           onManageAgent={openAgentModal} onGoToReplicaHead={goToReplicaHead} isHighlighted={highlightedNodes.has(node.name)} highlightSource={highlightSource} />
+          <NodeCard key={node.id} node={node} pinnedModels={pinnedByNode[node.name] ?? []} replicaWorkers={workersByHead[node.name] ?? []} onRemove={(name) => { setActionError(null); setNodeToDelete(name); }} onDrain={(name) => { setActionError(null); setNodeToDrain(name); }} onUndrain={(name) => { setActionError(null); setNodeToUndrain(name); }} onTogglePrewarm={(name, disabled) => { setActionError(null); setPrewarmToToggle({ name, disabled }); }} onEdit={openEditModal} onUnload={(nodeName, model) => { setActionError(null); setModelToUnload({ nodeName, model }); }} onConfigureModel={(modelName, nodeName, runtime) => setConfigTarget({ model: modelName, node: nodeName, runtime })}           onManageAgent={openAgentModal} onGoToReplicaHead={goToReplicaHead} onGoToReplicaMember={goToReplicaMember} isHighlighted={highlightedNodes.has(node.name)} highlightSource={highlightSource} />
           )))}
       </div>
 
@@ -2393,21 +2477,22 @@ export function GPUNodes() {
               Setting Auto-detect re-probes the node on the next health check.
             </p>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-muted-foreground mb-1.5">
-              Declared GPU Indices
-            </label>
-            <input
-              type="text"
-              value={editGPUIndices}
-              onChange={(e) => setEditGPUIndices(e.target.value)}
-              placeholder="e.g., 0,1,2,3 (comma-separated, leave blank if undeclared)"
-              className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              A comma-separated list of every physical GPU index this node actually uses - not a count. Needed when this node shares a physical host with another node (e.g. two runtimes on one box, each pinned to different GPUs via CUDA_VISIBLE_DEVICES), so the Model Advisor doesn't size it against the whole host's combined VRAM, and when declaring Parallelism below (a width-8 deployment needs all 8 indices listed, e.g. 0,1,2,3,4,5,6,7 - not just "8"). Leave blank to keep host-level sizing.
-            </p>
-          </div>
+          {/* Capacity overrides - collapsed: each field's own help already
+              says when it applies, and untouched fleets leave all three
+              blank. Auto-opens below when any override is already set. */}
+          <details
+            open={overridesOpen}
+            onToggle={(e) => setOverridesOpen((e.target as HTMLDetailsElement).open)}
+            className="pt-2 border-t border-border"
+          >
+            <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground transition-colors list-none flex items-center gap-2 min-h-[32px]">
+              <span aria-hidden="true" className="text-xs">{overridesOpen ? '▾' : '▸'}</span>
+              Capacity overrides
+              <span className="text-xs font-normal">
+                {editVRAM.trim() || editMaxInFlight.trim() || editVRAMOverrides.trim() ? 'custom' : 'defaults'}
+              </span>
+            </summary>
+            <div className="space-y-3 mt-3">
           <div>
             <label className="block text-sm font-medium text-muted-foreground mb-1.5">
               VRAM Total Override
@@ -2473,10 +2558,45 @@ export function GPUNodes() {
               className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
             />
             <p className="text-xs text-muted-foreground mt-1">
-              A comma-separated list of model=mb declarations for how much VRAM a specific model consumes on this node. Mainly needed for non-Ollama runtimes (vLLM, TGI, llama.cpp, MLX), which don't expose per-model size via their APIs - without a declared size the scheduler can't reserve headroom or predictively warm that model. Leave blank to declare nothing.
+              How much VRAM a specific model consumes on this node. Mainly needed for non-Ollama runtimes (vLLM, TGI, llama.cpp, MLX), which don't expose per-model size via their APIs. Leave blank to declare nothing.
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+            </div>
+          </details>
+          {/* GPU topology - advanced, collapsed for the common standalone
+              case. Holds the GPU scope (declared indices) plus the
+              parallelism shape + auto-detect state. */}
+          <details
+            open={topologyOpen}
+            onToggle={(e) => setTopologyOpen((e.target as HTMLDetailsElement).open)}
+            className="pt-2 border-t border-border"
+          >
+            <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground transition-colors list-none flex items-center gap-2 min-h-[32px]">
+              <span aria-hidden="true" className="text-xs">{topologyOpen ? '▾' : '▸'}</span>
+              GPU topology (advanced)
+              <span className="text-xs font-normal">
+                {editParallelismType && editParallelismWidth
+                  ? `${editParallelismType.toUpperCase()}=${editParallelismWidth}`
+                  : 'unconstrained'}
+              </span>
+            </summary>
+            <div className="space-y-3 mt-3">
+          <div>
+            <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+              Declared GPU Indices
+            </label>
+            <input
+              type="text"
+              value={editGPUIndices}
+              onChange={(e) => setEditGPUIndices(e.target.value)}
+              placeholder="e.g., 0,1,2,3 (comma-separated, leave blank if undeclared)"
+              className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Which physical GPUs on this host this node uses. Only needed when several nodes share one host (each pinned to different GPUs) or alongside a parallelism declaration below. Leave blank to size against the whole host.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1.5">
                 Parallelism Type
@@ -2485,7 +2605,7 @@ export function GPUNodes() {
                 value={editParallelismType || ''}
                 onChange={(v) => setEditParallelismType(v)}
                 options={[
-                  { value: '', label: 'None (unconstrained)' },
+                  { value: '', label: 'None' },
                   { value: 'tp', label: 'TP - Tensor Parallel' },
                   { value: 'pp', label: 'PP - Pipeline Parallel' },
                   { value: 'ep', label: 'EP - Expert Parallel' },
@@ -2504,12 +2624,14 @@ export function GPUNodes() {
                 value={editParallelismWidth}
                 onChange={(e) => setEditParallelismWidth(e.target.value)}
                 placeholder="e.g., 8"
-                className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
+                disabled={!editParallelismType}
+                title={editParallelismType ? undefined : 'Pick a parallelism type first'}
+                className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50 disabled:opacity-50"
               />
             </div>
           </div>
           <p className="text-xs text-muted-foreground -mt-2">
-            Declares how this deployment uses its GPU group (1x8 vs 8x1). Type tp with width 8 requires 8 GPUs atomically - scheduler rejects 4-GPU nodes. Derived required = max(len(gpu_indices), width). Leave both blank for unconstrained.
+            How this deployment stripes work across its GPUs. Width 8 needs 8 GPUs atomically - the scheduler skips smaller nodes. Leave both blank for unconstrained.
           </p>
           {editParallelismType && editParallelismWidth && (
             <p className="text-xs font-medium text-primary">
@@ -2561,33 +2683,45 @@ export function GPUNodes() {
           ) : editNode && editNode.agentPresent && !editNode.parallelismType && !editNode.detectedParallelismType ? (
             <div className="bg-secondary/30 border border-border/60 rounded-lg p-3">
               <p className="text-xs text-muted-foreground">
-                Unknown - add docker.sock mount or run agent directly on host to auto-detect deployment. Agent on this host cannot see runtime process (pid namespace isolated).
+                Auto-detected: unknown - add docker.sock mount or run agent directly on host to auto-detect deployment. Agent on this host cannot see runtime process (pid namespace isolated).
               </p>
             </div>
           ) : null}
+            </div>
+          </details>
           {/* Replica membership - declares this node as part of a multi-host
-              TP/PP deployment. Placed adjacent to Parallelism (they are
-              validated together - GPU scope/shape vs. cross-node identity -
-              but never merged into one field). Each member node must
-              declare the same members/head back for the fleet to resolve
-              this as a valid replica; declaring only one side is legal and
-              shows as "Unresolved replica" on both cards until the other
-              side is patched to match. */}
-          <div className="pt-2 border-t border-border space-y-3">
-            <label className="block text-sm font-medium text-muted-foreground">
-              Replica membership
-            </label>
+              deployment. Collapsed: standalone is the default for the whole
+              existing fleet, and the card badges now carry the topology for
+              reading. Each member node must declare the same members/head
+              back; declaring only one side is legal and shows as "Unresolved
+              replica" on both cards until the other side is patched to
+              match. */}
+          <details
+            open={replicaOpen}
+            onToggle={(e) => setReplicaOpen((e.target as HTMLDetailsElement).open)}
+            className="pt-2 border-t border-border"
+          >
+            <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground transition-colors list-none flex items-center gap-2 min-h-[32px]">
+              <span aria-hidden="true" className="text-xs">{replicaOpen ? '▾' : '▸'}</span>
+              Multi-host replica (rare)
+              <span className="text-xs font-normal">
+                {editReplicaMembers.trim()
+                  ? `part of replica headed by ${editReplicaHead.trim() || '...'}`
+                  : 'standalone'}
+              </span>
+            </summary>
+            <div className="space-y-3 mt-3">
             <div>
               <label className="block text-xs text-muted-foreground mb-1">Members (comma-separated node names, including this node)</label>
               <input
                 type="text"
                 value={editReplicaMembers}
                 onChange={(e) => setEditReplicaMembers(e.target.value)}
-                placeholder="e.g., node-a, node-b"
+                placeholder={editNode ? `e.g., ${editNode.name}, node-b` : 'e.g., node-a, node-b'}
                 className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
               />
             </div>
-            <div className="grid grid-cols-2 gap-3 items-end">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
               <div>
                 <label className="block text-xs text-muted-foreground mb-1">Head (routes to this node)</label>
                 <CustomSelect
@@ -2604,13 +2738,14 @@ export function GPUNodes() {
                 onClick={() => { setEditReplicaMembers(''); setEditReplicaHead(''); }}
                 className="px-3 py-2 min-h-[40px] bg-secondary hover:bg-secondary/70 text-muted-foreground hover:text-foreground border border-border font-medium rounded-md text-xs transition-colors"
               >
-                Clear
+                Clear replica
               </button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Declares that this node is one host of a multi-host tensor/pipeline-parallel deployment spanning more than one physical machine. Marbor never launches or configures this deployment - it only routes correctly once every member node declares the same members and head back. Leave blank for a standalone node (the default, unchanged for every existing fleet).
+              This node is one host of a deployment spanning several machines. Marbor never launches it - it only routes once every member declares the same members and head. Leave blank for standalone.
             </p>
-          </div>
+            </div>
+          </details>
           {editError && (
             <p className="text-sm text-destructive">{editError}</p>
           )}
