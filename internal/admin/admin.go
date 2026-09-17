@@ -511,19 +511,35 @@ type nodeResp struct {
 	// declared when present. Detected fields are honest "what agent saw"
 	// via ps/docker/env, not fabricated. MismatchWarning is amber
 	// warning when declared 4 vs detected 8 (not a 422 block - Adopt fixes).
-	DetectedParallelismType       string   `json:"detectedParallelismType,omitempty"`
-	DetectedParallelismWidth      int      `json:"detectedParallelismWidth,omitempty"`
-	DetectedGPUGroup              []int    `json:"detectedGPUGroup,omitempty"`
-	DetectedSource                string   `json:"detectedSource,omitempty"`
-	DetectedRuntime               string   `json:"detectedRuntime,omitempty"`
-	DetectedEffectiveRequiredGPUs int      `json:"detectedEffectiveRequiredGPUs,omitempty"`
-	MismatchWarning               string   `json:"mismatchWarning,omitempty"`
-	VRAMTotalMB                   int64    `json:"vramTotalMB"`
-	VRAMUsedMB                    int64    `json:"vramUsedMB"`
-	VRAMSource                    string   `json:"vramSource"`
-	PowerDrawW                    float64  `json:"powerDrawW"`
-	Temperature                   *float64 `json:"temperature"`
-	Runtime                       string   `json:"runtime"`
+	DetectedParallelismType       string `json:"detectedParallelismType,omitempty"`
+	DetectedParallelismWidth      int    `json:"detectedParallelismWidth,omitempty"`
+	DetectedGPUGroup              []int  `json:"detectedGPUGroup,omitempty"`
+	DetectedSource                string `json:"detectedSource,omitempty"`
+	DetectedRuntime               string `json:"detectedRuntime,omitempty"`
+	DetectedEffectiveRequiredGPUs int    `json:"detectedEffectiveRequiredGPUs,omitempty"`
+	MismatchWarning               string `json:"mismatchWarning,omitempty"`
+	// ReplicaPeers is this node's own raw multi-host replica declaration -
+	// round-trips exactly what was PATCHed, null/omitted when none is
+	// declared. SchedulingRole/ReplicaHead below are the fleet-wide,
+	// computed-fresh-per-request view derived from every node's own
+	// ReplicaPeers, never stored themselves.
+	ReplicaPeers *store.ReplicaPeers `json:"replicaPeers,omitempty"`
+	// SchedulingRole is "standalone"|"head"|"worker"|"unresolved" - computed
+	// fresh per request via router.SchedulingRoles, not persisted. A worker
+	// or unresolved node still appears in the node list/detail response;
+	// this is a visibility field, never a filter.
+	SchedulingRole string `json:"schedulingRole,omitempty"`
+	// ReplicaHead is the resolved head node's name - present only when
+	// SchedulingRole is "worker" or "head" (a head's own ReplicaHead is its
+	// own name). Absent for "standalone"/"unresolved", which have no
+	// meaningful head to link to.
+	ReplicaHead string   `json:"replicaHead,omitempty"`
+	VRAMTotalMB int64    `json:"vramTotalMB"`
+	VRAMUsedMB  int64    `json:"vramUsedMB"`
+	VRAMSource  string   `json:"vramSource"`
+	PowerDrawW  float64  `json:"powerDrawW"`
+	Temperature *float64 `json:"temperature"`
+	Runtime     string   `json:"runtime"`
 	// RuntimeMismatchHint is set only when this node is currently
 	// probed as llamacpp and its /health check is failing specifically with
 	// a 404 - the real, observed signature of an MLX node auto-detected as
@@ -1434,7 +1450,14 @@ func (s *Server) adminAuth(next http.HandlerFunc) http.HandlerFunc {
 // a single NodeState. Caller must hold n's RLock. Per-endpoint stats (request
 // counts, latency, warm-hit ratio) are computed by the caller, not here, since
 // handleNode has never included them (preserved to avoid changing its wire shape).
-func (s *Server) nodeStateToResp(n *router.NodeState, id string) nodeResp {
+//
+// allNodes/roles are the full fleet snapshot and its once-computed
+// SchedulingRole map (router.SchedulingRoles(allNodes)) - callers must
+// compute roles ONCE per request for the whole node list, not once per
+// node, since role resolution is fleet-wide (see router.SchedulingRoles'
+// doc comment). roles may be nil (nobody in the fleet has declared
+// replica_peers), in which case every node resolves RoleStandalone.
+func (s *Server) nodeStateToResp(n *router.NodeState, id string, allNodes []*router.NodeState, roles map[string]router.SchedulingRole) nodeResp {
 	host := ""
 	port := 0
 	scheme := "http"
@@ -1465,6 +1488,15 @@ func (s *Server) nodeStateToResp(n *router.NodeState, id string) nodeResp {
 		})
 	}
 
+	role := roles[n.Name] // zero value RoleStandalone if absent (nobody named this node)
+	var replicaHead string
+	switch role {
+	case router.RoleHead:
+		replicaHead = n.Name
+	case router.RoleWorker:
+		_, replicaHead = router.ComponentFor(n.Name, allNodes)
+	}
+
 	return nodeResp{
 		ID:                              id,
 		Name:                            n.Name,
@@ -1487,6 +1519,9 @@ func (s *Server) nodeStateToResp(n *router.NodeState, id string) nodeResp {
 		DetectedRuntime:                 n.DetectedRuntime,
 		DetectedEffectiveRequiredGPUs:   n.EffectiveDetectedRequiredGPUs(),
 		MismatchWarning:                 n.MismatchWarning(),
+		ReplicaPeers:                    n.ReplicaPeers,
+		SchedulingRole:                  role.String(),
+		ReplicaHead:                     replicaHead,
 		VRAMTotalMB:                     n.VRAMTotalMB,
 		VRAMUsedMB:                      n.VRAMUsedMB,
 		VRAMSource:                      n.VRAMSource,
@@ -1540,10 +1575,11 @@ func (s *Server) nodeStateToResp(n *router.NodeState, id string) nodeResp {
 
 func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 	nodes := s.router.Nodes()
+	roles := s.router.SchedulingRoles(nodes) // computed once for the whole list, not per node
 	out := make([]nodeResp, len(nodes))
 	for i, n := range nodes {
 		n.RLock()
-		resp := s.nodeStateToResp(n, fmt.Sprintf("gpu-%d", i))
+		resp := s.nodeStateToResp(n, fmt.Sprintf("gpu-%d", i), nodes, roles)
 
 		avgLatencyNode := 0.0
 		latCount := atomic.LoadInt64(&n.LatencyCount)
@@ -1575,12 +1611,13 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleNode(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	nodes := s.router.Nodes()
+	roles := s.router.SchedulingRoles(nodes) // fleet-wide even for a single-node lookup - role resolution is inherently fleet-wide
 	for i, n := range nodes {
 		if n.Name != name {
 			continue
 		}
 		n.RLock()
-		out := s.nodeStateToResp(n, fmt.Sprintf("gpu-%d", i))
+		out := s.nodeStateToResp(n, fmt.Sprintf("gpu-%d", i), nodes, roles)
 		n.RUnlock()
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(out)
@@ -3723,11 +3760,44 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, "parallelism_type and parallelism_width must be set together or cleared together")
 		return
 	}
-	// NOTE: replica_peers admin API wiring (validation, PatchNode/
-	// UpsertNodeOverride plumbing, response fields) is deliberately deferred
-	// to a follow-up checkpoint - this pass only lands the core scheduling-
-	// role/closure-algorithm layer (router/store/placement). Do not wire
-	// patch.ReplicaPeers into this handler until that checkpoint.
+	// replica_peers structural validation. This is intentionally structural
+	// only (non-empty members, head present in members, unique members) -
+	// the symmetry invariant (every member's declaration must agree) is a
+	// fleet-wide, read-time property resolved by SchedulingRoles, not
+	// something one node's PATCH can validate or reject. Declaring
+	// replica_peers on node A before node B declares the matching entry is
+	// legal and produces RoleUnresolved for both until B's PATCH lands -
+	// not a 422 on A's PATCH. See the "replica_peers" section of the node
+	// grouping design for the full reasoning.
+	if patch.ReplicaPeers != nil && len(patch.ReplicaPeers.Members) > 0 {
+		if len(patch.ReplicaPeers.Head) == 0 {
+			writeJSONError(w, http.StatusBadRequest, "replica_peers.head must be a non-empty string")
+			return
+		}
+		seen := make(map[string]bool, len(patch.ReplicaPeers.Members))
+		headInMembers := false
+		for _, m := range patch.ReplicaPeers.Members {
+			if m == "" {
+				writeJSONError(w, http.StatusBadRequest, "replica_peers.members entries must be non-empty")
+				return
+			}
+			if seen[m] {
+				writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("replica_peers.members must be unique (duplicate %q)", m))
+				return
+			}
+			seen[m] = true
+			if m == patch.ReplicaPeers.Head {
+				headInMembers = true
+			}
+		}
+		if !headInMembers {
+			writeJSONError(w, http.StatusBadRequest, "replica_peers.head must be present in replica_peers.members")
+			return
+		}
+	} else if patch.ReplicaPeers != nil && len(patch.ReplicaPeers.Members) == 0 && patch.ReplicaPeers.Head != "" {
+		writeJSONError(w, http.StatusBadRequest, "replica_peers.members must be non-empty when replica_peers.head is set")
+		return
+	}
 	// Derive resulting gpu_indices for cross-field validation - need existing value when patch doesn't carry new one.
 	if patch.ParallelismType != nil && *patch.ParallelismType != "" && patch.ParallelismWidth != nil && *patch.ParallelismWidth > 0 {
 		var resultingGPUIndices []int
@@ -3807,14 +3877,12 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 			}
 			_ = s.st.UpdateNodeURL(name, *patch.URL)
 		}
-		if patch.VRAMTotalMB != nil || patch.GPUModel != nil || patch.Runtime != nil || patch.GPUIndices != nil || patch.MaxInFlight != nil || patch.TLSFingerprint != nil || patch.ParallelismType != nil || patch.ParallelismWidth != nil || patch.VRAMOverrides != nil {
+		if patch.VRAMTotalMB != nil || patch.GPUModel != nil || patch.Runtime != nil || patch.GPUIndices != nil || patch.MaxInFlight != nil || patch.TLSFingerprint != nil || patch.ParallelismType != nil || patch.ParallelismWidth != nil || patch.VRAMOverrides != nil || patch.ReplicaPeers != nil {
 			if !s.router.PatchNode(name, patch) {
 				writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
 				return false
 			}
-			// replicaPeers param intentionally passed nil here - admin API
-			// wiring for replica_peers PATCH is a follow-up checkpoint.
-			if err := s.st.UpsertNodeOverride(name, patch.VRAMTotalMB, patch.GPUModel, patch.Runtime, patch.GPUIndices, patch.MaxInFlight, patch.TLSFingerprint, patch.ParallelismType, patch.ParallelismWidth, patch.VRAMOverrides, nil); err != nil {
+			if err := s.st.UpsertNodeOverride(name, patch.VRAMTotalMB, patch.GPUModel, patch.Runtime, patch.GPUIndices, patch.MaxInFlight, patch.TLSFingerprint, patch.ParallelismType, patch.ParallelismWidth, patch.VRAMOverrides, patch.ReplicaPeers); err != nil {
 				log.Printf("admin: failed to persist node override for %s: %v", name, err)
 			}
 		}
@@ -3823,7 +3891,7 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 	if !locked {
 		return
 	}
-	s.logSystemChange(r, "patch_node", name, fmt.Sprintf("URLChanged: %v, VRAMTotalMBChanged: %v, GPUModelChanged: %v, RuntimeChanged: %v, GPUIndicesChanged: %v, MaxInFlightChanged: %v, TLSFingerprintChanged: %v, ParallelismChanged: %v, VRAMOverridesChanged: %v", patch.URL != nil, patch.VRAMTotalMB != nil, patch.GPUModel != nil, patch.Runtime != nil, patch.GPUIndices != nil, patch.MaxInFlight != nil, patch.TLSFingerprint != nil, patch.ParallelismType != nil || patch.ParallelismWidth != nil, patch.VRAMOverrides != nil))
+	s.logSystemChange(r, "patch_node", name, fmt.Sprintf("URLChanged: %v, VRAMTotalMBChanged: %v, GPUModelChanged: %v, RuntimeChanged: %v, GPUIndicesChanged: %v, MaxInFlightChanged: %v, TLSFingerprintChanged: %v, ParallelismChanged: %v, VRAMOverridesChanged: %v, ReplicaPeersChanged: %v", patch.URL != nil, patch.VRAMTotalMB != nil, patch.GPUModel != nil, patch.Runtime != nil, patch.GPUIndices != nil, patch.MaxInFlight != nil, patch.TLSFingerprint != nil, patch.ParallelismType != nil || patch.ParallelismWidth != nil, patch.VRAMOverrides != nil, patch.ReplicaPeers != nil))
 	// Return the updated node.
 	s.handleNode(w, r)
 }

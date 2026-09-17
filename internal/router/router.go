@@ -2077,6 +2077,41 @@ func (r *Router) Nodes() []*NodeState {
 	return out
 }
 
+// SchedulingRoles exposes resolveSchedulingRoles (placement.go) to callers
+// outside this package - the admin API and CLI both need to compute every
+// node's replica-scheduling role once per request/list (never per node) to
+// surface it alongside the node's other declared/derived fields. Read-only
+// derivation, same guarantee as resolveSchedulingRoles itself: no side
+// effects, safe to call on every node-list request.
+func (r *Router) SchedulingRoles(nodes []*NodeState) map[string]SchedulingRole {
+	return r.resolveSchedulingRoles(nodes)
+}
+
+// ComponentFor exposes componentFor (placement.go) to callers outside this
+// package that need the resolved head node name for a RoleHead/RoleWorker
+// node - e.g. the admin API's replicaHead response field. Only meaningful
+// when name's SchedulingRole (from SchedulingRoles) is RoleHead or
+// RoleWorker; callers must check that first, per componentFor's own
+// contract.
+func ComponentFor(name string, allNodes []*NodeState) (members []*NodeState, head string) {
+	return componentFor(name, allNodes)
+}
+
+// String renders a SchedulingRole as the lowercase form the admin API/CLI
+// wire format uses ("standalone"|"head"|"worker"|"unresolved").
+func (s SchedulingRole) String() string {
+	switch s {
+	case RoleHead:
+		return "head"
+	case RoleWorker:
+		return "worker"
+	case RoleUnresolved:
+		return "unresolved"
+	default:
+		return "standalone"
+	}
+}
+
 // NodeURLs returns a map of node name to URL for all configured nodes.
 func (r *Router) NodeURLs() map[string]string {
 	r.mu.RLock()
