@@ -728,7 +728,7 @@ func (r *Router) selectBestNode(candidates []*NodeState, modelName string) (*Nod
 // filter exclusion, so it is not recorded as an ExcludedCandidate.
 func (r *Router) filterCandidates(nodes []*NodeState, modelName, runtimeFilter string, exclude map[string]bool) (healthy []*NodeState, excluded []ExcludedCandidate, excludedTotal int) {
 	for _, n := range nodes {
-		if exclude != nil && exclude[n.URL] {
+		if exclude[n.URL] { // safe on a nil map: indexing returns the zero value, never panics
 			continue
 		}
 		reason := ""
