@@ -168,7 +168,7 @@ func runModelsPull(flags *globalFlags, node, model string, stdout, stderr io.Wri
 // storage): requires --yes or an interactive TTY confirmation, matching the
 // "nodes remove"/"users delete" pattern (confirm.go).
 //
-// Replica-safety (P448): no separate role check here - the same domain
+// Replica safety: no separate role check here - the same domain
 // guard the UI goes through (handleNodeDeleteModel) applies identically,
 // since this hits the exact same admin endpoint. A worker/unresolved node
 // or an inconsistent replica component surfaces as a 409 via reportError,
@@ -185,6 +185,20 @@ func runModelsDelete(flags *globalFlags, node, model string, yes bool, stdout, s
 
 	result, err := client.DeleteNodeModel(node, model)
 	if err != nil {
+		// Unlike every other CLI command's error path (plain text only via
+		// reportError), a partial replica-wide failure decodes real
+		// structured detail (Members/Results) even though the request
+		// failed - result is non-nil here specifically for that case. In
+		// --json mode, print it before reporting the error, so a scripted
+		// caller gets the same per-member breakdown the raw HTTP response
+		// carries, not just a flattened error string. Exit code is still
+		// driven entirely by err via reportError, unaffected by whether
+		// this printed anything.
+		if flags.jsonOutput && result != nil {
+			if writeErr := writeJSON(stdout, result); writeErr != nil {
+				fmt.Fprintln(stderr, writeErr)
+			}
+		}
 		return reportError(err, stderr)
 	}
 

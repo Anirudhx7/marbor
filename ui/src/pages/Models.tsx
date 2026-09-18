@@ -182,7 +182,7 @@ function SkeletonCard() {
 }
 
 // DeleteGuardInfo is the per-node replica-safety fact ModelFleetCard's
-// delete flow branches on (P448) - built from the SAME fetchNodes()/
+// delete flow branches on - built from the SAME fetchNodes()/
 // mockGPUNodes list replicaByNode already comes from, but unfiltered: every
 // node in that list gets an explicit role (including 'standalone' and
 // 'unresolved', which replicaByNode deliberately omits for its own,
@@ -195,7 +195,7 @@ interface DeleteGuardInfo {
   members?: string[];
 }
 
-function ModelFleetCard({ model, demoMode, replicaByNode, deleteGuardByNode, onConfigure, onDeleted }: { model: ModelEntry; demoMode: boolean; replicaByNode: Record<string, { head: string; type?: string; width?: number }>; deleteGuardByNode: Record<string, DeleteGuardInfo>; onConfigure: () => void; onDeleted: (modelName: string, nodeName: string) => void }) {
+function ModelFleetCard({ model, demoMode, replicaByNode, deleteGuardByNode, onConfigure, onDeleted }: { model: ModelEntry; demoMode: boolean; replicaByNode: Record<string, { head: string; type?: string; width?: number }>; deleteGuardByNode: Record<string, DeleteGuardInfo>; onConfigure: () => void; onDeleted: (modelName: string, nodeNames: string[]) => void }) {
   const isWarm = model.warm_count > 0;
   const totalVRAM = totalVRAMFor(model);
   const isDrifted = !!model.digest_mismatch;
@@ -219,6 +219,11 @@ function ModelFleetCard({ model, demoMode, replicaByNode, deleteGuardByNode, onC
     : deleteGuard?.role === 'unresolved' ? 'unresolved'
     : deleteGuard?.role === 'head' || deleteGuard?.role === 'standalone' ? null
     : 'unavailable';
+  // Computed once and reused everywhere a "this delete is replica-wide"
+  // decision is needed (demo success note, confirm-modal body, confirm
+  // button label) so the three surfaces can't drift out of agreement.
+  const isReplicaWideDelete = deleteGuard?.role === 'head' && !!deleteGuard.members && deleteGuard.members.length > 1;
+  const replicaMembers = isReplicaWideDelete ? (deleteGuard!.members as string[]) : null;
 
   const handleDeleteTrashClick = () => {
     setDeleteError(null);
@@ -235,10 +240,15 @@ function ModelFleetCard({ model, demoMode, replicaByNode, deleteGuardByNode, onC
     if (demoMode) {
       setDeleteError(null);
       setDeleteConfirmOpen(false);
-      if (deleteGuard?.role === 'head' && deleteGuard.members && deleteGuard.members.length > 1) {
-        setDeleteSuccessNote(`Deleted ${model.name} from replica (head ${deleteNode}, ${deleteGuard.members.length} members: ${deleteGuard.members.join(', ')})`);
+      // affectedNodes drives BOTH the success note's claim and the actual
+      // UI-state removal below - the two can never disagree, unlike the
+      // earlier version where onDeleted only ever removed the single
+      // selected node while the note claimed every replica member.
+      const affectedNodes = replicaMembers ?? [deleteNode];
+      if (replicaMembers) {
+        setDeleteSuccessNote(`Deleted ${model.name} from replica (head ${deleteNode}, ${replicaMembers.length} members: ${replicaMembers.join(', ')})`);
       }
-      onDeleted(model.name, deleteNode);
+      onDeleted(model.name, affectedNodes);
       return;
     }
     setDeleteBusy(true);
@@ -246,13 +256,14 @@ function ModelFleetCard({ model, demoMode, replicaByNode, deleteGuardByNode, onC
       const result = await deleteNodeModel(deleteNode, model.name);
       setDeleteError(null);
       setDeleteConfirmOpen(false);
+      const affectedNodes = result.replica && result.members && result.members.length > 0 ? result.members : [deleteNode];
       if (result.replica) {
-        setDeleteSuccessNote(`Deleted ${model.name} from replica (head ${result.head}, ${result.members?.length ?? 0} members: ${(result.members ?? []).join(', ')})`);
+        setDeleteSuccessNote(`Deleted ${model.name} from replica (head ${result.head}, ${affectedNodes.length} members: ${affectedNodes.join(', ')})`);
       }
-      onDeleted(model.name, deleteNode);
+      onDeleted(model.name, affectedNodes);
     } catch (e: unknown) {
       // A 502 partial-failure's message is composed server-side with the
-      // full per-member breakdown (P448) - surfaced verbatim here, never
+      // full per-member breakdown - surfaced verbatim here, never
       // replaced with a generic "failed" string that would hide it.
       setDeleteError(e instanceof Error ? e.message : `Failed to delete ${model.name} from ${deleteNode}`);
     } finally {
@@ -455,7 +466,7 @@ function ModelFleetCard({ model, demoMode, replicaByNode, deleteGuardByNode, onC
 
       {/* Blocked-delete info - worker/unresolved/unavailable topology never
           offers a destructive affordance here; hands off to GPU Nodes,
-          which owns replica-membership management (point 9 of P448). */}
+          which owns replica-membership management. */}
       <Modal
         isOpen={blockedInfoOpen}
         onClose={() => setBlockedInfoOpen(false)}
@@ -506,14 +517,14 @@ function ModelFleetCard({ model, demoMode, replicaByNode, deleteGuardByNode, onC
         maxWidth="sm"
       >
         <div className="space-y-4">
-          {deleteGuard?.role === 'head' && deleteGuard.members && deleteGuard.members.length > 1 ? (
+          {isReplicaWideDelete && replicaMembers ? (
             <>
               <p className="text-sm text-muted-foreground">
                 <span className="text-foreground font-semibold break-all">{model.name}</span> is part of a multi-node replica headed by{' '}
-                <span className="text-foreground font-semibold">{deleteNode}</span> ({deleteGuard.members.length} nodes: {deleteGuard.members.join(', ')}).
+                <span className="text-foreground font-semibold">{deleteNode}</span> ({replicaMembers.length} nodes: {replicaMembers.join(', ')}).
               </p>
               <p className="text-sm text-muted-foreground">
-                Deleting it here removes it from ALL {deleteGuard.members.length} members - there is no way to delete only the head's copy without leaving the replica inconsistent.
+                Deleting it here removes it from ALL {replicaMembers.length} members - there is no way to delete only the head's copy without leaving the replica inconsistent.
               </p>
             </>
           ) : (
@@ -546,7 +557,7 @@ function ModelFleetCard({ model, demoMode, replicaByNode, deleteGuardByNode, onC
               disabled={deleteBusy}
               className="px-4 py-2 bg-destructive hover:bg-destructive/90 disabled:opacity-50 disabled:cursor-not-allowed text-destructive-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
             >
-              {deleteBusy ? 'Deleting...' : (deleteGuard?.role === 'head' && deleteGuard.members && deleteGuard.members.length > 1 ? `Delete from replica (${deleteGuard.members.length} nodes)` : 'Delete Model')}
+              {deleteBusy ? 'Deleting...' : (isReplicaWideDelete && replicaMembers ? `Delete from replica (${replicaMembers.length} nodes)` : 'Delete Model')}
             </button>
           </div>
         </div>
@@ -617,7 +628,7 @@ export function Models() {
   // component disagrees, so each counts as its own instance until the
   // operator reconciles the declarations on the GPU Nodes page.
   const [replicaByNode, setReplicaByNode] = useState<Record<string, { head: string; type?: string; width?: number }>>({});
-  // Delete-safety guard (P448): unlike replicaByNode above, every node
+  // Delete-safety guard: unlike replicaByNode above, every node
   // returned by the fetch gets an explicit entry here (including
   // 'standalone' and 'unresolved') - a node NOT in this map means the fetch
   // didn't return it at all (stale selection, or the fetch itself failing,
@@ -689,12 +700,13 @@ export function Models() {
     setIsPullModalOpen(false);
   };
 
-  const handleModelDeleted = (modelName: string, nodeName: string) => {
+  const handleModelDeleted = (modelName: string, nodeNames: string[]) => {
     if (demoMode) {
+      const removed = new Set(nodeNames);
       setCatalog((prev) => prev ? {
         ...prev,
         models: prev.models
-          .map((m) => m.name === modelName ? { ...m, nodes: m.nodes.filter((n) => n.name !== nodeName) } : m)
+          .map((m) => m.name === modelName ? { ...m, nodes: m.nodes.filter((n) => !removed.has(n.name)) } : m)
           .filter((m) => m.nodes.length > 0),
       } : prev);
       return;

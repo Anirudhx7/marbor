@@ -7554,7 +7554,7 @@ var nodeDeleteModelTimeout = 60 * time.Second
 // build predating this capability, returns a clear 501 rather than
 // silently reporting success for a delete that never happened.
 //
-// Replica-safety (P448): a node-local delete is only ever safe for a
+// Replica safety: a node-local delete is only ever safe for a
 // SchedulingRole-standalone node. A worker or unresolved node must never be
 // allowed to remove only its own copy - that would leave a multi-host
 // TP/PP deployment inconsistent - so those are rejected with 409 before any
@@ -7700,13 +7700,21 @@ func validateReplicaDeleteComponent(headName string, allNodes []*router.NodeStat
 // handleReplicaWideModelDelete deletes model from every member of headName's
 // resolved replica component (head included) - one node-local delete per
 // member via the same deleteSingleNodeModel-equivalent checks the
-// standalone path uses, dispatched sequentially. Sequential, not parallel:
-// replica widths are small (2-8 hosts in practice) and this is not a hot
-// path - correctness and simple, deterministic per-member accounting
-// matter more than shaving wall-clock time. Every eligible member is
-// attempted regardless of an earlier member's failure - a stuck/unreachable
+// standalone path uses, dispatched concurrently (one goroutine per member,
+// each writing only its own pre-assigned index of results - no shared
+// mutable state between goroutines, so no mutex is needed). Concurrent
+// rather than sequential: each member dispatch can take up to
+// nodeDeleteModelTimeout (60s) independently, and a replica with several
+// slow/unreachable members would otherwise make the overall request run for
+// their sum (minutes) - comfortably past a typical browser/proxy/load-
+// balancer timeout - while dispatching them at once bounds the whole
+// request to the SLOWEST single member instead. Every eligible member is
+// still attempted regardless of another's failure - a stuck/unreachable
 // head must never block cleanup on reachable workers, and the operator
-// needs to know the full per-member picture, not just the first failure.
+// needs the full per-member picture, not just the first failure. Dispatch
+// order/concurrency does not affect determinism: memberNames and results
+// are always built from sortedMembers' fixed order, never goroutine
+// completion order.
 func (s *Server) handleReplicaWideModelDelete(w http.ResponseWriter, r *http.Request, headName, model string, allNodes []*router.NodeState, roles map[string]router.SchedulingRole, heads map[string]string) {
 	members, reason := validateReplicaDeleteComponent(headName, allNodes, roles, heads)
 	if reason != "" {
@@ -7725,33 +7733,42 @@ func (s *Server) handleReplicaWideModelDelete(w http.ResponseWriter, r *http.Req
 	}
 
 	urls := s.router.NodeURLs()
-	results := make([]nodeDeleteMemberResult, 0, len(sortedMembers))
+	results := make([]nodeDeleteMemberResult, len(sortedMembers))
+	var wg sync.WaitGroup
+	for i, m := range sortedMembers {
+		wg.Add(1)
+		go func(i int, m *router.NodeState) {
+			defer wg.Done()
+			res := nodeDeleteMemberResult{Node: m.Name}
+			switch {
+			case !nodeIsHealthy(allNodes, m.Name):
+				res.Error = fmt.Sprintf("node %q is currently unreachable (down)", m.Name)
+			default:
+				agentCfg, agentOK := s.router.MarborAgentSetting(m.Name)
+				if !agentOK || !agentCfg.Enabled || !nodeHasAgentCapability(allNodes, m.Name, "models.delete") {
+					res.Error = fmt.Sprintf("node %q has no agent capability for deleting local models", m.Name)
+					break
+				}
+				ctx, cancel := context.WithTimeout(r.Context(), nodeDeleteModelTimeout)
+				ctrl, _ := s.router.NodeControlSetting(m.Name)
+				err := s.deleteModelViaAgent(ctx, urls[m.Name], agentCfg, model, ctrl)
+				cancel()
+				if err != nil {
+					res.Error = err.Error()
+				} else {
+					res.OK = true
+				}
+			}
+			results[i] = res
+		}(i, m)
+	}
+	wg.Wait()
+
 	okCount := 0
-	for _, m := range sortedMembers {
-		res := nodeDeleteMemberResult{Node: m.Name}
-		switch {
-		case !nodeIsHealthy(allNodes, m.Name):
-			res.Error = fmt.Sprintf("node %q is currently unreachable (down)", m.Name)
-		default:
-			agentCfg, agentOK := s.router.MarborAgentSetting(m.Name)
-			if !agentOK || !agentCfg.Enabled || !nodeHasAgentCapability(allNodes, m.Name, "models.delete") {
-				res.Error = fmt.Sprintf("node %q has no agent capability for deleting local models", m.Name)
-				break
-			}
-			ctx, cancel := context.WithTimeout(r.Context(), nodeDeleteModelTimeout)
-			ctrl, _ := s.router.NodeControlSetting(m.Name)
-			err := s.deleteModelViaAgent(ctx, urls[m.Name], agentCfg, model, ctrl)
-			cancel()
-			if err != nil {
-				res.Error = err.Error()
-			} else {
-				res.OK = true
-			}
-		}
+	for _, res := range results {
 		if res.OK {
 			okCount++
 		}
-		results = append(results, res)
 	}
 
 	s.logSystemChange(r, "delete_model_replica", headName, fmt.Sprintf(

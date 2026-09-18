@@ -225,15 +225,17 @@ func okAgentHandler(t *testing.T) http.HandlerFunc {
 
 // TestHandleNodeDeleteModel_HeadTriggersReplicaWideDelete verifies a delete
 // issued against a resolved replica HEAD expands into one delete per
-// member (head included), all dispatched, response carries the aggregated
-// member/results list in deterministic (sorted) order.
+// member (head included), every member is dispatched exactly once
+// (concurrently - wire-arrival order is not asserted, only that each
+// member is hit), and the response carries the aggregated member/results
+// list in deterministic (sorted, not dispatch-order-dependent) order.
 func TestHandleNodeDeleteModel_HeadTriggersReplicaWideDelete(t *testing.T) {
 	var mu sync.Mutex
-	var hitOrder []string
+	hitCount := map[string]int{}
 	handler := func(name string) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			mu.Lock()
-			hitOrder = append(hitOrder, name)
+			hitCount[name]++
 			mu.Unlock()
 			w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte(`{"ok":true}`))
@@ -285,8 +287,10 @@ func TestHandleNodeDeleteModel_HeadTriggersReplicaWideDelete(t *testing.T) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if !reflect.DeepEqual(hitOrder, wantMembers) {
-		t.Errorf("agent dispatch order = %v, want deterministic sorted %v", hitOrder, wantMembers)
+	for _, name := range wantMembers {
+		if hitCount[name] != 1 {
+			t.Errorf("member %q hit %d times, want exactly 1", name, hitCount[name])
+		}
 	}
 }
 
