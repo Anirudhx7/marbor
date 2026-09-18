@@ -7553,6 +7553,20 @@ var nodeDeleteModelTimeout = 60 * time.Second
 // reasoning as handleNodeModels) - a node without an agent, or an agent
 // build predating this capability, returns a clear 501 rather than
 // silently reporting success for a delete that never happened.
+//
+// Replica-safety (P448): a node-local delete is only ever safe for a
+// SchedulingRole-standalone node. A worker or unresolved node must never be
+// allowed to remove only its own copy - that would leave a multi-host
+// TP/PP deployment inconsistent - so those are rejected with 409 before any
+// health/capability check runs (the role check must come first: an
+// unreachable worker must be rejected for being a worker, not misreported
+// as "node down"). A head node's delete becomes a replica-wide operation
+// (handleReplicaWideModelDelete) - "this node's residency" is the
+// replica's residency for a head, by construction. SchedulingRole and the
+// replica_peers-derived component are the ONLY authoritative inputs to
+// this decision; ParallelismType/ParallelismWidth/declared GPU indices are
+// informational fields elsewhere (see placement.go's "never used for any
+// advisory decision" guardrail) and play no part in it.
 func (s *Server) handleNodeDeleteModel(w http.ResponseWriter, r *http.Request) {
 	nodeName := r.PathValue("name")
 	model := r.PathValue("model")
@@ -7568,6 +7582,34 @@ func (s *Server) handleNodeDeleteModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	allNodes := s.router.Nodes()
+	roles, heads := s.router.SchedulingRolesWithHeads(allNodes) // nil,nil if nobody in the fleet has declared replica_peers
+	switch roles[nodeName] {                                    // zero value RoleStandalone if absent
+	case router.RoleWorker:
+		head := heads[nodeName]
+		writeJSONError(w, http.StatusConflict, fmt.Sprintf(
+			"node %q is a worker in a multi-host replica headed by %q - deleting the model from only this node would leave the replica inconsistent; delete from the replica head %q instead, or reconcile membership on GPU Nodes",
+			nodeName, head, head))
+		return
+	case router.RoleUnresolved:
+		writeJSONError(w, http.StatusConflict, fmt.Sprintf(
+			"node %q is part of an unresolved multi-host replica declaration (member nodes disagree on membership/head) - a node-local delete is not safe until the declaration is reconciled on GPU Nodes",
+			nodeName))
+		return
+	case router.RoleHead:
+		s.handleReplicaWideModelDelete(w, r, nodeName, model, allNodes, roles, heads)
+		return
+	}
+
+	s.deleteSingleNodeModel(w, r, nodeName, nodeURL, model)
+}
+
+// deleteSingleNodeModel is the standalone-node delete path - unchanged
+// behavior, extracted verbatim out of handleNodeDeleteModel so both the
+// RoleStandalone branch above and each member of a replica-wide delete
+// (handleReplicaWideModelDelete) share this exact same health/capability/
+// dispatch logic instead of two independent copies of it.
+func (s *Server) deleteSingleNodeModel(w http.ResponseWriter, r *http.Request, nodeName, nodeURL, model string) {
 	// Same fail-fast reasoning as handleNodePull/handleNodeModels: a down
 	// node's URL may still answer with something (another service on that
 	// port), producing a confusing "agent delete model failed: ..." error
@@ -7600,6 +7642,144 @@ func (s *Server) handleNodeDeleteModel(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
+}
+
+// nodeDeleteMemberResult is one member's outcome inside a replica-wide
+// delete - bounded, JSON-safe fields only (never a raw agent payload,
+// credential, or token; deleteModelViaAgent's own errors are already
+// sanitized the same way the standalone path relies on).
+type nodeDeleteMemberResult struct {
+	Node  string `json:"node"`
+	OK    bool   `json:"ok"`
+	Error string `json:"error,omitempty"`
+}
+
+// validateReplicaDeleteComponent defensively re-checks that headName's
+// resolved component (from router.ComponentFor, computed from the same
+// roles/heads maps the caller already has) is actually safe to run a
+// destructive multi-node operation against, before any agent is dispatched.
+// This invariant should already hold by construction - roles[headName] ==
+// RoleHead implies resolveSchedulingRolesAndHeads already validated the
+// component as symmetric and closed - but re-checking here means a future
+// change to that resolver, or a race between reading roles/heads and
+// calling ComponentFor, can never silently become a destructive-dispatch
+// bug. Returns a non-empty reason string (and no members) when validation
+// fails; the caller must make zero agent calls in that case.
+func validateReplicaDeleteComponent(headName string, allNodes []*router.NodeState, roles map[string]router.SchedulingRole, heads map[string]string) (members []*router.NodeState, reason string) {
+	componentMembers, resolvedHead := router.ComponentFor(headName, allNodes)
+	if resolvedHead != headName {
+		return nil, fmt.Sprintf("resolved head %q does not match requested head %q", resolvedHead, headName)
+	}
+	if len(componentMembers) == 0 {
+		return nil, "resolved component has no members"
+	}
+	seen := make(map[string]bool, len(componentMembers))
+	headSeen := false
+	for _, m := range componentMembers {
+		if seen[m.Name] {
+			return nil, fmt.Sprintf("duplicate member %q in resolved component", m.Name)
+		}
+		seen[m.Name] = true
+		if m.Name == headName {
+			headSeen = true
+		}
+		role := roles[m.Name]
+		if role != router.RoleHead && role != router.RoleWorker {
+			return nil, fmt.Sprintf("member %q has scheduling role %q, expected head or worker", m.Name, role.String())
+		}
+		if heads[m.Name] != resolvedHead {
+			return nil, fmt.Sprintf("member %q resolves to head %q, expected %q", m.Name, heads[m.Name], resolvedHead)
+		}
+	}
+	if !headSeen {
+		return nil, fmt.Sprintf("requested head %q is not a member of its own resolved component", headName)
+	}
+	return componentMembers, ""
+}
+
+// handleReplicaWideModelDelete deletes model from every member of headName's
+// resolved replica component (head included) - one node-local delete per
+// member via the same deleteSingleNodeModel-equivalent checks the
+// standalone path uses, dispatched sequentially. Sequential, not parallel:
+// replica widths are small (2-8 hosts in practice) and this is not a hot
+// path - correctness and simple, deterministic per-member accounting
+// matter more than shaving wall-clock time. Every eligible member is
+// attempted regardless of an earlier member's failure - a stuck/unreachable
+// head must never block cleanup on reachable workers, and the operator
+// needs to know the full per-member picture, not just the first failure.
+func (s *Server) handleReplicaWideModelDelete(w http.ResponseWriter, r *http.Request, headName, model string, allNodes []*router.NodeState, roles map[string]router.SchedulingRole, heads map[string]string) {
+	members, reason := validateReplicaDeleteComponent(headName, allNodes, roles, heads)
+	if reason != "" {
+		writeJSONError(w, http.StatusConflict, fmt.Sprintf(
+			"replica topology for %q could not be validated as a consistent component (%s) - reconcile replica_peers declarations on GPU Nodes before retrying",
+			headName, reason))
+		return
+	}
+
+	sortedMembers := make([]*router.NodeState, len(members))
+	copy(sortedMembers, members)
+	sort.Slice(sortedMembers, func(i, j int) bool { return sortedMembers[i].Name < sortedMembers[j].Name })
+	memberNames := make([]string, 0, len(sortedMembers))
+	for _, m := range sortedMembers {
+		memberNames = append(memberNames, m.Name)
+	}
+
+	urls := s.router.NodeURLs()
+	results := make([]nodeDeleteMemberResult, 0, len(sortedMembers))
+	okCount := 0
+	for _, m := range sortedMembers {
+		res := nodeDeleteMemberResult{Node: m.Name}
+		switch {
+		case !nodeIsHealthy(allNodes, m.Name):
+			res.Error = fmt.Sprintf("node %q is currently unreachable (down)", m.Name)
+		default:
+			agentCfg, agentOK := s.router.MarborAgentSetting(m.Name)
+			if !agentOK || !agentCfg.Enabled || !nodeHasAgentCapability(allNodes, m.Name, "models.delete") {
+				res.Error = fmt.Sprintf("node %q has no agent capability for deleting local models", m.Name)
+				break
+			}
+			ctx, cancel := context.WithTimeout(r.Context(), nodeDeleteModelTimeout)
+			ctrl, _ := s.router.NodeControlSetting(m.Name)
+			err := s.deleteModelViaAgent(ctx, urls[m.Name], agentCfg, model, ctrl)
+			cancel()
+			if err != nil {
+				res.Error = err.Error()
+			} else {
+				res.OK = true
+			}
+		}
+		if res.OK {
+			okCount++
+		}
+		results = append(results, res)
+	}
+
+	s.logSystemChange(r, "delete_model_replica", headName, fmt.Sprintf(
+		"Model: %s, Head: %s, Members: %s, Succeeded: %d/%d", model, headName, strings.Join(memberNames, ","), okCount, len(sortedMembers)))
+
+	w.Header().Set("Content-Type", "application/json")
+	if okCount == len(sortedMembers) {
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok": true, "replica": true, "head": headName, "members": memberNames, "results": results,
+		})
+		return
+	}
+	var failed []string
+	for _, res := range results {
+		if !res.OK {
+			failed = append(failed, fmt.Sprintf("%s: %s", res.Node, res.Error))
+		}
+	}
+	// Deliberately NOT HTTP 200: both ui/src/lib/api.ts's deleteNodeModel and
+	// internal/cli/client.go's doRequestBody branch on HTTP status, not on a
+	// JSON "ok" field, on the 2xx path - a 200 here would be silently read
+	// as success by both existing clients.
+	w.WriteHeader(http.StatusBadGateway)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok": false, "error": fmt.Sprintf("%d of %d members succeeded: %s", okCount, len(sortedMembers), strings.Join(failed, "; ")),
+		"replica": true, "head": headName, "members": memberNames, "results": results,
+	})
 }
 
 // deleteModelViaAgent dispatches a model delete to nodeURL's Marbor Agent

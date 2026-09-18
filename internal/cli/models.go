@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"strings"
 )
 
 // runModels implements `marbor models` - GET /admin/v1/models, session-authed.
@@ -166,6 +167,13 @@ func runModelsPull(flags *globalFlags, node, model string, stdout, stderr io.Wri
 // Destructive and irreversible (removes the model from the node's local
 // storage): requires --yes or an interactive TTY confirmation, matching the
 // "nodes remove"/"users delete" pattern (confirm.go).
+//
+// Replica-safety (P448): no separate role check here - the same domain
+// guard the UI goes through (handleNodeDeleteModel) applies identically,
+// since this hits the exact same admin endpoint. A worker/unresolved node
+// or an inconsistent replica component surfaces as a 409 via reportError,
+// server message intact; deleting via a resolved head instead expands
+// server-side into a replica-wide delete, reflected in the result below.
 func runModelsDelete(flags *globalFlags, node, model string, yes bool, stdout, stderr io.Writer) int {
 	if err := requireConfirm("delete model", fmt.Sprintf("%s on %s", model, node), yes, stderr); err != nil {
 		return reportError(err, stderr)
@@ -175,17 +183,21 @@ func runModelsDelete(flags *globalFlags, node, model string, yes bool, stdout, s
 		return reportError(err, stderr)
 	}
 
-	if err := client.DeleteNodeModel(node, model); err != nil {
+	result, err := client.DeleteNodeModel(node, model)
+	if err != nil {
 		return reportError(err, stderr)
 	}
 
-	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, map[string]interface{}{
-		"ok": true, "node": node, "model": model,
-	}); handled {
+	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, result); handled {
 		return code
 	}
 
-	fmt.Fprintf(stdout, "%s: deleted %s\n", node, model)
+	if result.Replica {
+		fmt.Fprintf(stdout, "%s: deleted %s from replica (head %s, %d members: %s)\n",
+			node, model, result.Head, len(result.Members), strings.Join(result.Members, ", "))
+	} else {
+		fmt.Fprintf(stdout, "%s: deleted %s\n", node, model)
+	}
 	return ExitOK
 }
 

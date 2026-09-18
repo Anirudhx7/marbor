@@ -96,6 +96,52 @@ func TestRun_ModelsDelete_NonTTYWithoutYes_Aborts(t *testing.T) {
 	}
 }
 
+// TestRun_ModelsDelete_WorkerRejected409 verifies the CLI surfaces the
+// admin API's replica-safety rejection (P448) verbatim rather than
+// re-wording or swallowing it - proving the domain guard applies to the
+// CLI without any CLI-side pre-flight role check duplicating it.
+func TestRun_ModelsDelete_WorkerRejected409(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		w.Write([]byte(`{"error":"node \"gpu-1\" is a worker in a multi-host replica headed by \"gpu-0\" - deleting the model from only this node would leave the replica inconsistent; delete from the replica head \"gpu-0\" instead, or reconcile membership on GPU Nodes"}`))
+	}))
+	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"models", "delete", "gpu-1", "llama3:8b", "--yes", "--server", srv.URL}, &stdout, &stderr)
+	if code != ExitServerError {
+		t.Fatalf("expected exit %d, got %d (stdout: %s, stderr: %s)", ExitServerError, code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "is a worker in a multi-host replica headed by") {
+		t.Errorf("expected the server's replica-safety message verbatim in stderr, got %q", stderr.String())
+	}
+}
+
+// TestRun_ModelsDelete_ReplicaSuccessDisplaysCorrectly verifies a
+// replica-wide delete (issued against a resolved head) prints the
+// replica-aware summary, not the plain single-node message.
+func TestRun_ModelsDelete_ReplicaSuccessDisplaysCorrectly(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"ok":true,"replica":true,"head":"gpu-0","members":["gpu-0","gpu-1","gpu-2"],"results":[{"node":"gpu-0","ok":true},{"node":"gpu-1","ok":true},{"node":"gpu-2","ok":true}]}`))
+	}))
+	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"models", "delete", "gpu-0", "llama3:8b", "--yes", "--server", srv.URL}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "replica (head gpu-0, 3 members: gpu-0, gpu-1, gpu-2)") {
+		t.Errorf("expected replica-aware summary naming head and member count, got %q", stdout.String())
+	}
+}
+
 // TestRun_ModelsDelete_InteractiveYes mirrors TestRun_KeyRevoke_InteractiveYes.
 func TestRun_ModelsDelete_InteractiveYes(t *testing.T) {
 	origTTY := stdinIsTTY

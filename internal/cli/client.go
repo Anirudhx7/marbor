@@ -385,15 +385,46 @@ func (c *Client) PullModel(node, model string) (*PullResult, error) {
 	return &out, nil
 }
 
+// NodeDeleteModelResult mirrors admin.go's handleNodeDeleteModel/
+// handleReplicaWideModelDelete response shape. Replica/Head/Members/Results
+// are only populated when Replica is true (a delete issued against a
+// resolved replica head, expanded server-side into one delete per member) -
+// a standalone-node delete's response is just {"ok":true}, matching today's
+// unchanged behavior.
+type NodeDeleteModelResult struct {
+	OK      bool                     `json:"ok"`
+	Replica bool                     `json:"replica,omitempty"`
+	Head    string                   `json:"head,omitempty"`
+	Members []string                 `json:"members,omitempty"`
+	Results []NodeDeleteMemberResult `json:"results,omitempty"`
+}
+
+// NodeDeleteMemberResult is one replica member's outcome inside a
+// replica-wide delete's Results, mirroring admin.go's nodeDeleteMemberResult.
+type NodeDeleteMemberResult struct {
+	Node  string `json:"node"`
+	OK    bool   `json:"ok"`
+	Error string `json:"error,omitempty"`
+}
+
 // DeleteNodeModel calls DELETE /admin/nodes/{name}/models/{model} -
 // capability "models.delete", mirroring the UI's Models.tsx delete action.
-func (c *Client) DeleteNodeModel(node, model string) error {
+// A 409 (worker/unresolved node, or an inconsistent replica component) or a
+// 502 (partial replica-wide failure) never reaches the decode below -
+// doRequestBody's existing >=400 branch already turns those into a
+// serverErrorf carrying the server's error text verbatim.
+func (c *Client) DeleteNodeModel(node, model string) (*NodeDeleteModelResult, error) {
 	resp, err := c.doRequestBody(http.MethodDelete, "/admin/nodes/"+urlPathEscape(node)+"/models/"+escapeModelPathSegments(model), nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer resp.Body.Close()
-	return nil
+
+	var out NodeDeleteModelResult
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse delete response: %v", err)
+	}
+	return &out, nil
 }
 
 // NodeModelEntry mirrors admin.go's nodeModelEntry - a single model in a
