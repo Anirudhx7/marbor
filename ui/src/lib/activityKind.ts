@@ -40,7 +40,8 @@ export function toActivityKind(action: string): ActivityKind {
     action === 'pull_model' ||
     action === 'pull_model_load_failed' ||
     action === 'pull_model_cancel' ||
-    action === 'delete_model'
+    action === 'delete_model' ||
+    action === 'delete_model_replica'
   ) {
     return 'warmup';
   }
@@ -58,7 +59,7 @@ export function toActivityKind(action: string): ActivityKind {
   if (action.includes('marbor_agent') || action.includes('_agent')) return 'agent';
   if (action.startsWith('runtime_') || action.includes('_control')) return 'runtime';
   if (action.startsWith('add_node') || action.startsWith('remove_node') || action.startsWith('patch_node') || action === 'update_node') return 'node';
-  if (action.startsWith('unload') || action.includes('warmup') || action.includes('pinned') || action.startsWith('pull_model') || action === 'delete_model') return 'warmup';
+  if (action.startsWith('unload') || action.includes('warmup') || action.includes('pinned') || action.startsWith('pull_model') || action.startsWith('delete_model')) return 'warmup';
   return 'config';
 }
 
