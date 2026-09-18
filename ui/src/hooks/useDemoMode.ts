@@ -19,7 +19,16 @@ export function currentAppPath(): string {
   if (forcedDemo) {
     const hash = window.location.hash;
     const path = hash.startsWith('#') ? hash.slice(1) : hash;
-    return path || '/';
+    // HashRouter puts the query string inside the hash fragment (e.g.
+    // "#/models?view=catalog") - every caller of this function does a bare
+    // path equality check (`=== '/models'`), so a tab/filter query param
+    // must not make that comparison fail. Without this, e.g. Models.tsx's
+    // Catalog tab (?view=catalog) permanently fails every currentAppPath()
+    // guard on that route, silently skipping the effects that fetch node
+    // topology - found via a stuck "topology unavailable" demo repro that
+    // only cleared after navigating away and back (which drops the query
+    // string from the URL, incidentally "fixing" it).
+    return path.split('?')[0] || '/';
   }
   return window.location.pathname;
 }
