@@ -1,8 +1,11 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { Download, CheckCircle2, XCircle, X, Loader2, ChevronUp, ChevronDown, Trash2, AlertTriangle } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Download, CheckCircle2, XCircle, X, Loader2, ChevronUp, ChevronDown, Trash2, AlertTriangle, ArrowUpRight } from 'lucide-react';
 import { subscribe, getSnapshot, retryPull, cancelPull, closeJob, restoreActivePulls, isPullActive, PullProgressState } from '../lib/pullProgress';
-import { deleteNodeModel } from '../lib/api';
+import { deleteNodeModel, fetchNodes } from '../lib/api';
 import { formatDurationShort } from '../lib/time';
+import { useDemoMode } from '../hooks/useDemoMode';
+import { mockGPUNodes } from '../lib/mockData';
 import { Modal } from './Modal';
 
 function formatBytes(n: number): string {
@@ -68,6 +71,7 @@ function classifyLoadFailure(message: string): string {
 // multiple GPU nodes (or multiple models pulling on the same node) in the
 // stack at once, the node is the thing that tells them apart.
 function PullJobCard({ job }: { job: PullProgressState }) {
+  const { demoMode } = useDemoMode();
   const [expanded, setExpanded] = useState(true);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -75,6 +79,19 @@ function PullJobCard({ job }: { job: PullProgressState }) {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleted, setDeleted] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  // Replica-safety disclosure: resolved lazily (only when the operator
+  // actually clicks "Delete model") rather than on every card mount, since
+  // most pull-progress cards never reach this action. Mirrors Models.tsx's
+  // ModelFleetCard fail-closed guard - an unresolvable/unknown role blocks
+  // the destructive confirm the same as an explicit worker/unresolved role,
+  // it never falls through to treating the node as standalone by default.
+  const [nodeGuard, setNodeGuard] = useState<{ role: 'standalone' | 'head' | 'worker' | 'unresolved'; head?: string; members?: string[] } | null>(null);
+  const [blockedInfoOpen, setBlockedInfoOpen] = useState(false);
+  const deleteBlockedReason: 'worker' | 'unresolved' | 'unavailable' | null =
+    nodeGuard?.role === 'worker' ? 'worker'
+    : nodeGuard?.role === 'unresolved' ? 'unresolved'
+    : nodeGuard?.role === 'head' || nodeGuard?.role === 'standalone' ? null
+    : 'unavailable';
 
   useEffect(() => {
     if (!isPullActive(job.status)) return;
@@ -99,6 +116,37 @@ function PullJobCard({ job }: { job: PullProgressState }) {
       return;
     }
     closeJob(job.key);
+  };
+
+  // openDeleteFlow resolves job.node's replica role before offering the
+  // destructive delete affordance - clicking "Delete model" no longer opens
+  // the confirm dialog directly. Without this, a resolved replica HEAD's
+  // delete silently expands server-side into a multi-node delete with no
+  // warning in the dialog the operator just approved (the confirm copy used
+  // to say only "Delete X from Y's local storage?", identical for every
+  // role, unlike Models.tsx's own delete button in the same diff).
+  const openDeleteFlow = async () => {
+    setDeleteError(null);
+    try {
+      const list = demoMode ? mockGPUNodes : await fetchNodes();
+      const n = (list || []).find((x) => x.name === job.node);
+      const guard = n ? {
+        role: (n.schedulingRole || 'standalone') as 'standalone' | 'head' | 'worker' | 'unresolved',
+        head: n.replicaHead,
+        members: n.replicaPeers?.members,
+      } : null;
+      setNodeGuard(guard);
+      if (!guard || guard.role === 'worker' || guard.role === 'unresolved') {
+        setBlockedInfoOpen(true);
+      } else {
+        setDeleteConfirmOpen(true);
+      }
+    } catch {
+      // Fetch failed - fail closed the same as an unresolvable role, never
+      // fall through to the destructive standalone path.
+      setNodeGuard(null);
+      setBlockedInfoOpen(true);
+    }
   };
 
   const handleDelete = async () => {
@@ -271,7 +319,7 @@ function PullJobCard({ job }: { job: PullProgressState }) {
               )}
               {job.status === 'load_failed' && !deleted && (
                 <button
-                  onClick={() => { setDeleteError(null); setDeleteConfirmOpen(true); }}
+                  onClick={openDeleteFlow}
                   disabled={deleting}
                   className="flex items-center gap-1 px-2.5 py-1 text-xs bg-destructive/10 hover:bg-destructive/20 disabled:opacity-50 text-destructive rounded-lg cursor-pointer"
                 >
@@ -290,6 +338,52 @@ function PullJobCard({ job }: { job: PullProgressState }) {
         </div>
       )}
 
+      {/* Blocked-delete info - worker/unresolved/unavailable topology never
+          offers a destructive affordance here; hands off to GPU Nodes,
+          same pattern as Models.tsx's ModelFleetCard. */}
+      <Modal
+        isOpen={blockedInfoOpen}
+        onClose={() => setBlockedInfoOpen(false)}
+        title="Model delete blocked - replica member"
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          {deleteBlockedReason === 'worker' && (
+            <p className="text-sm text-muted-foreground">
+              <span className="text-foreground font-semibold">{job.node}</span> is a worker in a multi-node replica headed by{' '}
+              <span className="text-foreground font-semibold">{nodeGuard?.head}</span>. Removing this model from only this node would leave the replica inconsistent.
+            </p>
+          )}
+          {deleteBlockedReason === 'unresolved' && (
+            <p className="text-sm text-muted-foreground">
+              <span className="text-foreground font-semibold">{job.node}</span> is part of an unresolved multi-host replica declaration - member nodes disagree. Reconcile the declaration on GPU Nodes before any node-local change is safe.
+            </p>
+          )}
+          {deleteBlockedReason === 'unavailable' && (
+            <p className="text-sm text-muted-foreground">
+              Topology information for <span className="text-foreground font-semibold">{job.node}</span> is unavailable right now - refresh the page before deleting, so this doesn't accidentally remove a replica member's only copy.
+            </p>
+          )}
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button
+              onClick={() => setBlockedInfoOpen(false)}
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Close
+            </button>
+            {deleteBlockedReason !== 'unavailable' && (
+              <Link
+                to={`/gpu-nodes?highlight=${encodeURIComponent(job.node)}&from=models`}
+                onClick={() => setBlockedInfoOpen(false)}
+                className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm inline-flex items-center gap-1"
+              >
+                Manage on GPU Nodes <ArrowUpRight className="w-3.5 h-3.5" />
+              </Link>
+            )}
+          </div>
+        </div>
+      </Modal>
+
       <Modal
         isOpen={deleteConfirmOpen}
         onClose={() => { if (!deleting) setDeleteConfirmOpen(false); }}
@@ -297,10 +391,22 @@ function PullJobCard({ job }: { job: PullProgressState }) {
         maxWidth="sm"
       >
         <div className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Delete <span className="text-foreground font-semibold break-all">{job.model}</span> from{' '}
-            <span className="text-foreground font-semibold">{job.node}</span>'s local storage?
-          </p>
+          {nodeGuard?.role === 'head' && nodeGuard.members && nodeGuard.members.length > 1 ? (
+            <>
+              <p className="text-sm text-muted-foreground">
+                <span className="text-foreground font-semibold break-all">{job.model}</span> is part of a multi-node replica headed by{' '}
+                <span className="text-foreground font-semibold">{job.node}</span> ({nodeGuard.members.length} nodes: {nodeGuard.members.join(', ')}).
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Deleting it here removes it from ALL {nodeGuard.members.length} members - there is no way to delete only the head's copy without leaving the replica inconsistent.
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Delete <span className="text-foreground font-semibold break-all">{job.model}</span> from{' '}
+              <span className="text-foreground font-semibold">{job.node}</span>'s local storage?
+            </p>
+          )}
           <p className="text-xs text-muted-foreground">
             This removes the downloaded model files from disk - not just from VRAM. Re-pulling it later will re-download the full model.
           </p>
@@ -320,7 +426,7 @@ function PullJobCard({ job }: { job: PullProgressState }) {
               disabled={deleting}
               className="px-4 py-2 bg-destructive hover:bg-destructive/90 disabled:opacity-50 disabled:cursor-not-allowed text-destructive-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
             >
-              {deleting ? 'Deleting...' : 'Delete Model'}
+              {deleting ? 'Deleting...' : (nodeGuard?.role === 'head' && nodeGuard.members && nodeGuard.members.length > 1 ? `Delete from replica (${nodeGuard.members.length} nodes)` : 'Delete Model')}
             </button>
           </div>
         </div>

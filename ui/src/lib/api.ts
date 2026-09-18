@@ -1252,13 +1252,13 @@ function demoFilterSystemAudit(all: SystemAuditEntry[], f: SystemAuditFilter): S
       if (['enable_marbor_agent', 'disable_marbor_agent', 'regenerate_marbor_agent_token', 'enroll_marbor_agent'].includes(action)) return 'agent';
       if (['runtime_start', 'runtime_stop', 'runtime_restart', 'accept_node_control', 'clear_node_control'].includes(action)) return 'runtime';
       if (['add_node', 'update_node', 'remove_node', 'patch_node'].includes(action)) return 'node';
-      if (['unload_model', 'set_node_warmup', 'set_pinned_models', 'pull_model', 'pull_model_load_failed', 'pull_model_cancel', 'delete_model'].includes(action)) return 'warmup';
+      if (['unload_model', 'set_node_warmup', 'set_pinned_models', 'pull_model', 'pull_model_load_failed', 'pull_model_cancel', 'delete_model', 'delete_model_replica'].includes(action)) return 'warmup';
       if (['create_schedule', 'patch_schedule', 'delete_schedule'].includes(action) || action.startsWith('scheduled_')) return 'schedule';
       if (action.startsWith('drain_') || action.startsWith('undrain') || action === 'set_node_prewarm') return 'drain';
       if (action.includes('marbor_agent') || action.includes('_agent')) return 'agent';
       if (action.startsWith('runtime_') || action.includes('_control')) return 'runtime';
       if (action.startsWith('add_node') || action.startsWith('remove_node') || action.startsWith('patch_node') || action === 'update_node') return 'node';
-      if (action.startsWith('unload') || action.includes('warmup') || action.includes('pinned') || action.startsWith('pull_model') || action === 'delete_model') return 'warmup';
+      if (action.startsWith('unload') || action.includes('warmup') || action.includes('pinned') || action.startsWith('pull_model') || action.startsWith('delete_model')) return 'warmup';
       return 'config';
     };
     filtered = filtered.filter((e) => toKind(e.action) === f.kind);
@@ -1513,6 +1513,29 @@ export async function getNodeModels(name: string): Promise<LocalModel[]> {
   return data.models || [];
 }
 
+// NodeDeleteMemberResult is one replica member's outcome inside a
+// replica-wide delete's results, mirroring the admin API's
+// nodeDeleteMemberResult / the CLI's NodeDeleteMemberResult.
+export interface NodeDeleteMemberResult {
+  node: string;
+  ok: boolean;
+  error?: string;
+}
+
+// NodeDeleteModelResult mirrors the admin API's handleNodeDeleteModel /
+// handleReplicaWideModelDelete response shape. replica/head/members/results
+// are only populated when replica is true (the delete was issued against a
+// resolved replica head and expanded server-side into one delete per
+// member) - a standalone-node delete's response is just {ok:true}, matching
+// today's unchanged behavior.
+export interface NodeDeleteModelResult {
+  ok: boolean;
+  replica?: boolean;
+  head?: string;
+  members?: string[];
+  results?: NodeDeleteMemberResult[];
+}
+
 // deleteNodeModel removes a locally-downloaded model from a node, via the
 // node's marbor agent ("models.delete" capability). Callers must check
 // node.agentCapabilities?.includes('models.delete') before calling - a node
@@ -1523,13 +1546,23 @@ export async function getNodeModels(name: string): Promise<LocalModel[]> {
 // "{name...}" wildcard route), but any other character ('#', '?', a space)
 // must still be escaped or it gets reinterpreted as a fragment/query
 // boundary, truncating the request to a different (shorter) model name.
-export async function deleteNodeModel(name: string, model: string): Promise<void> {
+//
+// Replica safety: when name resolves to a multi-host replica HEAD, the backend
+// expands this into a replica-wide delete (one delete per member) and the
+// returned result carries replica/head/members/results describing that -
+// callers must not assume a resolved promise always means exactly this one
+// node changed. A worker/unresolved node, or an inconsistent replica
+// component, is rejected server-side (409) before any deletion and surfaces
+// here as a thrown error, same as any other failure.
+export async function deleteNodeModel(name: string, model: string): Promise<NodeDeleteModelResult> {
   const encodedModel = model.split('/').map(encodeURIComponent).join('/');
   const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/models/${encodedModel}`, {
     method: 'DELETE',
     headers: authHeaders(),
   });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to delete model'); }
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) { throw new Error((j as any).error || 'Failed to delete model'); }
+  return j as NodeDeleteModelResult;
 }
 
 export interface NodeHealthCheckResult {
