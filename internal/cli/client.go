@@ -390,9 +390,15 @@ func (c *Client) PullModel(node, model string) (*PullResult, error) {
 // are only populated when Replica is true (a delete issued against a
 // resolved replica head, expanded server-side into one delete per member) -
 // a standalone-node delete's response is just {"ok":true}, matching today's
-// unchanged behavior.
+// unchanged behavior. Error carries the server's message on a non-2xx
+// response (409 worker/unresolved/invalid-component rejection, or 502
+// partial replica-wide failure) - populated alongside Replica/Head/Members/
+// Results even when DeleteNodeModel also returns a non-nil error, so a
+// caller that wants the structured per-member breakdown on a partial
+// failure (not just the flattened error string) can still read it.
 type NodeDeleteModelResult struct {
 	OK      bool                     `json:"ok"`
+	Error   string                   `json:"error,omitempty"`
 	Replica bool                     `json:"replica,omitempty"`
 	Head    string                   `json:"head,omitempty"`
 	Members []string                 `json:"members,omitempty"`
@@ -409,20 +415,44 @@ type NodeDeleteMemberResult struct {
 
 // DeleteNodeModel calls DELETE /admin/nodes/{name}/models/{model} -
 // capability "models.delete", mirroring the UI's Models.tsx delete action.
-// A 409 (worker/unresolved node, or an inconsistent replica component) or a
-// 502 (partial replica-wide failure) never reaches the decode below -
-// doRequestBody's existing >=400 branch already turns those into a
-// serverErrorf carrying the server's error text verbatim.
+//
+// Deliberately bypasses doRequestBody (unlike every other mutating Client
+// method): a replica-wide delete's 409/502 response body itself carries
+// structured per-member detail (Members/Results) a caller may want, but
+// doRequestBody's shared >=400 branch reads and discards the body before
+// any caller can see it - fine for every other endpoint, where the body is
+// just a flat error string, but it would make this endpoint's structured
+// detail permanently unreachable through the CLI. 401/403 classification is
+// still replicated here (same authErrorf + savedSessionHint as
+// doRequestBody) so an expired session behaves identically to every other
+// command.
 func (c *Client) DeleteNodeModel(node, model string) (*NodeDeleteModelResult, error) {
-	resp, err := c.doRequestBody(http.MethodDelete, "/admin/nodes/"+urlPathEscape(node)+"/models/"+escapeModelPathSegments(model), nil)
+	req, err := http.NewRequest(http.MethodDelete, c.BaseURL+"/admin/nodes/"+urlPathEscape(node)+"/models/"+escapeModelPathSegments(model), nil)
 	if err != nil {
-		return nil, err
+		return nil, userErrorf("building request: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return nil, serverErrorf("could not reach %s: %v", c.BaseURL, err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return nil, authErrorf("%s%s", readErrorMessage(resp.Body), c.savedSessionHint())
+	}
 
 	var out NodeDeleteModelResult
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return nil, serverErrorf("could not parse delete response: %v", err)
+	}
+	if resp.StatusCode >= 400 {
+		msg := out.Error
+		if msg == "" {
+			msg = fmt.Sprintf("unexpected response (%d)", resp.StatusCode)
+		}
+		return &out, serverErrorf("%s", msg)
 	}
 	return &out, nil
 }

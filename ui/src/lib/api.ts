@@ -1252,13 +1252,13 @@ function demoFilterSystemAudit(all: SystemAuditEntry[], f: SystemAuditFilter): S
       if (['enable_marbor_agent', 'disable_marbor_agent', 'regenerate_marbor_agent_token', 'enroll_marbor_agent'].includes(action)) return 'agent';
       if (['runtime_start', 'runtime_stop', 'runtime_restart', 'accept_node_control', 'clear_node_control'].includes(action)) return 'runtime';
       if (['add_node', 'update_node', 'remove_node', 'patch_node'].includes(action)) return 'node';
-      if (['unload_model', 'set_node_warmup', 'set_pinned_models', 'pull_model', 'pull_model_load_failed', 'pull_model_cancel', 'delete_model'].includes(action)) return 'warmup';
+      if (['unload_model', 'set_node_warmup', 'set_pinned_models', 'pull_model', 'pull_model_load_failed', 'pull_model_cancel', 'delete_model', 'delete_model_replica'].includes(action)) return 'warmup';
       if (['create_schedule', 'patch_schedule', 'delete_schedule'].includes(action) || action.startsWith('scheduled_')) return 'schedule';
       if (action.startsWith('drain_') || action.startsWith('undrain') || action === 'set_node_prewarm') return 'drain';
       if (action.includes('marbor_agent') || action.includes('_agent')) return 'agent';
       if (action.startsWith('runtime_') || action.includes('_control')) return 'runtime';
       if (action.startsWith('add_node') || action.startsWith('remove_node') || action.startsWith('patch_node') || action === 'update_node') return 'node';
-      if (action.startsWith('unload') || action.includes('warmup') || action.includes('pinned') || action.startsWith('pull_model') || action === 'delete_model') return 'warmup';
+      if (action.startsWith('unload') || action.includes('warmup') || action.includes('pinned') || action.startsWith('pull_model') || action.startsWith('delete_model')) return 'warmup';
       return 'config';
     };
     filtered = filtered.filter((e) => toKind(e.action) === f.kind);
@@ -1547,7 +1547,7 @@ export interface NodeDeleteModelResult {
 // must still be escaped or it gets reinterpreted as a fragment/query
 // boundary, truncating the request to a different (shorter) model name.
 //
-// P448: when name resolves to a multi-host replica HEAD, the backend
+// Replica safety: when name resolves to a multi-host replica HEAD, the backend
 // expands this into a replica-wide delete (one delete per member) and the
 // returned result carries replica/head/members/results describing that -
 // callers must not assume a resolved promise always means exactly this one
