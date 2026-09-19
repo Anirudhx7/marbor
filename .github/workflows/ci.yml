@@ -67,6 +67,11 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # Full history, not the default shallow depth=1 - the Sanity step
+          # below needs to diff against the PR base SHA / pre-push commit,
+          # which a shallow clone may not have fetched.
+          fetch-depth: 0
 
       - name: Setup Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
@@ -101,6 +106,18 @@ jobs:
             echo "$unformatted"
             exit 1
           fi
+
+      - name: Sanity - targeted tests for changed packages
+        # Tier 2 of 3 (Smoke -> Sanity -> Regression; see scripts/sanity.sh's doc
+        # comment and scripts/gate.sh's header). Fast go test scoped to only the
+        # packages whose .go files changed since the PR base / previous push, so
+        # an obvious mistake in the package being touched fails in seconds
+        # instead of waiting on the full suite below. Never blocks on an
+        # indeterminate base (skips instead) - the full go test -race ./...
+        # regression step right after this is unconditional and unchanged.
+        env:
+          GATE_SANITY_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: bash scripts/sanity.sh
 
       - name: Run Go Tests (race detector)
         # -race catches concurrent map/mutex bugs (shared state in auth, router, admin).
