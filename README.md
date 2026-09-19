@@ -9,8 +9,8 @@
 </p>
 
 <p align="center">
-  One OpenAI-compatible endpoint across Ollama, vLLM, TGI, llama.cpp, and MLX.<br>
-  Local hardware first. Cloud second. Full spend attribution.
+  Marbor intelligently places inference workloads across your GPU fleet using model residency,<br>
+  GPU capacity, replica topology, workload pressure, and runtime capabilities.
 </p>
 
 <p align="center">
