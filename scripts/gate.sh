@@ -1,7 +1,19 @@
 #!/usr/bin/env bash
 # gate.sh - mirrors CI exactly. Green here = green in GitHub Actions.
-# Runs Go in Docker (golang:1.25.12) to match CI's toolchain version exactly,
+# Runs Go in Docker (golang:1.26) to match CI's toolchain version exactly,
 # even though Go is also installed locally. Requires Docker Desktop running.
+#
+# Test tiers, smallest to largest (see scripts/sanity.sh for the Sanity tier's
+# own detailed doc comment):
+#   1. Smoke      - step 7/7 below. Real-binary e2e: does the built binary boot
+#                   and actually route real HTTP through it. Also runs as its
+#                   own CI job (`smoke`), gated as `docker-main`.
+#   2. Sanity     - step 4/7 below. Fast, targeted `go test` for only the
+#                   packages whose .go files changed - a quick signal before
+#                   spending 4-6 minutes on the full suite. Runs here and in
+#                   CI's go-checks job, right before Regression.
+#   3. Regression - step 5/7 below. Full `go test -race ./...`, exhaustive,
+#                   unconditional, unchanged by the Sanity tier's existence.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -24,12 +36,12 @@ gorun() {
     -v "marbor-gobuild:/root/.cache/go-build" \
     -w /app \
     -e GOFLAGS=-buildvcs=false \
-    golang:1.25.12 "$@"
+    golang:1.26 "$@"
 }
 
 fail() { echo ""; echo "GATE RED: $*" >&2; exit 1; }
 
-echo "=== [1/6] UI: npm ci + build ==="
+echo "=== [1/7] UI: npm ci + build ==="
 if command -v powershell.exe &>/dev/null; then
   # Windows: neither 'rd /s /q' nor 'Remove-Item -Recurse' is 100% reliable
   # alone - Windows Defender or VS Code file watchers lock different packages
@@ -56,7 +68,7 @@ else
   (cd ui && npm ci && node node_modules/typescript/lib/tsc.js -b && node node_modules/vite/bin/vite.js build) || fail "UI build failed"
 fi
 
-echo "=== [2/6] Go: vet ==="
+echo "=== [2/7] Go: vet ==="
 # Docker is required from here on (gorun() runs every remaining Go step
 # inside a container) - checked once, up front, via `docker info` rather
 # than just `command -v docker`, so a Docker Desktop that's installed but
@@ -65,7 +77,7 @@ echo "=== [2/6] Go: vet ==="
 docker info >/dev/null 2>&1 || fail "docker not available - gate.sh requires Docker Desktop running (Go steps run in a container, see ci.yml)"
 gorun go vet ./... || fail "go vet failed"
 
-echo "=== [3/6] Go: gofmt check ==="
+echo "=== [3/7] Go: gofmt check ==="
 # gofmt's own output/exit is captured separately from the grep filter below -
 # a real gofmt failure (crash, missing binary in the image) must surface as
 # its own gate failure, not get silently swallowed by the blanket `|| true`
@@ -82,13 +94,16 @@ if [ -n "$unformatted" ]; then
   fail "gofmt check failed"
 fi
 
-echo "=== [4/6] Go: test -race ==="
+echo "=== [4/7] Go: sanity (targeted changed-package tests) ==="
+gorun bash scripts/sanity.sh || fail "sanity test failed"
+
+echo "=== [5/7] Go: test -race ==="
 gorun go test -race -timeout 300s ./... || fail "go test failed"
 
-echo "=== [5/6] Go: govulncheck ==="
+echo "=== [6/7] Go: govulncheck ==="
 gorun sh -c "go install golang.org/x/vuln/cmd/govulncheck@v1.7.0 && govulncheck ./..." || fail "govulncheck failed"
 
-echo "=== [6/6] Smoke test (mirrors ci.yml's smoke job) ==="
+echo "=== [7/7] Smoke test (mirrors ci.yml's smoke job) ==="
 bash scripts/smoke.sh || fail "smoke test failed"
 
 echo ""
