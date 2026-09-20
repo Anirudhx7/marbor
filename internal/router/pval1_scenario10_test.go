@@ -18,11 +18,11 @@ import (
 // deterministic router-level test using synthetic NodeState. It is genuinely
 // scenario 10 as filed, not a stand-in for it - but it is NOT proof of real
 // vLLM/TGI fleet behavior under real GPU load, which remains a separate,
-// still-open validation item (see the P423 queue entry).
+// still-open validation item tracked in the internal queue.
 
 // TestPVAL1Scenario10_ConcurrentLoadSpreadsAcrossNodes is the base scenario:
 // 50 concurrent requests against N equally-capable nodes must not collapse
-// onto one node. Independent of P423 - this exercises the pre-existing
+// onto one node. Independent of the predicted-queue-delay work - this exercises the pre-existing
 // ActiveConns/TTFT-weighted spread scoring (P-RB1), the same mechanism the
 // scenario's own text credits ("load spreads per P-RB1's already-proven
 // scoring").
@@ -91,8 +91,8 @@ func TestPVAL1Scenario10_ConcurrentLoadSpreadsAcrossNodes(t *testing.T) {
 	}
 }
 
-// A second test here originally tried to validate P423's "predicted delay
-// beats raw queue depth" claim with a synthetic no-completion greedy
+// A second test here originally tried to validate the predicted-queue-delay
+// work's "predicted delay beats raw queue depth" claim with a synthetic no-completion greedy
 // simulation (cumulative assigned cost as a stand-in for wait time). It was
 // removed after audit found it invalid, not merely unflattering:
 //
@@ -101,7 +101,7 @@ func TestPVAL1Scenario10_ConcurrentLoadSpreadsAcrossNodes(t *testing.T) {
 //     bench + update README", itself BLOCKED on hardware) - a real live load
 //     test measuring p95 TTFT direct-to-backend vs. via-marbor-across-N-nodes,
 //     not an abstract scoring-function comparison. Neither P-VAL1 nor the
-//     P423 queue entry defines a metric, workload mix, or baseline for a
+//     internal queue entry defines a metric, workload mix, or baseline for a
 //     synthetic "predicted delay vs raw queue depth" comparison - that
 //     methodology would have to be invented from scratch, and was.
 //   - The invented no-completion model (assign 50 arrivals, never drain
@@ -117,4 +117,4 @@ func TestPVAL1Scenario10_ConcurrentLoadSpreadsAcrossNodes(t *testing.T) {
 // Validating the actual claim requires the real item-4 hardware bench
 // (direct-to-backend vs via-marbor p95 TTFT, with and without this scoring
 // change) - it remains blocked on that hardware, same as item 4 itself. See
-// the P423 queue entry for current status.
+// the internal queue entry for current status.
