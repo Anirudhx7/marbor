@@ -453,15 +453,59 @@ func staticVRAMReservation(runtime string) bool {
 // n.RecentTTFT directly, matching every other per-node field scoreComponents
 // reads under its own RLock.
 func effectiveLoad(n *NodeState, conns int32) float64 {
+	return effectiveLoadFromCount(n, float64(conns))
+}
+
+// effectiveLoadFromCount applies effectiveLoad's TTFT-based weighting to an
+// arbitrary in-flight count instead of always reading ActiveConns - the
+// shared arithmetic engineAwareLoad needs to weight a real engine-reported
+// running+waiting total the same way effectiveLoad weights ActiveConns, so
+// the two stay comparable to each other and to their own prior values.
+// Same locking contract as effectiveLoad.
+func effectiveLoadFromCount(n *NodeState, count float64) float64 {
 	if len(n.RecentTTFT) == 0 {
-		return float64(conns)
+		return count
 	}
 	sum := 0.0
 	for _, ttft := range n.RecentTTFT {
 		sum += ttft
 	}
 	avgTTFT := sum / float64(len(n.RecentTTFT))
-	return float64(conns) * (1.0 + avgTTFT)
+	return count * (1.0 + avgTTFT)
+}
+
+// engineAwareLoad prefers a runtime's own real engine-reported
+// running+waiting sequence counts over the proxy-side ActiveConns count
+// whenever both are present (vLLM and TGI today - see
+// marboragent/enginestate.go's per-runtime coverage comment). "Node A has 5
+// waiting, node B has 2" is not a real comparison on its own - five short
+// completions can clear faster than two long ones - but the engine's own
+// running+waiting total is still strictly more honest than ActiveConns: it
+// reflects the runtime's actual iteration-level scheduler state (continuous
+// batching), where ActiveConns only reflects how many HTTP connections the
+// proxy currently has open, a number a runtime can be far ahead of or
+// behind. effectiveLoadFromCount's existing RecentTTFT weighting is reused
+// unchanged on top of that total, rather than inventing a second weighting
+// scheme, so a node running a few heavy (slow-TTFT) engine-reported
+// requests still scores as more loaded than one running many light ones -
+// the same problem effectiveLoad already solves for ActiveConns, now
+// applied to a more accurate base count.
+//
+// When either engine count is nil - the runtime's engine telemetry doesn't
+// cover this field, or this poll's scrape failed - this falls back
+// unchanged to effectiveLoad's ActiveConns-based computation. Never
+// fabricates a substitute for a real engine count: an unsupported or
+// unreachable runtime is scored exactly as it was before this function
+// existed, not penalized or favored for its silence.
+//
+// Must be called with n.mu already held (RLock is sufficient) - matches
+// effectiveLoad's locking contract.
+func engineAwareLoad(n *NodeState, conns int32) float64 {
+	if n.EngineRunningRequests != nil && n.EngineWaitingRequests != nil {
+		total := float64(*n.EngineRunningRequests + *n.EngineWaitingRequests)
+		return effectiveLoadFromCount(n, total)
+	}
+	return effectiveLoad(n, conns)
 }
 
 // scoreComponents calculates the multi-factor score breakdown for a node,
@@ -502,13 +546,15 @@ func (r *Router) scoreComponents(n *NodeState, model string) []ScoreComponent {
 		// ~90%+ by design even when the node is idle and fully able to
 		// serve. Instantaneous free bytes is not a capacity signal for
 		// these runtimes - do not credit or penalize the reserved block.
-		// Use the same real, already-tracked in-flight request count that
-		// drives factor 3 (inverse_queue_depth) as the "capacity to accept
-		// another request" signal instead; no runtime today reports a
-		// usable queue-depth or declared-concurrency telemetry field
-		// (marboragent.RuntimeInfo.QueueDepth is never populated).
+		// Use the same in-flight load signal that drives factor 3
+		// (inverse_queue_depth) as the "capacity to accept another
+		// request" signal instead - engineAwareLoad prefers the runtime's real
+		// engine-reported running+waiting counts (vLLM/TGI) over
+		// ActiveConns when available, falling back to ActiveConns for
+		// every other runtime (marboragent.RuntimeInfo.QueueDepth is
+		// never populated, so ActiveConns remains the only signal there).
 		conns := atomic.LoadInt32(&n.ActiveConns)
-		freeVRAM = 1.0 / (1.0 + effectiveLoad(n, conns))
+		freeVRAM = 1.0 / (1.0 + engineAwareLoad(n, conns))
 	} else if n.VRAMTotalMB > 0 {
 		// FragmentationOverheadMult: allocator/PagedAttention block slack and
 		// CUDA graph bookkeeping consume real VRAM beyond the sum of loaded
@@ -529,9 +575,11 @@ func (r *Router) scoreComponents(n *NodeState, model string) []ScoreComponent {
 		}
 	}
 
-	// 3. inverse_queue_depth
+	// 3. inverse_queue_depth - see engineAwareLoad's doc comment: this
+	// prefers the runtime's real engine-reported running+waiting counts over
+	// ActiveConns whenever the runtime reports them.
 	conns := atomic.LoadInt32(&n.ActiveConns)
-	invQueue := 1.0 / (1.0 + effectiveLoad(n, conns))
+	invQueue := 1.0 / (1.0 + engineAwareLoad(n, conns))
 
 	// 4. node_health_score
 	health := 1.0
