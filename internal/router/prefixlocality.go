@@ -87,9 +87,8 @@ type rawChatItem struct {
 }
 
 // stripDelims removes any literal 0x1E/0x1F byte from s. Both are
-// legal JSON string content, reachable by a client via a /
-// escape (json.Unmarshal decodes those to the literal control byte, same as
-// any other \uXXXX escape) - so unlike an actual role name or Go-internal
+// legal JSON string content, reachable by a client via a Unicode escape
+// sequence (json.Unmarshal decodes that escape to the literal control byte) - so unlike an actual role name or Go-internal
 // constant, client-supplied text is NOT guaranteed to be free of them.
 // Stripping here, once, at the point each field is read, is what makes
 // serializeCandidate's delimiters actually unique to the boundaries this
