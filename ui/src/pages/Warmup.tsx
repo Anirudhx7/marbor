@@ -1054,7 +1054,7 @@ export function Warmup() {
                 <p className="text-xs text-muted-foreground">
                   {prefixStats.enabled
                     ? `${(prefixStats.hit_rate * 100).toFixed(1)}% (${prefixStats.hits} hits / ${prefixStats.misses} misses)`
-                    : 'Disabled - enable in Settings > Routing to activate this signal'}
+                    : 'Disabled - enable in Settings > Routing and restart marbor to activate this signal'}
                 </p>
               </div>
             </div>

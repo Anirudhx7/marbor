@@ -86,16 +86,18 @@ type rawChatItem struct {
 	Content json.RawMessage `json:"content"`
 }
 
-// stripDelims removes any literal 0x1E/0x1F byte from s. Both are
+// stripDelims removes any literal 0x00/0x1E/0x1F byte from s. All three are
 // legal JSON string content, reachable by a client via a Unicode escape
 // sequence (json.Unmarshal decodes that escape to the literal control byte) - so unlike an actual role name or Go-internal
 // constant, client-supplied text is NOT guaranteed to be free of them.
 // Stripping here, once, at the point each field is read, is what makes
-// serializeCandidate's delimiters actually unique to the boundaries this
-// package draws, rather than a boundary a crafted message could fake.
+// serializeCandidate's delimiters (0x1E/0x1F) and prefixHashKey's own
+// domain/model/candidate separator (0x00) actually unique to the boundaries
+// this package draws, rather than a boundary a crafted message or model name
+// could fake by embedding one of these bytes itself.
 func stripDelims(s string) string {
 	return strings.Map(func(r rune) rune {
-		if r == 0x1e || r == 0x1f {
+		if r == 0x00 || r == 0x1e || r == 0x1f {
 			return -1
 		}
 		return r
@@ -382,6 +384,14 @@ func (r *Router) PrefixLocalityLookup(ctx context.Context, model string, body []
 		return "", ""
 	}
 	domain := prefixDomain(ctx)
+	// model is client-controlled (parsed from the request body's own
+	// "model" field, not validated against any allowlist at this point in
+	// the request path) - strip the same delimiter bytes canonicalSequence
+	// already strips from every role/content field, so a model name cannot
+	// fake the domain/model/candidate boundary prefixHashKey draws with
+	// 0x00 any more than a message could fake serializeCandidate's own
+	// 0x1E/0x1F boundaries.
+	model = stripDelims(model)
 	full := serializeCandidate(seq)
 	recordKey = prefixHashKey(domain, model, full)
 	for _, cand := range prefixLookupCandidates(seq) {

@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"testing"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/Anirudhx7/marbor/internal/auth"
 	"github.com/Anirudhx7/marbor/internal/config"
+	"github.com/Anirudhx7/marbor/internal/store"
 )
 
 func ctxWithKey(name string) context.Context {
@@ -177,6 +179,35 @@ func TestCanonicalSequence_MultimodalSafeMiss(t *testing.T) {
 		if key != "" || hint != "" {
 			t.Errorf("multimodal/non-text body %q must be a safe miss (key=%q hint=%q)", body, key, hint)
 		}
+	}
+}
+
+// TestPrefixLocality_ModelNameCannotFakeHashBoundary covers the fix for a
+// prefixHashKey boundary-injection gap: a client-controlled model name
+// containing a literal NUL byte (a JSON string can encode one via a
+// Unicode escape) must be neutralized the same way canonicalSequence
+// already neutralizes an embedded delimiter in role/content, so it cannot
+// pass through raw into the hash on one side of a record/lookup pair but
+// not the other.
+func TestPrefixLocality_ModelNameCannotFakeHashBoundary(t *testing.T) {
+	r := newPrefixTestRouter()
+	ctx := ctxWithKey("key-a")
+	body := []byte(`{"messages":[{"role":"user","content":"hello"}]}`)
+	modelWithEmbeddedNUL := "foo" + string(rune(0)) + "bar"
+
+	// Record under a model name with an embedded NUL byte, simulating a
+	// client that sent an escaped NUL inside the "model" field.
+	key, _ := r.PrefixLocalityLookup(ctx, modelWithEmbeddedNUL, body)
+	r.RecordPrefixLocality(key, "node-a", true)
+
+	// Looking up under the plain model name "foobar" (what stripDelims
+	// reduces modelWithEmbeddedNUL to) must find the same entry - proving
+	// the embedded NUL is neutralized consistently on both the write and
+	// read path, not silently passed through raw into the hash on either
+	// side.
+	_, hint := r.PrefixLocalityLookup(ctx, "foobar", body)
+	if hint != "node-a" {
+		t.Errorf("hint = %q, want %q (model name with embedded NUL must hash identically to its stripped form)", hint, "node-a")
 	}
 }
 
@@ -416,5 +447,73 @@ func TestPrefixLocality_DisabledFeatureNeverRecordsOrLooksUp(t *testing.T) {
 	r.RecordPrefixLocality("some-key", "node-a", true)
 	if r.prefixStore.len() != 0 {
 		t.Errorf("disabled feature must never write to the store, len=%d", r.prefixStore.len())
+	}
+}
+
+// TestSeedPrefixLocalityFromStore_TTLAndValidNodeFilter covers
+// seedPrefixLocalityFromStore's boot-reseed path (previously untested end
+// to end): a fresh, valid-node row must be seeded and found by a real
+// PrefixLocalityLookup after SetStore, a row older than the TTL must be
+// dropped, and a row naming a node no longer in the fleet must be dropped -
+// exactly the two guards seedPrefixLocalityFromStore's own doc comment
+// describes.
+func TestSeedPrefixLocalityFromStore_TTLAndValidNodeFilter(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "prefix-reseed.db"))
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(func() { st.Close() })
+
+	ctx := ctxWithKey("key-a")
+	body := []byte(`{"messages":[{"role":"user","content":"hello"}]}`)
+	seq, ok := canonicalSequence(body)
+	if !ok {
+		t.Fatal("canonicalSequence: expected ok=true")
+	}
+	domain := prefixDomain(ctx)
+	full := serializeCandidate(seq)
+	freshHash := prefixHashKey(domain, "model-x", full)
+
+	now := time.Now()
+	// Fresh row, valid node - must survive the reseed.
+	if err := st.AppendPrefixLocality(freshHash, "node-live", now.Add(-time.Minute)); err != nil {
+		t.Fatalf("AppendPrefixLocality (fresh): %v", err)
+	}
+	// Stale row (older than prefixLocalityTTL=10m), otherwise valid - must
+	// be dropped.
+	staleHash := prefixHashKey(domain, "model-x", full+"-stale")
+	if err := st.AppendPrefixLocality(staleHash, "node-live", now.Add(-2*prefixLocalityTTL)); err != nil {
+		t.Fatalf("AppendPrefixLocality (stale): %v", err)
+	}
+	// Fresh row naming a node that is no longer in the fleet - must be
+	// dropped even though it isn't stale.
+	removedNodeHash := prefixHashKey(domain, "model-x", full+"-removed")
+	if err := st.AppendPrefixLocality(removedNodeHash, "node-removed", now.Add(-time.Minute)); err != nil {
+		t.Fatalf("AppendPrefixLocality (removed node): %v", err)
+	}
+
+	r := &Router{
+		nodes:                 []*NodeState{{Name: "node-live", Healthy: true}},
+		prefixStore:           newPrefixLocalityStore(),
+		prefixLocalityEnabled: true,
+	}
+	r.SetStore(st) // triggers seedPrefixLocalityFromStore internally
+
+	if node, hit := r.prefixStore.lookup(freshHash); !hit || node != "node-live" {
+		t.Errorf("fresh valid-node entry: lookup = (%q, %v), want (\"node-live\", true)", node, hit)
+	}
+	if _, hit := r.prefixStore.lookup(staleHash); hit {
+		t.Error("stale entry must not survive the reseed")
+	}
+	if _, hit := r.prefixStore.lookup(removedNodeHash); hit {
+		t.Error("entry for a node no longer in the fleet must not survive the reseed")
+	}
+
+	// End-to-end: a real PrefixLocalityLookup for the same conversation now
+	// finds the reseeded hint, proving the reseed feeds the same code path a
+	// live request uses, not just the raw store.
+	_, hint := r.PrefixLocalityLookup(ctx, "model-x", body)
+	if hint != "node-live" {
+		t.Errorf("post-reseed PrefixLocalityLookup hint = %q, want \"node-live\"", hint)
 	}
 }
