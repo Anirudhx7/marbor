@@ -84,6 +84,28 @@ func (r *Router) WaitForNode(ctx context.Context, modelName, sessionID, runtimeF
 	if node, warm, decision := r.Route(modelName, sessionID, runtimeFilter); node != nil {
 		return node, warm, decision
 	}
+	return r.waitForNodeInternal(ctx, modelName, sessionID, runtimeFilter, "")
+}
+
+// WaitForNodeWithPrefix is the prefix-locality-aware sibling of WaitForNode -
+// see RouteWithPrefix. preferredNode, when non-empty, is a soft placement
+// preference only (see the prefix_match ScoreComponent in placement.go);
+// eligibility and every stronger optimization signal is unaffected. Pass
+// preferredNode == "" for identical behavior to WaitForNode.
+func (r *Router) WaitForNodeWithPrefix(ctx context.Context, modelName, sessionID, runtimeFilter, preferredNode string) (*NodeState, bool, *RoutingDecision) {
+	// Fast path: immediate route.
+	if node, warm, decision := r.RouteWithPrefix(modelName, sessionID, runtimeFilter, preferredNode); node != nil {
+		return node, warm, decision
+	}
+	return r.waitForNodeInternal(ctx, modelName, sessionID, runtimeFilter, preferredNode)
+}
+
+// waitForNodeInternal is the shared queued-wait body for WaitForNode and
+// WaitForNodeWithPrefix, called only after each has already tried its own
+// fast-path immediate route and found nothing. preferredNode is threaded
+// through to every retry route call so a queued request keeps benefiting
+// from its locality hint (if any) on each wake-up, not just the initial try.
+func (r *Router) waitForNodeInternal(ctx context.Context, modelName, sessionID, runtimeFilter, preferredNode string) (*NodeState, bool, *RoutingDecision) {
 
 	// Queue disabled (timeout or depth == 0): fall through immediately.
 	// config.Validate() sets the production defaults; callers that bypass
@@ -139,11 +161,11 @@ func (r *Router) WaitForNode(ctx context.Context, modelName, sessionID, runtimeF
 			metrics.QueueTimeout()
 			return nil, false, nil
 		case <-ch:
-			if node, warm, decision := r.Route(modelName, sessionID, runtimeFilter); node != nil {
+			if node, warm, decision := r.RouteWithPrefix(modelName, sessionID, runtimeFilter, preferredNode); node != nil {
 				return node, warm, decision
 			}
 		case <-retryTick.C:
-			if node, warm, decision := r.Route(modelName, sessionID, runtimeFilter); node != nil {
+			if node, warm, decision := r.RouteWithPrefix(modelName, sessionID, runtimeFilter, preferredNode); node != nil {
 				return node, warm, decision
 			}
 		}

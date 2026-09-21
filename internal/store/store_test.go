@@ -382,6 +382,106 @@ func TestPredictiveHistory(t *testing.T) {
 	}
 }
 
+// TestPrefixLocalityHistory verifies AppendPrefixLocality + PrefixLocalityHistory
+// survive across a fresh Open() (restart simulation), mirroring
+// TestPredictiveHistory's shape for the same reasons (L3).
+func TestPrefixLocalityHistory(t *testing.T) {
+	s := openTestDB(t)
+
+	base := time.Now().UTC().Truncate(time.Second)
+	if err := s.AppendPrefixLocality("hash-a", "node1", base); err != nil {
+		t.Fatalf("AppendPrefixLocality: %v", err)
+	}
+	if err := s.AppendPrefixLocality("hash-b", "node2", base.Add(time.Minute)); err != nil {
+		t.Fatalf("AppendPrefixLocality: %v", err)
+	}
+
+	hist, err := s.PrefixLocalityHistory()
+	if err != nil {
+		t.Fatalf("PrefixLocalityHistory: %v", err)
+	}
+	if len(hist) != 2 {
+		t.Fatalf("len(hist) = %d, want 2", len(hist))
+	}
+	if hist[0].PrefixHash != "hash-a" || hist[0].NodeName != "node1" {
+		t.Errorf("hist[0] = %+v, want PrefixHash=hash-a NodeName=node1", hist[0])
+	}
+	if hist[1].PrefixHash != "hash-b" || hist[1].NodeName != "node2" {
+		t.Errorf("hist[1] = %+v, want PrefixHash=hash-b NodeName=node2", hist[1])
+	}
+	if !hist[0].Timestamp.Equal(base) {
+		t.Errorf("hist[0].Timestamp = %v, want %v", hist[0].Timestamp, base)
+	}
+}
+
+// TestPrefixLocalityHistoryTrim verifies the 10,000-row cap (matching the
+// in-memory store's cap) bounds table growth. Unlike predictive_history's
+// 500-row cap, this table trims only every 50th write (see AppendPrefixLocality's
+// comment) rather than on every insert - a full-table resort on every single
+// call would be real I/O pressure at 10,000 rows under sustained request
+// volume. rowCap and the insert count are both multiples of 50 so the very
+// last insert lands exactly on a trim boundary, making the final count
+// deterministic rather than merely "within the overshoot margin".
+func TestPrefixLocalityHistoryTrim(t *testing.T) {
+	s := openTestDB(t)
+
+	const rowCap = 10_000
+	const totalInserts = rowCap + 100 // multiple of 50, exceeds cap by two trim cycles
+	base := time.Now().UTC().Truncate(time.Second)
+	for i := 0; i < totalInserts; i++ {
+		if err := s.AppendPrefixLocality("hash", "node1", base.Add(time.Duration(i)*time.Second)); err != nil {
+			t.Fatalf("AppendPrefixLocality[%d]: %v", i, err)
+		}
+	}
+
+	hist, err := s.PrefixLocalityHistory()
+	if err != nil {
+		t.Fatalf("PrefixLocalityHistory: %v", err)
+	}
+	if len(hist) != rowCap {
+		t.Fatalf("len(hist) = %d, want %d (trim cap)", len(hist), rowCap)
+	}
+}
+
+// TestPrefixLocalityHistory_RoundTrip covers the SQLite persistence round
+// trip: a recorded entry survives closing and reopening the same database
+// file (the restart-continuity contract), coming back in insertion order
+// with its node name and timestamp intact.
+func TestPrefixLocalityHistory_RoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "roundtrip.db")
+
+	s := openTestDBAt(t, path)
+	ts := time.Now().UTC().Truncate(time.Second)
+	if err := s.AppendPrefixLocality("hash-1", "node-a", ts); err != nil {
+		t.Fatalf("AppendPrefixLocality: %v", err)
+	}
+	if err := s.AppendPrefixLocality("hash-2", "node-b", ts.Add(time.Minute)); err != nil {
+		t.Fatalf("AppendPrefixLocality: %v", err)
+	}
+	s.Close()
+
+	// Reopen - simulates a restart reading persisted state back.
+	s2 := openTestDBAt(t, path)
+	defer s2.Close()
+	hist, err := s2.PrefixLocalityHistory()
+	if err != nil {
+		t.Fatalf("PrefixLocalityHistory after reopen: %v", err)
+	}
+	if len(hist) != 2 {
+		t.Fatalf("len(hist) after reopen = %d, want 2", len(hist))
+	}
+	if hist[0].PrefixHash != "hash-1" || hist[0].NodeName != "node-a" {
+		t.Errorf("hist[0] = %+v, want hash-1/node-a", hist[0])
+	}
+	if hist[1].PrefixHash != "hash-2" || hist[1].NodeName != "node-b" {
+		t.Errorf("hist[1] = %+v, want hash-2/node-b", hist[1])
+	}
+	if !hist[0].Timestamp.Equal(ts) {
+		t.Errorf("hist[0].Timestamp = %v, want %v", hist[0].Timestamp, ts)
+	}
+}
+
 // TestNodeOverrides verifies UpsertNodeOverride + NodeOverrides.
 func TestNodeOverrides(t *testing.T) {
 	s := openTestDB(t)
