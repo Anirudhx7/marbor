@@ -28,7 +28,7 @@ func TestScoreComponents_PhaseLabelsAreParityPreserving(t *testing.T) {
 	r.nodes[1].VRAMTotalMB = 8192
 	r.nodes[1].mu.Unlock()
 
-	node, components := r.findBestByScore(r.nodes, "model-x")
+	node, components := r.findBestByScore(r.nodes, "model-x", "")
 	if node == nil {
 		t.Fatal("expected a winning node")
 	}
