@@ -595,7 +595,18 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 
 			if attempt < maxRetries {
-				alt, _, altDecision := h.router.RouteExcludingWithPrefix(modelName, runtimeFilter, tried, prefixPreferredNode)
+				// Same modelName == lookupModel guard RecordPrefixLocality applies
+				// below - prefixPreferredNode was resolved against the ORIGINAL
+				// model, and a local-degradation swap may have since reassigned
+				// modelName to a fallback model with no relevant KV-cache
+				// relationship to that hint. Passing "" here (not the stale hint)
+				// once modelName has drifted keeps this call's soft signal
+				// meaningful for whichever model it is now actually retrying.
+				retryPreferredNode := prefixPreferredNode
+				if modelName != lookupModel {
+					retryPreferredNode = ""
+				}
+				alt, _, altDecision := h.router.RouteExcludingWithPrefix(modelName, runtimeFilter, tried, retryPreferredNode)
 				if alt != nil {
 					metrics.Retry(node.Name)
 					lastFailedNode = node.Name
