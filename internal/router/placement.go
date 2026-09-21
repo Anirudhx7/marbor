@@ -588,6 +588,7 @@ func (r *Router) scoreComponents(n *NodeState, model, preferredNode string) []Sc
 		}
 		components = append(components, ScoreComponent{
 			Name: "prefix_match", Raw: match, Weight: r.prefixLocalityWeight, Value: match * r.prefixLocalityWeight,
+			Phase: PhaseLocality,
 		})
 	}
 	running := sumComponents(components)
