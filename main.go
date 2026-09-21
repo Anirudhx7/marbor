@@ -190,7 +190,12 @@ func applyPersistedSettings(cfg *config.Config, st store.Store) {
 	cfg.Routing.ThermalWatchdog.MaxTempCelsius = store.GetFloatSetting(st, "routing_thermal_watchdog_max_temp_celsius", cfg.Routing.ThermalWatchdog.MaxTempCelsius)
 	cfg.Routing.ThermalWatchdog.ConsecutiveBreaches = store.GetIntSetting(st, "routing_thermal_watchdog_consecutive_breaches", cfg.Routing.ThermalWatchdog.ConsecutiveBreaches)
 	cfg.Routing.PrefixLocalityEnabled = store.GetBoolSetting(st, "routing_prefix_locality_enabled", cfg.Routing.PrefixLocalityEnabled)
-	cfg.Routing.PrefixLocalityWeight = store.GetFloatSetting(st, "routing_prefix_locality_weight", cfg.Routing.PrefixLocalityWeight)
+	// def is the literal 10, not cfg.Routing.PrefixLocalityWeight - a fresh
+	// install with no persisted key gets the built-in default here; an
+	// operator's deliberately-persisted 0 (a legal value - see Validate's
+	// range check) is read back correctly and never gets re-coerced to 10 by
+	// a later Validate() call, since Validate() no longer treats 0 as unset.
+	cfg.Routing.PrefixLocalityWeight = store.GetFloatSetting(st, "routing_prefix_locality_weight", 10)
 	store.GetJSONSetting(st, "routing_fallback_chains", &cfg.Routing.FallbackChains)
 	store.GetJSONSetting(st, "routing_local_degradation_chains", &cfg.Routing.LocalDegradationChains)
 

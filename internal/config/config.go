@@ -659,9 +659,13 @@ func (c *Config) Validate() error {
 			seen[alt] = true
 		}
 	}
-	if c.Routing.PrefixLocalityWeight == 0 {
-		c.Routing.PrefixLocalityWeight = 10
-	}
+	// No "== 0 means unset, default to 10" coercion here on purpose: 0 is a
+	// legal, deliberate value per the range check immediately below (an
+	// operator running the feature for observability only, with zero
+	// routing influence). Applying that default is main.go's job, at the
+	// settings-load site, exactly once per boot - Validate() runs on every
+	// settings save too and must never silently overwrite an already-loaded
+	// legal value back to the built-in default.
 	if c.Routing.PrefixLocalityWeight < 0 || c.Routing.PrefixLocalityWeight >= 15 {
 		return fmt.Errorf("routing.prefix_locality_weight: %v must be >= 0 and < 15 (locked scoring order requires it stay below inverse_queue_depth's weight of 15)", c.Routing.PrefixLocalityWeight)
 	}
