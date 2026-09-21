@@ -39,6 +39,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -85,6 +86,23 @@ type rawChatItem struct {
 	Content json.RawMessage `json:"content"`
 }
 
+// stripDelims removes any literal 0x1E/0x1F byte from s. Both are
+// legal JSON string content, reachable by a client via a /
+// escape (json.Unmarshal decodes those to the literal control byte, same as
+// any other \uXXXX escape) - so unlike an actual role name or Go-internal
+// constant, client-supplied text is NOT guaranteed to be free of them.
+// Stripping here, once, at the point each field is read, is what makes
+// serializeCandidate's delimiters actually unique to the boundaries this
+// package draws, rather than a boundary a crafted message could fake.
+func stripDelims(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == 0x1e || r == 0x1f {
+			return -1
+		}
+		return r
+	}, s)
+}
+
 // canonicalSequence extracts the ordered list of "role\x1fcontent" strings
 // this request's conversation resolves to. Returns ok=false for an
 // empty/malformed body or any message whose content is not a plain JSON
@@ -98,7 +116,7 @@ func canonicalSequence(body []byte) (seq []string, ok bool) {
 		return nil, false
 	}
 	if b.Prompt != "" {
-		return []string{"prompt\x1f" + b.Prompt}, true
+		return []string{"prompt\x1f" + stripDelims(b.Prompt)}, true
 	}
 	if len(b.Messages) == 0 {
 		return nil, false
@@ -114,16 +132,17 @@ func canonicalSequence(body []byte) (seq []string, ok bool) {
 		if err := json.Unmarshal(m.Content, &text); err != nil || text == nil {
 			return nil, false
 		}
-		out = append(out, m.Role+"\x1f"+*text)
+		out = append(out, stripDelims(m.Role)+"\x1f"+stripDelims(*text))
 	}
 	return out, true
 }
 
 // serializeCandidate deterministically joins a (possibly truncated) message
 // sequence into the string that gets hashed. Order-preserving; the
-// delimiters are control characters that can never appear in a role name or
-// ordinary request JSON, so they cannot be induced by client-supplied text
-// to create a collision between two different sequences.
+// delimiters are control characters that canonicalSequence has already
+// stripped out of every role/content field it reads, so they are unique to
+// the boundaries this package draws and cannot be induced by client-supplied
+// text to create a collision between two different sequences.
 func serializeCandidate(seq []string) string {
 	out := ""
 	for i, s := range seq {
@@ -224,21 +243,37 @@ func newPrefixLocalityStore() *prefixLocalityStore {
 	}
 }
 
-// lookup returns the recorded node for key if present and not expired.
-// Counts a metrics hit/miss on every call (mirrors the CacheHit/CacheMiss
-// convention used elsewhere in placement.go).
+// lookup returns the recorded node for key if present and not expired. Does
+// NOT count a metrics hit/miss itself - PrefixLocalityLookup calls this once
+// per truncated candidate for a single logical request, and a hit/miss must
+// be counted exactly once per REQUEST (see PrefixLocalityStats' "a 'hit' is a
+// request..." contract), not once per internal probe.
 func (s *prefixLocalityStore) lookup(key string) (string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	e, ok := s.entries[key]
 	if !ok || s.now().Sub(e.ts) > prefixLocalityTTL {
-		s.misses++
-		metrics.PrefixLocalityMiss()
 		return "", false
 	}
-	s.hits++
-	metrics.PrefixLocalityHit()
 	return e.node, true
+}
+
+// recordHitOrMiss counts exactly one hit or miss for a completed
+// PrefixLocalityLookup call - the request-level counter lookup() itself no
+// longer maintains.
+func (s *prefixLocalityStore) recordHitOrMiss(hit bool) {
+	s.mu.Lock()
+	if hit {
+		s.hits++
+	} else {
+		s.misses++
+	}
+	s.mu.Unlock()
+	if hit {
+		metrics.PrefixLocalityHit()
+	} else {
+		metrics.PrefixLocalityMiss()
+	}
 }
 
 // set records/refreshes key -> node, last-writer-wins. Evicts the oldest
@@ -352,6 +387,7 @@ func (r *Router) PrefixLocalityLookup(ctx context.Context, model string, body []
 	recordKey = prefixHashKey(domain, model, full)
 	for _, cand := range prefixLookupCandidates(seq) {
 		if node, hit := r.prefixStore.lookup(prefixHashKey(domain, model, cand)); hit {
+			r.prefixStore.recordHitOrMiss(true)
 			return recordKey, node
 		}
 	}
@@ -360,8 +396,10 @@ func (r *Router) PrefixLocalityLookup(ctx context.Context, model string, body []
 	// truncated probe candidates at all) and any request whose length
 	// didn't change turn-to-turn.
 	if node, hit := r.prefixStore.lookup(recordKey); hit {
+		r.prefixStore.recordHitOrMiss(true)
 		return recordKey, node
 	}
+	r.prefixStore.recordHitOrMiss(false)
 	return recordKey, ""
 }
 
