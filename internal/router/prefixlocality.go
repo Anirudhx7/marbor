@@ -455,9 +455,20 @@ func (r *Router) seedPrefixLocalityFromStore() {
 		valid[n.Name] = true
 	}
 	r.mu.RUnlock()
+	// PrefixLocalityHistory returns rows oldest-first (ORDER BY id ASC).
+	// AppendPrefixLocality's own trim only fires every 50th write, so the
+	// table can briefly hold slightly more than prefixLocalityMaxEntries
+	// rows - if it does, and this loop capped out walking oldest-to-newest,
+	// it would keep the STALEST valid entries and silently drop the
+	// freshest ones, the opposite of the in-memory store's own
+	// newest-preferred eviction. Walking newest-to-oldest instead means a
+	// forced cap always drops the oldest entries first, matching that
+	// semantics without needing to change the query's own row order (or
+	// the test that already asserts it).
 	now := time.Now()
 	seeded := 0
-	for _, row := range rows {
+	for i := len(rows) - 1; i >= 0; i-- {
+		row := rows[i]
 		if now.Sub(row.Timestamp) > prefixLocalityTTL {
 			continue // stale
 		}
