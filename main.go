@@ -141,6 +141,9 @@ func seedNodesToStore(dbPath string, specs []string) error {
 		default:
 			return fmt.Errorf("--seed-node %q: unknown runtime %q (valid: ollama, vllm, tgi, llamacpp, mlx)", spec, runtime)
 		}
+		if err := config.ValidateNodeURL(url); err != nil {
+			return fmt.Errorf("--seed-node %q: %w", spec, err)
+		}
 		records = append(records, store.NodeRecord{Name: name, URL: url, Runtime: runtime})
 	}
 
