@@ -493,3 +493,57 @@ func TestBootRestoresNodeDrainState(t *testing.T) {
 		t.Error("node-b should not be draining after boot restore")
 	}
 }
+
+// TestSeedNodesToStore_RejectsMetadataURL locks in the SSRF guard for
+// --seed-node: install.sh and any operator can pass an arbitrary URL here,
+// and unlike the dashboard/admin-API add-node paths this one bypassed
+// config.ValidateNodeURL entirely, so a spec like
+// "name=x,url=http://169.254.169.254/" would be written straight into the
+// store without ever being rejected.
+func TestSeedNodesToStore_RejectsMetadataURL(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "marbor.db")
+
+	err := seedNodesToStore(dbPath, []string{"name=evil,url=http://169.254.169.254/latest/meta-data/"})
+	if err == nil {
+		t.Fatal("seedNodesToStore with a link-local/metadata URL: got nil error, want rejection")
+	}
+
+	st, openErr := store.Open(dbPath)
+	if openErr != nil {
+		t.Fatalf("store.Open: %v", openErr)
+	}
+	defer st.Close()
+	nodes, listErr := st.AllNodes()
+	if listErr != nil {
+		t.Fatalf("AllNodes: %v", listErr)
+	}
+	if len(nodes) != 0 {
+		t.Errorf("rejected seed-node spec still wrote %d node(s) to the store", len(nodes))
+	}
+}
+
+// TestSeedNodesToStore_AcceptsOrdinaryURL is the control case: a normal
+// LAN/loopback backend URL must still seed successfully after the
+// ValidateNodeURL check was added.
+func TestSeedNodesToStore_AcceptsOrdinaryURL(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "marbor.db")
+
+	if err := seedNodesToStore(dbPath, []string{"name=gpu-0,url=http://192.168.1.50:11434,runtime=ollama"}); err != nil {
+		t.Fatalf("seedNodesToStore with an ordinary LAN URL: %v", err)
+	}
+
+	st, err := store.Open(dbPath)
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	defer st.Close()
+	nodes, err := st.AllNodes()
+	if err != nil {
+		t.Fatalf("AllNodes: %v", err)
+	}
+	if len(nodes) != 1 || nodes[0].Name != "gpu-0" {
+		t.Errorf("AllNodes() = %+v, want one node named gpu-0", nodes)
+	}
+}
