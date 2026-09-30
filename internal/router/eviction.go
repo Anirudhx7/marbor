@@ -1054,13 +1054,12 @@ func (r *Router) ensureHeadroom(ctx context.Context, n *NodeState, model string)
 	nodeName := n.Name
 	totalBytes := n.VRAMTotalMB * 1024 * 1024
 	var usedBytes int64
-	resident := false
 	for _, m := range n.LoadedModels {
 		usedBytes += m.SizeVRAM
-		if m.Name == model {
-			resident = true
-		}
 	}
+	// Match the way keep-warm names models: a bare name is its ":latest" tag,
+	// so "llama3" is already resident when "llama3:latest" is loaded.
+	_, resident := findLoadedModel(n.LoadedModels, model)
 	n.mu.RUnlock()
 	if resident {
 		// The poller has confirmed this model is loaded; drop any leftover

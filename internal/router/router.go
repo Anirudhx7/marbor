@@ -891,7 +891,7 @@ func (r *Router) Timezone() string {
 // TriggerWarmup fires an immediate warmup ping cycle for all configured models.
 // Safe to call concurrently; each (model, node) pair runs in its own goroutine.
 func (r *Router) TriggerWarmup(ctx context.Context) {
-	go r.pingWarmupModels(ctx)
+	go safeRun("pingWarmupModels", func() { r.pingWarmupModels(ctx) })
 }
 
 // SetNodeWarmup sets the per-node runtime warmup config (admin-toggled, KV-

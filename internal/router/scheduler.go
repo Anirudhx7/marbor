@@ -224,10 +224,13 @@ func (r *Router) WarmModels(ctx context.Context, nodeName string, models []strin
 		log.Printf("scheduled warmup skipped: node %q has an unresolved replica declaration", nodeName)
 		return fmt.Errorf("node %q has an unresolved replica declaration - reconcile replica_peers", nodeName)
 	case RoleWorker:
-		if head := heads[nodeName]; head != "" {
-			log.Printf("scheduled warmup: node %q is a replica worker, warming its head %q instead", nodeName, head)
-			nodeName = head
+		head := heads[nodeName]
+		if head == "" {
+			log.Printf("scheduled warmup skipped: replica worker %q has no resolved head", nodeName)
+			return fmt.Errorf("node %q is a replica worker with no resolved head - reconcile replica_peers", nodeName)
 		}
+		log.Printf("scheduled warmup: node %q is a replica worker, warming its head %q instead", nodeName, head)
+		nodeName = head
 	}
 	var target *NodeState
 	for _, n := range nodes {
