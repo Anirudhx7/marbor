@@ -354,6 +354,15 @@ type NodeState struct {
 	// In-memory only, cleared the moment a ping for that model succeeds;
 	// never persisted, same lifecycle as PrewarmDisabled.
 	WarmupErrors map[string]string
+	// WarmupWarnings holds per-model keep-warm notices that are not ping
+	// failures (model -> message): a digest that drifted from the fleet's
+	// reference copy (the model is still kept warm), or a keep-warm entry
+	// skipped because this node is a replica worker or has an unresolved
+	// replica declaration. Written only by the keep-warm pinger, replaced
+	// wholesale every cycle, so a warning lives exactly as long as its
+	// condition and is never cleared by a successful ping (unlike
+	// WarmupErrors). In-memory only, never persisted.
+	WarmupWarnings map[string]string
 	// UnloadErrors mirrors WarmupErrors for the scheduled-unload path (model
 	// -> error string): UnloadModels previously only logged a failed
 	// scheduled/agent unload to the marbor process's own stdout, so a schedule
@@ -441,8 +450,16 @@ const defaultPollInterval = 2 * time.Second
 
 // affinityEntry records which node a session was last routed to and when,
 // so the router can honour the sticky-session contract for the TTL window.
+//
+// model is the most recent model the session was routed for on that node
+// (empty for an entry restored from the store after a restart, until the
+// session's next request fills it in). It lets headroom eviction prefer not
+// to evict a model a live session is still using. Entries are immutable once
+// published in the affinity map apart from lastSeen: a model change swaps in
+// a brand-new entry under affinityMu rather than writing the field in place.
 type affinityEntry struct {
 	nodeURL  string
+	model    string
 	lastSeen atomic.Int64 // unix nanoseconds
 }
 
@@ -577,6 +594,11 @@ type Router struct {
 	// model) pairs.
 	warmupInProgress   map[string]bool
 	warmupInProgressMu sync.Mutex
+	// nodeLoadLocks holds one mutex per node name serializing each model's
+	// headroom-then-load sequence across the keep-warm pinger, scheduled
+	// warmup and predictive prewarm (see lockNodeLoad in warmer.go). The map
+	// itself is guarded by warmupInProgressMu.
+	nodeLoadLocks map[string]*sync.Mutex
 	// marborAgents holds per-HOST Marbor Agent poll configuration (enabled,
 	// port, bearer token), keyed by NodeState.Host - not by node name - so
 	// every node sharing a physical machine polls the same agent process
