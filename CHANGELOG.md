@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **Model aliases: keep existing client model names while serving local models.** Operators can map a requested model name (for example `gpt-4`) to a real model on the fleet (for example `llama3.2:8b`) through the Admin API (`GET/PUT/DELETE /admin/model-aliases`), the CLI (`marbor models alias list|set|remove`), or the Routing page. An aliased request is routed, rate-limited, and recorded under the real model, the request log shows `gpt-4 -> llama3.2:8b`, and the response carries an `X-Marbor-Model-Alias` header. `GET /v1/models` and `GET /v1/models/{id}` list an alias while its target is on the fleet, with the target's status. A key's model allow-list accepts either the alias name or the real model, and a cloud fallback receives the name the client sent (a provider's `default_model` still overrides). An alias that shares its name with a real fleet model always wins and is flagged as shadowing it. Aliases resolve one hop only, apply to both Ollama-native and OpenAI-compatible endpoints (never to model-management endpoints), take effect immediately without a restart, and change nothing for existing requests when none are configured. Response bodies still report the real model name, and `/api/tags` does not list aliases.
+
 ## [0.21.0] - 2026-09-24
 
 ### Added

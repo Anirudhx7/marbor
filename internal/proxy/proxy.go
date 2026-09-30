@@ -286,19 +286,38 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	modelName := router.ExtractModelName(body)
 
+	// Model alias resolution. An operator-declared alias (e.g. "gpt-4") is
+	// rewritten to its real target model before anything else looks at the
+	// model name, so fallback chains, context-window admission, prefix
+	// locality, session affinity, routing, model configs, rate limits,
+	// metrics and analytics all key on the real model. clientModelName keeps
+	// the name the client actually sent, for the allow-list, the request log,
+	// and cloud fallback (a cloud provider knows "gpt-4", not a local name).
+	// Only the already-buffered request body is rewritten; the response
+	// stream is untouched. Management paths (pull, delete, copy, ...) are
+	// never aliased: those name a model on disk, not a request to serve one.
+	clientModelName := modelName
+	aliased := false
+	if !isBlockedManagementPath(r.URL.Path) {
+		if target, ok := h.router.ResolveModelAlias(modelName); ok {
+			modelName = target
+			aliased = true
+			w.Header().Set("X-Marbor-Model-Alias", clientModelName+" -> "+target)
+			body = rewriteModelField(body, target)
+			r.Body = io.NopCloser(bytes.NewReader(body))
+		}
+	}
+
 	// Enforce per-key model allow-list. An empty list means no restriction.
 	// Captured in allowedModels (rather than re-derived) so the local
 	// degradation chain below can re-apply the same restriction to any
 	// substitute model - a key's allow-list must survive a degradation swap.
 	allowedModels := auth.AllowedModelsFromContext(r.Context())
 	if len(allowedModels) > 0 {
-		permitted := false
-		for _, m := range allowedModels {
-			if m == modelName {
-				permitted = true
-				break
-			}
-		}
+		// For an aliased request, listing either the alias name the client
+		// sent or the real model it resolves to is enough.
+		permitted := slices.Contains(allowedModels, modelName) ||
+			(aliased && slices.Contains(allowedModels, clientModelName))
 		if !permitted {
 			// The request is rejected by policy before reaching any node, so
 			// refund the rate-limit token and quota count auth consumed - a
@@ -306,8 +325,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if h.auth != nil {
 				h.auth.Refund(keyName)
 			}
-			writeAPIError(w, http.StatusForbidden, fmt.Sprintf("model %q not allowed for this api key", modelName), "invalid_request_error", "model_not_allowed")
-			metrics.RequestsTotal(keyName, modelName, "none", "403")
+			// Name only what the client sent - never reveal an alias's target
+			// to a key that is not allowed to use it.
+			writeAPIError(w, http.StatusForbidden, fmt.Sprintf("model %q not allowed for this api key", clientModelName), "invalid_request_error", "model_not_allowed")
+			metrics.RequestsTotal(keyName, clientModelName, "none", "403")
 			return
 		}
 	}
@@ -462,7 +483,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			}
-			h.proxyToCloud(w, r, body, modelName, keyName, requestID, start, clouds, 0)
+			cloudBody, cloudModel := cloudRequestFor(body, modelName, clientModelName, aliased)
+			h.proxyToCloud(w, r, cloudBody, cloudModel, keyName, requestID, start, clouds, 0)
 			return
 		}
 		// No local node and no cloud. If this was an Ollama-native path, return
@@ -657,7 +679,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				// which writes the response. The outer loop checks this after
 				// serveAndRecoverAbort returns.
 				retryErr = errCloudHandled
-				h.proxyToCloud(rw, origReq, body, modelName, keyName, requestID, start, clouds, 0)
+				cloudBody, cloudModel := cloudRequestFor(body, modelName, clientModelName, aliased)
+				h.proxyToCloud(rw, origReq, cloudBody, cloudModel, keyName, requestID, start, clouds, 0)
 				return
 			}
 			// Log detail server-side; return a generic message so upstream
@@ -772,6 +795,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if modelName != requestedModelName {
 			loggedModel = requestedModelName + " -> " + modelName
 		}
+		if aliased {
+			loggedModel = clientModelName + " -> " + loggedModel
+		}
 		h.admin.LogRequest(requestID, keyName, clientIP, loggedModel, node.Name, status, rec.StatusCode(), latencyMs, tokens, rec.promptEvalDurationMs(), decision)
 		if tokens >= 0 {
 			h.admin.TrackLocalRequestModel(keyName, modelName, tokens, rec.evalDurationMs())
@@ -791,11 +817,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if decision != nil {
 			routingReason = decision.Reason
 		}
+		auditModel := requestedModelName
+		if aliased {
+			auditModel = clientModelName + " -> " + requestedModelName
+		}
 		h.audit.Log(audit.Entry{
 			Time:          time.Now(),
 			RequestID:     requestID,
 			KeyName:       keyName,
-			Model:         requestedModelName,
+			Model:         auditModel,
 			Node:          node.Name,
 			Status:        auditStatus,
 			LatencyMs:     latencyMs,
@@ -803,16 +833,33 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			RoutingReason: routingReason,
 		})
 	}
+	accessModel := modelName
+	if aliased {
+		accessModel = clientModelName + " -> " + modelName
+	}
 	h.access.Log(AccessLogEntry{
 		TimeUnixMs: time.Now().UnixMilli(),
 		RequestID:  requestID,
 		KeyName:    keyName,
-		Model:      modelName,
+		Model:      accessModel,
 		Node:       node.Name,
 		Status:     rec.statusCode,
 		LatencyMs:  int64(time.Since(start).Milliseconds()),
 		Cloud:      false,
 	})
+}
+
+// cloudRequestFor returns the body and model name a cloud fallback should
+// receive. For an aliased request the cloud provider gets the name the
+// client originally sent (a cloud provider knows "gpt-4", not the local
+// model it was aliased to), even if a fallback or degradation swap changed
+// the local model since. A provider's default_model still overrides this
+// inside proxyToCloud. Non-aliased requests pass through unchanged.
+func cloudRequestFor(body []byte, modelName, clientModelName string, aliased bool) ([]byte, string) {
+	if !aliased {
+		return body, modelName
+	}
+	return rewriteModelField(body, clientModelName), clientModelName
 }
 
 // applyLocalDegradation records a local degradation substitution (the
@@ -918,14 +965,6 @@ func isUnsupportedOpenAIPath(path string) bool {
 	return path == "/v1/moderations"
 }
 
-// modelStatus is the status field added to model entries (ignored by OpenAI clients).
-type modelStatus = string
-
-const (
-	modelStatusLoaded    modelStatus = "loaded"
-	modelStatusAvailable modelStatus = "available"
-)
-
 // serveModels handles GET /v1/models by returning an OpenAI-schema list of
 // ALL models available across healthy nodes: both models currently in VRAM
 // (from /api/ps polling) and models downloaded but not warm (from /api/tags).
@@ -940,29 +979,19 @@ func (h *Handler) serveModels(w http.ResponseWriter) {
 	}
 
 	// seen tracks best status per model name: loaded beats available.
-	seen := make(map[string]string) // name -> status
-	for _, n := range h.router.Nodes() {
-		n.RLock()
-		healthy := n.Healthy
-		loaded := n.LoadedModels
-		nodeURL := n.URL
-		n.RUnlock()
-		if !healthy {
-			continue
-		}
-		// Warm models (in VRAM).
-		for _, m := range loaded {
-			seen[m.Name] = modelStatusLoaded
-		}
-		// Downloaded models from /api/tags (catalog). FetchModelTags uses a
-		// 30-second cache so this is cheap on repeated calls.
-		tags, err := h.router.FetchModelTags(nodeURL)
-		if err == nil {
-			for _, t := range tags {
-				if _, exists := seen[t.Name]; !exists {
-					seen[t.Name] = modelStatusAvailable
-				}
-			}
+	// FetchModelTags (used underneath) keeps a 30-second cache, so this is
+	// cheap on repeated calls.
+	seen := h.router.FleetModelStatuses() // name -> status
+	// Model aliases are listed so OpenAI-style clients (which fill their model
+	// pickers from this endpoint) can see the names they are configured for.
+	// An alias row carries its target's real status and is listed only while
+	// the target is present. An alias that shadows a real model name replaces
+	// that model's row, since every request for the name reaches the target.
+	for alias, target := range h.router.ModelAliases() {
+		if status, ok := seen[target]; ok {
+			seen[alias] = status
+		} else {
+			delete(seen, alias)
 		}
 	}
 
@@ -1007,36 +1036,14 @@ func (h *Handler) serveModel(w http.ResponseWriter, modelID string) {
 		Status  string `json:"status"`
 	}
 
-	status := ""
-	for _, n := range h.router.Nodes() {
-		n.RLock()
-		healthy := n.Healthy
-		loaded := n.LoadedModels
-		nodeURL := n.URL
-		n.RUnlock()
-		if !healthy {
-			continue
-		}
-		for _, m := range loaded {
-			if m.Name == modelID {
-				status = modelStatusLoaded
-				break
-			}
-		}
-		if status == modelStatusLoaded {
-			break
-		}
-		// Check catalog (downloaded but not warm).
-		tags, err := h.router.FetchModelTags(nodeURL)
-		if err == nil {
-			for _, t := range tags {
-				if t.Name == modelID {
-					status = modelStatusAvailable
-					break
-				}
-			}
-		}
+	// An alias is checked first: requests for an aliased name always reach
+	// its target, so the alias reports the target's status and is not found
+	// while the target is absent, even if a real model of that name exists.
+	lookup := modelID
+	if target, ok := h.router.ResolveModelAlias(modelID); ok {
+		lookup = target
 	}
+	status := h.router.FleetModelStatuses()[lookup]
 
 	if status == "" {
 		writeAPIError(w, http.StatusNotFound,

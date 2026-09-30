@@ -64,6 +64,23 @@ context window in tokens for VRAM sizing (0 = server default 8192)
 .B pull\-progress <node> <model>
 show a point\-in-time snapshot of an active pull
 .TP
+.B alias
+map client\-facing model names (e.g. gpt-4) to real models on the fleet
+.TP
+.B alias list
+list model aliases with their target's live status
+.TP
+.B alias set <alias> <target>
+create or replace an alias
+.TP
+.B alias remove <alias>
+remove an alias (clients still using its name start failing)
+.RS
+.TP
+.B \-\-yes
+confirm removal without prompting
+.RE
+.TP
 .B cancel\-pull <node> <model>
 cancel an in\-flight pull
 .SH FLAGS

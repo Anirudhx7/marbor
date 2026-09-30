@@ -161,6 +161,18 @@ Session affinity is implemented and gated by the `routing.session_affinity` flag
 
 ---
 
+## Model Aliases
+Model aliases (`GET/PUT/DELETE /admin/model-aliases`, `marbor models alias ...`, the Routing page) rewrite the request's `model` field before routing. Known limits:
+- **Responses report the real model.** A locally served response still carries the target's name (e.g. `llama3.2:8b`) in its `model` field; marbor does not rewrite response bodies, so streaming is never buffered. The `X-Marbor-Model-Alias` response header shows the mapping. An Ollama-native (`/api/*`) request that falls back to a cloud provider reports the requested name, since that response is already translated.
+- **`/api/tags` does not list aliases.** It is passed through from a single node unchanged. `GET /v1/models` and `GET /v1/models/{id}` do list an alias while its target is present on the fleet, with the target's status.
+- **One hop only.** A target can never itself be an alias; there are no alias chains, wildcards, or per-key aliases.
+- **An alias always wins over a real model of the same name.** Declaring one is allowed (for example to retire a model without touching clients); the Admin API, CLI, and dashboard flag it as shadowing a fleet model.
+- **Allow-lists accept either name.** A key allowed `gpt-4` or `llama3.2:8b` may send an aliased `gpt-4` request. Retargeting an alias therefore changes which weights every key that lists the alias name can reach. A key that lists only the alias name never receives a local degradation substitute, because the substitute's name is not on its list.
+- **Cloud fallback sends the name the client sent** (`gpt-4`), not the local target, unless the provider has a `default_model`, which still overrides.
+- **Model-management endpoints are never aliased.** `/api/pull`, `/api/delete`, `/api/copy` and the other management paths always act on the literal name.
+
+---
+
 ## Out of Scope
 The following are deliberate non-goals, not gaps to be filled:
 - **TLS termination.** marbor does not handle TLS. Put nginx or a load balancer in front for HTTPS. This keeps the binary simple and puts TLS configuration where operators already manage it.

@@ -9,6 +9,7 @@ Actions:
   search                        search Hugging Face models
   repo <owner/name>             show Hugging Face repo detail with per-node fit
   pull-progress <node> <model>  show a point-in-time snapshot of an active pull
+  alias                         map client-facing model names (e.g. gpt-4) to real models on the fleet
   cancel-pull <node> <model>    cancel an in-flight pull
 
 Flags:

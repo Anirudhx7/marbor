@@ -2713,3 +2713,74 @@ func readErrorMessage(r io.Reader) string {
 	}
 	return trimmed
 }
+
+// ModelAlias mirrors one row of GET /admin/model-aliases.
+type ModelAlias struct {
+	Alias            string `json:"alias"`
+	Target           string `json:"target"`
+	TargetAvailable  bool   `json:"target_available"`
+	TargetStatus     string `json:"target_status,omitempty"`
+	ShadowsModel     bool   `json:"shadows_model"`
+	InventoryChecked bool   `json:"inventory_checked"`
+}
+
+// ListModelAliases calls GET /admin/model-aliases.
+func (c *Client) ListModelAliases() ([]ModelAlias, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/model-aliases", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out []ModelAlias
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not decode model aliases response: %v", err)
+	}
+	return out, nil
+}
+
+// SetModelAlias calls PUT /admin/model-aliases with {alias, target}. A 400
+// (invalid or chained alias) is reported as a user error with the server's
+// own message.
+func (c *Client) SetModelAlias(alias, target string) (ModelAlias, error) {
+	if c.Token == "" {
+		return ModelAlias{}, userErrorf("authentication required: run 'marbor login', or pass --username/--password (or set MARBOR_USERNAME+MARBOR_PASSWORD)")
+	}
+	payload, err := json.Marshal(map[string]string{"alias": alias, "target": target})
+	if err != nil {
+		return ModelAlias{}, userErrorf("building request body: %v", err)
+	}
+	req, err := http.NewRequest(http.MethodPut, c.BaseURL+"/admin/model-aliases", bytes.NewReader(payload))
+	if err != nil {
+		return ModelAlias{}, userErrorf("building request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return ModelAlias{}, serverErrorf("could not reach %s: %v", c.BaseURL, err)
+	}
+	defer resp.Body.Close()
+	switch {
+	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
+		return ModelAlias{}, authErrorf("%s%s", readErrorMessage(resp.Body), c.savedSessionHint())
+	case resp.StatusCode >= 500:
+		return ModelAlias{}, serverErrorf("unexpected response (%d): %s", resp.StatusCode, readErrorMessage(resp.Body))
+	case resp.StatusCode >= 400:
+		return ModelAlias{}, userErrorf("%s", readErrorMessage(resp.Body))
+	}
+	var out ModelAlias
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return ModelAlias{}, serverErrorf("could not decode model alias response: %v", err)
+	}
+	return out, nil
+}
+
+// DeleteModelAlias calls DELETE /admin/model-aliases?alias=X.
+func (c *Client) DeleteModelAlias(alias string) error {
+	resp, err := c.doRequestBody(http.MethodDelete, "/admin/model-aliases?alias="+url.QueryEscape(alias), nil)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}

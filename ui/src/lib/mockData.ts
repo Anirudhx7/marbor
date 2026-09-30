@@ -1,4 +1,4 @@
-import { GPUNode, APIKey, Settings, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelCatalogResponse, ModelConfig, BenchmarkRun, SpillCounterRow, RoutingDecision } from '../types';
+import { GPUNode, APIKey, Settings, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelCatalogResponse, ModelConfig, BenchmarkRun, SpillCounterRow, RoutingDecision, ModelAlias } from '../types';
 import type { SystemInfo } from './api';
 
 const GB = 1024;
@@ -1657,3 +1657,57 @@ export const mockActivityEntries = [
 ];
 
 
+
+// --- Model aliases (demo) ---
+// Static demo aliases, resolved against mockModelCatalog so the availability
+// and shadow badges follow the same rules as the real API: a target counts as
+// available only if the demo catalog lists it, and "shadows" means the alias
+// name is itself a model in that catalog. Mutable per session, resets on
+// reload, same lifecycle as the model-config demo store above.
+const mockModelAliasSeed: Array<[string, string]> = [
+  ['gpt-4', 'llama3.3:8b'],
+  ['gpt-4o-mini', 'qwen2.5-coder:14b'],
+  ['mistral:7b', 'llama3.3:8b'],
+];
+
+let demoModelAliases: Map<string, string> | null = null;
+function demoModelAliasStore(): Map<string, string> {
+  if (!demoModelAliases) demoModelAliases = new Map(mockModelAliasSeed);
+  return demoModelAliases;
+}
+
+function mockAliasRow(alias: string, target: string): ModelAlias {
+  const byName = new Map(mockModelCatalog.models.map(m => [m.name, m]));
+  const t = byName.get(target);
+  return {
+    alias,
+    target,
+    target_available: !!t,
+    target_status: t ? (t.warm_count > 0 ? 'loaded' : 'available') : undefined,
+    shadows_model: byName.has(alias),
+    inventory_checked: true,
+  };
+}
+
+export function getMockModelAliases(): ModelAlias[] {
+  return [...demoModelAliasStore().entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([alias, target]) => mockAliasRow(alias, target));
+}
+
+// Mirrors the server's one-hop rule so the demo rejects the same inputs.
+export function setMockModelAlias(alias: string, target: string): ModelAlias {
+  const store = demoModelAliasStore();
+  if (!alias || !target) throw new Error('alias and target are required');
+  if (alias === target) throw new Error(`"${alias}" cannot point to itself`);
+  if (store.has(target)) throw new Error(`"${alias}" points to "${target}", which is itself an alias (aliases resolve one hop only)`);
+  for (const [a, t] of store) {
+    if (t === alias && a !== alias) throw new Error(`"${a}" points to "${alias}", which would become an alias (aliases resolve one hop only)`);
+  }
+  store.set(alias, target);
+  return mockAliasRow(alias, target);
+}
+
+export function deleteMockModelAlias(alias: string): void {
+  demoModelAliasStore().delete(alias);
+}

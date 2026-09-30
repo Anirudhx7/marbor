@@ -266,6 +266,40 @@ show a point-in-time snapshot of an active pull
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
+#### `alias`
+
+map client-facing model names (e.g. gpt-4) to real models on the fleet
+
+An alias rewrites a request for its name to the real target model before
+routing, so existing client configs keep working. Aliases resolve one hop
+only and take effect immediately, with no restart.
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).
+
+##### `list`
+
+list model aliases with their target's live status
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+##### `set <alias> <target>`
+
+create or replace an alias
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+##### `remove <alias>`
+
+remove an alias (clients still using its name start failing)
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--yes` - confirm removal without prompting
+
 #### `cancel-pull <node> <model>`
 
 cancel an in-flight pull
