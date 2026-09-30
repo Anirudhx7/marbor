@@ -335,6 +335,9 @@ func TestAlias_AllowList(t *testing.T) {
 					if !strings.Contains(body, aliasName) || strings.Contains(body, aliasTarget) {
 						t.Fatalf("403 body = %s, want it to name the requested alias and never the target", body)
 					}
+					if hv := rec.Header().Get("X-Marbor-Model-Alias"); hv != "" {
+						t.Fatalf("403 carries X-Marbor-Model-Alias = %q, want no header so the target is not revealed", hv)
+					}
 				}
 			}
 			if tc.want == http.StatusOK && got.last() != aliasTarget {

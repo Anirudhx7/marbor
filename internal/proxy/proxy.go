@@ -302,7 +302,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if target, ok := h.router.ResolveModelAlias(modelName); ok {
 			modelName = target
 			aliased = true
-			w.Header().Set("X-Marbor-Model-Alias", clientModelName+" -> "+target)
 			body = rewriteModelField(body, target)
 			r.Body = io.NopCloser(bytes.NewReader(body))
 		}
@@ -331,6 +330,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			metrics.RequestsTotal(keyName, clientModelName, "none", "403")
 			return
 		}
+	}
+	// The resolution header is set only once the key is known to be allowed,
+	// so a rejected request never learns what the alias points to.
+	if aliased {
+		w.Header().Set("X-Marbor-Model-Alias", clientModelName+" -> "+modelName)
 	}
 
 	// VRAM-aware quantization fallback. Opt-in via routing.fallback_chains -
@@ -483,6 +487,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			}
+			// The cloud provider is sent the requested name, not the alias
+			// target, so the local resolution header no longer applies.
+			w.Header().Del("X-Marbor-Model-Alias")
 			cloudBody, cloudModel := cloudRequestFor(body, modelName, clientModelName, aliased)
 			h.proxyToCloud(w, r, cloudBody, cloudModel, keyName, requestID, start, clouds, 0)
 			return
@@ -679,6 +686,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				// which writes the response. The outer loop checks this after
 				// serveAndRecoverAbort returns.
 				retryErr = errCloudHandled
+				rw.Header().Del("X-Marbor-Model-Alias")
 				cloudBody, cloudModel := cloudRequestFor(body, modelName, clientModelName, aliased)
 				h.proxyToCloud(rw, origReq, cloudBody, cloudModel, keyName, requestID, start, clouds, 0)
 				return
