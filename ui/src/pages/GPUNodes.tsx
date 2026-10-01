@@ -12,6 +12,7 @@ import { EmptyState } from '../components/EmptyState';
 import { Modal } from '../components/Modal';
 import { ModelConfigModal } from '../components/ModelConfigModal';
 import { CustomSelect } from '../components/Select';
+import { RuntimeBadge } from '../components/RuntimeBadge';
 import { mockGPUNodes, mockRuntimeLogLines } from '../lib/mockData';
 import { readLastNodeCount, writeLastNodeCount } from '../lib/nodeCount';
 import { VRAM_PRESSURE_THRESHOLD } from './Dashboard';
@@ -156,31 +157,6 @@ function ModelFitTable({ nodeFit }: { nodeFit: NodeFit }) {
         ))}
       </div>
     </>
-  );
-}
-
-function RuntimeBadge({ runtime }: { runtime: string }) {
-  const runtimeStyles: Record<string, string> = {
-    ollama:   'bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30',
-    vllm:     'bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/30',
-    tgi:      'bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30',
-    llamacpp: 'bg-green-500/20 text-green-600 dark:text-green-400 border border-green-500/30',
-    mlx:      'bg-pink-500/20 text-pink-600 dark:text-pink-400 border border-pink-500/30',
-  };
-  const runtimeLabels: Record<string, string> = {
-    ollama:   'Ollama',
-    vllm:     'vLLM',
-    tgi:      'TGI',
-    llamacpp: 'llama.cpp',
-    mlx:      'MLX (Apple Silicon)',
-  };
-  const key = (runtime || '').toLowerCase();
-  const style = runtimeStyles[key] ?? 'bg-secondary text-muted-foreground border border-border';
-  const label = runtimeLabels[key] ?? (runtime || 'unknown');
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium ${style}`}>
-      {label}
-    </span>
   );
 }
 
@@ -340,6 +316,18 @@ function NodeCard({ node, pinnedModels, replicaWorkers, onRemove, onDrain, onUnd
         className="text-xs font-medium px-1.5 py-0.5 rounded bg-destructive/10 text-destructive dark:text-red-400 border border-destructive/30 whitespace-nowrap"
       >
         Warmup failed ({warmupFailed.length})
+      </span>
+    ) });
+  }
+  const warmupWarns = node.warmupWarnings ?? {};
+  const warmupWarned = Object.keys(warmupWarns).filter(m => !(m in warmupErrs));
+  if (warmupWarned.length > 0) {
+    statusPills.push({ sev: 1, key: 'warmup-warn', el: (
+      <span
+        title={warmupWarned.map((model) => `${model}: ${warmupWarns[model]}`).join('\n')}
+        className="text-xs font-medium px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30 whitespace-nowrap"
+      >
+        Keep-warm notice ({warmupWarned.length})
       </span>
     ) });
   }

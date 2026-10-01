@@ -623,6 +623,7 @@ func (r *Router) EvictForHeadroom(ctx context.Context, nodeName, forModel string
 	}
 	target.mu.RLock()
 	totalBytes := target.VRAMTotalMB * 1024 * 1024
+	targetURL := target.URL
 	var loaded []lm
 	var usedBytes int64
 	for _, m := range target.LoadedModels {
@@ -644,10 +645,27 @@ func (r *Router) EvictForHeadroom(ctx context.Context, nodeName, forModel string
 
 	forModelRank, forModelRanked := r.warmRank(nodeName, forModel)
 
+	// Models a live sticky session is still using on this node get a soft,
+	// last-resort protection: they are only chosen as a victim when no
+	// unprotected candidate remains. Unlike pinned models this is never
+	// absolute - evicting one costs that session its cached context, not
+	// correctness.
+	sessionModels := r.affinityProtectedModels(targetURL)
+	sessionProtected := func(name string) bool {
+		for _, m := range sessionModels {
+			if ModelNamesEquivalent(m, name) {
+				return true
+			}
+		}
+		return false
+	}
+
 	evicted := 0
 	for free < neededBytes {
 		coldIdx := -1
 		var coldTime time.Time
+		protIdx := -1
+		var protTime time.Time
 		sawInFlightOnly := false
 		for i, m := range loaded {
 			if r.isPinned(nodeName, m.name) {
@@ -668,9 +686,19 @@ func (r *Router) EvictForHeadroom(ctx context.Context, nodeName, forModel string
 				continue
 			}
 			t := r.lastUsedAt(nodeName, m.name)
+			if sessionProtected(m.name) {
+				if protIdx == -1 || t.Before(protTime) {
+					protIdx, protTime = i, t
+				}
+				continue
+			}
 			if coldIdx == -1 || t.Before(coldTime) {
 				coldIdx, coldTime = i, t
 			}
+		}
+		if coldIdx == -1 && protIdx != -1 {
+			log.Printf("headroom: node %s: only models with a live sticky session remain evictable for %q; evicting %q as a last resort", nodeName, forModel, loaded[protIdx].name)
+			coldIdx = protIdx
 		}
 		if coldIdx == -1 {
 			if sawInFlightOnly {
@@ -1026,13 +1054,12 @@ func (r *Router) ensureHeadroom(ctx context.Context, n *NodeState, model string)
 	nodeName := n.Name
 	totalBytes := n.VRAMTotalMB * 1024 * 1024
 	var usedBytes int64
-	resident := false
 	for _, m := range n.LoadedModels {
 		usedBytes += m.SizeVRAM
-		if m.Name == model {
-			resident = true
-		}
 	}
+	// Match the way keep-warm names models: a bare name is its ":latest" tag,
+	// so "llama3" is already resident when "llama3:latest" is loaded.
+	_, resident := findLoadedModel(n.LoadedModels, model)
 	n.mu.RUnlock()
 	if resident {
 		// The poller has confirmed this model is loaded; drop any leftover

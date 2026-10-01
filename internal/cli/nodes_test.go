@@ -14,6 +14,57 @@ const testValidFingerprint = "SHA256:" + "ab" + "cd" + "ef" + "01" + "23" + "45"
 	"ab" + "cd" + "ef" + "01" + "23" + "45" + "67" + "89" +
 	"ab" + "cd" + "ef" + "01" + "23" + "45" + "67" + "89"
 
+// TestRun_NodesShowsKeepWarmSupportAndWarnings: the node table reports
+// whether keep-warm can act on each node's runtime ("-" when an older server
+// doesn't say), and lists any keep-warm warnings under it.
+func TestRun_NodesShowsKeepWarmSupportAndWarnings(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`[
+			{"name":"gpu-0","runtime":"ollama","health":"healthy","warmupSupported":true,
+			 "warmupWarnings":{"llama3":"digest drift: resident copy differs"}},
+			{"name":"gpu-1","runtime":"vllm","health":"healthy","warmupSupported":false},
+			{"name":"gpu-2","runtime":"ollama","health":"healthy"}
+		]`))
+	}))
+	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
+
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"nodes", "--server", srv.URL}, &stdout, &stderr); code != ExitOK {
+		t.Fatalf("exit %d (stderr: %s)", code, stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "KEEP-WARM") {
+		t.Errorf("missing KEEP-WARM column:\n%s", out)
+	}
+	for _, line := range strings.Split(out, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 || strings.HasPrefix(line, " ") {
+			continue // blank, or an indented warning line rather than a table row
+		}
+		last := fields[len(fields)-1]
+		switch fields[0] {
+		case "gpu-0":
+			if last != "yes" {
+				t.Errorf("gpu-0 keep-warm = %q, want yes", last)
+			}
+		case "gpu-1":
+			if last != "no" {
+				t.Errorf("gpu-1 keep-warm = %q, want no", last)
+			}
+		case "gpu-2":
+			if last != "-" {
+				t.Errorf("gpu-2 keep-warm = %q, want - (field not sent)", last)
+			}
+		}
+	}
+	if !strings.Contains(out, "gpu-0 / llama3: digest drift") {
+		t.Errorf("missing keep-warm warning line:\n%s", out)
+	}
+}
+
 func TestRun_NodesConfirmTLS(t *testing.T) {
 	var gotMethod, gotPath, gotBody string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -111,7 +112,7 @@ func runNodes(flags *globalFlags, stdout, stderr io.Writer) int {
 	}
 
 	tw := newTabWriter(stdout)
-	fmt.Fprintln(tw, "NAME\tHOST:PORT\tHEALTH\tRUNTIME\tGPU\tVRAM USED/TOTAL\tMODELS WARM\tDRAINING\tREPLICA ROLE\tREPLICA HEAD")
+	fmt.Fprintln(tw, "NAME\tHOST:PORT\tHEALTH\tRUNTIME\tGPU\tVRAM USED/TOTAL\tMODELS WARM\tDRAINING\tREPLICA ROLE\tREPLICA HEAD\tKEEP-WARM")
 	for _, n := range nodes {
 		role := n.SchedulingRole
 		if role == "" {
@@ -121,16 +122,44 @@ func runNodes(flags *globalFlags, stdout, stderr io.Writer) int {
 		if replicaHead == "" {
 			replicaHead = "-"
 		}
-		fmt.Fprintf(tw, "%s\t%s:%d\t%s\t%s\t%s\t%s / %s\t%d\t%s\t%s\t%s\n",
+		keepWarm := "-"
+		if n.WarmupSupported != nil {
+			keepWarm = yesNo(*n.WarmupSupported)
+		}
+		fmt.Fprintf(tw, "%s\t%s:%d\t%s\t%s\t%s\t%s / %s\t%d\t%s\t%s\t%s\t%s\n",
 			n.Name, n.Host, n.Port, n.Health, n.Runtime, n.GPUModel,
 			fmtMB(n.VRAMUsedMB), fmtMB(n.VRAMTotalMB), len(n.LoadedModels), yesNo(n.Draining),
-			role, replicaHead)
+			role, replicaHead, keepWarm)
 	}
 	if err := tw.Flush(); err != nil {
 		fmt.Fprintln(stderr, err)
 		return ExitServerError
 	}
+	printWarmupWarnings(stdout, nodes)
 	return ExitOK
+}
+
+// printWarmupWarnings lists every node's keep-warm warnings under the table,
+// sorted by node then model so the output is stable.
+func printWarmupWarnings(w io.Writer, nodes []NodeResp) {
+	var lines []string
+	for _, n := range nodes {
+		models := make([]string, 0, len(n.WarmupWarnings))
+		for m := range n.WarmupWarnings {
+			models = append(models, m)
+		}
+		sort.Strings(models)
+		for _, m := range models {
+			lines = append(lines, fmt.Sprintf("  %s / %s: %s", n.Name, m, n.WarmupWarnings[m]))
+		}
+	}
+	if len(lines) == 0 {
+		return
+	}
+	fmt.Fprintln(w, "\nkeep-warm warnings:")
+	for _, l := range lines {
+		fmt.Fprintln(w, l)
+	}
 }
 
 // runNodesAdd implements `marbor nodes add <name> <url> [--runtime x]
