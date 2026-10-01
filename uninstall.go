@@ -168,27 +168,19 @@ func readRunningPidfile(path string) (pid int, ok bool) {
 	if err != nil || pid <= 0 {
 		return 0, false
 	}
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return 0, false
-	}
-	if err := proc.Signal(syscall.Signal(0)); err != nil {
+	if !pidAlive(pid) {
 		return 0, false
 	}
 	return pid, true
 }
 
-// waitForProcessExit polls pid's liveness (via a signal-0 probe, same
-// technique readRunningPidfile uses) until it's gone or deadline elapses.
+// waitForProcessExit polls pid's liveness (via pidAlive, the same probe
+// readRunningPidfile uses) until it's gone or deadline elapses.
 // Reports whether the process was confirmed dead within the deadline.
 func waitForProcessExit(pid int, deadline time.Duration) bool {
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return true
-	}
 	const pollInterval = 100 * time.Millisecond
 	for elapsed := time.Duration(0); elapsed < deadline; elapsed += pollInterval {
-		if err := proc.Signal(syscall.Signal(0)); err != nil {
+		if !pidAlive(pid) {
 			return true
 		}
 		time.Sleep(pollInterval)
