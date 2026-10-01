@@ -821,6 +821,34 @@ Requires authentication - see the root README's CLI auth section, or run `marbor
 
 requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).
 
+### `fit [owner/name]`
+
+show which models fit each node and which quantization to pull
+
+With no argument, lists every built-in catalog model for each node: whether it fits the node's total VRAM and free disk, and
+the quantization to pull (flagged "tight" when it uses most of the VRAM). With an owner/name Hugging Face repo, shows the
+same for that repo; this queries the server once per node. Sizes are estimates; "-" means unknown. Read-only: nothing is
+pulled or changed.
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--node string` - only this node (default: every node)
+- `--ctx int` - context window in tokens for VRAM sizing (only with owner/name; default 8192)
+
+Examples:
+
+```bash
+marbor fit
+marbor fit --node gpu-1
+marbor fit unsloth/Qwen3-8B-GGUF --node gpu-1 --ctx 16384
+```
+
+requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).
+
+See also: marbor nodes fit (downloaded models), marbor catalog (raw catalog).
+
 ### `backup`
 
 manage marbor.db backups

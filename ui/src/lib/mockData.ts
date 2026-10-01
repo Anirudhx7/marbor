@@ -1,4 +1,4 @@
-import { GPUNode, APIKey, Settings, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelCatalogResponse, ModelConfig, BenchmarkRun, SpillCounterRow, RoutingDecision, ModelAlias } from '../types';
+import { GPUNode, APIKey, Settings, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelCatalogResponse, ModelConfig, BenchmarkRun, SpillCounterRow, RoutingDecision, ModelAlias, QuantRecommendation } from '../types';
 import type { SystemInfo } from './api';
 
 const GB = 1024;
@@ -1075,7 +1075,7 @@ export const mockSystemInfo: SystemInfo = {
 // Mock ModelCatalogResponse for ModelAdvisor demo mode
 // Demo node: NVIDIA RTX 4090 24GB, 10240MB free (14336MB in use - llama3.3:8b + deepseek-r1:7b loaded)
 // Fit logic: green = fits free VRAM (<10240MB), yellow = fits total VRAM (needs eviction, <24576MB), red = too large
-export const mockModelCatalogResponse: ModelCatalogResponse = {
+const mockModelCatalogBase: ModelCatalogResponse = {
   catalog: [
     {
       name: 'deepseek-r1:7b',
@@ -1184,6 +1184,31 @@ export const mockModelCatalogResponse: ModelCatalogResponse = {
         { tag: 'gemma2:9b-fp16', quantization: 'F16', vram_est_mb: 18000, size_mb: 17500, recommended: false },
       ],
     },
+    {
+      name: 'deepseek-r1:32b',
+      display_name: 'DeepSeek R1 32B',
+      description: 'Large R1 distill. Strong math and reasoning on a single big GPU.',
+      param_count: '32B',
+      categories: ['reasoning'],
+      popular: false,
+      rank: 9,
+      variants: [
+        { tag: 'deepseek-r1:32b', quantization: 'Q4_K_M', vram_est_mb: 21504, size_mb: 19800, recommended: true },
+      ],
+    },
+    {
+      name: 'llama3.3:70b',
+      display_name: 'Llama 3.3 70B',
+      description: 'Latest 70B Llama. Needs datacenter-class VRAM.',
+      param_count: '70B',
+      categories: ['chat', 'reasoning'],
+      popular: false,
+      rank: 10,
+      variants: [
+        { tag: 'llama3.3:70b', quantization: 'Q4_K_M', vram_est_mb: 40960, size_mb: 42000, recommended: true },
+        { tag: 'llama3.3:70b-q2_k', quantization: 'Q2_K', vram_est_mb: 27500, size_mb: 26000, recommended: false },
+      ],
+    },
   ],
   nodes: [
     {
@@ -1263,6 +1288,67 @@ export const mockModelCatalogResponse: ModelCatalogResponse = {
       models: [],
     },
   ],
+};
+
+interface PickCandidate {
+  tag: string; quantization: string; vram_est_mb: number; size_mb: number;
+  fit: string; disk_fit: string; recommended?: boolean;
+}
+
+// pickQuant mirrors the server's pick rule so demo data never stores a pick:
+// catalog-recommended variant if it fits comfortably, else the largest that
+// fits comfortably, else the recommended / largest tight one, else a reason.
+export function pickQuant(cands: PickCandidate[]): QuantRecommendation {
+  const usable = (c: PickCandidate, fit: string) =>
+    c.fit === fit && c.disk_fit !== 'insufficient' && c.vram_est_mb > 0;
+  const none = (reason: QuantRecommendation['reason'], closest_tag?: string): QuantRecommendation =>
+    ({ picked: false, tag: '', quantization: '', vram_est_mb: 0, size_mb: 0, fit: 'unknown', tight: false, reason, closest_tag });
+  if (cands.length === 0) return none('no_variants');
+  for (const fit of ['green', 'yellow'] as const) {
+    const pool = cands.filter(c => usable(c, fit));
+    const best = pool.find(c => c.recommended) ?? pool.reduce<PickCandidate | undefined>((a, c) => (!a || c.vram_est_mb > a.vram_est_mb ? c : a), undefined);
+    if (best) {
+      return { picked: true, tag: best.tag, quantization: best.quantization, vram_est_mb: best.vram_est_mb, size_mb: best.size_mb, fit, tight: fit === 'yellow' };
+    }
+  }
+  if (cands.every(c => c.fit === 'incompatible')) return none('incompatible_runtime');
+  if (cands.some(c => (c.fit === 'green' || c.fit === 'yellow') && c.vram_est_mb > 0) &&
+      cands.filter(c => (c.fit === 'green' || c.fit === 'yellow') && c.vram_est_mb > 0).every(c => c.disk_fit === 'insufficient')) {
+    return none('disk_insufficient');
+  }
+  const red = cands.filter(c => c.fit === 'red' && c.vram_est_mb > 0);
+  if (cands.some(c => c.fit === 'red')) {
+    return none('too_large', red.reduce<PickCandidate | undefined>((a, c) => (!a || c.vram_est_mb < a.vram_est_mb ? c : a), undefined)?.tag);
+  }
+  return none('vram_unknown');
+}
+
+// Demo nodes get per-model fit derived from their own VRAM/disk/runtime, the
+// same way the server classifies it (total VRAM, 85% comfortable margin), so
+// the demo list always agrees with the pick rule above.
+const MOCK_DOWNLOADED: Record<string, string[]> = { 'gpu-node-01': ['llama3.3:8b', 'deepseek-r1:7b'] };
+
+function mockNodeModels(base: ModelCatalogResponse, node: ModelCatalogResponse['nodes'][number]) {
+  return base.catalog.map(cm => {
+    const variants = cm.variants.map(v => {
+      const total = node.vram_total_bytes / (1024 * 1024);
+      const fit = node.runtime && node.runtime !== 'ollama' ? 'incompatible'
+        : v.vram_est_mb <= total * 0.85 ? 'green' : v.vram_est_mb <= total ? 'yellow' : 'red';
+      const disk_fit = !node.disk_known ? 'unknown' : v.size_mb / 1024 > node.disk_free_gb ? 'insufficient' : 'ok';
+      return { ...v, fit, disk_fit } as typeof v & { fit: any; disk_fit: any };
+    });
+    return {
+      ...cm,
+      variants,
+      downloaded: (MOCK_DOWNLOADED[node.name] ?? []).includes(cm.name),
+      recommendation: pickQuant(variants),
+    };
+  });
+}
+
+export const mockModelCatalogResponse: ModelCatalogResponse = {
+  ...mockModelCatalogBase,
+  nodes: mockModelCatalogBase.nodes.map(n => ({ ...n, models: mockNodeModels(mockModelCatalogBase, n) })),
 };
 
 export const mockFavorites = [

@@ -1,4 +1,4 @@
-import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, CloudProviderInput, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry, ModelConfig, LocalModel, BenchmarkRun, BackupFileInfo, SpillCounterRow, RoutingDecision, ModelAlias } from '../types';
+import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, CloudProviderInput, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, QuantRecommendation, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry, ModelConfig, LocalModel, BenchmarkRun, BackupFileInfo, SpillCounterRow, RoutingDecision, ModelAlias } from '../types';
 import { mockCloudProviders, mockSavings } from './mockData';
 
 const BASE = '/admin';
@@ -1156,6 +1156,7 @@ export interface HFRepoDetails {
   tags: string[];
   last_modified: string;
   variants: ModelVariantFit[];
+  recommendation?: QuantRecommendation;
   disk_free_gb: number;
   disk_total_gb: number;
   disk_known: boolean;

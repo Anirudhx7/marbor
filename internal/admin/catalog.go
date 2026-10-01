@@ -283,6 +283,9 @@ type catalogModelFit struct {
 	CatalogModel
 	Variants   []catalogVariantFit `json:"variants"`
 	Downloaded bool                `json:"downloaded"`
+	// Recommendation is the quantization to pull on this node, or the reason
+	// there is none. Read-only advice derived from the Fit/DiskFit verdicts.
+	Recommendation quantRecommendation `json:"recommendation"`
 }
 
 // catalogNodeEntry holds the fit results for a single node.
@@ -817,10 +820,18 @@ func (s *Server) handleModelCatalog(w http.ResponseWriter, r *http.Request) {
 					DiskFit:      classifyDiskFit(v.SizeMB, diskFreeGB, diskTotalGB, agentPresent),
 				})
 			}
+			cands := make([]quantCandidate, 0, len(variants))
+			for _, v := range variants {
+				cands = append(cands, quantCandidate{
+					Tag: v.Tag, Quantization: v.Quantization, VRAMEstMB: v.VRAMEstMB, SizeMB: v.SizeMB,
+					Fit: v.Fit, DiskFit: v.DiskFit, Recommended: v.Recommended,
+				})
+			}
 			models = append(models, catalogModelFit{
-				CatalogModel: cm,
-				Variants:     variants,
-				Downloaded:   isDownloaded(cm, downloaded),
+				CatalogModel:   cm,
+				Variants:       variants,
+				Downloaded:     isDownloaded(cm, downloaded),
+				Recommendation: recommendQuant(cands),
 			})
 		}
 
@@ -1923,8 +1934,19 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Repo variants have no catalog-recommended entry, so the pick is the
+	// largest quantization that fits this node.
+	cands := make([]quantCandidate, 0, len(variants))
+	for _, v := range variants {
+		cands = append(cands, quantCandidate{
+			Tag: v.Tag, Quantization: v.Quantization, VRAMEstMB: v.VRAMEstMB, SizeMB: v.SizeMB,
+			Fit: v.Fit, DiskFit: v.DiskFit,
+		})
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
+		"recommendation":    recommendQuant(cands),
 		"id":                repo.ID,
 		"downloads":         repo.Downloads,
 		"likes":             repo.Likes,

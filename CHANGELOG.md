@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **`marbor fit` and a per-node quantization pick.** Model Advisor now lists, for the selected node, which built-in catalog models fit its total VRAM and disk and which quantization to pull, and the new `marbor fit` command shows the same for every node or for a Hugging Face repo (`marbor fit owner/name --node <node> --ctx <tokens>`). The pick is the catalog's recommended quantization when it fits, otherwise the largest one that fits, flagged as a tight fit when it uses most of the VRAM; if nothing offered fits it says so plainly. Figures come from published file sizes or the built-in catalog and are labeled as estimates; when a node's VRAM or a model's size is unknown the answer is `-`, never a guess. The catalog and repo Admin API responses gain an additive `recommendation` field. Read-only: nothing is pulled, changed or routed differently. Alternative-repo suggestions for vLLM, TGI and MLX are not included yet.
+
 ## [0.22.2] - 2026-10-01
 
 ### Fixed
