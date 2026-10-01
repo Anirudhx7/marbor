@@ -38,7 +38,7 @@ const ProtocolVersion = 1
 // not current connection state. An agent can be capable and still be dialed
 // over plain http:// if the node hasn't been migrated yet (opt-in,
 // node-by-node).
-var capabilities = []string{"status", "models.pull", "models.list", "models.delete", "models.unload", "runtime.health_check", "runtime.start", "runtime.stop", "runtime.restart", "runtime.logs", "runtime.disk", "transport.tls"}
+var capabilities = []string{"status", "models.pull", "models.list", "models.delete", "models.unload", "runtime.health_check", "runtime.start", "runtime.stop", "runtime.restart", "runtime.logs", "runtime.disk", "transport.tls", "deployment.gpu_scope"}
 
 // Telemetry is the canonical, versioned JSON payload served at
 // GET /v1/status - the Marbor Agent Protocol's root resource. GET /metrics

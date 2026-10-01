@@ -29,6 +29,53 @@ function vramOverridesToString(overrides?: Record<string, number>): string {
   return Object.entries(overrides ?? {}).map(([model, mb]) => `${model}=${mb}`).join(', ');
 }
 
+// detectedIndices is the device list the agent found for a node, preferring
+// the scope's own list over the older group field.
+function detectedIndices(node: GPUNode): number[] {
+  const fromScope = node.detectedGPUScope?.indices ?? [];
+  return fromScope.length > 0 ? fromScope : (node.detectedGPUGroup ?? []);
+}
+
+// detectedShape renders the detected parallelism, for example "TP=4 x PP=2".
+// Empty when the agent did not find a parallelism flag.
+function detectedShape(node: GPUNode): string {
+  const type = node.detectedParallelismType;
+  const width = node.detectedParallelismWidth;
+  if (!type || !width) return '';
+  const parts = [`${type.toUpperCase()}=${width}`];
+  if (node.detectedPipelineWidth) parts.push(`PP=${node.detectedPipelineWidth}`);
+  if (node.detectedDataWidth) parts.push(`DP=${node.detectedDataWidth}`);
+  return parts.join(' x ');
+}
+
+// scopeSourceLabel turns the agent's source tag into words an operator can
+// check against their own launch command.
+function scopeSourceLabel(source?: string): string {
+  if (!source) return 'the agent';
+  if (source.startsWith('environ:')) return `the runtime's ${source.slice('environ:'.length)}`;
+  if (source.startsWith('docker-env:')) return `the container's ${source.slice('docker-env:'.length)}`;
+  if (source === 'nvidia-compute-apps') return 'the GPU process list';
+  return source;
+}
+
+// describeDetectedScope is the one-line, honest account of which GPUs were
+// found and how sure the agent is. Empty when there is nothing to say.
+function describeDetectedScope(node: GPUNode): string {
+  const scope = node.detectedGPUScope;
+  const devices = [...detectedIndices(node).map(String), ...(scope?.uuids ?? [])];
+  if (devices.length === 0) return scope?.note ?? '';
+  const list = devices.join(', ');
+  if (scope?.crossChecked) {
+    return `GPUs ${list} from ${scopeSourceLabel(scope.source)}, confirmed against the GPU process list.`;
+  }
+  if (scope?.source === 'nvidia-compute-apps') {
+    return `GPUs ${list} seen in the GPU process list, not confirmed against the runtime's environment.`;
+  }
+  const how = scope ? `from ${scopeSourceLabel(scope.source)}` : 'by the agent';
+  const note = scope?.note ? ` ${scope.note.charAt(0).toUpperCase()}${scope.note.slice(1)}.` : '';
+  return `GPUs ${list} ${how}, not independently confirmed.${note}`;
+}
+
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
   const gb = bytes / (1024 * 1024 * 1024);
@@ -460,9 +507,20 @@ function NodeCard({ node, pinnedModels, replicaWorkers, onRemove, onDrain, onUnd
                 <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-secondary text-muted-foreground border border-border">
                   {node.parallelismType.toUpperCase()}={node.parallelismWidth} {node.effectiveRequiredGPUs ? `(${node.effectiveRequiredGPUs} GPUs)` : ''}
                 </span>
-              ) : node.detectedParallelismType && node.detectedParallelismWidth ? (
-                <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-secondary text-muted-foreground border border-border">
-                  Detected {node.detectedParallelismType.toUpperCase()}={node.detectedParallelismWidth} {node.detectedEffectiveRequiredGPUs ? `(${node.detectedEffectiveRequiredGPUs} GPUs via ${node.detectedSource})` : `via ${node.detectedSource}`}
+              ) : detectedShape(node) ? (
+                <span
+                  title={describeDetectedScope(node) || undefined}
+                  className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-secondary text-muted-foreground border border-border"
+                >
+                  Detected {detectedShape(node)} {node.detectedEffectiveRequiredGPUs ? `(${node.detectedEffectiveRequiredGPUs} GPUs via ${node.detectedSource})` : `via ${node.detectedSource}`}
+                  {node.detectedGPUScope?.crossChecked ? ', confirmed' : ', unconfirmed'}
+                </span>
+              ) : detectedIndices(node).length > 0 ? (
+                <span
+                  title={describeDetectedScope(node) || undefined}
+                  className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-secondary text-muted-foreground border border-border"
+                >
+                  Detected GPUs {detectedIndices(node).join(', ')}{node.detectedGPUScope?.crossChecked ? ', confirmed' : ', unconfirmed'}
                 </span>
               ) : null}
               {node.mismatchWarning ? (
@@ -1723,7 +1781,7 @@ export function GPUNodes() {
     // too, so a value there doesn't prove an override was declared. The
     // other two are declaration-only, so they can.
     setOverridesOpen(!!((node.maxInFlight && node.maxInFlight > 0) || Object.keys(node.vramOverrides ?? {}).length));
-    setTopologyOpen(!!(node.parallelismType || node.detectedParallelismType || (node.gpuIndices ?? []).length));
+    setTopologyOpen(!!(node.parallelismType || detectedShape(node) || detectedIndices(node).length > 0 || (node.gpuIndices ?? []).length));
     setReplicaOpen(!!((node.replicaPeers?.members ?? []).length || (node.schedulingRole && node.schedulingRole !== 'standalone')));
     setEditError('');
   };
@@ -2627,15 +2685,22 @@ export function GPUNodes() {
             </p>
           )}
           {/* Auto-discovered deployment - Adopt one-click honest unknown */}
-          {editNode && editNode.detectedParallelismType && editNode.detectedParallelismWidth ? (
+          {editNode && (detectedShape(editNode) || detectedIndices(editNode).length > 0 || editNode.detectedGPUScope) ? (
             <div className="bg-secondary/30 border border-border/60 rounded-lg p-3 space-y-2">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-xs font-medium text-foreground">
-                    Detected: {editNode.detectedParallelismType.toUpperCase()}={editNode.detectedParallelismWidth} [{(editNode.detectedGPUGroup ?? []).join(', ') || 'gpu group unknown'}] via {editNode.detectedSource || 'ps'}{editNode.detectedRuntime ? ` (${editNode.detectedRuntime})` : ''}
+                    Detected: {detectedShape(editNode) || 'no parallelism flag found'}{detectedIndices(editNode).length > 0 ? ` [${detectedIndices(editNode).join(', ')}]` : ''} via {editNode.detectedSource || 'ps'}{editNode.detectedRuntime ? ` (${editNode.detectedRuntime})` : ''}
                   </p>
+                  {describeDetectedScope(editNode) ? (
+                    <p className="text-xs text-muted-foreground mt-1">{describeDetectedScope(editNode)}</p>
+                  ) : null}
                   <p className="text-xs text-muted-foreground mt-1">
-                    Required {editNode.detectedEffectiveRequiredGPUs ?? Math.max((editNode.detectedGPUGroup?.length ?? 0), editNode.detectedParallelismWidth ?? 0)} GPUs (max of group len vs width). Declared {editNode.parallelismType ? `${editNode.parallelismType.toUpperCase()}=${editNode.parallelismWidth}` : 'none'} {editNode.mismatchWarning ? ` - ${editNode.mismatchWarning}` : ''}.
+                    {editNode.parallelismType || (editNode.gpuIndices ?? []).length > 0
+                      ? `Your declared values are used for placement (declared ${editNode.parallelismType ? `${editNode.parallelismType.toUpperCase()}=${editNode.parallelismWidth}` : `GPUs ${(editNode.gpuIndices ?? []).join(', ')}`}).`
+                      : editNode.detectedDrivesPlacement
+                        ? `Confirmed against the GPU process list, so it is used for placement (${editNode.detectedEffectiveRequiredGPUs ?? 0} GPUs).`
+                        : 'Information only until you adopt it: unconfirmed detections never change placement.'}
                   </p>
                   {editNode.mismatchWarning ? (
                     <p className="text-xs font-medium text-amber-600 dark:text-amber-400 mt-1">
@@ -2644,20 +2709,30 @@ export function GPUNodes() {
                   ) : null}
                 </div>
                 {(() => {
+                  // Adopt copies what was detected into the declaration. A
+                  // detection with only a GPU list (no parallelism flag) adopts
+                  // the list and leaves type and width alone.
                   const detType = editNode.detectedParallelismType ?? '';
                   const detWidth = editNode.detectedParallelismWidth ?? 0;
-                  const detGroup = (editNode.detectedGPUGroup ?? []).join(', ');
+                  const hasShape = detectedShape(editNode) !== '';
+                  const detIndices = detectedIndices(editNode);
+                  const detGroup = detIndices.join(', ');
                   const curType = editParallelismType.trim();
                   const curWidth = editParallelismWidth.trim() === '' ? 0 : parseInt(editParallelismWidth, 10) || 0;
                   const curGroup = editGPUIndices.trim();
-                  const differs = detType !== curType || detWidth !== curWidth || detGroup !== curGroup;
-                  if (!differs) return null;
+                  const shapeDiffers = hasShape && (detType !== curType || detWidth !== curWidth);
+                  const groupDiffers = detIndices.length > 0 && detGroup !== curGroup;
+                  if (!shapeDiffers && !groupDiffers) return null;
                   return (
                     <button
                       onClick={() => {
-                        setEditParallelismType(detType);
-                        setEditParallelismWidth(String(detWidth));
-                        setEditGPUIndices((editNode.detectedGPUGroup ?? []).join(', '));
+                        if (hasShape) {
+                          setEditParallelismType(detType);
+                          setEditParallelismWidth(String(detWidth));
+                        }
+                        if (detIndices.length > 0) {
+                          setEditGPUIndices(detGroup);
+                        }
                         setEditError('');
                       }}
                       className="shrink-0 px-3 py-2 min-h-[40px] bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-md text-xs transition-colors shadow-sm"
@@ -2668,7 +2743,7 @@ export function GPUNodes() {
                 })()}
               </div>
             </div>
-          ) : editNode && editNode.agentPresent && !editNode.parallelismType && !editNode.detectedParallelismType ? (
+          ) : editNode && editNode.agentPresent && !editNode.parallelismType && !detectedShape(editNode) ? (
             <div className="bg-secondary/30 border border-border/60 rounded-lg p-3">
               <p className="text-xs text-muted-foreground">
                 Auto-detected: unknown - add docker.sock mount or run agent directly on host to auto-detect deployment. Agent on this host cannot see runtime process (pid namespace isolated).

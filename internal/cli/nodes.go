@@ -112,7 +112,7 @@ func runNodes(flags *globalFlags, stdout, stderr io.Writer) int {
 	}
 
 	tw := newTabWriter(stdout)
-	fmt.Fprintln(tw, "NAME\tHOST:PORT\tHEALTH\tRUNTIME\tGPU\tVRAM USED/TOTAL\tMODELS WARM\tDRAINING\tREPLICA ROLE\tREPLICA HEAD\tKEEP-WARM")
+	fmt.Fprintln(tw, "NAME\tHOST:PORT\tHEALTH\tRUNTIME\tGPU\tVRAM USED/TOTAL\tMODELS WARM\tDRAINING\tREPLICA ROLE\tREPLICA HEAD\tDETECTED GPUS\tKEEP-WARM")
 	for _, n := range nodes {
 		role := n.SchedulingRole
 		if role == "" {
@@ -126,10 +126,10 @@ func runNodes(flags *globalFlags, stdout, stderr io.Writer) int {
 		if n.WarmupSupported != nil {
 			keepWarm = yesNo(*n.WarmupSupported)
 		}
-		fmt.Fprintf(tw, "%s\t%s:%d\t%s\t%s\t%s\t%s / %s\t%d\t%s\t%s\t%s\t%s\n",
+		fmt.Fprintf(tw, "%s\t%s:%d\t%s\t%s\t%s\t%s / %s\t%d\t%s\t%s\t%s\t%s\t%s\n",
 			n.Name, n.Host, n.Port, n.Health, n.Runtime, n.GPUModel,
 			fmtMB(n.VRAMUsedMB), fmtMB(n.VRAMTotalMB), len(n.LoadedModels), yesNo(n.Draining),
-			role, replicaHead, keepWarm)
+			role, replicaHead, formatDetectedGPUs(n), keepWarm)
 	}
 	if err := tw.Flush(); err != nil {
 		fmt.Fprintln(stderr, err)
@@ -630,4 +630,36 @@ func runNodesTLSProbe(flags *globalFlags, name string, stdout, stderr io.Writer)
 	}
 	fmt.Fprintf(stdout, "node %q Marbor Agent TLS fingerprint: %s (NOT pinned - confirm out of band, then run \"nodes confirm-tls\")\n", name, fingerprint)
 	return ExitOK
+}
+
+// formatDetectedGPUs renders the agent's detected GPU scope for the node
+// table: the devices plus whether an independent check confirmed them,
+// "unknown" when the agent looked but could not tell, "-" when nothing was
+// reported (no agent, or an older one).
+func formatDetectedGPUs(n NodeResp) string {
+	sc := n.DetectedGPUScope
+	var devices []string
+	verified := false
+	switch {
+	case sc != nil:
+		for _, i := range sc.Indices {
+			devices = append(devices, strconv.Itoa(i))
+		}
+		devices = append(devices, sc.UUIDs...)
+		verified = sc.CrossChecked
+	case len(n.DetectedGPUGroup) > 0:
+		for _, i := range n.DetectedGPUGroup {
+			devices = append(devices, strconv.Itoa(i))
+		}
+	default:
+		return "-"
+	}
+	if len(devices) == 0 {
+		return "unknown"
+	}
+	label := "unverified"
+	if verified {
+		label = "verified"
+	}
+	return strings.Join(devices, ",") + " [" + label + "]"
 }

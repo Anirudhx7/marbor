@@ -38,6 +38,15 @@ export interface PredictiveDecision {
   hour: number;
 }
 
+export interface DetectedGPUScope {
+  indices?: number[];
+  uuids?: string[];
+  raw?: string;
+  source?: string;
+  crossChecked: boolean;
+  note?: string;
+}
+
 export interface GPUNode {
   id: string;
   name: string;
@@ -110,6 +119,16 @@ export interface GPUNode {
   detectedSource?: string;
   detectedRuntime?: string;
   detectedEffectiveRequiredGPUs?: number;
+  // Secondary degrees when the launch also sets pipeline/data parallelism
+  // next to tensor parallel (undefined = not set).
+  detectedPipelineWidth?: number;
+  detectedDataWidth?: number;
+  // Which GPUs the agent found this runtime pointed at, and how. Absent
+  // means unknown. crossChecked is true only when an independent per-process
+  // check agreed; only then do detected values constrain placement
+  // (detectedDrivesPlacement). Otherwise they are information to adopt.
+  detectedGPUScope?: DetectedGPUScope;
+  detectedDrivesPlacement?: boolean;
   mismatchWarning?: string;
   // Multi-host replica membership (tensor/pipeline-parallel deployments
   // spanning more than one node). replicaPeers is this node's own raw
