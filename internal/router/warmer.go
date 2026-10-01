@@ -67,16 +67,36 @@ func (r *Router) finishWarmup(nodeName string) {
 func (r *Router) lockNodeLoad(nodeName string) func() {
 	r.warmupInProgressMu.Lock()
 	if r.nodeLoadLocks == nil {
-		r.nodeLoadLocks = map[string]*sync.Mutex{}
+		r.nodeLoadLocks = map[string]*nodeLoadLock{}
 	}
-	mu := r.nodeLoadLocks[nodeName]
-	if mu == nil {
-		mu = &sync.Mutex{}
-		r.nodeLoadLocks[nodeName] = mu
+	entry := r.nodeLoadLocks[nodeName]
+	if entry == nil {
+		entry = &nodeLoadLock{}
+		r.nodeLoadLocks[nodeName] = entry
 	}
+	entry.refs++
 	r.warmupInProgressMu.Unlock()
-	mu.Lock()
-	return mu.Unlock
+	entry.mu.Lock()
+	return func() {
+		// Release the mutex first. Deleting the entry while it is still held
+		// would let a new arrival create a second mutex for the same node and
+		// run alongside the holder.
+		entry.mu.Unlock()
+		r.warmupInProgressMu.Lock()
+		entry.refs--
+		if entry.refs == 0 {
+			delete(r.nodeLoadLocks, nodeName)
+		}
+		r.warmupInProgressMu.Unlock()
+	}
+}
+
+// nodeLoadLock is one node's load mutex plus the count of goroutines holding
+// or waiting for it, so the map entry can be dropped once none remain. refs is
+// guarded by Router.warmupInProgressMu.
+type nodeLoadLock struct {
+	mu   sync.Mutex
+	refs int
 }
 
 // pingWarmupModels sends a zero-token /api/generate with keep_alive to every

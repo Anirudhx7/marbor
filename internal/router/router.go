@@ -597,8 +597,9 @@ type Router struct {
 	// nodeLoadLocks holds one mutex per node name serializing each model's
 	// headroom-then-load sequence across the keep-warm pinger, scheduled
 	// warmup and predictive prewarm (see lockNodeLoad in warmer.go). The map
-	// itself is guarded by warmupInProgressMu.
-	nodeLoadLocks map[string]*sync.Mutex
+	// and each entry's reference count are guarded by warmupInProgressMu; an
+	// entry is removed once no warmup holds or awaits it.
+	nodeLoadLocks map[string]*nodeLoadLock
 	// marborAgents holds per-HOST Marbor Agent poll configuration (enabled,
 	// port, bearer token), keyed by NodeState.Host - not by node name - so
 	// every node sharing a physical machine polls the same agent process
