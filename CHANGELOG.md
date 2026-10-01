@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.22.1] - 2026-10-01
+
 ### Fixed
 - **Pinning or keep-warming a bare model name now covers its `:latest` tag.** Pinning `llama3` did not protect a loaded `llama3:latest` from eviction, scheduled or manual unload, and a bare name in a keep-warm list did not get its keep-warm priority during warmup evictions. Both now treat a bare name and its `:latest` form as the same model, as keep-warm loading already did. A manual unload of `llama3:latest` is refused while `llama3` is pinned (same message as for an exact pin), and benchmark eviction and the pinned-and-warm routing preference follow the same rule. Other tags are unaffected: `llama3` never matches `llama3:8b`.
 - **Per-node warmup lock bookkeeping no longer grows for removed nodes.** The lock that serializes a node's make-room-then-load step is now released from memory once no warmup is using it, instead of lingering for the life of the process for every node name ever warmed. No change to warmup behavior.
