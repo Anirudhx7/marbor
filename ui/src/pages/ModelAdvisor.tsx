@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef, useSyncExternalStore } from 'react';
 import { Link } from 'react-router-dom';
-import { Package, Download, Check, Server, Loader2, Cpu, HardDrive, Star, ArrowDown, ExternalLink, X, Settings2 } from 'lucide-react';
+import { Package, Download, Check, Server, Loader2, Cpu, HardDrive, Star, ArrowDown, ExternalLink, X, Settings2, ChevronDown } from 'lucide-react';
 import { SearchInput } from '../components/SearchInput';
 import { VramBar } from '../components/VramBar';
 import { ModelConfigModal } from '../components/ModelConfigModal';
@@ -22,7 +22,8 @@ import {
 } from '../lib/api';
 import { startPull, isPullActive, subscribe as subscribePullProgress, getSnapshot as getPullProgressSnapshot } from '../lib/pullProgress';
 import { useDemoMode } from '../hooks/useDemoMode';
-import { mockHFModels, mockHFRepoDetails, mockSystemInfo, mockModelCatalogResponse, mockFavorites } from '../lib/mockData';
+import { mockHFModels, mockHFRepoDetails, mockSystemInfo, mockModelCatalogResponse, mockFavorites, pickQuant } from '../lib/mockData';
+import type { CatalogModelFit } from '../types';
 import { readLastModelCount, writeLastModelCount, readLastNodeCount } from '../lib/nodeCount';
 import { CustomDatePicker } from '../components/DateTimePicker';
 
@@ -82,14 +83,15 @@ function ContextFeasibilityNote({ cf, fit }: { cf: ModelVariantFit['context_feas
   );
 }
 
-function FitBadge({ fit }: { fit: 'green' | 'yellow' | 'red' | 'unknown' }) {
+function FitBadge({ fit }: { fit: 'green' | 'yellow' | 'red' | 'unknown' | 'incompatible' }) {
   const styles = {
     green: 'bg-green-500/15 text-green-600 dark:text-green-400 border border-green-500/30',
     yellow: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30',
     red: 'bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30',
     unknown: 'bg-secondary text-muted-foreground border border-border',
+    incompatible: 'bg-secondary text-muted-foreground border border-border',
   };
-  const labels = { green: 'Fits', yellow: 'Tight', red: 'Too Large', unknown: 'Unknown' };
+  const labels = { green: 'Fits', yellow: 'Tight', red: 'Too Large', unknown: 'Unknown', incompatible: 'Other format' };
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${styles[fit]}`}>
       {labels[fit]}
@@ -158,6 +160,97 @@ function NodeVramCard({ node }: { node: any }) {
         <p className="text-xs text-muted-foreground font-medium">
           VRAM totals unavailable - nvidia-smi reads the marbor host only.
         </p>
+      )}
+    </div>
+  );
+}
+
+const FIT_REASON_TEXT: Record<string, string> = {
+  too_large: 'Too large for this node',
+  vram_unknown: 'VRAM or model size unknown',
+  disk_insufficient: 'Not enough free disk',
+  incompatible_runtime: 'Other format for this runtime',
+  no_variants: 'No quantizations offered',
+};
+
+const estGB = (mb: number) => (mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb} MB`);
+
+// NodeFitList answers "what fits this node, and which quantization do I pull"
+// for the built-in catalog, using the server's per-model recommendation.
+// Collapsed by default: the summary line carries the answer without expanding.
+function NodeFitList({ node }: { node: { name: string; runtime?: string; vram_total_bytes: number; vram_source: string; vram_fit_basis?: string; gpu_count?: number; models?: CatalogModelFit[] } }) {
+  const [open, setOpen] = useState(false);
+  const models = node.models ?? [];
+  if (models.length === 0) return null;
+  const incompatible = models.every(m => m.recommendation?.reason === 'incompatible_runtime');
+  const vramUnknown = !(node.vram_total_bytes > 0) || node.vram_source === 'unknown' || node.vram_source === 'inferred';
+  const fitting = models.filter(m => m.recommendation?.picked).length;
+  return (
+    <div className="bg-card border border-border rounded-xl shadow-sm">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
+        className="w-full flex items-center justify-between gap-2 px-5 py-3 text-left cursor-pointer"
+      >
+        <span className="text-sm font-semibold text-foreground">
+          What fits {node.name}
+          {!incompatible && !vramUnknown && (
+            <span className="ml-1 font-normal text-muted-foreground">: {fitting} of {models.length} curated models</span>
+          )}
+          {node.vram_fit_basis && !incompatible && !vramUnknown && (
+            <span className="ml-2 px-1.5 py-0.5 rounded bg-secondary text-[10px] font-medium text-muted-foreground">
+              {node.vram_fit_basis === 'combined' ? 'combined VRAM' : 'largest GPU'}
+            </span>
+          )}
+        </span>
+        <ChevronDown className={`w-4 h-4 shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="px-5 pb-4">
+          {incompatible ? (
+            <p className="text-xs text-muted-foreground">
+              Curated models use Ollama-format tags; browse Hugging Face below for {node.runtime || 'this runtime'}.
+            </p>
+          ) : vramUnknown ? (
+            <p className="text-xs text-muted-foreground">VRAM unknown for this node; fit not shown.</p>
+          ) : (
+            <div className="space-y-1.5 max-h-96 overflow-y-auto">
+              {models.map(m => {
+                const r = m.recommendation;
+                const badge = r.picked ? r.fit : r.reason === 'too_large' ? 'red' : r.reason === 'incompatible_runtime' ? 'incompatible' : 'unknown';
+                return (
+                  <div key={m.name} className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 text-xs rounded px-2.5 py-2 bg-secondary/50 border border-border/50">
+                    <div className="min-w-0 flex-1">
+                      <span className="font-semibold text-foreground flex items-center gap-1.5">
+                        {m.display_name}
+                        {m.downloaded && (
+                          <span title="a version of this model is downloaded" aria-label="a version of this model is downloaded" className="inline-flex items-center text-green-600 dark:text-green-400">
+                            <Check className="w-3.5 h-3.5" />
+                          </span>
+                        )}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground font-mono block truncate" title={m.name}>{m.name}</span>
+                    </div>
+                    <div className="flex items-center gap-2 sm:justify-end flex-wrap">
+                      {r.picked ? (
+                        <span className="text-[11px] text-muted-foreground" title="Estimated from the built-in catalog">
+                          <span className="font-mono font-semibold text-foreground">{r.quantization}</span> &middot; est. {estGB(r.vram_est_mb)}
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-muted-foreground">
+                          {FIT_REASON_TEXT[r.reason ?? ''] ?? '-'}
+                          {r.reason === 'too_large' && r.closest_tag ? `; closest: ${r.closest_tag}` : ''}
+                        </span>
+                      )}
+                      <FitBadge fit={badge} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
@@ -272,18 +365,23 @@ function ModelDetailPanel({
         setDetails({
           ...mock,
           variants: adjustedVariants,
+          // Derived from the recomputed per-variant fit above by the same rule
+          // the server uses, never a stored value (the slider changes the fit).
+          recommendation: pickQuant(adjustedVariants.map((v: any) => ({ ...v, recommended: false }))),
           disk_free_gb: diskFreeGB,
           disk_total_gb: mock.disk_total_gb ?? 1000,
           disk_known: mock.disk_known ?? true,
         });
       } else {
+        const fallbackVariants = [{ tag: `hf.co/${model.id}:Q4_K_M`, quantization: 'Q4_K_M', vram_est_mb: 4000, size_mb: 3500, fit: 'green' as const, disk_fit: diskFit(3500), downloaded: false, context_feasibility: { confidence: 'estimated' as const, requested_ctx: len } }];
         setDetails({
           id: model.id,
           downloads: model.downloads,
           likes: model.likes,
           tags: model.tags,
           last_modified: model.lastModified,
-          variants: [{ tag: `hf.co/${model.id}:Q4_K_M`, quantization: 'Q4_K_M', vram_est_mb: 4000, size_mb: 3500, fit: 'green', disk_fit: diskFit(3500), downloaded: false, context_feasibility: { confidence: 'estimated', requested_ctx: len } }],
+          variants: fallbackVariants,
+          recommendation: pickQuant(fallbackVariants),
           disk_free_gb: diskFreeGB,
           disk_total_gb: 1000,
           disk_known: true,
@@ -451,6 +549,11 @@ function ModelDetailPanel({
                     <div className="min-w-0 flex-1 mr-2">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="font-mono font-semibold text-foreground">{v.quantization}</span>
+                        {details.recommendation?.picked && details.recommendation.tag === v.tag && (
+                          <span className="px-1.5 py-0.5 rounded bg-primary/15 text-primary text-[10px] font-semibold" title="The largest quantization that fits this node">
+                            {details.recommendation.tight ? 'Pick (tight)' : 'Pick'}
+                          </span>
+                        )}
                         <span className="text-[10px] text-muted-foreground whitespace-nowrap" title="Estimated from registry size + requested context">{sizeGB} size · {vramGB} est. VRAM</span>
                       </div>
                       <span className="text-[9px] text-muted-foreground font-mono block truncate" title={v.tag}>
@@ -1031,7 +1134,7 @@ export function ModelAdvisor() {
               <div className="h-3 w-2/3 bg-secondary rounded mt-2" />
             </div>
           ) : (
-            activeNode && <NodeVramCard node={activeNode} />
+            activeNode && (<><NodeVramCard node={activeNode} /><NodeFitList node={activeNode} /></>)
           )}
           {loading && !demoMode ? (
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
@@ -1183,7 +1286,7 @@ export function ModelAdvisor() {
               <div className="h-3 w-2/3 bg-secondary rounded mt-2" />
             </div>
           ) : (
-            activeNode && <NodeVramCard node={activeNode} />
+            activeNode && (<><NodeVramCard node={activeNode} /><NodeFitList node={activeNode} /></>)
           )}
 
           {searchError && (

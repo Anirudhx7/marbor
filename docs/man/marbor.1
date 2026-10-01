@@ -57,6 +57,9 @@ manage per\-node model parameter profiles. See \fBmarbor-model-config\fR(1).
 .B catalog
 show the fleet\-aware HF/local model catalog with per\-node fit
 .TP
+.B fit [owner/name]
+show which models fit each node and which quantization to pull
+.TP
 .B backup
 manage marbor.db backups. See \fBmarbor-backup\fR(1).
 .TP
@@ -151,6 +154,18 @@ Admin password, used when \-\-password is not given.
 .B $XDG_CONFIG_HOME/marbor/session
 The session saved by "marbor login" (mode 0600), under the OS user config dir - e.g. ~/.config/marbor/session on Linux, ~/Library/Application Support/marbor/session on macOS, %AppData%\emarbor\esession on Windows.
 .SH EXAMPLES
+.PP
+.nf
+marbor fit
+.fi
+.PP
+.nf
+marbor fit \-\-node gpu-1
+.fi
+.PP
+.nf
+marbor fit unsloth/Qwen3-8B\-GGUF \-\-node gpu-1 \-\-ctx 16384
+.fi
 .PP
 .nf
 source <(marbor completion bash)
