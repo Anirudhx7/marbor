@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+- **Model Advisor "What fits" list can pull the pick.** Each picked row has a Pull button that asks for confirmation (tag, quantization, estimated size, node) and then starts the pull in the existing pull widget; it is disabled while that tag is already pulling on the node. Rows that fit now come first under "Fits (n)", the rest under "Does not fit (n)", with column labels on wider screens and no inner scroll box. A model already on the node shows a "Downloaded" label, and the full tag is shown under the quantization.
+- **Disk-short rows show "No Disk Space" instead of "Unknown".** A model that would fit in VRAM but not on the node's free disk now gets the same red badge the detail panel uses.
+
 ## [0.23.0] - 2026-10-02
 
 ### Added
