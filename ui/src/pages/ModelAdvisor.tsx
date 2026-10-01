@@ -178,13 +178,108 @@ const estGB = (mb: number) => (mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${
 // NodeFitList answers "what fits this node, and which quantization do I pull"
 // for the built-in catalog, using the server's per-model recommendation.
 // Collapsed by default: the summary line carries the answer without expanding.
-function NodeFitList({ node }: { node: { name: string; runtime?: string; vram_total_bytes: number; vram_source: string; vram_fit_basis?: string; gpu_count?: number; models?: CatalogModelFit[] } }) {
+function NodeFitList({
+  node,
+  actualRuntime,
+  agentPullCapable,
+  isLive,
+  demoMode,
+}: {
+  node: { name: string; runtime?: string; vram_total_bytes: number; vram_source: string; vram_fit_basis?: string; gpu_count?: number; models?: CatalogModelFit[] };
+  actualRuntime: string | null;
+  agentPullCapable: boolean;
+  isLive: boolean;
+  demoMode: boolean;
+}) {
   const [open, setOpen] = useState(false);
+  const [confirmPull, setConfirmPull] = useState<CatalogModelFit | null>(null);
+  const pullJobs = useSyncExternalStore(subscribePullProgress, getPullProgressSnapshot);
   const models = node.models ?? [];
   if (models.length === 0) return null;
   const incompatible = models.every(m => m.recommendation?.reason === 'incompatible_runtime');
   const vramUnknown = !(node.vram_total_bytes > 0) || node.vram_source === 'unknown' || node.vram_source === 'inferred';
-  const fitting = models.filter(m => m.recommendation?.picked).length;
+  // Fits first, then the rest; each group keeps catalog order (filter is stable).
+  const fitRows = models.filter(m => m.recommendation?.picked);
+  const otherRows = models.filter(m => !m.recommendation?.picked);
+  const fitting = fitRows.length;
+  // Same gate as the detail panel's Pull button. Picks only exist on Ollama
+  // nodes; unpickable rows get no button at all.
+  const canPullHere = !actualRuntime || actualRuntime === 'ollama' || agentPullCapable;
+  const rowGrid = 'sm:grid sm:grid-cols-[minmax(0,1.5fr)_minmax(0,1.6fr)_6.5rem_6rem] sm:items-center sm:gap-3';
+
+  const renderRow = (m: CatalogModelFit) => {
+    const r = m.recommendation;
+    const isDiskShort = !r.picked && r.reason === 'disk_insufficient';
+    const badge = r.picked ? r.fit : r.reason === 'too_large' ? 'red' : r.reason === 'incompatible_runtime' ? 'incompatible' : 'unknown';
+    const isPulling = r.picked && pullJobs.some(j => j.node === node.name && j.model === r.tag && isPullActive(j.status));
+    return (
+      <div key={m.name} className={`flex flex-col gap-1.5 text-xs rounded px-2.5 py-2 bg-secondary/50 border border-border/50 ${rowGrid}`}>
+        <div className="min-w-0">
+          <span className="font-semibold text-foreground flex items-center gap-1.5 flex-wrap">
+            {m.display_name}
+            {m.downloaded && (
+              <span
+                title="A version of this model is already on this node; it may not be the quantization picked here"
+                className="inline-flex items-center px-1.5 py-0.5 rounded bg-green-500/15 text-green-600 dark:text-green-400 border border-green-500/30 text-[10px] font-medium"
+              >
+                Downloaded
+              </span>
+            )}
+          </span>
+        </div>
+        <div className="min-w-0">
+          {r.picked ? (
+            <span className="text-[11px] text-muted-foreground block" title="Estimated from the built-in catalog">
+              <span className="font-mono font-semibold text-foreground">{r.quantization}</span> &middot; est. {estGB(r.vram_est_mb)} VRAM
+              <span className="font-mono text-[10px] block truncate" title={r.tag}>{r.tag}</span>
+            </span>
+          ) : (
+            <span className="text-[11px] text-muted-foreground">
+              {FIT_REASON_TEXT[r.reason ?? ''] ?? '-'}
+              {r.reason === 'too_large' && r.closest_tag ? `; closest: ${r.closest_tag}` : ''}
+            </span>
+          )}
+        </div>
+        <div>
+          {isDiskShort ? (
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30">
+              No Disk Space
+            </span>
+          ) : (
+            <FitBadge fit={badge} />
+          )}
+        </div>
+        <div className="sm:text-right">
+          {r.picked && (
+            <button
+              type="button"
+              onClick={() => setConfirmPull(m)}
+              disabled={(!demoMode && !isLive) || isPulling || !canPullHere}
+              title={
+                isPulling ? `Pulling ${r.tag} onto ${node.name}`
+                  : !canPullHere ? 'This node cannot pull models through marbor'
+                  : (!demoMode && !isLive) ? 'Not connected to the marbor'
+                  : m.downloaded ? `Some version of ${m.display_name} is already on this node; this pulls ${r.tag}`
+                  : `Pull ${r.tag} onto ${node.name}`
+              }
+              className={`inline-flex items-center justify-center gap-1 min-h-8 px-2.5 py-1 text-[11px] font-medium rounded transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                m.downloaded
+                  ? 'border border-border text-foreground hover:bg-secondary'
+                  : 'bg-primary hover:bg-primary/90 text-primary-foreground disabled:hover:bg-primary'
+              }`}
+            >
+              {isPulling ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+              Pull
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const groupLabel = (text: string) => (
+    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider pt-1">{text}</p>
+  );
   return (
     <div className="bg-card border border-border rounded-xl shadow-sm">
       <button
@@ -215,43 +310,59 @@ function NodeFitList({ node }: { node: { name: string; runtime?: string; vram_to
           ) : vramUnknown ? (
             <p className="text-xs text-muted-foreground">VRAM unknown for this node; fit not shown.</p>
           ) : (
-            <div className="space-y-1.5 max-h-96 overflow-y-auto">
-              {models.map(m => {
-                const r = m.recommendation;
-                const badge = r.picked ? r.fit : r.reason === 'too_large' ? 'red' : r.reason === 'incompatible_runtime' ? 'incompatible' : 'unknown';
-                return (
-                  <div key={m.name} className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 text-xs rounded px-2.5 py-2 bg-secondary/50 border border-border/50">
-                    <div className="min-w-0 flex-1">
-                      <span className="font-semibold text-foreground flex items-center gap-1.5">
-                        {m.display_name}
-                        {m.downloaded && (
-                          <span title="a version of this model is downloaded" aria-label="a version of this model is downloaded" className="inline-flex items-center text-green-600 dark:text-green-400">
-                            <Check className="w-3.5 h-3.5" />
-                          </span>
-                        )}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground font-mono block truncate" title={m.name}>{m.name}</span>
-                    </div>
-                    <div className="flex items-center gap-2 sm:justify-end flex-wrap">
-                      {r.picked ? (
-                        <span className="text-[11px] text-muted-foreground" title="Estimated from the built-in catalog">
-                          <span className="font-mono font-semibold text-foreground">{r.quantization}</span> &middot; est. {estGB(r.vram_est_mb)}
-                        </span>
-                      ) : (
-                        <span className="text-[11px] text-muted-foreground">
-                          {FIT_REASON_TEXT[r.reason ?? ''] ?? '-'}
-                          {r.reason === 'too_large' && r.closest_tag ? `; closest: ${r.closest_tag}` : ''}
-                        </span>
-                      )}
-                      <FitBadge fit={badge} />
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="space-y-1.5">
+              <div className={`hidden text-[10px] font-bold text-muted-foreground uppercase tracking-wider px-2.5 ${rowGrid}`}>
+                <span>Model</span>
+                <span>Pick</span>
+                <span>Fit</span>
+                <span className="text-right">Action</span>
+              </div>
+              {fitRows.length > 0 && groupLabel(`Fits (${fitRows.length})`)}
+              {fitRows.map(renderRow)}
+              {otherRows.length > 0 && groupLabel(`Does not fit (${otherRows.length})`)}
+              {otherRows.map(renderRow)}
             </div>
           )}
         </div>
       )}
+      <Modal isOpen={confirmPull !== null} onClose={() => setConfirmPull(null)} title={confirmPull ? `Pull ${confirmPull.display_name} onto ${node.name}` : 'Pull model'}>
+        {confirmPull && (
+          <div className="space-y-4">
+            <dl className="text-sm space-y-1.5">
+              <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Tag</dt><dd className="font-mono text-foreground break-all text-right">{confirmPull.recommendation.tag}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Quantization</dt><dd className="font-mono text-foreground">{confirmPull.recommendation.quantization}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Download size (estimate)</dt><dd className="text-foreground">~{estGB(confirmPull.recommendation.size_mb)}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Node</dt><dd className="text-foreground">{node.name}</dd></div>
+            </dl>
+            {confirmPull.recommendation.tight && (
+              <p className="text-xs text-amber-600 dark:text-amber-400">This quantization fits with little VRAM headroom (Tight).</p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Nothing running is affected. Progress shows in the pull widget, where the download can be cancelled.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmPull(null)}
+                className="px-3 py-1.5 text-sm rounded border border-border text-foreground hover:bg-secondary cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const tag = confirmPull.recommendation.tag;
+                  setConfirmPull(null);
+                  startPull(node.name, tag, demoMode, false);
+                }}
+                className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded bg-primary hover:bg-primary/90 text-primary-foreground cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" /> Pull
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
@@ -1134,7 +1245,13 @@ export function ModelAdvisor() {
               <div className="h-3 w-2/3 bg-secondary rounded mt-2" />
             </div>
           ) : (
-            activeNode && (<><NodeVramCard node={activeNode} /><NodeFitList node={activeNode} /></>)
+            activeNode && (<><NodeVramCard node={activeNode} /><NodeFitList
+              node={activeNode}
+              actualRuntime={activeNode.runtime ?? null}
+              agentPullCapable={activeNode.capabilities?.includes('models.pull') ?? false}
+              isLive={isLive}
+              demoMode={demoMode}
+            /></>)
           )}
           {loading && !demoMode ? (
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
@@ -1286,7 +1403,13 @@ export function ModelAdvisor() {
               <div className="h-3 w-2/3 bg-secondary rounded mt-2" />
             </div>
           ) : (
-            activeNode && (<><NodeVramCard node={activeNode} /><NodeFitList node={activeNode} /></>)
+            activeNode && (<><NodeVramCard node={activeNode} /><NodeFitList
+              node={activeNode}
+              actualRuntime={activeNode.runtime ?? null}
+              agentPullCapable={activeNode.capabilities?.includes('models.pull') ?? false}
+              isLive={isLive}
+              demoMode={demoMode}
+            /></>)
           )}
 
           {searchError && (
