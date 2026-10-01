@@ -21,6 +21,7 @@ import { Modal } from '../components/Modal';
 import { CustomSelect, CustomCombobox, CustomTagCombobox } from '../components/Select';
 import { SavingsCard } from '../components/SavingsCard';
 import { Toggle } from '../components/Toggle';
+import { ModelAliasesSection } from '../components/ModelAliasesSection';
 import { mockGPUNodes, mockSavings, mockCloudProviders, mockModelCatalog } from '../lib/mockData';
 import {
   fetchRoutingRules,
@@ -972,6 +973,8 @@ export function Routing() {
         </div>
         {degChainError && <p className="text-sm text-destructive mt-2">{degChainError}</p>}
       </div>
+
+      <ModelAliasesSection demoMode={demoMode} knownModelNames={knownModelNames} />
 
       {/* Create rule modal */}
       <Modal

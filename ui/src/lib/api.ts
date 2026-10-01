@@ -1,4 +1,4 @@
-import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, CloudProviderInput, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry, ModelConfig, LocalModel, BenchmarkRun, BackupFileInfo, SpillCounterRow, RoutingDecision } from '../types';
+import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, CloudProviderInput, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry, ModelConfig, LocalModel, BenchmarkRun, BackupFileInfo, SpillCounterRow, RoutingDecision, ModelAlias } from '../types';
 import { mockCloudProviders, mockSavings } from './mockData';
 
 const BASE = '/admin';
@@ -1655,4 +1655,37 @@ export async function setPredictiveEngine(enabled: boolean): Promise<{ predictiv
   });
   if (!res.ok) throw new Error('Failed to set predictive engine status');
   return res.json();
+}
+
+// Model aliases: client-facing model names (e.g. "gpt-4") mapped to real
+// models on the fleet. Alias names can contain "/" and ":", so the alias
+// travels in the body (PUT) or query string (DELETE), never the path.
+export async function fetchModelAliases(): Promise<ModelAlias[]> {
+  const res = await apiFetch(`${BASE}/model-aliases`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch model aliases');
+  return res.json();
+}
+
+export async function setModelAlias(alias: string, target: string): Promise<ModelAlias> {
+  const res = await apiFetch(`${BASE}/model-aliases`, {
+    method: 'PUT',
+    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ alias, target }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Failed to save model alias: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function deleteModelAlias(alias: string): Promise<void> {
+  const res = await apiFetch(`${BASE}/model-aliases?alias=${encodeURIComponent(alias)}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Failed to remove model alias: ${res.statusText}`);
+  }
 }

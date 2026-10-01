@@ -441,6 +441,14 @@ type RoutingConfig struct {
 	// that is itself selected is never recursively degraded further, even if
 	// it has its own chain entry. Default nil/empty (no behavior change).
 	LocalDegradationChains map[string][]string `yaml:"local_degradation_chains" json:"local_degradation_chains"`
+	// ModelAliases maps a client-facing model name (e.g. "gpt-4") to a real
+	// model on the fleet (e.g. "llama3.2:8b"). The proxy rewrites an aliased
+	// request to the target before any routing decision, so existing client
+	// configs keep working unchanged. One hop only: a target can never itself
+	// be an alias. Managed through the dedicated model-aliases Admin API (the
+	// settings PUT never writes it) and hot-reloaded into the router. Default
+	// nil/empty (no behavior change).
+	ModelAliases map[string]string `yaml:"model_aliases" json:"model_aliases"`
 	// OverflowSLAMs, when > 0, caps how long a request waits in the local
 	// capacity queue before falling through to cloud fallback (or 503),
 	// overriding the longer queue_timeout_ms for that purpose only. It never
@@ -658,6 +666,9 @@ func (c *Config) Validate() error {
 			}
 			seen[alt] = true
 		}
+	}
+	if err := ValidateModelAliases(c.Routing.ModelAliases); err != nil {
+		return err
 	}
 	// No "== 0 means unset, default to 10" coercion here on purpose: 0 is a
 	// legal, deliberate value per the range check immediately below (an

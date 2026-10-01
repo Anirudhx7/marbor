@@ -503,6 +503,10 @@ type Router struct {
 	// per-request opt-in header (see config.RoutingConfig.LocalDegradationChains).
 	// Opt-in, immutable after construction (config-only, not runtime-toggleable).
 	localDegradationChains map[string][]string
+	// modelAliases holds the operator-declared client-name -> real-model map
+	// (config.RoutingConfig.ModelAliases). Swapped as a whole, never mutated
+	// in place, so the per-request resolve path takes no lock. See aliases.go.
+	modelAliases atomic.Pointer[map[string]string]
 	// overflowSLA, when > 0, caps how long WaitForNode waits in the local
 	// capacity queue before returning nil (triggering cloud fallback or 503)
 	// - see config.RoutingConfig.OverflowSLAMs. It never affects Route()'s
@@ -839,6 +843,7 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 		prefixLocalityEnabled:    cfg.PrefixLocalityEnabled,
 		prefixLocalityWeight:     cfg.PrefixLocalityWeight,
 	}
+	r.SetModelAliases(cfg.ModelAliases)
 	rr = r
 	return r
 }
