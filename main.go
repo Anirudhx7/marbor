@@ -201,6 +201,16 @@ func applyPersistedSettings(cfg *config.Config, st store.Store) {
 	cfg.Routing.PrefixLocalityWeight = store.GetFloatSetting(st, "routing_prefix_locality_weight", 10)
 	store.GetJSONSetting(st, "routing_fallback_chains", &cfg.Routing.FallbackChains)
 	store.GetJSONSetting(st, "routing_local_degradation_chains", &cfg.Routing.LocalDegradationChains)
+	store.GetJSONSetting(st, "routing_model_aliases", &cfg.Routing.ModelAliases)
+	// Drop (and log) any stored alias that no longer passes validation
+	// instead of letting the fatal post-overlay Validate() below crash-loop
+	// the server over one bad row - aliases are managed at runtime, so a
+	// rule tightened in a later release must never block startup.
+	var droppedAliases []string
+	cfg.Routing.ModelAliases, droppedAliases = config.SanitizeModelAliases(cfg.Routing.ModelAliases)
+	for _, reason := range droppedAliases {
+		log.Printf("settings: dropping invalid model alias: %s", reason)
+	}
 
 	cfg.Metrics.Enabled = store.GetBoolSetting(st, "metrics_enabled", cfg.Metrics.Enabled)
 	cfg.Metrics.Port = store.GetIntSetting(st, "metrics_port", cfg.Metrics.Port)

@@ -176,6 +176,24 @@ for chunk in llm.stream("Explain cloud overflow in plain English."):
 
 ---
 
+## Keeping existing model names (OpenWebUI, Cursor, apps built for cloud APIs)
+
+Clients configured for a cloud model name such as `gpt-4` can keep that name. Declare a model alias that maps it to a real model on your fleet, and marbor rewrites each request before routing:
+
+```bash
+marbor models alias set gpt-4 llama3.2:8b
+marbor models alias list
+```
+
+The same aliases are managed through the Admin API (`GET/PUT/DELETE /admin/model-aliases`) and the Routing page. Changes apply immediately, with no restart.
+
+- Point the client at marbor (`http://your-marbor-host:11434/v1` for OpenAI-style clients such as OpenWebUI's OpenAI connection or Cursor's custom base URL) and leave its model name unchanged.
+- `GET /v1/models` lists the alias (with its target's status) while the target is on the fleet, so model pickers that read that endpoint show it.
+- Responses carry an `X-Marbor-Model-Alias: gpt-4 -> llama3.2:8b` header, and the request log shows `gpt-4 -> llama3.2:8b`. The response body's `model` field is the real model.
+- Aliases apply to both `/v1/*` and the Ollama-native `/api/*` endpoints. See [LIMITATIONS.md](LIMITATIONS.md#model-aliases) for the full list of rules.
+
+---
+
 ## Notes
 
 - Your `sk-marbor-...` key never leaves the marbor. The client `Authorization` header is stripped before forwarding to a local Ollama node, and replaced with the cloud provider's own configured `api_key` when a request overflows to cloud. Provider credentials live only in the database (encrypted).

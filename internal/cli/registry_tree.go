@@ -349,6 +349,44 @@ func buildRoot() *Command {
 						},
 					},
 					{
+						Name:  "alias",
+						Short: "map client-facing model names (e.g. gpt-4) to real models on the fleet",
+						Long: "An alias rewrites a request for its name to the real target model before\n" +
+							"routing, so existing client configs keep working. Aliases resolve one hop\n" +
+							"only and take effect immediately, with no restart.",
+						NeedsAuth: true,
+						Footer:    authFlags,
+						Sub: []*Command{
+							{
+								Name:      "list",
+								Short:     "list model aliases with their target's live status",
+								NeedsAuth: true,
+								Run:       func(ctx *RunCtx) int { return runModelsAliasList(ctx.Flags, ctx.Stdout, ctx.Stderr) },
+							},
+							{
+								Name:      "set",
+								Short:     "create or replace an alias",
+								NeedsAuth: true,
+								Args:      []ArgSpec{{Name: "alias"}, {Name: "target"}},
+								Run: func(ctx *RunCtx) int {
+									return runModelsAliasSet(ctx.Flags, ctx.Args[0], ctx.Args[1], ctx.Stdout, ctx.Stderr)
+								},
+							},
+							{
+								Name:      "remove",
+								Short:     "remove an alias (clients still using its name start failing)",
+								NeedsAuth: true,
+								Args:      []ArgSpec{{Name: "alias"}},
+								Flags: []FlagSpec{
+									{Name: "yes", Kind: FlagBool, Usage: "confirm removal without prompting"},
+								},
+								Run: func(ctx *RunCtx) int {
+									return runModelsAliasRemove(ctx.Flags, ctx.Args[0], ctx.Bool("yes"), ctx.Stdout, ctx.Stderr)
+								},
+							},
+						},
+					},
+					{
 						Name:      "cancel-pull",
 						Short:     "cancel an in-flight pull",
 						NeedsAuth: true,

@@ -1265,6 +1265,13 @@ func (s *Server) Handler() http.Handler {
 	reg("GET /admin/model-configs", s.cors(s.adminAuth(s.handleListModelConfigs)))
 	reg("GET /admin/model-config/capabilities", s.cors(s.adminAuth(s.handleModelConfigCapabilities)))
 
+	// Alias names can contain "/" and ":", so the alias travels in the body
+	// (PUT) or the query string (DELETE), never a path segment - same
+	// reasoning as the model-config routes above.
+	reg("GET /admin/model-aliases", s.cors(s.adminAuth(s.handleListModelAliases)))
+	reg("PUT /admin/model-aliases", s.cors(s.adminAuth(s.handleSetModelAlias)))
+	reg("DELETE /admin/model-aliases", s.cors(s.adminAuth(s.handleDeleteModelAlias)))
+
 	reg("GET /admin/predictive/decisions", s.cors(s.adminAuth(s.handlePredictiveDecisions)))
 	reg("GET /admin/prefix-locality/stats", s.cors(s.adminAuth(s.handlePrefixLocalityStats)))
 
@@ -5611,6 +5618,12 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		incoming.LiteLLM.APIKey = current.LiteLLM.APIKey
 	}
 
+	// Model aliases are managed only through the model-aliases endpoints.
+	// Whatever the body carried (a stale copy echoed back by a client, or a
+	// deliberate attempt to bypass per-alias validation) is discarded here,
+	// before validation, and the live value is restored under s.mu below.
+	incoming.Routing.ModelAliases = nil
+
 	if err := incoming.Validate(); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "validation failed: "+err.Error())
 		return
@@ -5629,6 +5642,7 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	incoming.Auth.Keys = s.cfg.Auth.Keys
 	incoming.CloudProviders = s.cfg.CloudProviders
 	incoming.Nodes = s.cfg.Nodes
+	incoming.Routing.ModelAliases = s.cfg.Routing.ModelAliases
 	s.cfg = incoming
 	s.mu.Unlock()
 
