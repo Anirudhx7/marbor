@@ -187,6 +187,7 @@ Client Application (Agent / RAG / Copilot)
 | | Deployment-aware GPU-count placement | Nodes declare tensor/pipeline/expert/data-parallel width (or one-click "Adopt" what the marbor agent auto-detects). A model needing 8 GPUs for tensor-parallel inference can no longer be routed to a 4-GPU node - the scheduler gates on GPU count, not just VRAM. |
 | | Multi-host replica scheduling | Declare which nodes together form one tensor/pipeline-parallel deployment spanning more than one physical machine. The head node is the only one ever routed to; worker nodes stay visible in the fleet but are automatically excluded from routing and session-affinity revalidation. Conflicting or one-sided declarations show a clear "Unresolved replica" state instead of routing to a broken deployment. |
 | | Session affinity (KV-cache) | `X-Session-ID` header pins a conversation to a node. KV-cache stays hot - subsequent turns skip re-prefill. TTL-based eviction. |
+| | Model aliases | Keep existing client model names: map `gpt-4` to a real fleet model like `llama3.2:8b` and OpenWebUI, Cursor, or app configs keep working unchanged. Routed, rate-limited, and recorded under the real model; takes effect without a restart. |
 | | Proactive model warmup | `keep_alive` pings on a configurable schedule keep priority models resident between requests. |
 | **Financial Controls** | Real-time savings tracking | Every locally-served token valued against your cloud reference rate. Dashboard shows exact dollar savings vs pure-cloud baseline. |
 | | Per-key cost attribution | Token totals and estimated cost per API key per month. Attribute inference spend to teams, projects, or agents. |
@@ -357,7 +358,7 @@ Auth middleware: Bearer token validation → rate limit → quota check → mode
 Request queue: absorbs traffic spikes (configurable depth + timeout)
     │
     ▼
-Router: extract model name from JSON body
+Router: extract model name from JSON body, resolve a model alias if one is declared (gpt-4 → llama3.2:8b)
     │
     ├── X-Session-ID present + session affinity enabled?
     │   └── Yes → route to pinned node (KV-cache affinity)
@@ -494,6 +495,10 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor models search` | search Hugging Face models (requires auth) |
 | `marbor models repo <owner/name>` | show Hugging Face repo detail with per-node fit (requires auth) |
 | `marbor models pull-progress <node> <model>` | show a point-in-time snapshot of an active pull (requires auth) |
+| `marbor models alias` | map client-facing model names (e.g. gpt-4) to real models on the fleet (requires auth) |
+| `marbor models alias list` | list model aliases with their target's live status (requires auth) |
+| `marbor models alias set <alias> <target>` | create or replace an alias (requires auth) |
+| `marbor models alias remove <alias>` | remove an alias (clients still using its name start failing) (requires auth) |
 | `marbor models cancel-pull <node> <model>` | cancel an in-flight pull (requires auth) |
 | `marbor runtime` | start/stop/restart/logs/drain/undrain/health on one node (requires auth) |
 | `marbor runtime start <node>` | start the node's inference runtime process (requires auth) |

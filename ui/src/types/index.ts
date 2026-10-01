@@ -782,3 +782,16 @@ export interface CloudBudgetStatus {
   global: BudgetEntry;
   perKey: BudgetEntry[];
 }
+
+// ModelAlias mirrors one row of GET /admin/model-aliases. Every inventory
+// field comes from the live fleet inventory. When inventory_checked is false
+// the fleet could not be read completely, so target_available and
+// shadows_model must be shown as "not checked", never as a confirmed no.
+export interface ModelAlias {
+  alias: string;
+  target: string;
+  target_available: boolean;
+  target_status?: 'loaded' | 'available';
+  shadows_model: boolean;
+  inventory_checked: boolean;
+}
