@@ -4,38 +4,39 @@ Usage:
   marbor <command> [flags]
 
 Commands:
-  version       print CLI and (if reachable) server version
-  status        print marbor health/status summary
-  login         authenticate once and save the session locally (recommended)
-  logout        remove the saved session
-  whoami        show the CLI's saved identity (live-verified)
-  nodes         list nodes known to marbor
-  models        fleet-wide list, or pull/delete/unload/list on one node
-  runtime       start/stop/restart/logs/drain/undrain/health on one node
-  node          node control driver operations
-  key           per-API-key local/cloud routing overrides (masked list, plaintext-once on create)
-  schedules     manage time-of-day warmup/unload/drain/undrain automations
-  routing       manage routing rules and global routing strategy
-  cloud         manage cloud overflow providers and view budget status
-  favorites     manage your starred model list
-  model-config  manage per-node model parameter profiles
-  catalog       show the fleet-aware HF/local model catalog with per-node fit
-  backup        manage marbor.db backups
-  analytics     hourly analytics + per-model stats
-  savings       show cloud-vs-local savings summary
-  metrics       dashboard metrics
-  pulls         list every active model pull job across the fleet
-  warmup        global warmup engine status and manual controls
-  predictive    show recent predictive prewarm decisions
-  system-info   show control-plane host system info and per-node GPU summary
-  config        control-plane configuration operations
-  settings      get/set the full control-plane config
-  benchmark     run/inspect in-dashboard hardware benchmark jobs
-  spill         show per-key, per-provider local-vs-cloud request counts
-  activity      show unified fleet activity feed (drain, agent, runtime, node, warmup, schedule, predictive, config)
-  requests      inspect routing decisions for past requests
-  audit         inspect the persisted, filterable request audit log
-  users         manage dashboard users
+  version           print CLI and (if reachable) server version
+  status            print marbor health/status summary
+  login             authenticate once and save the session locally (recommended)
+  logout            remove the saved session
+  whoami            show the CLI's saved identity (live-verified)
+  nodes             list nodes known to marbor
+  models            fleet-wide list, or pull/delete/unload/list on one node
+  runtime           start/stop/restart/logs/drain/undrain/health on one node
+  node              node control driver operations
+  key               per-API-key local/cloud routing overrides (masked list, plaintext-once on create)
+  schedules         manage time-of-day warmup/unload/drain/undrain automations
+  routing           manage routing rules and global routing strategy
+  cloud             manage cloud overflow providers and view budget status
+  favorites         manage your starred model list
+  model-config      manage per-node model parameter profiles
+  catalog           show the fleet-aware HF/local model catalog with per-node fit
+  fit [owner/name]  show which models fit each node and which quantization to pull
+  backup            manage marbor.db backups
+  analytics         hourly analytics + per-model stats
+  savings           show cloud-vs-local savings summary
+  metrics           dashboard metrics
+  pulls             list every active model pull job across the fleet
+  warmup            global warmup engine status and manual controls
+  predictive        show recent predictive prewarm decisions
+  system-info       show control-plane host system info and per-node GPU summary
+  config            control-plane configuration operations
+  settings          get/set the full control-plane config
+  benchmark         run/inspect in-dashboard hardware benchmark jobs
+  spill             show per-key, per-provider local-vs-cloud request counts
+  activity          show unified fleet activity feed (drain, agent, runtime, node, warmup, schedule, predictive, config)
+  requests          inspect routing decisions for past requests
+  audit             inspect the persisted, filterable request audit log
+  users             manage dashboard users
 
 Run "marbor <command> --help" for the full list of actions and flags for
 that command.

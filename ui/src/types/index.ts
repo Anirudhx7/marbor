@@ -661,10 +661,27 @@ export interface CatalogVariantFit extends ModelVariant {
   disk_fit: 'ok' | 'insufficient' | 'unknown';
 }
 
+// The quantization to pull on a node, or the reason there is none. Sizes are
+// estimates (same figures as the per-variant fit); unknown is never a number.
+export interface QuantRecommendation {
+  picked: boolean;
+  tag: string;
+  quantization: string;
+  vram_est_mb: number;
+  size_mb: number;
+  fit: FitStatus;
+  // True when the pick only fits in the yellow band (little VRAM headroom).
+  tight: boolean;
+  reason?: 'no_variants' | 'incompatible_runtime' | 'vram_unknown' | 'disk_insufficient' | 'too_large';
+  closest_tag?: string;
+}
+
 // A catalog model decorated for a specific node.
 export interface CatalogModelFit extends CatalogModel {
   variants: CatalogVariantFit[];
+  // True when any version of this model is present on the node (per model, not per quantization).
   downloaded: boolean;
+  recommendation: QuantRecommendation;
 }
 
 export interface CatalogNodeEntry {

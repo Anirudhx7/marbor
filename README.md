@@ -397,6 +397,25 @@ How keep-warm behaves across the fleet:
 
 ---
 
+## Check What Fits Before You Pull
+
+Learn a model will not fit before you download it, not after. For each node, **Model Advisor** (the "What fits" list under the node card, plus a "Pick" marker on Hugging Face quantizations) and `marbor fit` say whether a model fits the node's total VRAM and free disk, and which already-offered quantization to pull:
+
+```bash
+marbor fit                                   # every built-in catalog model, every node
+marbor fit --node gpu-1                      # one node
+marbor fit unsloth/Qwen3-8B-GGUF --node gpu-1 --ctx 16384   # a Hugging Face repo
+```
+
+- **The pick** is the catalog's recommended quantization when it fits, otherwise the largest one that fits. A pick that only fits with little headroom (above 85% of total VRAM) is flagged **tight**. If nothing offered fits, the answer says so and names the smallest option.
+- **Sized against total VRAM**, not what is free right now, and against combined VRAM on multi-GPU Ollama and llama.cpp nodes or the largest single GPU for vLLM, TGI and MLX. Figures are estimates (published file sizes or the built-in catalog, plus context for Hugging Face repos); an unknown VRAM or model size shows `-`, never a guess.
+- **Runtime coverage.** Built-in catalog models are Ollama-format tags, so on vLLM, TGI, llama.cpp and MLX nodes they show as "other format". Hugging Face GGUF repos get a pick on Ollama and llama.cpp nodes; a safetensors repo on vLLM, TGI or MLX gets a fit answer for that one repo. Suggesting an AWQ or GPTQ alternative repo is not included yet.
+- Read-only: nothing is pulled, changed or routed differently.
+
+The same answer is in the Admin API as an additive `recommendation` object on each model in `GET /admin/models/catalog` (`nodes[].models[]`) and at the top level of `GET /admin/models/repo`: `picked`, `tag`, `quantization`, `vram_est_mb`, `size_mb`, `fit`, `tight`, and, when nothing fits, `reason` (`too_large`, `vram_unknown`, `disk_insufficient`, `incompatible_runtime`, `no_variants`) with an optional `closest_tag`.
+
+---
+
 ## Cloud Fallback Setup
 
 Add a cloud overflow provider from the dashboard's **Settings → Cloud Providers** card, or via one `POST /admin/v1/cloud/providers` call per provider - providers are persisted to `marbor.db`:
@@ -459,6 +478,8 @@ The fleet runs without it - remote nodes fall back to operator-declared `vram_to
 | POST | `/admin/nodes/{name}/drain` | Drain node for maintenance |
 | PATCH | `/admin/keys/{name}` | Mutate key rate limits, quotas, model allow-lists at runtime |
 | PATCH | `/admin/nodes/{name}` | Override `vram_total_mb`, `gpu_model`, `gpu_indices` at runtime |
+| GET | `/admin/v1/models/catalog` | Built-in model catalog with per-node fit and a `recommendation` (quantization to pull) per model |
+| GET | `/admin/v1/models/repo?id=owner/name&node=&ctx=` | Hugging Face repo quantizations with per-node fit and a `recommendation` |
 | POST | `/admin/v1/config/reload` | Re-sync live settings from `marbor.db` without SIGHUP |
 
 ---
@@ -569,6 +590,7 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor model-config list` | list every configured model parameter profile (requires auth) |
 | `marbor model-config capabilities` | show which parameter fields take effect per runtime (requires auth) |
 | `marbor catalog` | show the fleet-aware HF/local model catalog with per-node fit (requires auth) |
+| `marbor fit [owner/name]` | show which models fit each node and which quantization to pull (requires auth) |
 | `marbor backup` | manage marbor.db backups (requires auth) |
 | `marbor backup now` | trigger an on-demand backup and download it (requires auth) |
 | `marbor backup list` | list backup files on the server (requires auth) |
