@@ -626,6 +626,14 @@ type NodeResp struct {
 	SchedulingRole string            `json:"schedulingRole,omitempty"`
 	ReplicaHead    string            `json:"replicaHead,omitempty"`
 	ReplicaPeers   *NodeReplicaPeers `json:"replicaPeers,omitempty"`
+	// WarmupSupported reports whether keep-warm and scheduled warmup can act
+	// on this node's runtime (Ollama only today). A pointer so an older
+	// server that doesn't send the field prints "-" rather than a false "no".
+	WarmupSupported *bool `json:"warmupSupported,omitempty"`
+	// WarmupWarnings is the current per-model keep-warm notice that is not
+	// a ping failure (digest drift, or a pair skipped on a replica worker or
+	// an unresolved node).
+	WarmupWarnings map[string]string `json:"warmupWarnings,omitempty"`
 }
 
 // NodeReplicaPeers mirrors store.ReplicaPeers' JSON shape as a local DTO

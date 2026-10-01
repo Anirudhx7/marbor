@@ -385,6 +385,16 @@ Marbor proactively keeps priority models loaded in VRAM between requests. Withou
 
 Configure it in the dashboard's **Settings → Global Warmup** card: enable it, set the interval (default every 5 minutes), and list your highest-traffic models. Per-node warmup overrides live on the **Warmup** page.
 
+How keep-warm behaves across the fleet:
+
+- **Ollama nodes only, for now.** Other runtimes show keep-warm as unsupported (`KEEP-WARM` column in `marbor nodes`, a disabled input on the Warmup page); an existing config there can still be trimmed or turned off.
+- **Only models already on the node.** Adding a model to a node's keep-warm list, or to a warmup schedule, is rejected unless that model is already pulled on that node. A bare name like `llama3` matches `llama3:latest`.
+- **Multi-host replicas are warmed through the head.** A replica worker is never warmed directly: its keep-warm input is locked, a warmup schedule aimed at a worker runs against its head, and a leftover config on a worker can only be cleared or trimmed. A node with an unresolved replica declaration is not warmed at all until the declaration is fixed.
+- **Unhealthy nodes are skipped** by both the periodic keep-warm cycle and warmup schedules.
+- **Digest drift is reported, not blocked.** If a node's resident copy of a keep-warm model has a different content digest from the fleet's reference copy, the model is still kept warm and a notice appears on the node (Warmup page, GPU Nodes page, `marbor nodes`).
+- **Active sessions are protected when making room.** When a warmup has to evict something to fit, it prefers models no live sticky session is using, and only evicts a session's model as a last resort.
+- Saving a node's keep-warm config triggers a full warmup cycle right away.
+
 ---
 
 ## Cloud Fallback Setup

@@ -549,7 +549,9 @@ func TestHandleCreateScheduleRequiresModelsForWarmupUnload(t *testing.T) {
 // the two rejection tests above: a schedule against a real node, with models
 // where required, is accepted and persisted.
 func TestHandleCreateScheduleSucceedsForValidNode(t *testing.T) {
-	s := newScheduleTestServer()
+	// A warmup schedule's models are checked against the node's real
+	// catalog, so the node here serves one.
+	s := newWarmupTestServer(t, nil, map[string][]string{"n1": {"llama3:latest"}})
 	rec := doScheduleRequest(s, http.MethodPost, "/admin/schedules", `{"action":"drain","node":"n1","at":"09:00","enabled":true}`)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201; body=%s", rec.Code, rec.Body.String())
