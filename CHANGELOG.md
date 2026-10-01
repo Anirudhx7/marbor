@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.22.2] - 2026-10-01
+
 ### Fixed
 - uninstall: stopping a pidfile-tracked marbor process now works on Windows
 
