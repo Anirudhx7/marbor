@@ -1199,3 +1199,110 @@ func TestReserveColdStartBytes_UsesKnownSizeWithoutFetching(t *testing.T) {
 		t.Errorf("PendingPrewarmBytes(n1) = %d, want %d (the real lastKnownVRAM figure)", got, 4000*mib)
 	}
 }
+
+// TestIsPinnedMatchesBareAndLatest verifies pin lookups treat a bare model
+// name and its ":latest" tag as the same model in both directions, while
+// leaving other tags, digest references and other nodes alone.
+func TestIsPinnedMatchesBareAndLatest(t *testing.T) {
+	tests := []struct {
+		name   string
+		pinned []string
+		node   string
+		model  string
+		want   bool
+	}{
+		{"bare pin matches latest", []string{"llama3"}, "n1", "llama3:latest", true},
+		{"latest pin matches bare", []string{"llama3:latest"}, "n1", "llama3", true},
+		{"exact bare", []string{"llama3"}, "n1", "llama3", true},
+		{"exact tagged", []string{"llama3:8b"}, "n1", "llama3:8b", true},
+		{"bare pin does not match other tag", []string{"llama3"}, "n1", "llama3:8b", false},
+		{"other tag pin does not match bare", []string{"llama3:8b"}, "n1", "llama3", false},
+		{"unrelated model", []string{"llama3"}, "n1", "mistral:latest", false},
+		{"empty set", nil, "n1", "llama3:latest", false},
+		{"other node set not consulted", []string{"llama3"}, "n2", "llama3:latest", false},
+		{"digest ref exact only", []string{"llama3@sha256:abc"}, "n1", "llama3:latest", false},
+		{"digest ref exact match", []string{"llama3@sha256:abc"}, "n1", "llama3@sha256:abc", true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			r := &Router{pinned: map[string]map[string]bool{}}
+			r.SetPinnedModels("n1", tc.pinned)
+			if got := r.isPinned(tc.node, tc.model); got != tc.want {
+				t.Errorf("isPinned(%q, %q) with pins %v = %v, want %v", tc.node, tc.model, tc.pinned, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestUnloadModelPinnedBareProtectsLatest verifies pinning a bare name blocks a
+// manual unload of the runtime-reported ":latest" form, without contacting the node.
+func TestUnloadModelPinnedBareProtectsLatest(t *testing.T) {
+	hit := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hit = true
+		w.Write([]byte(`{"done":true}`))
+	}))
+	defer srv.Close()
+
+	r := &Router{
+		nodes:  []*NodeState{{Name: "n1", URL: srv.URL, Healthy: true}},
+		pinned: map[string]map[string]bool{},
+	}
+	r.SetPinnedModels("n1", []string{"llama3"})
+
+	found, err := r.UnloadModel(context.Background(), "n1", "llama3:latest")
+	if !found {
+		t.Fatal("expected node n1 to be found")
+	}
+	if !errors.Is(err, ErrModelPinned) {
+		t.Fatalf("UnloadModel err = %v, want ErrModelPinned", err)
+	}
+	if hit {
+		t.Error("pinned model unload must not contact the node at all")
+	}
+}
+
+// TestEvictForHeadroomSkipsBarePinnedLatest verifies a loaded "llama3:latest"
+// is never chosen as a victim when the bare name "llama3" is pinned.
+func TestEvictForHeadroomSkipsBarePinnedLatest(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"done":true}`))
+	}))
+	defer srv.Close()
+	r := &Router{
+		nodes: []*NodeState{{
+			Name: "n1", URL: srv.URL, Healthy: true, VRAMTotalMB: 50,
+			LoadedModels: []ModelInfo{{Name: "llama3:latest", SizeVRAM: 40 * mib}},
+		}},
+		lastUsed: map[string]time.Time{},
+		pinned:   map[string]map[string]bool{},
+	}
+	r.SetPinnedModels("n1", []string{"llama3"})
+	if n := r.EvictForHeadroom(context.Background(), "n1", "newmodel", 999*mib); n != 0 {
+		t.Errorf("evicted %d, want 0 (bare pin covers llama3:latest)", n)
+	}
+}
+
+// TestEvictForHeadroomBareKeepWarmOutranksTaggedVictim verifies a bare name in
+// the keep-warm list ranks its runtime-reported ":latest" form, so it is
+// protected from eviction for a lower-priority model.
+func TestEvictForHeadroomBareKeepWarmOutranksTaggedVictim(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"done":true}`))
+	}))
+	defer srv.Close()
+	r := &Router{
+		nodes: []*NodeState{{
+			Name: "n1", URL: srv.URL, Healthy: true, VRAMTotalMB: 50,
+			LoadedModels: []ModelInfo{{Name: "high:latest", SizeVRAM: 50 * mib}},
+		}},
+		lastUsed: map[string]time.Time{},
+		pinned:   map[string]map[string]bool{},
+	}
+	r.setWarmPriority("n1", []string{"high", "low"})
+	// Edge: if the incoming model were equivalent to the victim (equal rank),
+	// the victim is not protected; harmless since that model is already resident.
+	if n := r.EvictForHeadroom(context.Background(), "n1", "low", 40*mib); n != 0 {
+		t.Errorf("evicted %d, want 0 (bare keep-warm name outranks the tagged victim)", n)
+	}
+}
