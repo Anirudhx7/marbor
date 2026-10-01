@@ -201,8 +201,10 @@ func (r *Router) recordScheduleRun(id, status, errMsg string) {
 }
 
 // WarmModels preloads the given models on a single node immediately via a real
-// /api/generate keep_alive (used by scheduled warmup). Non-Ollama nodes and
-// unknown node names are skipped. Waits for every model's ping to finish and
+// /api/generate keep_alive (used by scheduled warmup). A replica worker is
+// retargeted to its head; unresolved, unknown, non-Ollama, draining,
+// unhealthy and GPU-short nodes return an error before any headroom is
+// made. Waits for every model's ping to finish and
 // returns a non-nil error listing any that failed (also recorded into
 // NodeState.WarmupErrors, same as the periodic keep-warm pinger in warmer.go)
 // so the caller's schedule status reflects the real outcome, not just that
@@ -210,28 +212,58 @@ func (r *Router) recordScheduleRun(id, status, errMsg string) {
 func (r *Router) WarmModels(ctx context.Context, nodeName string, models []string) error {
 	r.mu.RLock()
 	cfg := r.warmupCfg
+	nodes := make([]*NodeState, len(r.nodes))
+	copy(nodes, r.nodes)
+	r.mu.RUnlock()
+	// A warmup against a replica worker means "keep this model warm on this
+	// deployment", which is served by the replica's head - retarget there.
+	// An unresolved node's declaration is not safe to interpret either way.
+	roles, heads := r.SchedulingRolesWithHeads(nodes)
+	switch roles[nodeName] {
+	case RoleUnresolved:
+		log.Printf("scheduled warmup skipped: node %q has an unresolved replica declaration", nodeName)
+		return fmt.Errorf("node %q has an unresolved replica declaration - reconcile replica_peers", nodeName)
+	case RoleWorker:
+		head := heads[nodeName]
+		if head == "" {
+			log.Printf("scheduled warmup skipped: replica worker %q has no resolved head", nodeName)
+			return fmt.Errorf("node %q is a replica worker with no resolved head - reconcile replica_peers", nodeName)
+		}
+		log.Printf("scheduled warmup: node %q is a replica worker, warming its head %q instead", nodeName, head)
+		nodeName = head
+	}
 	var target *NodeState
-	for _, n := range r.nodes {
+	for _, n := range nodes {
 		if n.Name == nodeName {
 			target = n
 			break
 		}
 	}
-	r.mu.RUnlock()
 	if target == nil {
 		log.Printf("scheduled warmup skipped: node %q not found", nodeName)
 		return fmt.Errorf("node %q not found", nodeName)
 	}
-	if rt := target.GetRuntime(); rt != "ollama" && rt != "" {
+	if rt := target.GetRuntime(); !WarmupSupportedForRuntime(rt) {
 		log.Printf("scheduled warmup skipped: node %q runtime %q does not support keep_alive warmup", nodeName, rt)
 		return fmt.Errorf("node %q runtime %q does not support keep_alive warmup", nodeName, rt)
 	}
 	target.mu.RLock()
 	draining := target.Draining
+	healthy := target.Healthy
 	target.mu.RUnlock()
 	if draining {
 		log.Printf("scheduled warmup skipped: node %q is draining", nodeName)
 		return fmt.Errorf("node %q is draining", nodeName)
+	}
+	// Checked before ensureHeadroom so an unhealthy node never has models
+	// evicted to make room for a ping that is guaranteed to fail.
+	if !healthy {
+		log.Printf("scheduled warmup skipped: node %q is unhealthy", nodeName)
+		return fmt.Errorf("node %q is unhealthy", nodeName)
+	}
+	if !r.isGPUGroupSufficient(target) {
+		log.Printf("scheduled warmup skipped: node %q has fewer GPUs available than its declared parallelism requires", nodeName)
+		return fmt.Errorf("node %q has fewer GPUs available than its declared parallelism requires", nodeName)
 	}
 	keepAlive := effectiveKeepAlive(cfg.KeepAlive, time.Duration(cfg.IntervalMs)*time.Millisecond)
 	// A scheduled warmup is an explicit "be warm again" request - it must
@@ -248,9 +280,19 @@ func (r *Router) WarmModels(ctx context.Context, nodeName string, models []strin
 		if m == "" {
 			continue
 		}
+		// Digest drift is logged, never acted on: the model is still warmed
+		// and the run's status is unaffected.
+		if r.driftedResidentDigest(target, m) {
+			log.Printf("[schedule] node %s model %s: digest drift - resident copy differs from the fleet's reference digest; still warming", target.Name, m)
+		}
+		// Serialized per node with the keep-warm pinger and predictive
+		// prewarm, so concurrent origins never evict from the same stale
+		// snapshot at once (see lockNodeLoad).
+		unlock := r.lockNodeLoad(target.Name)
 		r.ensureHeadroom(ctx, target, m)
-		status := "ok"
 		err := r.pingNode(ctx, target, m, keepAlive)
+		unlock()
+		status := "ok"
 		if err != nil {
 			status = "error"
 			// Warmup failed - release the reservation now instead of

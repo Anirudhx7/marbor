@@ -562,6 +562,16 @@ type nodeResp struct {
 	// show *why* a keep-warm model is stuck instead of leaving it silently
 	// "not resident" forever (see NodeState.WarmupErrors in router.go).
 	WarmupErrors map[string]string `json:"warmupErrors,omitempty"`
+	// WarmupWarnings is the current per-model keep-warm notice that is not a
+	// ping failure (model -> message): digest drift on a model that is still
+	// kept warm, or a keep-warm entry skipped because this node is a replica
+	// worker or has an unresolved replica declaration. Recomputed every
+	// warmup cycle (see NodeState.WarmupWarnings in router.go).
+	WarmupWarnings map[string]string `json:"warmupWarnings,omitempty"`
+	// WarmupSupported reports whether keep-warm and scheduled warmup can act
+	// on this node's runtime (Ollama only today). Computed from the runtime,
+	// never stored.
+	WarmupSupported bool `json:"warmupSupported"`
 	// UnloadErrors mirrors WarmupErrors for the scheduled-unload path - the
 	// last failed scheduled/agent unload per model (see NodeState.UnloadErrors
 	// in router.go), so a schedule that reports "ok" (dispatch succeeded) but
@@ -1544,6 +1554,8 @@ func (s *Server) nodeStateToResp(n *router.NodeState, id string, roles map[strin
 		Uptime:                          n.Uptime,
 		LoadedModels:                    safeModelInfoSlice(n.LoadedModels),
 		WarmupErrors:                    safeStringMap(n.WarmupErrors),
+		WarmupWarnings:                  safeStringMap(n.WarmupWarnings),
+		WarmupSupported:                 router.WarmupSupportedForRuntime(n.Runtime),
 		UnloadErrors:                    safeStringMap(n.UnloadErrors),
 		WarmupState:                     warmupState,
 		ActiveConns:                     atomic.LoadInt32(&n.ActiveConns),
@@ -3294,6 +3306,18 @@ func (s *Server) handleGetNodeWarmup(w http.ResponseWriter, r *http.Request) {
 // handleSetNodeWarmup enables/disables proactive warmup for a node and sets
 // which models to keep resident. Persisted to the KV store and applied live; an
 // immediate warm cycle fires so the change takes effect now, not next tick.
+//
+// The request replaces the node's whole keep-warm config, so it is validated
+// against the node's replica role and the node's real model catalog:
+//   - a replica worker's keep-warm is managed on its head, so a worker-named
+//     request that adds or enables anything is rejected; one that only
+//     disables or trims is accepted, which is how a config left over from
+//     before the node became a worker gets cleared;
+//   - an unresolved node is rejected outright until replica_peers agree;
+//   - on a head or standalone node, every newly added model (or every model,
+//     when the request turns keep-warm on) must exist on the node, and an
+//     unreachable node fails closed - except a pure disable/trim, which adds
+//     nothing to validate and must work even while the node is down.
 func (s *Server) handleSetNodeWarmup(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	name := r.PathValue("name")
@@ -3307,12 +3331,39 @@ func (s *Server) handleSetNodeWarmup(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"error":"invalid request body"}`))
 		return
 	}
+	stored := s.router.NodeWarmupSetting(name)
+	shrinkOnly := warmupRequestOnlyShrinks(stored, body.Enabled, body.Models)
+	roles, heads := s.router.SchedulingRolesWithHeads(s.router.Nodes())
+	switch roles[name] {
+	case router.RoleUnresolved:
+		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("node %q has an unresolved replica declaration - fix replica_peers before setting warmup", name))
+		return
+	case router.RoleWorker:
+		if !shrinkOnly {
+			writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("node %q is a replica worker - keep-warm is managed on its head %q, edit it there; a worker's stored config can only be disabled or trimmed", name, heads[name]))
+			return
+		}
+	default:
+		if !shrinkOnly {
+			enabling := body.Enabled && !stored.Enabled
+			for _, m := range body.Models {
+				if !enabling && modelListContains(stored.Models, m) {
+					continue // already configured: not a new claim about the catalog
+				}
+				if msg := s.scheduleModelExists(name, m); msg != "" {
+					writeJSONError(w, http.StatusBadRequest, msg)
+					return
+				}
+			}
+		}
+	}
 	raw, _ := json.Marshal(router.NodeWarmup{Enabled: body.Enabled, Models: body.Models})
 	_ = s.st.SetSetting("warmup:node:"+name, string(raw))
 	s.router.SetNodeWarmup(name, body.Enabled, body.Models)
-	if body.Enabled && len(body.Models) > 0 {
-		s.router.TriggerWarmup(context.Background())
-	}
+	// Always run a cycle after a save, not only when enabling: the cycle also
+	// recomputes every node's keep-warm warnings, so a warning for a cleared
+	// or removed model disappears now instead of at the next tick.
+	s.router.TriggerWarmup(context.Background())
 	s.logSystemChange(r, "set_node_warmup", name, fmt.Sprintf("Enabled: %v, Models: %v", body.Enabled, body.Models))
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"enabled": body.Enabled, "models": body.Models})
@@ -3491,6 +3542,99 @@ func (s *Server) scheduleNodeExists(name string) bool {
 	return false
 }
 
+// scheduleModelExists checks model against nodeName's own model catalog
+// (/api/tags), accepting Ollama's bare-name shorthand for ":latest". It
+// returns "" when the model is present, otherwise a client-safe rejection
+// message: the model is not on the node, or the node's catalog cannot be read
+// (unreachable node, or a runtime without that catalog) - a configuration
+// naming a model is never accepted on an unverified catalog. The underlying
+// fetch error is logged server-side only, never returned. There is no cached
+// model catalog on the router to consult instead; this is a low-frequency
+// admin write path.
+func (s *Server) scheduleModelExists(nodeName, model string) string {
+	nodeURL, ok := s.router.NodeURLs()[nodeName]
+	if !ok {
+		return fmt.Sprintf("node %q is not registered", nodeName)
+	}
+	tags, err := s.router.FetchModelTags(nodeURL)
+	if err != nil {
+		log.Printf("admin: model catalog check for %q on node %q failed: %v", model, nodeName, err)
+		return fmt.Sprintf("could not verify model %q on node %q: node model list unavailable", model, nodeName)
+	}
+	for _, t := range tags {
+		if router.ModelNamesEquivalent(model, t.Name) {
+			return ""
+		}
+	}
+	return fmt.Sprintf("model %q is not available on node %q", model, nodeName)
+}
+
+// modelListContains reports whether list holds a name equivalent to model.
+func modelListContains(list []string, model string) bool {
+	for _, m := range list {
+		if router.ModelNamesEquivalent(m, model) {
+			return true
+		}
+	}
+	return false
+}
+
+// warmupRequestOnlyShrinks reports whether a keep-warm PUT adds nothing to
+// the node's stored config: it neither turns keep-warm on (disabled ->
+// enabled) nor names a model that isn't already stored. A disable, a trim,
+// or both qualify, as does an empty request against no stored config. Such
+// a request needs no catalog check and is the only change a replica
+// worker's stored config accepts.
+func warmupRequestOnlyShrinks(stored router.NodeWarmup, enabled bool, models []string) bool {
+	if enabled && !stored.Enabled {
+		return false
+	}
+	for _, m := range models {
+		if !modelListContains(stored.Models, m) {
+			return false
+		}
+	}
+	return true
+}
+
+// resolveScheduleNode applies replica topology to a schedule's target node.
+// An unresolved node is rejected for every action. A warmup schedule naming a
+// replica worker is retargeted to the worker's head, since warming "this
+// deployment" means warming the node that serves it; drain, undrain and
+// unload against a worker are real operations on that physical machine and
+// are left as-is. Returns the (possibly rewritten) node name, or an error
+// message for a 400.
+func (s *Server) resolveScheduleNode(action, node string) (string, string) {
+	roles, heads := s.router.SchedulingRolesWithHeads(s.router.Nodes())
+	switch roles[node] {
+	case router.RoleUnresolved:
+		return "", fmt.Sprintf("node %q has an unresolved replica declaration - fix replica_peers before scheduling against it", node)
+	case router.RoleWorker:
+		if action == "warmup" && heads[node] != "" {
+			return heads[node], ""
+		}
+	}
+	return node, ""
+}
+
+// validateScheduleModels checks every model of a warmup schedule against the
+// target node's catalog, fail-closed. Other actions are not checked: an
+// unload of a model that isn't there is not an error.
+func (s *Server) validateScheduleModels(sc router.Schedule) string {
+	if sc.Action != "warmup" {
+		return ""
+	}
+	for _, m := range sc.Models {
+		if m == "" {
+			continue
+		}
+		if msg := s.scheduleModelExists(sc.Node, m); msg != "" {
+			return msg
+		}
+	}
+	return ""
+}
+
 func (s *Server) handleListSchedules(w http.ResponseWriter, r *http.Request) {
 	scheds := s.router.Schedules()
 	if scheds == nil {
@@ -3529,6 +3673,18 @@ func (s *Server) handleCreateSchedule(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(`{"error":"at least one model is required for warmup and unload schedules"}`))
+		return
+	}
+	resolved, msg := s.resolveScheduleNode(sc.Action, sc.Node)
+	if msg != "" {
+		writeJSONError(w, http.StatusBadRequest, msg)
+		return
+	}
+	sc.Node = resolved
+	// Validated after the remap: the catalog that matters is the node the
+	// warmup will actually run on.
+	if msg := s.validateScheduleModels(sc); msg != "" {
+		writeJSONError(w, http.StatusBadRequest, msg)
 		return
 	}
 	sc.ID = fmt.Sprintf("sched-%d", time.Now().UnixNano())
@@ -3611,6 +3767,24 @@ func (s *Server) handlePatchSchedule(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		http.Error(w, `{"error":"at least one model is required for warmup and unload schedules"}`, http.StatusBadRequest)
 		return
+	}
+	// Topology and catalog are re-checked only when the patch changes what
+	// the schedule claims (action, node, models) or turns it on. A patch that
+	// only disables it or moves its time must keep working while the node is
+	// down or its replica declaration is being reconciled.
+	claimChanged := patch.Action != nil || patch.Node != nil || patch.Models != nil ||
+		(patch.Enabled != nil && *patch.Enabled)
+	if claimChanged {
+		resolved, msg := s.resolveScheduleNode(sc.Action, sc.Node)
+		if msg != "" {
+			writeJSONError(w, http.StatusBadRequest, msg)
+			return
+		}
+		sc.Node = resolved
+		if msg := s.validateScheduleModels(sc); msg != "" {
+			writeJSONError(w, http.StatusBadRequest, msg)
+			return
+		}
 	}
 	cur[idx] = sc
 	s.persistSchedules(cur)

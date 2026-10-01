@@ -136,6 +136,15 @@ export interface GPUNode {
   // keep-warm model is stuck instead of leaving it silently "not resident"
   // forever.
   warmupErrors?: Record<string, string>;
+  // Non-fatal keep-warm notices per model (model name -> message): a model
+  // skipped because this node is a replica worker or has an unresolved
+  // replica declaration, or a resident copy whose digest differs from the
+  // fleet's reference copy. Informational, never a failure - warmupErrors
+  // above takes precedence when both are present for a model.
+  warmupWarnings?: Record<string, string>;
+  // Whether keep-warm can act on this node's runtime at all (currently
+  // Ollama only). false means the keep-warm controls are shown disabled.
+  warmupSupported?: boolean;
   // Last failed scheduled/agent unload per model (model name -> error
   // string) - mirrors warmupErrors for the unload side, so a schedule that
   // dispatched successfully but whose actual unload failed is still

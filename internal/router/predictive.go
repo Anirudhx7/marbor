@@ -163,6 +163,12 @@ func (r *Router) RunPredictionCycle(ctx context.Context, now time.Time) {
 	warmupCfg := r.warmupCfg
 	r.mu.RUnlock()
 
+	// Replica workers and unresolved nodes are excluded outright rather than
+	// remapped to a head: predictive acts only on nodes it directly observed
+	// activity on, and a pattern seen on a worker says nothing about what its
+	// head should hold. Non-Ollama nodes are excluded because the warmup ping
+	// cannot succeed there, so reserving headroom for it would only evict.
+	roles, _ := r.SchedulingRolesWithHeads(nodes)
 	var healthy []*NodeState
 	for _, n := range nodes {
 		n.mu.RLock()
@@ -170,6 +176,12 @@ func (r *Router) RunPredictionCycle(ctx context.Context, now time.Time) {
 		isDraining := n.Draining
 		prewarmDisabled := n.PrewarmDisabled
 		n.mu.RUnlock()
+		if role := roles[n.Name]; role == RoleWorker || role == RoleUnresolved {
+			continue
+		}
+		if !WarmupSupportedForRuntime(n.GetRuntime()) {
+			continue
+		}
 		// A prewarm-disabled node still serves live traffic (unlike Draining) -
 		// it is simply excluded from the predictive engine's warmup targets.
 		if isHealthy && !isDraining && !prewarmDisabled {
@@ -262,20 +274,8 @@ func (r *Router) RunPredictionCycle(ctx context.Context, now time.Time) {
 					if estSize > 0 && freeBytes >= estSize {
 						warmupTriggered = true
 						planned[key] = struct{}{}
-						go func(targetNode *NodeState, modelToWarm string) {
-							r.ensureHeadroom(ctx, targetNode, modelToWarm)
-							if err := r.pingNode(ctx, targetNode, modelToWarm, keepAlive); err == nil {
-								metrics.WarmupPing(modelToWarm, targetNode.Name, "ok")
-							} else {
-								// Release the reservation now instead of
-								// letting it block other models' headroom
-								// checks for the remainder of
-								// warmReservationTTL (mirrors warmer.go's
-								// pingWarmupModels).
-								r.clearWarmReservation(targetNode.Name, modelToWarm)
-								metrics.WarmupPing(modelToWarm, targetNode.Name, "error")
-							}
-						}(n, P)
+						r.logPredictiveDigestDrift(n, P)
+						go r.prewarmPredicted(ctx, n, P, keepAlive)
 
 						// Track prediction accuracy
 						r.predictiveMu.Lock()
@@ -366,26 +366,43 @@ func (r *Router) runTimeOfDayPrewarm(ctx context.Context, targetHour int, health
 					n.mu.RUnlock()
 
 					if estSize > 0 && freeBytes >= estSize {
-						go func(targetNode *NodeState, modelToWarm string) {
-							r.ensureHeadroom(ctx, targetNode, modelToWarm)
-							if err := r.pingNode(ctx, targetNode, modelToWarm, keepAlive); err == nil {
-								metrics.WarmupPing(modelToWarm, targetNode.Name, "ok")
-							} else {
-								// Release the reservation now instead of
-								// letting it block other models' headroom
-								// checks for the remainder of
-								// warmReservationTTL (mirrors warmer.go's
-								// pingWarmupModels).
-								r.clearWarmReservation(targetNode.Name, modelToWarm)
-								metrics.WarmupPing(modelToWarm, targetNode.Name, "error")
-							}
-						}(n, model)
+						r.logPredictiveDigestDrift(n, model)
+						go r.prewarmPredicted(ctx, n, model, keepAlive)
 						log.Printf("[predictive] time-of-day prewarm triggered for model %q on node %s for hour %d (appeared on %d distinct days)",
 							model, n.Name, targetHour, distinctDays)
 					}
 				}
 			}
 		}
+	}
+}
+
+// prewarmPredicted is the predictive engine's single dispatch: make headroom
+// and warm model on n, serialized per node with the keep-warm pinger and
+// scheduled warmup (see lockNodeLoad) so concurrent origins never evict from
+// the same stale snapshot at once.
+func (r *Router) prewarmPredicted(ctx context.Context, n *NodeState, model, keepAlive string) {
+	unlock := r.lockNodeLoad(n.Name)
+	r.ensureHeadroom(ctx, n, model)
+	err := r.pingNode(ctx, n, model, keepAlive)
+	unlock()
+	if err == nil {
+		metrics.WarmupPing(model, n.Name, "ok")
+		return
+	}
+	// Release the reservation now instead of letting it block other models'
+	// headroom checks for the remainder of warmReservationTTL (mirrors
+	// warmer.go's pingWarmupModels).
+	r.clearWarmReservation(n.Name, model)
+	metrics.WarmupPing(model, n.Name, "error")
+}
+
+// logPredictiveDigestDrift logs when model is already resident on n (under an
+// equivalent name) with a digest that differs from the fleet's reference.
+// Visibility only: the prewarm still proceeds.
+func (r *Router) logPredictiveDigestDrift(n *NodeState, model string) {
+	if r.driftedResidentDigest(n, model) {
+		log.Printf("[predictive] node %s model %s: digest drift - resident copy differs from the fleet's reference digest; still prewarming", n.Name, model)
 	}
 }
 

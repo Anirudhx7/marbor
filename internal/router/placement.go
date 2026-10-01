@@ -422,6 +422,49 @@ func (r *Router) stickyNode(sessionID string) (*NodeState, bool) {
 	return sticky, true
 }
 
+// stampAffinityModel records modelName as the most recent model for
+// sessionID's sticky entry, when the entry is still pinned to nodeURL and
+// names a different model. The published entry is never mutated: a new
+// entry (same node, preserved lastSeen) is swapped in under the write lock,
+// and only if the map still holds an entry for the same node - so a
+// concurrent delete or re-pin to another node is never overwritten or
+// resurrected by this write.
+func (r *Router) stampAffinityModel(sessionID, nodeURL, modelName string) {
+	r.affinityMu.Lock()
+	defer r.affinityMu.Unlock()
+	e, ok := r.affinity[sessionID]
+	if !ok || e.nodeURL != nodeURL || e.model == modelName {
+		return
+	}
+	next := &affinityEntry{nodeURL: e.nodeURL, model: modelName}
+	next.lastSeen.Store(e.lastSeen.Load())
+	r.affinity[sessionID] = next
+}
+
+// affinityProtectedModels returns the set of model names that a live
+// (non-expired) session-affinity entry currently pins to nodeURL. Entries
+// with no recorded model (restored from the store and not yet refreshed by a
+// request) protect nothing.
+func (r *Router) affinityProtectedModels(nodeURL string) []string {
+	if nodeURL == "" {
+		return nil
+	}
+	now := time.Now().UnixNano()
+	var out []string
+	r.affinityMu.RLock()
+	for _, e := range r.affinity {
+		if e.nodeURL != nodeURL || e.model == "" {
+			continue
+		}
+		if now-e.lastSeen.Load() >= int64(r.affinityTTL) {
+			continue
+		}
+		out = append(out, e.model)
+	}
+	r.affinityMu.RUnlock()
+	return out
+}
+
 // staticVRAMReservation reports whether runtime statically pre-allocates
 // GPU memory at startup (weights + KV cache), making VRAMUsedMB a
 // by-design constant rather than a live pressure signal. Confirmed
@@ -1395,6 +1438,7 @@ func (r *Router) RouteWithPrefix(modelName, sessionID, runtimeFilter, preferredN
 					// entirely, so it needs its own reservation write.
 					r.reserveColdStartBytes(node.URL, node.Name, modelName)
 				}
+				r.stampAffinityModel(sessionID, node.URL, modelName)
 				decision := &RoutingDecision{
 					Node:   node.Name,
 					Reason: ReasonSessionAffinity,
@@ -1419,7 +1463,7 @@ func (r *Router) RouteWithPrefix(modelName, sessionID, runtimeFilter, preferredN
 		if sessionID != "" {
 			r.affinityMu.Lock()
 			if len(r.affinity) < maxAffinityEntries {
-				entry := &affinityEntry{nodeURL: node.URL}
+				entry := &affinityEntry{nodeURL: node.URL, model: modelName}
 				entry.lastSeen.Store(time.Now().UnixNano())
 				r.affinity[sessionID] = entry
 			}

@@ -14,6 +14,7 @@ import { Badge } from '../components/Badge';
 import { EmptyState } from '../components/EmptyState';
 import { Modal } from '../components/Modal';
 import { CustomSelect } from '../components/Select';
+import { RuntimeBadge } from '../components/RuntimeBadge';
 import { CustomTimePicker } from '../components/DateTimePicker';
 import { useTimezone } from '../hooks/useTimezone';
 import { formatDateTimeInZone, formatTimeInZone, formatInTimezone, wallDateTimeToUtcIso } from '../lib/time';
@@ -57,11 +58,13 @@ const SUPPRESSION_REASON_LABEL: Record<string, string> = {
   scheduled_unload: 'unloaded by schedule',
 };
 
-function KeepWarmList({ models, onChange, warmupErrors, warmupState }: {
+function KeepWarmList({ models, onChange, warmupErrors, warmupWarnings, warmupState, readOnly }: {
   models: string[];
   onChange: (models: string[]) => void;
   warmupErrors?: Record<string, string>;
+  warmupWarnings?: Record<string, string>;
   warmupState?: { model: string; state: string; reason: string; since: string }[];
+  readOnly?: boolean;
 }) {
   const tz = useTimezone();
   if (models.length === 0) return null;
@@ -78,6 +81,7 @@ function KeepWarmList({ models, onChange, warmupErrors, warmupState }: {
     <div className="space-y-1.5 mb-2.5">
       {models.map((model, index) => {
         const error = warmupErrors?.[model];
+        const warning = warmupWarnings?.[model];
         const suppressed = warmupState?.find(s => s.model === model && s.state === 'suppressed');
         return (
         <div key={model} className="flex items-center justify-between gap-2 pl-1 pr-1.5 py-1.5 rounded-lg border border-border bg-secondary/30">
@@ -92,7 +96,12 @@ function KeepWarmList({ models, onChange, warmupErrors, warmupState }: {
                   Warmup failed: {error}
                 </span>
               )}
-              {!error && suppressed && (
+              {!error && warning && (
+                <span title={warning} className="text-[10px] text-amber-700 dark:text-amber-400 truncate block">
+                  {warning}
+                </span>
+              )}
+              {!error && !warning && suppressed && (
                 <span
                   title={`Suppressed since ${formatDateTimeInZone(suppressed.since, tz)} - ${SUPPRESSION_REASON_LABEL[suppressed.reason] || suppressed.reason}`}
                   className="text-[10px] text-amber-700 dark:text-amber-400 truncate block"
@@ -102,7 +111,7 @@ function KeepWarmList({ models, onChange, warmupErrors, warmupState }: {
               )}
             </div>
           </div>
-          <div className="flex items-center gap-0.5 shrink-0">
+          {!readOnly && <div className="flex items-center gap-0.5 shrink-0">
             {models.length > 1 && (
               <>
                 <button type="button" onClick={() => move(index, -1)} disabled={index === 0}
@@ -122,7 +131,7 @@ function KeepWarmList({ models, onChange, warmupErrors, warmupState }: {
               className="p-1 text-muted-foreground hover:text-destructive rounded-md hover:bg-secondary transition-colors">
               <Trash2 className="w-3 h-3" />
             </button>
-          </div>
+          </div>}
         </div>
         );
       })}
@@ -157,6 +166,9 @@ function NodeCard({ node, initial, availableModels, onSave }: {
   const [selectedModels, setSelectedModels] = useState<string[]>(initial.models || []);
   const [saving, setSaving] = useState(false);
   const [showModels, setShowModels] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+  const [clearing, setClearing] = useState(false);
   // dirty tracks an in-progress, unsaved edit (checkbox toggle or model list
   // change) - the page's 10s poll rebuilds `initial` from scratch every
   // cycle with a new object reference regardless of whether server data
@@ -188,9 +200,31 @@ function NodeCard({ node, initial, availableModels, onSave }: {
 
   async function saveWarmup() {
     setSaving(true);
-    await onSave(node.name, { enabled, models: selectedModels });
-    dirty.current = false;
-    setSaving(false);
+    setSaveError(null);
+    try {
+      await onSave(node.name, { enabled, models: selectedModels });
+      dirty.current = false;
+    } catch (e: any) {
+      setSaveError(e.message || 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function clearStaleConfig() {
+    setClearing(true);
+    setSaveError(null);
+    try {
+      await onSave(node.name, { enabled: false, models: [] });
+      dirty.current = false;
+      setEnabled(false);
+      setSelectedModels([]);
+      setClearConfirmOpen(false);
+    } catch (e: any) {
+      setSaveError(e.message || 'Clear failed');
+    } finally {
+      setClearing(false);
+    }
   }
 
   function addPinned() {
@@ -213,30 +247,84 @@ function NodeCard({ node, initial, availableModels, onSave }: {
   const extraPinned = pinnedModels.filter(m => !availableModels.includes(m));
   const allPinnedModels = Array.from(new Set([...availableModels, ...extraPinned]));
 
+  // A replica worker is never warmed directly - its head carries the keep-warm
+  // config for the whole replica, so the worker's own controls are locked and
+  // only a stale leftover config can be cleared. An unresolved node is not
+  // warmed at all until its replica declaration is reconciled. A runtime
+  // without keep-warm support can still have a leftover config trimmed or
+  // turned off, but nothing new can be added.
+  const isWorker = node.schedulingRole === 'worker';
+  const isUnresolved = node.schedulingRole === 'unresolved';
+  const unsupported = node.warmupSupported === false;
+  const locked = isWorker || isUnresolved;
+  const hasStoredConfig = initial.enabled || (initial.models?.length ?? 0) > 0;
+  const canEnable = !locked && (!unsupported || enabled);
+
   return (
-    <div className="bg-card border border-border rounded-xl overflow-hidden">
+    <div className={`bg-card border border-border rounded-xl overflow-hidden ${locked ? 'opacity-80' : ''}`}>
       {/* Node header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 py-3 gap-2">
         <div className="flex items-center gap-2 flex-wrap min-w-0">
           <Server className="w-4 h-4 text-primary shrink-0" />
           <span className="font-medium text-foreground truncate max-w-[12rem] sm:max-w-xs">{node.name}</span>
-          {initial.enabled && <Badge variant="success">warm</Badge>}
+          {initial.enabled && !locked && <Badge variant="success">warm</Badge>}
+          <RuntimeBadge runtime={node.runtime} />
+          {isWorker && (
+            <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-info/15 text-info border border-info/30 whitespace-nowrap">Replica worker</span>
+          )}
+          {node.schedulingRole === 'head' && (
+            <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-info/15 text-info border border-info/30 whitespace-nowrap">Replica head</span>
+          )}
+          {isUnresolved && (
+            <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-destructive/10 text-destructive dark:text-red-400 border border-destructive/30 whitespace-nowrap">Unresolved replica</span>
+          )}
+          {node.parallelismType && node.parallelismWidth ? (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-secondary text-muted-foreground border border-border">
+              {node.parallelismType.toUpperCase()}={node.parallelismWidth}
+            </span>
+          ) : null}
           {selectedModels.length > 0 && (
             <span className="text-xs text-muted-foreground font-mono">{selectedModels.length} model{selectedModels.length !== 1 ? 's' : ''}</span>
           )}
         </div>
-        <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
-          <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
-            <input type="checkbox" checked={enabled} onChange={e => { dirty.current = true; setEnabled(e.target.checked); }}
-              className="rounded border-border bg-background text-primary focus:ring-primary/20" />
-            Warmup
-          </label>
-          <button onClick={saveWarmup} disabled={saving}
-            className="px-3 py-1.5 bg-primary text-primary-foreground text-xs font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50">
-            {saving ? 'Saving…' : 'Save'}
+        {!locked && (
+          <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+            <label className={`flex items-center gap-1.5 text-xs text-muted-foreground select-none ${canEnable ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}>
+              <input type="checkbox" checked={enabled} disabled={!canEnable} onChange={e => { dirty.current = true; setEnabled(e.target.checked); }}
+                className="rounded border-border bg-background text-primary focus:ring-primary/20" />
+              Warmup
+            </label>
+            <button onClick={saveWarmup} disabled={saving}
+              className="px-3 py-1.5 bg-primary text-primary-foreground text-xs font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50">
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        )}
+        {isWorker && hasStoredConfig && (
+          <button onClick={() => { setSaveError(null); setClearConfirmOpen(true); }}
+            className="self-end sm:self-auto shrink-0 px-3 py-1.5 border border-border text-xs font-medium text-muted-foreground rounded-lg hover:text-destructive hover:border-destructive/40 transition-colors">
+            Clear stale config
           </button>
-        </div>
+        )}
       </div>
+      {isWorker && (
+        <p className="px-4 pb-3 -mt-1 text-xs text-muted-foreground">
+          Managed on head {node.replicaHead || 'this replica\'s head node'}, edit there instead.
+        </p>
+      )}
+      {isUnresolved && (
+        <p className="px-4 pb-3 -mt-1 text-xs text-destructive dark:text-red-400">
+          Not warmed: this node's replica declaration conflicts with another node's. Reconcile replica_peers on the Nodes page first.
+        </p>
+      )}
+      {!locked && unsupported && (
+        <p className="px-4 pb-3 -mt-1 text-xs text-muted-foreground">
+          Keep-warm isn't supported on this runtime yet (Ollama only).
+        </p>
+      )}
+      {saveError && (
+        <p className="px-4 pb-3 -mt-1 text-xs text-destructive">{saveError}</p>
+      )}
 
       {/* Models to keep warm - collapsible */}
       <div className="border-t border-border">
@@ -253,15 +341,23 @@ function NodeCard({ node, initial, availableModels, onSave }: {
         </button>
         {showModels && (
           <div className="px-4 pb-3">
-            <KeepWarmList models={selectedModels} onChange={m => { dirty.current = true; setSelectedModels(m); }} warmupErrors={node.warmupErrors} warmupState={node.warmupState} />
-            {selectedModels.length > 1 && (
+            <KeepWarmList models={selectedModels} onChange={m => { dirty.current = true; setSelectedModels(m); }} warmupErrors={node.warmupErrors} warmupWarnings={node.warmupWarnings} warmupState={node.warmupState} readOnly={locked} />
+            {selectedModels.length > 1 && !locked && (
               <p className="text-[10px] text-muted-foreground/60 mb-2.5">Order sets priority - if this node can't fit them all, #1 always stays warm first.</p>
             )}
-            <AddModelPills
-              options={allModels.filter(m => !selectedModels.includes(m))}
-              onAdd={model => { dirty.current = true; setSelectedModels(prev => [...prev, model]); }}
-            />
-            {allModels.length === 0 && <p className="text-xs text-muted-foreground">No models available.</p>}
+            {locked ? (
+              selectedModels.length === 0 && <p className="text-xs text-muted-foreground">No keep-warm config stored on this node.</p>
+            ) : unsupported ? (
+              selectedModels.length === 0 && <p className="text-xs text-muted-foreground">Nothing to keep warm on this runtime.</p>
+            ) : (
+              <>
+                <AddModelPills
+                  options={allModels.filter(m => !selectedModels.includes(m))}
+                  onAdd={model => { dirty.current = true; setSelectedModels(prev => [...prev, model]); }}
+                />
+                {allModels.length === 0 && <p className="text-xs text-muted-foreground">No models available.</p>}
+              </>
+            )}
           </div>
         )}
       </div>
@@ -308,6 +404,36 @@ function NodeCard({ node, initial, availableModels, onSave }: {
           </div>
         )}
       </div>
+
+      <Modal
+        isOpen={clearConfirmOpen}
+        onClose={() => { if (!clearing) setClearConfirmOpen(false); }}
+        title="Clear stale keep-warm config"
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Clear the keep-warm config stored on <span className="text-foreground font-semibold">{node.name}</span>?
+          </p>
+          <p className="text-xs text-muted-foreground">
+            This node is a replica worker, so this config is never used - keep-warm for the replica is set on its head
+            {node.replicaHead ? <> (<span className="text-foreground font-semibold">{node.replicaHead}</span>)</> : null}.
+            Clearing turns keep-warm off here and removes {initial.models?.length ?? 0} stored model{(initial.models?.length ?? 0) === 1 ? '' : 's'}.
+            Nothing currently loaded is unloaded. If this node later leaves the replica, keep-warm must be set up again.
+          </p>
+          {saveError && <p className="text-sm text-destructive">{saveError}</p>}
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button onClick={() => setClearConfirmOpen(false)} disabled={clearing}
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50">
+              Cancel
+            </button>
+            <button onClick={clearStaleConfig} disabled={clearing}
+              className="px-4 py-2 bg-destructive hover:bg-destructive/90 text-destructive-foreground font-medium rounded-lg text-sm transition-colors shadow-sm disabled:opacity-50">
+              {clearing ? 'Clearing…' : 'Clear config'}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -323,6 +449,20 @@ function formatScheduleRelative(isoString: string): string {
   const diffHours = Math.floor(diffMins / 60);
   if (diffHours < 24) return `${diffHours}h ago`;
   return `${Math.floor(diffHours / 24)}d ago`;
+}
+
+// scheduleNodeLabel tells the operator up front what a schedule on this node
+// will actually do: a warmup on a replica worker is redirected to its head
+// (other actions on a worker act on the worker itself), and an unresolved
+// node rejects every schedule until its replica declaration is fixed.
+function scheduleNodeLabel(n: GPUNode): string {
+  if (n.schedulingRole === 'worker') {
+    return `${n.name} (worker -> routes to ${n.replicaHead || 'head'}, warmup only)`;
+  }
+  if (n.schedulingRole === 'unresolved') {
+    return `${n.name} (unresolved - fix replica_peers)`;
+  }
+  return n.name;
 }
 
 // ── Schedule row with inline edit ────────────────────────────────────────────
@@ -448,7 +588,7 @@ function ScheduleRow({ schedule, nodes, modelsByNode, onToggle, onSave, onDelete
                 onChange={setNode}
                 options={[
                   ...(node && !nodes.some(n => n.name === node) ? [{ value: node, label: `${node} (not found)` }] : []),
-                  ...nodes.map(n => ({ value: n.name, label: n.name })),
+                  ...nodes.map(n => ({ value: n.name, label: scheduleNodeLabel(n) })),
                 ]}
               />
               {node && !nodes.some(n => n.name === node) && (
@@ -576,7 +716,7 @@ function ScheduleForm({ nodes, modelsByNode, onCreate }: {
               <CustomSelect
                 value={node}
                 onChange={setNode}
-                options={nodes.map(n => ({ value: n.name, label: n.name }))}
+                options={nodes.map(n => ({ value: n.name, label: scheduleNodeLabel(n) }))}
               />
             </div>
             <div>
@@ -821,11 +961,11 @@ export function Warmup() {
     }
   };
 
+  // Errors propagate to the calling NodeCard, which shows them inline next to
+  // the control that caused them (e.g. a model that isn't pulled on the node).
   async function saveWarmup(name: string, nw: NodeWarmup) {
-    try {
-      const saved = await setNodeWarmup(name, nw);
-      setWarmup(prev => ({ ...prev, [name]: saved }));
-    } catch (e: any) { alert(e.message || 'Save failed'); }
+    const saved = await setNodeWarmup(name, nw);
+    setWarmup(prev => ({ ...prev, [name]: saved }));
   }
 
   async function handleTogglePredictive() {

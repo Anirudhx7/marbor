@@ -27,6 +27,11 @@ export const mockGPUNodes: GPUNode[] = [
     gpuModel: 'NVIDIA A100 80GB',
     port: 11434,
     runtime: 'ollama',
+    warmupSupported: true,
+    // Demo parity for keep-warm notices: the resident copy's digest differs
+    // from the fleet's reference copy of the same model (warn-only, still
+    // kept warm).
+    warmupWarnings: { 'deepseek-r1:8b': "digest drift: resident copy differs from the fleet's reference digest for this model; still being kept warm" },
     vramTotalMB: 80 * GB,
     vramUsedMB: Math.round(67.2 * GB),
     vramSource: 'nvidia',
@@ -102,6 +107,7 @@ export const mockGPUNodes: GPUNode[] = [
     gpuModel: 'NVIDIA A100 80GB',
     port: 8000,
     runtime: 'vllm',
+    warmupSupported: false,
     // Deployment topology demo: declared 2-GPU TP=2 deployment (1 deployment x 2 GPUs atomically)
     gpuIndices: [0, 1],
     parallelismType: 'tp',
@@ -174,6 +180,7 @@ export const mockGPUNodes: GPUNode[] = [
     tlsFingerprint: 'SHA256:' + 'a1b2c3d4e5f6'.repeat(6).slice(0, 64),
     port: 8080,
     runtime: 'tgi',
+    warmupSupported: false,
     vramTotalMB: 24 * GB,
     // Fleet Capacity / Fleet Health demo example: this node sits at ~95%
     // used (weights + KV cache on a full TGI box) so the dashboard's
@@ -240,6 +247,7 @@ export const mockGPUNodes: GPUNode[] = [
     tlsFingerprintMismatch: true,
     port: 8080,
     runtime: 'llamacpp',
+    warmupSupported: false,
     vramTotalMB: 24 * GB,
     vramUsedMB: Math.round(4.2 * GB),
     vramSource: 'nvidia',
@@ -280,6 +288,7 @@ export const mockGPUNodes: GPUNode[] = [
     gpuModel: 'Apple M3 Max 128GB',
     port: 8080,
     runtime: 'mlx',
+    warmupSupported: false,
     // Auto-discovered deployment demo: detected only, no declared - shows Adopt from zero typing
     detectedParallelismType: 'tp',
     detectedParallelismWidth: 2,
@@ -326,6 +335,7 @@ export const mockGPUNodes: GPUNode[] = [
     gpuModel: 'NVIDIA RTX 3090 24GB',
     port: 11434,
     runtime: 'llamacpp',
+    warmupSupported: false,
     // Runtime misclassification demo: this node was actually configured runtime: auto and is a
     // real MLX host - auto-detect unavoidably guessed llamacpp (MLX's
     // /v1/models is byte-for-byte identical to llama.cpp's), and /health
@@ -368,6 +378,7 @@ export const mockGPUNodes: GPUNode[] = [
     gpuModel: 'NVIDIA H100 80GB',
     port: 8000,
     runtime: 'vllm',
+    warmupSupported: false,
     replicaPeers: { members: ['gpu-node-07', 'gpu-node-08'], head: 'gpu-node-07' },
     schedulingRole: 'head',
     replicaHead: 'gpu-node-07',
@@ -410,6 +421,8 @@ export const mockGPUNodes: GPUNode[] = [
     gpuModel: 'NVIDIA H100 80GB',
     port: 8000,
     runtime: 'vllm',
+    warmupSupported: false,
+    warmupWarnings: { 'meta-llama/Llama-3.1-405B-Instruct': "not warmed: this node is a replica worker; keep-warm is managed on its head gpu-node-07. Clear this node's stored keep-warm config (Warmup page 'Clear stale config', or: marbor nodes warmup set gpu-node-08 --enabled=false --models \"\") and add the model on gpu-node-07 instead." },
     replicaPeers: { members: ['gpu-node-07', 'gpu-node-08'], head: 'gpu-node-07' },
     schedulingRole: 'worker',
     replicaHead: 'gpu-node-07',
@@ -458,6 +471,8 @@ export const mockGPUNodes: GPUNode[] = [
     gpuModel: 'AMD Instinct MI300X 192GB',
     port: 8000,
     runtime: 'vllm',
+    warmupSupported: false,
+    warmupWarnings: { 'meta-llama/Llama-3.3-70B-Instruct': 'not warmed: node has an unresolved replica declaration - reconcile replica_peers' },
     replicaPeers: { members: ['gpu-node-09', 'gpu-node-10'], head: 'gpu-node-09' },
     schedulingRole: 'unresolved',
     vramTotalMB: 192 * GB,
@@ -494,6 +509,7 @@ export const mockGPUNodes: GPUNode[] = [
     gpuModel: 'AMD Instinct MI300X 192GB',
     port: 8000,
     runtime: 'vllm',
+    warmupSupported: false,
     // Conflicting head - gpu-node-09 says the head is itself, this node
     // says the head is itself too. Two members, two different agreed
     // heads: validateComponent rejects the whole component, both nodes
