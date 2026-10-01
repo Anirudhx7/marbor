@@ -120,13 +120,25 @@ func parseGPUScope(sourcePrefix, key, raw string) (scope GPUScope, legacy []int)
 			continue
 		}
 		allIndices = false
-		scope.UUIDs = append(scope.UUIDs, tok)
+		if len(scope.UUIDs) < maxScopeUUIDs {
+			scope.UUIDs = append(scope.UUIDs, tok)
+		}
+	}
+	if len(scope.Raw) > maxScopeRaw {
+		scope.Raw = scope.Raw[:maxScopeRaw]
 	}
 	if allIndices && len(scope.Indices) > 0 {
 		legacy = append([]int(nil), scope.Indices...)
 	}
 	return scope, legacy
 }
+
+// Upper bounds on the free-text values copied out of another process's
+// environment, so a hostile or malformed variable cannot bloat telemetry.
+const (
+	maxScopeRaw   = 256
+	maxScopeUUIDs = 64
+)
 
 func isPlainInt(s string) bool {
 	for _, r := range s {
@@ -283,7 +295,9 @@ func joinInts(v []int) string {
 // runtime's processes actually hold. It returns the scope to report and the
 // legacy gpu_group value. Only NVIDIA visibility variables are checked; a
 // disagreement is reported in Note and the value stays unverified, never
-// silently resolved in either direction.
+// silently resolved in either direction. In those cases (and when no process
+// holds a GPU yet) the legacy gpu_group is withheld so an older server cannot
+// treat an unconfirmed list as placement-driving.
 func applyCrossCheck(sc *GPUScope, legacy []int, probe *nvidiaProbe, pids []int) (*GPUScope, []int) {
 	if probe == nil {
 		return sc, legacy
@@ -314,12 +328,12 @@ func applyCrossCheck(sc *GPUScope, legacy []int, probe *nvidiaProbe, pids []int)
 	}
 	if len(observed) == 0 {
 		sc.Note = "no GPU process found for this runtime yet; scope not verified"
-		return sc, legacy
+		return sc, nil
 	}
 	if !sameSet(want, observed) {
 		sc.Note = fmt.Sprintf("the GPU process list shows this runtime on GPU %s, but its environment names GPU %s; not verified",
 			joinInts(probe.indicesFor(observed)), joinInts(probe.indicesFor(want)))
-		return sc, legacy
+		return sc, nil
 	}
 	sc.CrossChecked = true
 	sc.Indices = probe.indicesFor(want)

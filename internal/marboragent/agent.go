@@ -81,7 +81,7 @@ func runAgent(args []string, version string, stop <-chan struct{}) {
 	refreshInterval := fs.Duration("refresh-interval", defaultRefreshInterval, "how often to re-collect GPU/host telemetry in the background (e.g. 5s, 10s)")
 	certFlag := fs.String("cert", "", "TLS certificate file path; if both --cert and --key are set, serves HTTPS instead of plaintext HTTP - set by \"agent service install\", not normally passed by hand")
 	keyFlag := fs.String("key", "", "TLS private key file path, paired with --cert")
-	readRuntimeEnv := fs.Bool("read-runtime-env", os.Getenv("MARBOR_AGENT_READ_RUNTIME_ENV") == "1", "read each inference runtime process's own environment to learn which GPUs it was pointed at (only GPU visibility variables are extracted, nothing else is kept); needs the same user or root; off by default (or set MARBOR_AGENT_READ_RUNTIME_ENV=1)")
+	readRuntimeEnv := fs.Bool("read-runtime-env", os.Getenv("MARBOR_AGENT_READ_RUNTIME_ENV") == "1", "read each inference runtime process's own environment to learn which GPUs it was pointed at (only GPU visibility variables are extracted, nothing else is kept); needs the same user or root; off by default (or set MARBOR_AGENT_READ_RUNTIME_ENV=1); does not gate the docker socket path, which separately reads a container's configured environment through docker inspect with the same allowlist")
 	usage := func(w io.Writer) {
 		fmt.Fprintf(w, "marbor-agent - Marbor Agent: node-local execution point for the marbor\n\n")
 		fmt.Fprintf(w, "Usage:\n  marbor-agent --port=<port>   (runs in the foreground; set the MARBOR_AGENT_SECRET env var)\n")

@@ -282,6 +282,36 @@ func TestCollectFromPS_CrossCheckMismatchIsReportedNotTrusted(t *testing.T) {
 	if !reflect.DeepEqual(sc.Indices, []int{0, 1}) {
 		t.Fatalf("declared-by-env indices still reported as-is: %v", sc.Indices)
 	}
+	if reps[0].GPUGroup != nil {
+		t.Fatalf("a contradicted list must not reach legacy gpu_group: %v", reps[0].GPUGroup)
+	}
+}
+
+func TestCollectFromPS_CrossCheckNoProcessWithholdsLegacyGroup(t *testing.T) {
+	ps := "500 1 vllm serve foo --port 8000\n"
+	c := fakeCollector(true, map[int]string{500: "CUDA_VISIBLE_DEVICES=0,1\x00"}, nvidiaCmds("999, GPU-aaaa0000\n"))
+	reps := c.collectFromPS(ps, []DetectedRuntime{{Name: "vllm", Port: 8000}})
+	sc := reps[0].GPUScope
+	if sc == nil || sc.CrossChecked || !reflect.DeepEqual(sc.Indices, []int{0, 1}) {
+		t.Fatalf("scope should stay informational: %+v", sc)
+	}
+	if reps[0].GPUGroup != nil {
+		t.Fatalf("unverified list must not reach legacy gpu_group: %v", reps[0].GPUGroup)
+	}
+}
+
+func TestParseGPUScopeCapsRawAndUUIDs(t *testing.T) {
+	var toks []string
+	for i := 0; i < 100; i++ {
+		toks = append(toks, fmt.Sprintf("GPU-%040d", i))
+	}
+	sc, _ := parseGPUScope("environ:", "CUDA_VISIBLE_DEVICES", strings.Join(toks, ","))
+	if len(sc.UUIDs) != 64 {
+		t.Fatalf("uuids not capped: %d", len(sc.UUIDs))
+	}
+	if len(sc.Raw) != 256 {
+		t.Fatalf("raw not capped: %d", len(sc.Raw))
+	}
 }
 
 func TestCollectFromPS_CrossCheckResolvesUUIDScope(t *testing.T) {

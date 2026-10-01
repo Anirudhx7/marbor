@@ -84,7 +84,7 @@ func parseParallelismFromArgs(runtimeHint, args string) (*ParallelismInfo, *Runt
 		return parseVLLMParallelism(args, &caps)
 	case "sglang":
 		if m := sglangTPRE.FindStringSubmatch(args); m != nil {
-			w := firstNonEmptyInt(m[1:])
+			w := firstInt(m[1:]...)
 			// sglang uses --tp for tensor parallel
 			if w > 0 {
 				caps.TP = true
@@ -149,7 +149,7 @@ func parseVLLMParallelism(args string, caps *RuntimeCaps) (*ParallelismInfo, *Ru
 
 func flagWidth(re *regexp.Regexp, args string) int {
 	if m := re.FindStringSubmatch(args); m != nil {
-		return firstNonEmptyInt(m[1:])
+		return firstInt(m[1:]...)
 	}
 	return 0
 }
@@ -164,10 +164,6 @@ func firstInt(strs ...string) int {
 		}
 	}
 	return 0
-}
-
-func firstNonEmptyInt(strs []string) int {
-	return firstInt(strs...)
 }
 
 func detectRuntimeFromArgs(args string) string {

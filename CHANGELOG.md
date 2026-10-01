@@ -17,6 +17,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Pipeline and data parallel degrees for vLLM.** `--pipeline-parallel-size` and `--data-parallel-size` are read next to `--tensor-parallel-size`, so a tensor 4 x pipeline 2 launch no longer shows as plain 4-wide.
 - **`marbor nodes` has a DETECTED GPUS column** (`0,1 [verified]`, `2,3 [unverified]`, `unknown`, `-`), and the node API gains additive `detectedGPUScope`, `detectedPipelineWidth`, `detectedDataWidth` and `detectedDrivesPlacement` fields. The agent advertises a new `deployment.gpu_scope` capability; older agents and servers keep working.
 
+### Changed
+- **Detected GPU scope now steers placement only when it was cross-checked.** Before, a GPU list or parallelism width the agent detected could become a placement requirement on its own. Now it does so only when the agent confirmed it against `nvidia-smi`'s per-process GPU list; otherwise the detection is shown on the node and you adopt it (Adopt in the UI, or `marbor nodes patch <node> --gpu-indices ...`). When the check disagrees or finds no process yet, the agent also withholds the older `gpu_group` field so an older server cannot act on an unconfirmed list.
+
 ## [0.23.1] - 2026-10-02
 
 ### Changed
