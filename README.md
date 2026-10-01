@@ -407,7 +407,7 @@ marbor fit --node gpu-1                      # one node
 marbor fit unsloth/Qwen3-8B-GGUF --node gpu-1 --ctx 16384   # a Hugging Face repo
 ```
 
-- **The pick** is the catalog's recommended quantization when it fits, otherwise the largest one that fits. A pick that only fits with little headroom (above 85% of total VRAM) is flagged **tight**. If nothing offered fits, the answer says so and names the smallest option.
+- **The pick** is the catalog's recommended quantization when it fits, otherwise the largest one that fits. A pick that only fits with little headroom (above 85% of total VRAM) is flagged **tight**. If nothing offered fits, the answer says so and, when the model is too large for the node, names the smallest option.
 - **Sized against total VRAM**, not what is free right now, and against combined VRAM on multi-GPU Ollama and llama.cpp nodes or the largest single GPU for vLLM, TGI and MLX. Figures are estimates (published file sizes or the built-in catalog, plus context for Hugging Face repos); an unknown VRAM or model size shows `-`, never a guess.
 - **Runtime coverage.** Built-in catalog models are Ollama-format tags, so on vLLM, TGI, llama.cpp and MLX nodes they show as "other format". Hugging Face GGUF repos get a pick on Ollama and llama.cpp nodes; a safetensors repo on vLLM, TGI or MLX gets a fit answer for that one repo. Suggesting an AWQ or GPTQ alternative repo is not included yet.
 - Read-only: nothing is pulled, changed or routed differently.

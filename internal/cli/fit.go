@@ -163,7 +163,7 @@ func runFit(ctx *RunCtx) int {
 		return ExitUserError
 	}
 
-	var rows []fitRow
+	rows := []fitRow{}
 	if repoID == "" {
 		for _, n := range cat.Nodes {
 			if node != "" && n.Name != node {
