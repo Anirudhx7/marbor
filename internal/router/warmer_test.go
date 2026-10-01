@@ -489,3 +489,32 @@ func TestEffectiveKeepAlive(t *testing.T) {
 		t.Error("effectiveKeepAlive with empty config returned empty")
 	}
 }
+
+// TestWarmRankMatchesBareAndLatest verifies a bare name in the keep-warm list
+// ranks its ":latest" form, never another tag, and that an exact key wins
+// when both spellings are listed.
+func TestWarmRankMatchesBareAndLatest(t *testing.T) {
+	r := &Router{}
+	r.setWarmPriority("n1", []string{"gemma4", "mxbai"})
+	if rank, ok := r.warmRank("n1", "gemma4:latest"); !ok || rank != 0 {
+		t.Errorf("gemma4:latest rank = %d, ok=%v, want 0, true", rank, ok)
+	}
+	if rank, ok := r.warmRank("n1", "mxbai:latest"); !ok || rank != 1 {
+		t.Errorf("mxbai:latest rank = %d, ok=%v, want 1, true", rank, ok)
+	}
+	if _, ok := r.warmRank("n1", "gemma4:7b"); ok {
+		t.Error("gemma4:7b must not match bare gemma4")
+	}
+	if _, ok := r.warmRank("n2", "gemma4:latest"); ok {
+		t.Error("other node's priority map must not be consulted")
+	}
+
+	// Both spellings listed: the exact key wins on the fast path.
+	r.setWarmPriority("n1", []string{"other", "tagged:latest", "tagged"})
+	if rank, ok := r.warmRank("n1", "tagged"); !ok || rank != 2 {
+		t.Errorf("exact bare lookup rank = %d, ok=%v, want 2, true", rank, ok)
+	}
+	if rank, ok := r.warmRank("n1", "tagged:latest"); !ok || rank != 1 {
+		t.Errorf("exact tagged lookup rank = %d, ok=%v, want 1, true", rank, ok)
+	}
+}

@@ -122,7 +122,18 @@ func (r *Router) PinnedModels(node string) []string {
 func (r *Router) isPinned(node, model string) bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.pinned[node][model]
+	set := r.pinned[node]
+	if set[model] {
+		return true
+	}
+	// Runtimes report the tagged form ("llama3:latest") while operators often
+	// pin the bare name, so fall back to name equivalence on an exact miss.
+	for p := range set {
+		if ModelNamesEquivalent(p, model) {
+			return true
+		}
+	}
+	return false
 }
 
 // IsPinned reports whether model is on node's never-evict list. Exported so
@@ -226,8 +237,19 @@ func (r *Router) setWarmPriority(node string, ranked []string) {
 func (r *Router) warmRank(node, model string) (int, bool) {
 	r.warmPriorityMu.RLock()
 	defer r.warmPriorityMu.RUnlock()
-	rank, ok := r.warmPriority[node][model]
-	return rank, ok
+	ranks := r.warmPriority[node]
+	if rank, ok := ranks[model]; ok {
+		return rank, true
+	}
+	// Bare configured names must rank their runtime-reported ":latest" form
+	// (and vice versa); take the highest priority (lowest rank) among matches.
+	best, found := 0, false
+	for name, rank := range ranks {
+		if ModelNamesEquivalent(name, model) && (!found || rank < best) {
+			best, found = rank, true
+		}
+	}
+	return best, found
 }
 
 // unloadModel evicts a model from a node's VRAM immediately via Ollama's
