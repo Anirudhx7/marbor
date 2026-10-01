@@ -286,7 +286,11 @@ func TestAlias_ContextWindowAndModelConfigKeyedByTarget(t *testing.T) {
 		w.Write([]byte(`{"done":true}`))
 	}))
 	defer node2.Close()
-	h2, _, _ := newAliasHandler(t, node2.URL, config.RoutingConfig{}, config.Config{}, st)
+	h2, _, a2 := newAliasHandler(t, node2.URL, config.RoutingConfig{}, config.Config{}, st)
+	// Stop the admin server's async request logger before the deferred
+	// st.Close and the temp dir cleanup run, or it can still be writing to the
+	// database files while the directory is being removed.
+	defer a2.Shutdown()
 	if rec := serve(h2, http.MethodPost, "/api/generate", `{"model":"gpt-4","prompt":"hi"}`); rec.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body.String())
 	}
