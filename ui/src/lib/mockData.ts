@@ -120,6 +120,9 @@ export const mockGPUNodes: GPUNode[] = [
     detectedSource: 'ps',
     detectedRuntime: 'vllm',
     detectedEffectiveRequiredGPUs: 8,
+    // Confirmed by the GPU process list, but the declared values still win.
+    detectedGPUScope: { indices: [0, 1, 2, 3, 4, 5, 6, 7], raw: '0,1,2,3,4,5,6,7', source: 'environ:CUDA_VISIBLE_DEVICES', crossChecked: true },
+    detectedDrivesPlacement: false,
     mismatchWarning: 'declared 2 GPUs vs detected 8 GPUs',
     // Operator-declared VRAM override demo: vLLM doesn't
     // expose per-model size via its API, so without this the scheduler can't
@@ -248,6 +251,13 @@ export const mockGPUNodes: GPUNode[] = [
     port: 8080,
     runtime: 'llamacpp',
     warmupSupported: false,
+    // GPU-list-only detection demo: no parallelism flag was found, and the GPU
+    // process list shows the runtime on GPU 1 but the runtime's environment
+    // was not read, so it stays unconfirmed and Adopt offers just the GPU list.
+    detectedGPUScope: { indices: [1], source: 'nvidia-compute-apps', crossChecked: false, note: 'observed from the GPU process list; not confirmed against the runtime environment' },
+    detectedDrivesPlacement: false,
+    detectedSource: 'ps',
+    detectedRuntime: 'llamacpp',
     vramTotalMB: 24 * GB,
     vramUsedMB: Math.round(4.2 * GB),
     vramSource: 'nvidia',
@@ -289,13 +299,15 @@ export const mockGPUNodes: GPUNode[] = [
     port: 8080,
     runtime: 'mlx',
     warmupSupported: false,
-    // Auto-discovered deployment demo: detected only, no declared - shows Adopt from zero typing
+    // Auto-discovered deployment demo: detected only, no declared - shows Adopt from zero typing.
+    // Apple Silicon has one logical GPU, so there is no GPU scope to detect: only the
+    // parallelism flag was found, and it stays informational until adopted.
     detectedParallelismType: 'tp',
     detectedParallelismWidth: 2,
-    detectedGPUGroup: [0, 1],
-    detectedSource: 'env:CUDA_VISIBLE_DEVICES',
+    detectedSource: 'ps',
     detectedRuntime: 'mlx',
     detectedEffectiveRequiredGPUs: 2,
+    detectedDrivesPlacement: false,
     vramTotalMB: 128 * GB,
     vramUsedMB: Math.round(22.4 * GB),
     vramSource: 'declared',

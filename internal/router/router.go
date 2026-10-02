@@ -209,17 +209,26 @@ type NodeState struct {
 	// Auto-discovered deployment from agent (in-memory only, not
 	// persisted - derived from agent Deployments report each poll). Declared
 	// above always overrides detected: effectiveRequiredGPUsLocked prefers
-	// declared if non-nil else detected else 0 (fail-open). Guarded by mu.
+	// declared if non-nil else (verified) detected else 0 (fail-open). Detected
+	// values drive placement only when DetectedGPUScope.CrossChecked is true,
+	// meaning an independent per-process check agreed; otherwise they are shown
+	// to the operator to adopt but never constrain routing. Guarded by mu.
 	DetectedParallelismType  string
 	DetectedParallelismWidth int
-	DetectedGPUGroup         []int
-	DetectedSource           string // ps|docker|env:KEY|fallback|unknown
-	DetectedCaps             *marboragent.RuntimeCaps
-	DetectedRuntime          string
-	autoDetect               bool                    // true if config said runtime: auto; cleared after first detection
-	probe                    runtimepkg.RuntimeProbe // backend-specific health + runtime warm-model probe
-	LastErrorAt              time.Time
-	SuccessHistory           []bool
+	// DetectedPipelineWidth/DetectedDataWidth are the secondary degrees from a
+	// launch that also sets pipeline or data parallelism (0 = not set).
+	DetectedPipelineWidth int
+	DetectedDataWidth     int
+	DetectedGPUGroup      []int
+	// DetectedGPUScope is the agent's full GPU scope evidence (nil = unknown).
+	DetectedGPUScope *marboragent.GPUScope
+	DetectedSource   string // ps|docker
+	DetectedCaps     *marboragent.RuntimeCaps
+	DetectedRuntime  string
+	autoDetect       bool                    // true if config said runtime: auto; cleared after first detection
+	probe            runtimepkg.RuntimeProbe // backend-specific health + runtime warm-model probe
+	LastErrorAt      time.Time
+	SuccessHistory   []bool
 	// RecentTTFT holds this node's last few real observed time-to-first-byte
 	// values (seconds), oldest first, capped at recentTTFTCap. Used by
 	// scoreComponents to weight the flat ActiveConns count by how loaded the
@@ -2071,11 +2080,58 @@ func effectiveRequiredGPUsLocked(n *NodeState) int {
 	if n.ParallelismWidth > 0 || len(n.DeclaredGPUIndices) > 0 {
 		return deriveRequiredGPUs(n.ParallelismWidth, n.DeclaredGPUIndices)
 	}
-	// No declared constraint - fall back to auto-detected deployment.
-	if n.DetectedParallelismWidth > 0 || len(n.DetectedGPUGroup) > 0 {
+	// No declared constraint - fall back to the detected deployment, but only
+	// when an independent per-process check confirmed it. An unconfirmed
+	// detection is shown for the operator to adopt, never applied silently.
+	if detectedVerifiedLocked(n) && (n.DetectedParallelismWidth > 0 || len(n.DetectedGPUGroup) > 0) {
 		return deriveRequiredGPUs(n.DetectedParallelismWidth, n.DetectedGPUGroup)
 	}
 	return 0
+}
+
+// detectedVerifiedLocked reports whether the agent's detected deployment was
+// confirmed by an independent per-process check, the only case in which it may
+// influence placement. Caller must hold n.mu.
+func detectedVerifiedLocked(n *NodeState) bool {
+	return n.DetectedGPUScope != nil && n.DetectedGPUScope.CrossChecked
+}
+
+// DetectedDrivesPlacement reports whether a verified detected deployment is
+// what currently constrains this node's placement (nothing declared, and the
+// agent's scope was confirmed by the per-process check).
+func (n *NodeState) DetectedDrivesPlacement() bool {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	if n.ParallelismWidth > 0 || len(n.DeclaredGPUIndices) > 0 {
+		return false
+	}
+	return detectedVerifiedLocked(n) && (n.DetectedParallelismWidth > 0 || len(n.DetectedGPUGroup) > 0)
+}
+
+// DetectedGPUScopeCopy returns a copy of the agent's GPU scope evidence, or
+// nil when the agent did not report one.
+func (n *NodeState) DetectedGPUScopeCopy() *marboragent.GPUScope {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	return copyGPUScope(n.DetectedGPUScope)
+}
+
+// DetectedSecondaryWidths returns the detected pipeline and data parallel
+// degrees (0 = not set).
+func (n *NodeState) DetectedSecondaryWidths() (pipeline, data int) {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	return n.DetectedPipelineWidth, n.DetectedDataWidth
+}
+
+func copyGPUScope(s *marboragent.GPUScope) *marboragent.GPUScope {
+	if s == nil {
+		return nil
+	}
+	c := *s
+	c.Indices = append([]int(nil), s.Indices...)
+	c.UUIDs = append([]string(nil), s.UUIDs...)
+	return &c
 }
 
 // EffectiveDeclaredRequiredGPUs is the declared-only derived value

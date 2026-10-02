@@ -634,6 +634,23 @@ type NodeResp struct {
 	// a ping failure (digest drift, or a pair skipped on a replica worker or
 	// an unresolved node).
 	WarmupWarnings map[string]string `json:"warmupWarnings,omitempty"`
+
+	// Detected* is what the agent saw for this runtime. DetectedGPUScope says
+	// which GPUs and whether an independent per-process check confirmed it
+	// (CrossChecked); absent means unknown.
+	DetectedGPUGroup        []int                 `json:"detectedGPUGroup,omitempty"`
+	DetectedGPUScope        *NodeDetectedGPUScope `json:"detectedGPUScope,omitempty"`
+	DetectedDrivesPlacement bool                  `json:"detectedDrivesPlacement,omitempty"`
+}
+
+// NodeDetectedGPUScope mirrors the node API's detectedGPUScope object.
+type NodeDetectedGPUScope struct {
+	Indices      []int    `json:"indices,omitempty"`
+	UUIDs        []string `json:"uuids,omitempty"`
+	Raw          string   `json:"raw,omitempty"`
+	Source       string   `json:"source,omitempty"`
+	CrossChecked bool     `json:"crossChecked"`
+	Note         string   `json:"note,omitempty"`
 }
 
 // NodeReplicaPeers mirrors store.ReplicaPeers' JSON shape as a local DTO

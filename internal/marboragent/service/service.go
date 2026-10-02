@@ -48,6 +48,10 @@ type Config struct {
 	// Token which must never appear in a world-readable command line.
 	CertPath string
 	KeyPath  string
+	// ReadRuntimeEnv, when true, passes --read-runtime-env so the installed
+	// agent reads each runtime process's own environment (GPU visibility
+	// variables only). Off by default.
+	ReadRuntimeEnv bool
 }
 
 // args returns the flag argument list (excluding the binary path itself; the
@@ -94,6 +98,9 @@ func (c Config) args() []string {
 	}
 	if c.CertPath != "" && c.KeyPath != "" {
 		a = append(a, fmt.Sprintf("--cert=%s", c.CertPath), fmt.Sprintf("--key=%s", c.KeyPath))
+	}
+	if c.ReadRuntimeEnv {
+		a = append(a, "--read-runtime-env")
 	}
 	return a
 }

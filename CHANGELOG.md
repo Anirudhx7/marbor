@@ -6,6 +6,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **GPU scope detection no longer invents or misreads GPU lists.** The agent used to read its own environment instead of the inference runtime's, fill in "every GPU on the host" when it found nothing and label that a measurement, and silently drop UUID and MIG entries (so `0,GPU-...` became just `0`). It now reports only what it can show: the runtime's own GPU visibility variable (opt-in, see below), UUID/MIG/sub-device entries kept verbatim, and "unknown" with a reason when it cannot tell. The variable list is now `CUDA_VISIBLE_DEVICES`, `NVIDIA_VISIBLE_DEVICES`, `ROCR_VISIBLE_DEVICES`, `HIP_VISIBLE_DEVICES` and `ZE_AFFINITY_MASK` (the undocumented `XPU_VISIBLE_DEVICES` is gone).
+- **Detected topology no longer changes routing unless it was confirmed.** Before, any GPU group or parallelism width the agent detected silently became a placement requirement when nothing was declared, so a wrong guess could exclude a healthy node. Now a detection steers placement only when the agent confirmed it against `nvidia-smi`'s per-process GPU list (NVIDIA only); everything else is shown on the node as information to adopt. Declared values still always win. Existing fleets that relied on an unconfirmed detection should click Adopt (or run `marbor nodes patch <node> --gpu-indices ...`) to make it a declaration.
+- **Adopt now appears when only a GPU list was detected** (no parallelism flag), and adopts just that list.
+
+### Added
+- **Agent opt-in `--read-runtime-env`** (also `MARBOR_AGENT_READ_RUNTIME_ENV=1`, and `marbor-agent service install --read-runtime-env`) reads each runtime process's own environment on Linux to learn which GPUs it was pointed at. Only the five GPU visibility variables are kept; every other variable (tokens, keys) is discarded in memory and never stored, logged or sent. It needs the same user or root and is off by default. Without it the agent can still report where an NVIDIA runtime sits from the GPU process list, marked unconfirmed.
+- **Per-process NVIDIA cross-check.** With the opt-in on and `nvidia-smi` available, the agent compares the GPUs the environment names with the GPUs the runtime's process tree actually holds. A match marks the scope confirmed (and fills in indices when the environment used UUIDs); a mismatch is reported with both sides and trusted by neither. AMD, Intel and Apple scopes are reported from the environment only and are never marked confirmed; Windows is not covered.
+- **Pipeline and data parallel degrees for vLLM.** `--pipeline-parallel-size` and `--data-parallel-size` are read next to `--tensor-parallel-size`, so a tensor 4 x pipeline 2 launch no longer shows as plain 4-wide.
+- **`marbor nodes` has a DETECTED GPUS column** (`0,1 [verified]`, `2,3 [unverified]`, `unknown`, `-`), and the node API gains additive `detectedGPUScope`, `detectedPipelineWidth`, `detectedDataWidth` and `detectedDrivesPlacement` fields. The agent advertises a new `deployment.gpu_scope` capability; older agents and servers keep working.
+
+### Changed
+- **Detected GPU scope now steers placement only when it was cross-checked.** Before, a GPU list or parallelism width the agent detected could become a placement requirement on its own. Now it does so only when the agent confirmed it against `nvidia-smi`'s per-process GPU list; otherwise the detection is shown on the node and you adopt it (Adopt in the UI, or `marbor nodes patch <node> --gpu-indices ...`). When the check disagrees or finds no process yet, the agent also withholds the older `gpu_group` field so an older server cannot act on an unconfirmed list.
+
 ## [0.23.1] - 2026-10-02
 
 ### Changed

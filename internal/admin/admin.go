@@ -518,6 +518,7 @@ type nodeResp struct {
 	DetectedRuntime               string `json:"detectedRuntime,omitempty"`
 	DetectedEffectiveRequiredGPUs int    `json:"detectedEffectiveRequiredGPUs,omitempty"`
 	MismatchWarning               string `json:"mismatchWarning,omitempty"`
+	nodeDetectedExtras
 	// ReplicaPeers is this node's own raw multi-host replica declaration -
 	// round-trips exactly what was PATCHed, null/omitted when none is
 	// declared. SchedulingRole/ReplicaHead below are the fleet-wide,
@@ -1536,6 +1537,7 @@ func (s *Server) nodeStateToResp(n *router.NodeState, id string, roles map[strin
 		DetectedRuntime:                 n.DetectedRuntime,
 		DetectedEffectiveRequiredGPUs:   n.EffectiveDetectedRequiredGPUs(),
 		MismatchWarning:                 n.MismatchWarning(),
+		nodeDetectedExtras:              newNodeDetectedExtras(n),
 		ReplicaPeers:                    n.ReplicaPeers,
 		SchedulingRole:                  role.String(),
 		ReplicaHead:                     replicaHead,

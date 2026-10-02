@@ -69,7 +69,10 @@ type Scheduler struct {
 	// the same "don't cache forever" intent without it.
 	versionCache  map[string]versionCacheEntry
 	runtimeClient *http.Client
-	snap          atomic.Pointer[Telemetry]
+	// deploy finds runtime processes and their GPU scope. Configured once,
+	// before Seed, and read only from refresh().
+	deploy *deploymentCollector
+	snap   atomic.Pointer[Telemetry]
 }
 
 // NewScheduler creates a Scheduler for the given agent_version string,
@@ -104,6 +107,7 @@ func newSchedulerWithBackends(version string, gpu GPUCollector, host HostCollect
 		registry:      loadOrCreateRuntimeRegistry(),
 		versionCache:  make(map[string]versionCacheEntry),
 		runtimeClient: &http.Client{Timeout: 5 * time.Second},
+		deploy:        newDeploymentCollector(false),
 	}
 }
 
@@ -256,11 +260,11 @@ func (s *Scheduler) refresh() {
 		}
 
 		// Deployment auto-discovery per runtime instance (additive-only wire
-		// change). CollectDeployments is read-only (ps / docker.sock / env) and never
+		// change). The deployment collector is read-only (ps, docker.sock, and with opt-in the runtime environment) and never
 		// fabricates - nil means unknown (server shows honest "add docker.sock"
 		// warning, not a fake 0). Per-port keying so :8000 TP=8 does not bleed
 		// into :8001 TP=4 on same host.
-		if deps := CollectDeployments(detected, t.GPU); len(deps) > 0 {
+		if deps := s.deploy.Collect(detected); len(deps) > 0 {
 			// Attach stable RuntimeID where port mapping is known
 			idByPort := make(map[int]string)
 			for _, ri := range t.Runtimes {
@@ -283,7 +287,7 @@ func (s *Scheduler) refresh() {
 		s.runtimeMu.Unlock()
 		// Even with no runtime detected, still try env-based group discovery
 		// for telemetry visibility (shows GPU group without parallelism)
-		if deps := CollectDeployments(detected, t.GPU); len(deps) > 0 {
+		if deps := s.deploy.Collect(detected); len(deps) > 0 {
 			t.Deployments = deps
 		}
 	}
@@ -363,4 +367,12 @@ func (s *Scheduler) RuntimeTarget() (name, url string) {
 	s.runtimeMu.RLock()
 	defer s.runtimeMu.RUnlock()
 	return s.primaryRuntime, s.primaryURL
+}
+
+// EnableRuntimeEnvRead turns on reading each runtime process's own environment
+// (allowlisted GPU visibility variables only) to learn which GPUs it was
+// pointed at. Off by default because another process's environment can hold
+// secrets and reading it needs the same user or root. Call before Seed.
+func (s *Scheduler) EnableRuntimeEnvRead() {
+	s.deploy.readRuntimeEnv = true
 }

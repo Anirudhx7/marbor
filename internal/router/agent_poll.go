@@ -382,15 +382,20 @@ func (r *Router) applyAgentTelemetry(n *NodeState, t marboragent.Telemetry) {
 		if dep.Parallelism != nil {
 			n.DetectedParallelismType = dep.Parallelism.Type
 			n.DetectedParallelismWidth = dep.Parallelism.Width
+			n.DetectedPipelineWidth = dep.Parallelism.PipelineWidth
+			n.DetectedDataWidth = dep.Parallelism.DataWidth
 		} else {
 			n.DetectedParallelismType = ""
 			n.DetectedParallelismWidth = 0
+			n.DetectedPipelineWidth = 0
+			n.DetectedDataWidth = 0
 		}
 		if len(dep.GPUGroup) > 0 {
 			n.DetectedGPUGroup = append([]int(nil), dep.GPUGroup...)
 		} else {
 			n.DetectedGPUGroup = nil
 		}
+		n.DetectedGPUScope = copyGPUScope(dep.GPUScope)
 		n.DetectedSource = dep.Source
 		n.DetectedCaps = dep.Caps
 	} else {
@@ -399,7 +404,10 @@ func (r *Router) applyAgentTelemetry(n *NodeState, t marboragent.Telemetry) {
 		// when the runtime moves ports or the ps becomes invisible (pid ns).
 		n.DetectedParallelismType = ""
 		n.DetectedParallelismWidth = 0
+		n.DetectedPipelineWidth = 0
+		n.DetectedDataWidth = 0
 		n.DetectedGPUGroup = nil
+		n.DetectedGPUScope = nil
 		n.DetectedSource = ""
 		n.DetectedCaps = nil
 		n.DetectedRuntime = ""
@@ -633,7 +641,10 @@ func clearAgentTelemetry(n *NodeState) {
 	// Clear auto-discovered deployment (honest unknown, not stale).
 	n.DetectedParallelismType = ""
 	n.DetectedParallelismWidth = 0
+	n.DetectedPipelineWidth = 0
+	n.DetectedDataWidth = 0
 	n.DetectedGPUGroup = nil
+	n.DetectedGPUScope = nil
 	n.DetectedSource = ""
 	n.DetectedCaps = nil
 	n.DetectedRuntime = ""
