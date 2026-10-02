@@ -110,6 +110,10 @@ func (r *Router) pollAgentHosts() {
 		}(host, cfg, members)
 	}
 	wg.Wait()
+	// A host that no longer has a node row or an enabled agent must stop
+	// feeding replica correlation (address identity included), so drop every
+	// snapshot whose host is not in this pass.
+	r.dropHostEvidenceNotIn(groups)
 }
 
 // pollAgentHost makes the single HTTP request for host and applies the
@@ -186,6 +190,20 @@ func (r *Router) pollAgentHost(host string, cfg MarborAgentConfig, members []*No
 		}
 		return
 	}
+
+	// Keep the host-wide report for replica correlation. Keyed on host, the
+	// same raw key pollAgentHosts grouped by.
+	ev := HostEvidence{
+		Host:         host,
+		Capabilities: t.Capabilities,
+		Deployments:  t.Deployments,
+		PolledAt:     time.Now(),
+	}
+	if t.Host != nil {
+		ev.Hostname = t.Host.Hostname
+		ev.Addrs = t.Host.Addrs
+	}
+	r.RecordHostEvidence(ev)
 
 	for _, n := range members {
 		r.setAgentTLSMismatch(n, false)
@@ -537,11 +555,15 @@ func (r *Router) agentUnreachable(n *NodeState) {
 	n.AgentFailures++
 	crossedThreshold := n.AgentFailures >= r.healthFailureThreshold
 	nodeURL := n.URL
+	nodeHost := n.Host
 	n.mu.Unlock()
 	if !crossedThreshold {
 		return
 	}
 
+	// Same threshold that clears telemetry also retires the host's replica
+	// evidence; a single dropped poll keeps it.
+	r.DropHostEvidence(nodeHost)
 	clearAgentTelemetry(n)
 	// Past the same threshold that clears telemetry, the agent is genuinely
 	// dark (not a single dropped poll) - mark it stale so the admin API can

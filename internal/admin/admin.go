@@ -210,6 +210,9 @@ type Server struct {
 	// node-list lock already protects individual reads/writes; this mutex
 	// only prevents two full PATCH transactions from interleaving).
 	nodePatchMu sync.Mutex
+	// replicaSuggestMu serializes the read-modify-write of the dismissed
+	// replica suggestion list stored in settings.
+	replicaSuggestMu sync.Mutex
 	// settingsMu serializes handleUpdateSettings' entire read-validate-write
 	// sequence. s.mu itself is only held briefly (snapshot, then final swap)
 	// so a slow/large request body can't stall cors()/LogRequest on every
@@ -1175,6 +1178,10 @@ func (s *Server) Handler() http.Handler {
 	reg("PATCH /admin/nodes/{name}", s.cors(s.adminAuth(s.handlePatchNode)))
 	reg("POST /admin/nodes", s.cors(s.adminAuth(s.handleAddNode)))
 	reg("DELETE /admin/nodes/{name}", s.cors(s.adminAuth(s.handleRemoveNode)))
+	reg("GET /admin/replica-suggestions", s.cors(s.adminAuth(s.handleReplicaSuggestions)))
+	reg("POST /admin/replica-suggestions/{fingerprint}/confirm", s.cors(s.adminAuth(s.handleConfirmReplicaSuggestion)))
+	reg("POST /admin/replica-suggestions/{fingerprint}/dismiss", s.cors(s.adminAuth(s.handleDismissReplicaSuggestion)))
+	reg("DELETE /admin/replica-suggestions/{fingerprint}/dismiss", s.cors(s.adminAuth(s.handleRestoreReplicaSuggestion)))
 	reg("GET /admin/nodes/{name}/warmup", s.cors(s.adminAuth(s.handleGetNodeWarmup)))
 	reg("PUT /admin/nodes/{name}/warmup", s.cors(s.adminAuth(s.handleSetNodeWarmup)))
 	reg("GET /admin/nodes/{name}/pinned", s.cors(s.adminAuth(s.handleGetPinned)))
@@ -2241,6 +2248,10 @@ func (s *Server) handleRemoveNode(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"error":"name is required"}`))
 		return
 	}
+	// Serialize with node PATCH and replica suggestion confirm, so a confirm
+	// never declares membership on a node that is being removed.
+	s.nodePatchMu.Lock()
+	defer s.nodePatchMu.Unlock()
 	s.router.RemoveNode(name)
 	_ = s.st.DeleteNode(name)                    // cascades marbor_agent deletion, see sqliteStore.DeleteNode
 	_ = s.st.SetSetting("warmup:node:"+name, "") // drop any warmup setting for the node

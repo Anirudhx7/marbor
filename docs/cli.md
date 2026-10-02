@@ -190,6 +190,38 @@ show per-node VRAM fit analysis for resident/warm models
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
+#### `suggestions`
+
+list multi-host replica groups detected from agent launch details, and confirm or dismiss them
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--all` - also show dismissed suggestions
+
+##### `confirm <id>`
+
+declare a detected replica group on every member in one step
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--yes` - confirm without prompting
+
+##### `dismiss <id>`
+
+hide a suggestion until its members change
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+##### `restore <id>`
+
+show a dismissed suggestion again
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
 ### `models`
 
 fleet-wide list, or pull/delete/unload/list on one node

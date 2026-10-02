@@ -10,14 +10,15 @@ import { SearchInput } from '../components/SearchInput';
 import { SignalFilter } from '../components/SignalFilter';
 import { EmptyState } from '../components/EmptyState';
 import { Modal } from '../components/Modal';
+import { ReplicaSuggestionStrip } from '../components/ReplicaSuggestionStrip';
 import { ModelConfigModal } from '../components/ModelConfigModal';
 import { CustomSelect } from '../components/Select';
 import { RuntimeBadge } from '../components/RuntimeBadge';
 import { mockGPUNodes, mockRuntimeLogLines } from '../lib/mockData';
 import { readLastNodeCount, writeLastNodeCount } from '../lib/nodeCount';
 import { VRAM_PRESSURE_THRESHOLD } from './Dashboard';
-import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, probeNodeTLS, fetchModelFit, unloadModel, getPinned, getMarborAgent, enableMarborAgent, regenerateMarborAgentToken, disableMarborAgent, checkNodeHealth, getNodeControl, acceptNodeControl, clearNodeControl, startNodeRuntime, stopNodeRuntime, restartNodeRuntime, getNodeRuntimeLogs } from '../lib/api';
-import type { MarborAgentStatus, NodeHealthCheckResult, NodeControlStatus } from '../lib/api';
+import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, probeNodeTLS, fetchModelFit, unloadModel, getPinned, getMarborAgent, enableMarborAgent, regenerateMarborAgentToken, disableMarborAgent, checkNodeHealth, fetchReplicaSuggestions, getNodeControl, acceptNodeControl, clearNodeControl, startNodeRuntime, stopNodeRuntime, restartNodeRuntime, getNodeRuntimeLogs } from '../lib/api';
+import type { MarborAgentStatus, NodeHealthCheckResult, NodeControlStatus, ReplicaSuggestionsResponse } from '../lib/api';
 import type { GPUNode, ModelFitResponse, NodeFit, FitStatus } from '../types';
 import { formatDurationLong } from '../lib/time';
 
@@ -869,6 +870,8 @@ export function GPUNodes() {
   const [agentError, setAgentError] = useState<string | null>(null);
   const [agentCopiedWhich, setAgentCopiedWhich] = useState<'unix' | 'windows' | null>(null);
   const [agentToDisable, setAgentToDisable] = useState<string | null>(null);
+  // Last good replica suggestions; a failed refresh keeps this list.
+  const [replicaSuggestions, setReplicaSuggestions] = useState<ReplicaSuggestionsResponse | null>(null);
   // pendingAgentReconfigure gates the "Reconfigure marbor agent connection?"
   // confirm - only shown when changing port/scheme on an ALREADY-enabled
   // agent (nothing to disrupt on the very first Enable, so that path stays
@@ -1412,11 +1415,18 @@ export function GPUNodes() {
       setIsLive(false);
       setError(null);
       await loadPinned(mockGPUNodes, active, requestId);
+      const demoSuggestions = await fetchReplicaSuggestions(true, true).catch(() => null);
+      if (demoSuggestions && active && requestId === nodesRequestId.current && currentAppPath() === '/gpu-nodes') setReplicaSuggestions(demoSuggestions);
       return;
     }
     try {
-      const data = await fetchNodes();
+      // Suggestions load alongside nodes, but a suggestions failure must never
+      // blank the node list: it just keeps the last good list.
+      const [nodesResult, suggestionsResult] = await Promise.allSettled([fetchNodes(), fetchReplicaSuggestions(true)]);
       if (!active || requestId !== nodesRequestId.current || currentAppPath() !== '/gpu-nodes') return;
+      if (suggestionsResult.status === 'fulfilled') setReplicaSuggestions(suggestionsResult.value);
+      if (nodesResult.status === 'rejected') throw nodesResult.reason;
+      const data = nodesResult.value;
       setNodes(data || []);
       const nodeCount = (data || []).length;
       if (nodeCount > 0) writeLastNodeCount(nodeCount);
@@ -2193,6 +2203,13 @@ export function GPUNodes() {
           </button>
         </div>
       )}
+
+      <ReplicaSuggestionStrip
+        data={replicaSuggestions}
+        demo={demoMode}
+        onChanged={() => loadNodes()}
+        onEditNode={(name) => { const target = nodes.find(n => n.name === name); if (target) openEditModal(target); }}
+      />
 
       {/* Search */}
       <div className="max-w-md">

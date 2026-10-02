@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -1403,6 +1404,55 @@ func (s *sqliteStore) UpsertNodeOverride(name string, vramTotalMB *int64, gpuMod
 	)
 	if err != nil {
 		return fmt.Errorf("store: UpsertNodeOverride: %w", err)
+	}
+	return nil
+}
+
+// SetReplicaPeersBatch writes replica_peers for every named node in a single
+// transaction. Each node must exist in runtime_nodes, checked inside the
+// transaction: a node removed meanwhile would otherwise leave an orphaned
+// override row (node removal never deletes node_overrides), which a later node
+// re-added under the same name would silently inherit. Like UpsertNodeOverride
+// it uses ON CONFLICT DO UPDATE naming only replica_peers, so no other column
+// is touched.
+func (s *sqliteStore) SetReplicaPeersBatch(peers map[string]ReplicaPeers) error {
+	if len(peers) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(peers))
+	for name := range peers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("store: SetReplicaPeersBatch: %w", err)
+	}
+	defer tx.Rollback()
+
+	for _, name := range names {
+		var found string
+		if err := tx.QueryRow(`SELECT name FROM runtime_nodes WHERE name = ?`, name).Scan(&found); err != nil {
+			if err == sql.ErrNoRows {
+				return fmt.Errorf("%w: %s", ErrNodeNotRegistered, name)
+			}
+			return fmt.Errorf("store: SetReplicaPeersBatch: check %s: %w", name, err)
+		}
+		b, err := json.Marshal(peers[name])
+		if err != nil {
+			return fmt.Errorf("store: SetReplicaPeersBatch: marshal %s: %w", name, err)
+		}
+		if _, err := tx.Exec(
+			`INSERT INTO node_overrides (name, replica_peers) VALUES (?, ?)
+			 ON CONFLICT(name) DO UPDATE SET replica_peers = excluded.replica_peers`,
+			name, string(b),
+		); err != nil {
+			return fmt.Errorf("store: SetReplicaPeersBatch: write %s: %w", name, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("store: SetReplicaPeersBatch: commit: %w", err)
 	}
 	return nil
 }
