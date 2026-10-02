@@ -270,6 +270,7 @@ func buildRoot() *Command {
 								NeedsAuth: true,
 								Args:      []ArgSpec{{Name: "id"}},
 								Flags: []FlagSpec{
+									{Name: "adopt", Kind: FlagBool, Usage: "for a group that conflicts with a declaration: overwrite the members' declarations with the detected group (the prompt shows each node's declared and detected values)"},
 									{Name: "yes", Kind: FlagBool, Usage: "confirm without prompting"},
 								},
 								Run: func(ctx *RunCtx) int { return runNodesSuggestionsConfirm(ctx, ctx.Args[0]) },
