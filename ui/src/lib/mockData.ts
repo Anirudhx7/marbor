@@ -1826,10 +1826,12 @@ export function deleteMockModelAlias(alias: string): void {
   demoModelAliasStore().delete(alias);
 }
 
-// mockReplicaSuggestions is the demo data for the GPU nodes suggestion strip:
-// one complete llama.cpp pair, one incomplete vLLM group, and one vLLM group
-// whose members declare something different from what was detected. Static and
-// plausible; it only ever feeds the demo path in api.ts, never a live fetch.
+// mockReplicaSuggestions is the demo data for the GPU nodes Replica groups tab:
+// one complete llama.cpp pair, one incomplete vLLM group, one vLLM group whose
+// members declare something different from what was detected, one group whose
+// details conflict (two nodes claiming rank 0), and one already-dismissed group.
+// Static and plausible; it only ever feeds the demo path in api.ts, never a
+// live fetch.
 export const mockReplicaSuggestions: ReplicaSuggestionsResponse = {
   suggestions: [
     {
@@ -1854,7 +1856,7 @@ export const mockReplicaSuggestions: ReplicaSuggestionsResponse = {
       launcher: 'vllm-mp',
       runtime: 'vllm',
       state: 'incomplete',
-      reason: 'rank 1 has not been seen. Register its host as a node and update its agent; the worker will show down because a headless worker serves no HTTP',
+      reason: 'only rank 0 of 2 has been seen so far',
       head: 'gpu-node-02',
       members: ['gpu-node-02'],
       evidence: [
@@ -1885,10 +1887,44 @@ export const mockReplicaSuggestions: ReplicaSuggestionsResponse = {
       confirmable: false,
       dismissed: false,
     },
+    {
+      fingerprint: 'e48b02c6d7a91f35',
+      launcher: 'vllm-mp',
+      runtime: 'vllm',
+      state: 'conflicting',
+      reason: 'gpu-node-01 and gpu-node-05 both report rank 0 for master 10.0.0.21:29500',
+      head: '',
+      members: ['gpu-node-01', 'gpu-node-05'],
+      evidence: [
+        { node: 'gpu-node-01', source: 'command line', detail: 'rank 0 of 2, master 10.0.0.21:29500' },
+        { node: 'gpu-node-05', source: 'command line', detail: 'rank 0 of 2, master 10.0.0.21:29500' },
+      ],
+      missing: [],
+      declared: [],
+      confirmable: false,
+      dismissed: false,
+    },
+    {
+      fingerprint: '19d6a8f03b7c4e52',
+      launcher: 'llamacpp-rpc',
+      runtime: 'llamacpp',
+      state: 'incomplete',
+      reason: 'an RPC server address was named but no registered node owns it',
+      head: 'gpu-node-03',
+      members: ['gpu-node-03'],
+      evidence: [
+        { node: 'gpu-node-03', source: 'command line', detail: 'RPC servers: 10.0.0.31:50052' },
+      ],
+      missing: [],
+      declared: [],
+      confirmable: false,
+      dismissed: true,
+    },
   ],
   coverage: [
     { node: 'gpu-node-03', host: '10.0.0.13', state: 'agent_update_needed', detected: false, detail: 'the agent is too old to report launch details' },
+    { node: 'gpu-node-08', host: '10.0.0.18', state: 'env_unreadable', detected: false, detail: "the agent cannot read this runtime's environment" },
     { node: 'gpu-node-06', host: '10.0.0.16', state: 'no_agent', detected: false, detail: 'no marbor agent is enabled on this host' },
   ],
-  dismissedCount: 0,
+  dismissedCount: 1,
 };

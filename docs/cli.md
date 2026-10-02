@@ -208,6 +208,7 @@ Requires authentication - see the root README's CLI auth section, or run `marbor
 
 Flags:
 
+- `--adopt` - for a group that conflicts with a declaration: overwrite the members' declarations with the detected group (the prompt shows each node's declared and detected values)
 - `--yes` - confirm without prompting
 
 ##### `dismiss <id>`
