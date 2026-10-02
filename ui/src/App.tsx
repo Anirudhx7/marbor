@@ -13,6 +13,7 @@ import { ForceChangePassword } from './components/ForceChangePassword';
 import { UserPortal } from './pages/UserPortal';
 import { loadSession, logout, getPendingUserCount } from './lib/api';
 import type { SessionData } from './types';
+import routes from './routes.json';
 
 // ---------------------------------------------------------------------------
 // ErrorBoundary
@@ -92,6 +93,15 @@ const Requests     = lazy(() => import('./pages/Requests').then(m => ({ default:
 const Warmup       = lazy(() => import('./pages/Warmup').then(m => ({ default: m.Warmup })));
 const Users        = lazy(() => import('./pages/Users').then(m => ({ default: m.Users })));
 const Benchmark    = lazy(() => import('./pages/Benchmark').then(m => ({ default: m.Benchmark })));
+
+// Page components by the names used in routes.json. routes.json is the single
+// list of dashboard routes: this file renders it and the demo crawl
+// (scripts/demo-crawl.mjs) loads every entry, so a new page needs one line in
+// each of routes.json and this map and is covered by the crawl automatically.
+const PAGES: Record<string, ReturnType<typeof lazy>> = {
+  Dashboard, Activity, GPUNodes, APIKeys, Routing, Metrics, SettingsPage,
+  Analytics, Models, ModelAdvisor, Requests, Warmup, Benchmark, Users,
+};
 
 // Preload all route chunks after first paint so tab switches are instant, not lazy-on-click
 function preloadRoutes() {
@@ -179,21 +189,12 @@ function AppShell({ session, onLogout, pendingCount }: AppShellProps) {
               }
             >
               <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/activity" element={<Activity />} />
-                <Route path="/gpu-nodes" element={<GPUNodes />} />
-                <Route path="/api-keys" element={<APIKeys />} />
-                <Route path="/routing" element={<Routing />} />
-                <Route path="/metrics" element={<Metrics />} />
-                <Route path="/settings" element={<SettingsPage />} />
-                <Route path="/analytics" element={<Analytics />} />
-                <Route path="/models" element={<Models />} />
-                <Route path="/model-advisor" element={<ModelAdvisor />} />
-                <Route path="/requests" element={<Requests />} />
-                <Route path="/warmup" element={<Warmup />} />
-                {/* Hidden - reached only via the Settings page card, no Sidebar entry */}
-                <Route path="/benchmark" element={<Benchmark />} />
-                {session.role === 'admin' && <Route path="/users" element={<Users />} />}
+                {routes
+                  .filter(r => !('adminOnly' in r) || session.role === 'admin')
+                  .map(r => {
+                    const Page = PAGES[r.page];
+                    return <Route key={r.path} path={r.path} element={<Page />} />;
+                  })}
                 <Route path="/system-audit" element={<Navigate to="/activity" replace />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
