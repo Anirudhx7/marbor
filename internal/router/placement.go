@@ -210,7 +210,10 @@ func (r *Router) effectiveAvailableGPUs(n *NodeState) int {
 	n.mu.RLock()
 	agentGPUs := append([]marboragent.GPUInfo(nil), n.AgentGPUs...)
 	declared := append([]int(nil), n.DeclaredGPUIndices...)
-	detected := append([]int(nil), n.DetectedGPUGroup...)
+	var detected []int
+	if detectedVerifiedLocked(n) {
+		detected = append(detected, n.DetectedGPUGroup...)
+	}
 	n.mu.RUnlock()
 	// Declared wins for scoping when present (operator override).
 	if len(declared) > 0 {
@@ -1099,14 +1102,17 @@ func componentFor(name string, allNodes []*NodeState) (members []*NodeState, hea
 }
 
 // effectiveGPUIndicesLocked returns n's effective GPU scope (declared,
-// falling back to detected) - same declared-wins-over-detected precedence
-// effectiveRequiredGPUsLocked already uses. Caller must hold n.mu (read or
-// write lock).
+// falling back to a verified detection) - same declared-wins-over-detected
+// precedence effectiveRequiredGPUsLocked already uses. An unverified
+// detection is ignored here. Caller must hold n.mu (read or write lock).
 func effectiveGPUIndicesLocked(n *NodeState) []int {
 	if len(n.DeclaredGPUIndices) > 0 {
 		return n.DeclaredGPUIndices
 	}
-	return n.DetectedGPUGroup
+	if detectedVerifiedLocked(n) {
+		return n.DetectedGPUGroup
+	}
+	return nil
 }
 
 // primaryLoadedModelVariantLocked returns a simple content-identity string

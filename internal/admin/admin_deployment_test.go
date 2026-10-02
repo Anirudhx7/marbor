@@ -90,6 +90,7 @@ func TestNodeStateToResp_DetectedFallback(t *testing.T) {
 	n.DetectedSource = "ps"
 	n.DetectedRuntime = "vllm"
 	n.AgentPresent = true
+	n.DetectedGPUScope = &marboragent.GPUScope{Indices: []int{0, 1}, CrossChecked: true}
 	// Simulate agent GPUs
 	n.AgentGPUs = []marboragent.GPUInfo{{Index: 0}, {Index: 1}}
 	req := httptest.NewRequest(http.MethodGet, "/admin/nodes/n", nil)
@@ -103,5 +104,94 @@ func TestNodeStateToResp_DetectedFallback(t *testing.T) {
 	}
 	if resp.EffectiveRequiredGPUs != 2 {
 		t.Fatalf("effective should fallback to detected 2, got %d", resp.EffectiveRequiredGPUs)
+	}
+}
+
+func getNodeResp(t *testing.T, srv *Server, name string) nodeResp {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/admin/nodes/"+name, nil)
+	req.SetPathValue("name", name)
+	w := httptest.NewRecorder()
+	srv.handleNode(w, req)
+	if w.Code != 200 {
+		t.Fatalf("GET want 200 got %d", w.Code)
+	}
+	var resp nodeResp
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	return resp
+}
+
+func TestNodeResp_ExposesGPUScopeAndSecondaryWidths(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{{Name: "n", URL: "http://h:11434"}}, nil)
+	st, _ := store.Open(":memory:")
+	srv := NewServer(r, nil, config.Config{}, st)
+	r.AddNode(config.NodeConfig{Name: "n", URL: "http://h:11434"})
+	n := r.Nodes()[0]
+	n.DetectedParallelismType = "tp"
+	n.DetectedParallelismWidth = 4
+	n.DetectedPipelineWidth = 2
+	n.DetectedDataWidth = 2
+	n.DetectedGPUGroup = []int{0, 1, 2, 3}
+	n.DetectedSource = "ps"
+	n.DetectedGPUScope = &marboragent.GPUScope{Indices: []int{0, 1, 2, 3}, UUIDs: []string{"GPU-aaaa"}, Raw: "0,1,2,3", Source: "environ:CUDA_VISIBLE_DEVICES", CrossChecked: true, Note: "n"}
+
+	resp := getNodeResp(t, srv, "n")
+	if resp.DetectedPipelineWidth != 2 || resp.DetectedDataWidth != 2 {
+		t.Fatalf("secondary widths: %d %d", resp.DetectedPipelineWidth, resp.DetectedDataWidth)
+	}
+	sc := resp.DetectedGPUScope
+	if sc == nil || sc.Source != "environ:CUDA_VISIBLE_DEVICES" || !sc.CrossChecked || sc.Raw != "0,1,2,3" || len(sc.UUIDs) != 1 || len(sc.Indices) != 4 {
+		t.Fatalf("scope: %+v", sc)
+	}
+	if !resp.DetectedDrivesPlacement {
+		t.Fatalf("verified detection with nothing declared drives placement")
+	}
+	// wire names are camelCase like the rest of the node API
+	raw, _ := json.Marshal(resp)
+	for _, key := range []string{`"detectedGPUScope"`, `"crossChecked"`, `"detectedPipelineWidth"`, `"detectedDrivesPlacement"`} {
+		if !strings.Contains(string(raw), key) {
+			t.Fatalf("missing %s in %s", key, raw)
+		}
+	}
+}
+
+func TestNodeResp_UnverifiedDetectionIsInformationalOnly(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{{Name: "n", URL: "http://h:11434"}}, nil)
+	st, _ := store.Open(":memory:")
+	srv := NewServer(r, nil, config.Config{}, st)
+	r.AddNode(config.NodeConfig{Name: "n", URL: "http://h:11434"})
+	n := r.Nodes()[0]
+	n.DetectedParallelismType = "tp"
+	n.DetectedParallelismWidth = 8
+	n.DetectedGPUGroup = []int{0, 1, 2, 3, 4, 5, 6, 7}
+	n.DetectedSource = "ps"
+	n.DetectedGPUScope = &marboragent.GPUScope{Indices: n.DetectedGPUGroup, Source: "environ:CUDA_VISIBLE_DEVICES"}
+
+	resp := getNodeResp(t, srv, "n")
+	if resp.EffectiveRequiredGPUs != 0 {
+		t.Fatalf("unverified detection must not constrain placement, got %d", resp.EffectiveRequiredGPUs)
+	}
+	if resp.DetectedDrivesPlacement {
+		t.Fatalf("must not claim detection drives placement")
+	}
+	if resp.DetectedEffectiveRequiredGPUs != 8 {
+		t.Fatalf("operator still sees the detected requirement, got %d", resp.DetectedEffectiveRequiredGPUs)
+	}
+}
+
+func TestNodeResp_NoScopeFromOldAgentOmitsScope(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{{Name: "n", URL: "http://h:11434"}}, nil)
+	st, _ := store.Open(":memory:")
+	srv := NewServer(r, nil, config.Config{}, st)
+	r.AddNode(config.NodeConfig{Name: "n", URL: "http://h:11434"})
+	resp := getNodeResp(t, srv, "n")
+	if resp.DetectedGPUScope != nil {
+		t.Fatalf("unknown scope must be absent, got %+v", resp.DetectedGPUScope)
+	}
+	raw, _ := json.Marshal(resp)
+	if strings.Contains(string(raw), "detectedGPUScope") {
+		t.Fatalf("absent scope must be omitted: %s", raw)
 	}
 }

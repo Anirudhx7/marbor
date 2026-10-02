@@ -446,3 +446,57 @@ func TestRun_NodesTLSProbe(t *testing.T) {
 		t.Errorf("expected a not-pinned disclaimer, got %q", stdout.String())
 	}
 }
+
+// TestRun_NodesShowsDetectedGPUScope: the table says which GPUs the agent
+// detected for each runtime and whether an independent check confirmed it;
+// "-" means unknown, never a guess.
+func TestRun_NodesShowsDetectedGPUScope(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`[
+			{"name":"gpu-0","runtime":"vllm","health":"healthy","detectedGPUGroup":[0,1],
+			 "detectedGPUScope":{"indices":[0,1],"source":"environ:CUDA_VISIBLE_DEVICES","crossChecked":true}},
+			{"name":"gpu-1","runtime":"vllm","health":"healthy",
+			 "detectedGPUScope":{"indices":[2,3],"source":"environ:CUDA_VISIBLE_DEVICES","crossChecked":false}},
+			{"name":"gpu-2","runtime":"vllm","health":"healthy",
+			 "detectedGPUScope":{"uuids":["GPU-8932f937"],"source":"environ:CUDA_VISIBLE_DEVICES","crossChecked":false}},
+			{"name":"gpu-3","runtime":"vllm","health":"healthy",
+			 "detectedGPUScope":{"source":"environ","note":"the runtime's environment is not readable"}},
+			{"name":"gpu-4","runtime":"vllm","health":"healthy","detectedGPUGroup":[0,1,2,3]}
+		]`))
+	}))
+	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
+
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"nodes", "--server", srv.URL}, &stdout, &stderr); code != ExitOK {
+		t.Fatalf("exit %d (stderr: %s)", code, stderr.String())
+	}
+	out := stdout.String()
+	if !strings.Contains(out, "DETECTED GPUS") {
+		t.Fatalf("missing DETECTED GPUS column:\n%s", out)
+	}
+	want := map[string]string{
+		"gpu-0": "0,1 [verified]",
+		"gpu-1": "2,3 [unverified]",
+		"gpu-2": "GPU-8932f937 [unverified]",
+		"gpu-3": "unknown",
+		"gpu-4": "0,1,2,3 [unverified]",
+	}
+	for _, line := range strings.Split(out, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		if w, ok := want[fields[0]]; ok && !strings.Contains(line, w) {
+			t.Errorf("%s row missing %q:\n%s", fields[0], w, line)
+		}
+	}
+}
+
+func TestFormatDetectedGPUs_NothingReportedIsDash(t *testing.T) {
+	if got := formatDetectedGPUs(NodeResp{}); got != "-" {
+		t.Fatalf("no detection at all must be -, got %q", got)
+	}
+}
