@@ -27,6 +27,7 @@ API keys are generated and managed through the **API Keys** page of the admin da
 
 - Keys are matched by **exact string comparison** - substring matching is not used.
 - Key **names** are logged in the audit log and request log. The key value itself is never written to any log file.
+- The request audit log is **best-effort**: it records requests that reach proxy completion handling. Authentication and policy rejections that occur earlier (missing/invalid/expired key, rate limit, quota) are not persisted in it, and entries are dropped when the async write queue is full (`marbor_audit_dropped_total`). Do not rely on it as a lossless security audit trail.
 - Key metadata and usage counters (token totals, quota counters) are persisted in the SQLite database (`marbor.db`).
 - Keys are never echoed back through any admin API response.
 

@@ -1,4 +1,5 @@
-// Package audit provides structured audit logging for all proxy requests.
+// Package audit provides best-effort structured audit logging for requests that
+// reach proxy completion handling (auth/policy rejections are not recorded).
 // Entries are written to SQLite via the store.Store interface.
 package audit
 
@@ -9,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Anirudhx7/marbor/internal/metrics"
 	"github.com/Anirudhx7/marbor/internal/store"
 )
 
@@ -45,6 +47,48 @@ type Logger struct {
 	// lastAppendErrLog rate-limits the "audit append failed" log line (see
 	// logAppendErr) - only run() touches it, so no lock is needed.
 	lastAppendErrLog time.Time
+
+	// dropped counts entries discarded because writes was full. Log is called
+	// from many request goroutines, so the drop-warning throttle below is
+	// atomic rather than lock-guarded; now and logf are swappable for tests.
+	dropped         atomic.Uint64
+	lastDropLogNano atomic.Int64
+	now             func() time.Time
+	logf            func(format string, args ...any)
+}
+
+// writeQueueSize bounds the async audit queue. When it is full, Log drops the
+// entry rather than blocking the request path.
+const writeQueueSize = 5000
+
+// dropLogInterval bounds how often a full queue is reported, so sustained
+// overload produces one warning per interval (carrying the cumulative count)
+// instead of one line per dropped entry.
+const dropLogInterval = 30 * time.Second
+
+// Dropped returns the cumulative number of entries dropped because the write
+// queue was full.
+func (l *Logger) Dropped() uint64 {
+	if l == nil {
+		return 0
+	}
+	return l.dropped.Load()
+}
+
+// recordDrop counts a dropped entry and emits a rate-limited warning with the
+// cumulative total.
+func (l *Logger) recordDrop() {
+	total := l.dropped.Add(1)
+	metrics.AuditDropped()
+	nowNano := l.now().UnixNano()
+	last := l.lastDropLogNano.Load()
+	if last != 0 && nowNano-last < int64(dropLogInterval) {
+		return
+	}
+	if !l.lastDropLogNano.CompareAndSwap(last, nowNano) {
+		return
+	}
+	l.logf("audit logger: write queue full, audit entries are being dropped (%d dropped since start)", total)
 }
 
 // appendErrLogInterval bounds how often a persistently-failing
@@ -70,8 +114,10 @@ func (l *Logger) logAppendErr(err error) {
 func New(st store.Store, enabled bool) *Logger {
 	l := &Logger{
 		st:     st,
-		writes: make(chan store.AuditEntry, 5000),
+		writes: make(chan store.AuditEntry, writeQueueSize),
 		done:   make(chan struct{}),
+		now:    time.Now,
+		logf:   log.Printf,
 	}
 	l.enabled.Store(enabled)
 	l.wg.Add(1)
@@ -140,7 +186,7 @@ func (l *Logger) Log(e Entry) {
 	select {
 	case l.writes <- entry:
 	default:
-		log.Printf("audit logger: queue full, dropped audit entry for request %s", e.RequestID)
+		l.recordDrop()
 	}
 }
 

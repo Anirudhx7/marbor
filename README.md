@@ -196,10 +196,10 @@ Client Application (Agent / RAG / Copilot)
 | **Multi-Tenant Auth** | Per-key rate limiting | Token-bucket rate limiter per API key. `X-RateLimit-Limit/Remaining/Reset` headers on every response. |
 | | Model allow-lists | Per-key model restrictions. 403 on unauthorized model access - enforced at the control plane, not advisory. |
 | | Key expiration | `expires_at` per key. Automatic invalidation. No manual rotation under pressure. |
-| **Observability** | Prometheus metrics | 20 production metrics: request throughput and TTFT, latency percentiles, active connections, token counts, cache hit/miss, retry rates, cloud fallback frequency, local model degradation, quota rejections, request queue depth/timeouts, warmup pings and residency, schedule fires, model evictions, prewarming accuracy, panic recovery, node health. |
+| **Observability** | Prometheus metrics | 21 production metrics: request throughput and TTFT, latency percentiles, active connections, token counts, cache hit/miss, retry rates, cloud fallback frequency, local model degradation, quota rejections, request queue depth/timeouts, warmup pings and residency, schedule fires, model evictions, prewarming accuracy, panic recovery, dropped audit entries, node health. |
 | | Grafana dashboard | Included JSON ([`grafana/marbor.json`](grafana/marbor.json)). One-click import. Request throughput and error rate, latency percentiles, warm-routing hit ratio, connections per node, tokens/s by key. |
 | | Structured logging | `--log-format json` for Loki, Datadog, Fluentd, Splunk. Per-request access log with key name, model, node, status, latency, request ID. |
-| | Audit trail | Append-only audit trail persisted in SQLite (`audit_log`). Every request recorded with crypto/rand request IDs. |
+| | Audit trail | Append-only, best-effort audit trail persisted in SQLite (`audit_log`), with crypto/rand request IDs. Records requests that reach proxy completion handling. Authentication and policy rejections that happen earlier (missing or invalid key, expired key, rate limit, quota) are not persisted in it, and entries are dropped when the async write queue is full (counted in `marbor_audit_dropped_total`). Not a lossless security audit trail. |
 | | Webhook alerts | `node_down`/`node_up` and `agent_down`/`agent_up` (marbor agent reachability) events with HMAC-SHA256 signatures. PagerDuty/OpsGenie/Slack-ready. |
 | **Resilience** | Automatic retry/failover | Dead node before first byte triggers retry on alternate healthy nodes → cloud → 502. Transparent to the client. |
 | | Request queue | Configurable `queue_max_depth` and `queue_timeout_ms`. Traffic spikes queue and drain rather than immediately 502-ing. |
@@ -734,6 +734,7 @@ docker exec <container> marbor status
 - `marbor_local_degradation_total` - requests substituted to a declared local alternate (labels: from, to)
 - `marbor_quota_rejections_total` - 429 quota enforcement events (labels: key_name, period)
 - `marbor_panics_total` - recovered handler panics
+- `marbor_audit_dropped_total` - request audit entries dropped because the async audit write queue was full
 - `marbor_queue_depth` - current request queue depth
 - `marbor_queue_timeouts_total` - queued requests that timed out before getting a node
 - `marbor_warmup_pings_total` - proactive keepalive pings per model/node
