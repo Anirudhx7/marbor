@@ -7,6 +7,7 @@ package cli
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -65,29 +66,55 @@ type ReplicaSuggestionsResponse struct {
 // incomplete group, contradicting declaration), so it exits as a user error
 // with the server's own sentence.
 func (c *Client) suggestionRequest(method, fingerprint, action string) ([]byte, error) {
+	body, _, err := c.suggestionRequestBody(method, fingerprint, action, nil)
+	return body, err
+}
+
+// suggestionRequestBody is suggestionRequest with an optional JSON payload. On
+// a 409 it also returns the state of the fresh suggestion the server sent back
+// (empty when there is none), so a caller can tell a group that is still in
+// conflict from one that has since become complete.
+func (c *Client) suggestionRequestBody(method, fingerprint, action string, payload []byte) ([]byte, string, error) {
 	if c.Token == "" {
-		return nil, userErrorf("authentication required: run marbor login, or pass --username/--password (or MARBOR_USERNAME+MARBOR_PASSWORD)")
+		return nil, "", userErrorf("authentication required: run marbor login, or pass --username/--password (or MARBOR_USERNAME+MARBOR_PASSWORD)")
 	}
-	req, err := http.NewRequest(method, c.BaseURL+"/admin/v1/replica-suggestions/"+urlPathEscape(fingerprint)+"/"+action, nil)
+	var reader io.Reader
+	if payload != nil {
+		reader = bytes.NewReader(payload)
+	}
+	req, err := http.NewRequest(method, c.BaseURL+"/admin/v1/replica-suggestions/"+urlPathEscape(fingerprint)+"/"+action, reader)
 	if err != nil {
-		return nil, userErrorf("building request: %v", err)
+		return nil, "", userErrorf("building request: %v", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+c.Token)
+	if payload != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
-		return nil, serverErrorf("could not reach %s: %v", c.BaseURL, err)
+		return nil, "", serverErrorf("could not reach %s: %v", c.BaseURL, err)
 	}
 	defer resp.Body.Close()
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
-		return nil, authErrorf("%s%s", readErrorMessage(resp.Body), c.savedSessionHint())
+		return nil, "", authErrorf("%s%s", readErrorMessage(resp.Body), c.savedSessionHint())
+	case resp.StatusCode == http.StatusConflict:
+		raw, _ := io.ReadAll(resp.Body)
+		var fresh struct {
+			Suggestion struct {
+				State string `json:"state"`
+			} `json:"suggestion"`
+		}
+		_ = json.Unmarshal(raw, &fresh)
+		return nil, fresh.Suggestion.State, userErrorf("%s", readErrorMessage(bytes.NewReader(raw)))
 	case resp.StatusCode == http.StatusBadRequest, resp.StatusCode == http.StatusNotFound,
-		resp.StatusCode == http.StatusConflict, resp.StatusCode == http.StatusUnprocessableEntity:
-		return nil, userErrorf("%s", readErrorMessage(resp.Body))
+		resp.StatusCode == http.StatusUnprocessableEntity:
+		return nil, "", userErrorf("%s", readErrorMessage(resp.Body))
 	case resp.StatusCode >= 400:
-		return nil, serverErrorf("server error (%d): %s", resp.StatusCode, readErrorMessage(resp.Body))
+		return nil, "", serverErrorf("server error (%d): %s", resp.StatusCode, readErrorMessage(resp.Body))
 	}
-	return io.ReadAll(resp.Body)
+	out, err := io.ReadAll(resp.Body)
+	return out, "", err
 }
 
 // ReplicaSuggestions calls GET /admin/v1/replica-suggestions.
@@ -186,6 +213,13 @@ func printSuggestionCoverage(w io.Writer, cov []TopologyCoverage) {
 	}
 }
 
+func suggestionReasonOrDefault(s ReplicaSuggestion) string {
+	if s.Reason == "" {
+		return "not complete"
+	}
+	return s.Reason
+}
+
 // findSuggestion returns the listed suggestion with the given fingerprint.
 func findSuggestion(list []ReplicaSuggestion, fingerprint string) (ReplicaSuggestion, bool) {
 	for _, s := range list {
@@ -218,6 +252,11 @@ func confirmReplicaPrompt(s ReplicaSuggestion, yes bool, stderr io.Writer) error
 			"Nothing is restarted and in-flight requests are unaffected. To undo it, clear replica membership on each\n"+
 			"node (marbor nodes patch <node> --replica-members \"\").\n"+
 			"Proceed? [y/N] ", s.Head, strings.Join(workers, ", "))
+	return readYes()
+}
+
+// readYes reads one line from stdin and succeeds only on y or yes.
+func readYes() error {
 	br := bufio.NewReader(stdinReader)
 	line, err := br.ReadString('\n')
 	if err != nil && len(line) == 0 {
@@ -228,6 +267,42 @@ func confirmReplicaPrompt(s ReplicaSuggestion, yes bool, stderr io.Writer) error
 		return nil
 	}
 	return userErrorf("aborted")
+}
+
+// declaredText renders one node's declaration for the adopt prompt.
+func declaredText(d NodeSuggestionDeclared) string {
+	return fmt.Sprintf("head %q, members %s", d.Head, strings.Join(d.Members, ","))
+}
+
+// adoptReplicaPrompt asks before overwriting the declarations a group's members
+// already carry. It names every member with what it declares now and what the
+// agents detected, because adopting replaces the declared side wholesale.
+func adoptReplicaPrompt(s ReplicaSuggestion, yes bool, stderr io.Writer) error {
+	if yes {
+		return nil
+	}
+	if !stdinIsTTY() {
+		return userErrorf("refusing to overwrite declarations for replica group %s without --yes (no TTY to confirm)", s.Fingerprint)
+	}
+	declared := make(map[string]NodeSuggestionDeclared, len(s.Declared))
+	for _, d := range s.Declared {
+		declared[d.Node] = d
+	}
+	detected := fmt.Sprintf("head %q, members %s", s.Head, strings.Join(s.Members, ","))
+	fmt.Fprintf(stderr, "This will overwrite the declared replica membership on %d node(s) with the detected group:\n", len(s.Members))
+	for _, m := range s.Members {
+		now := "nothing declared"
+		if d, ok := declared[m]; ok {
+			now = declaredText(d)
+		}
+		fmt.Fprintf(stderr, "  %s: declared now: %s -> detected: %s\n", m, now, detected)
+	}
+	fmt.Fprint(stderr,
+		"Marbor will route requests for this group to the head only; the workers stop receiving direct traffic.\n"+
+			"Nothing is restarted and in-flight requests are unaffected. To undo it, re-declare the previous values shown\n"+
+			"above on each node (marbor nodes patch <node> --replica-members ... --replica-head ...).\n"+
+			"Proceed? [y/N] ")
+	return readYes()
 }
 
 func runNodesSuggestionsConfirm(ctx *RunCtx, fingerprint string) int {
@@ -246,20 +321,49 @@ func runNodesSuggestionsConfirm(ctx *RunCtx, fingerprint string) int {
 		fmt.Fprintf(ctx.Stderr, "error: no current suggestion %q (list them with: marbor nodes suggestions --all)\n", fingerprint)
 		return ExitUserError
 	}
-	if !s.Confirmable {
-		reason := s.Reason
-		if reason == "" {
-			reason = "not complete"
+	adopt := ctx.Bool("adopt")
+	var payload []byte
+	switch {
+	case adopt && s.State == "contradicts_declared":
+		if err := adoptReplicaPrompt(s, ctx.Bool("yes"), ctx.Stderr); err != nil {
+			return reportError(err, ctx.Stderr)
 		}
-		fmt.Fprintf(ctx.Stderr, "error: suggestion %s is %s and cannot be confirmed: %s\n", fingerprint, s.State, reason)
+		// Send back exactly the declarations the prompt showed; the server
+		// refuses if they changed in the meantime.
+		snapshot := s.Declared
+		if snapshot == nil {
+			snapshot = []NodeSuggestionDeclared{}
+		}
+		payload, err = json.Marshal(map[string]any{"adopt": true, "declaredSnapshot": snapshot})
+		if err != nil {
+			fmt.Fprintf(ctx.Stderr, "error: encode request: %v\n", err)
+			return ExitServerError
+		}
+	case adopt && s.Confirmable:
+		fmt.Fprintf(ctx.Stderr, "error: suggestion %s does not conflict with a declaration; rerun without --adopt to confirm it\n", fingerprint)
 		return ExitUserError
+	case adopt:
+		fmt.Fprintf(ctx.Stderr, "error: suggestion %s is %s and cannot be adopted: %s\n", fingerprint, s.State, suggestionReasonOrDefault(s))
+		return ExitUserError
+	case !s.Confirmable:
+		hint := ""
+		if s.State == "contradicts_declared" {
+			hint = " (to overwrite the declarations with the detected group, rerun with --adopt)"
+		}
+		fmt.Fprintf(ctx.Stderr, "error: suggestion %s is %s and cannot be confirmed: %s%s\n", fingerprint, s.State, suggestionReasonOrDefault(s), hint)
+		return ExitUserError
+	default:
+		if err := confirmReplicaPrompt(s, ctx.Bool("yes"), ctx.Stderr); err != nil {
+			return reportError(err, ctx.Stderr)
+		}
 	}
-	if err := confirmReplicaPrompt(s, ctx.Bool("yes"), ctx.Stderr); err != nil {
-		return reportError(err, ctx.Stderr)
-	}
-	body, err := client.suggestionRequest(http.MethodPost, fingerprint, "confirm")
+	body, conflictState, err := client.suggestionRequestBody(http.MethodPost, fingerprint, "confirm", payload)
 	if err != nil {
-		return reportError(err, ctx.Stderr)
+		code := reportError(err, ctx.Stderr)
+		if adopt && conflictState == "complete" {
+			fmt.Fprintf(ctx.Stderr, "suggestion %s is now complete; rerun without --adopt to confirm it\n", fingerprint)
+		}
+		return code
 	}
 	if ctx.Flags.jsonOutput {
 		var out any

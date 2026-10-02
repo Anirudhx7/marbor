@@ -1,5 +1,6 @@
 import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, CloudProviderInput, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, QuantRecommendation, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry, ModelConfig, LocalModel, BenchmarkRun, BackupFileInfo, SpillCounterRow, RoutingDecision, ModelAlias } from '../types';
 import { mockCloudProviders, mockSavings, mockReplicaSuggestions } from './mockData';
+import { sameDeclared } from './replicaGroups';
 
 const BASE = '/admin';
 
@@ -609,10 +610,35 @@ export interface ReplicaSuggestionConfirmResult {
   roles: { node: string; role: string; head: string }[];
 }
 
+// ReplicaConfirmOptions: adopt overwrites conflicting declarations with the
+// detected group. declaredSnapshot is the declared[] list exactly as the
+// operator saw it, so the server can refuse if it changed in the meantime.
+export interface ReplicaConfirmOptions {
+  adopt?: boolean;
+  declaredSnapshot?: ReplicaSuggestionDeclared[];
+}
+
 // Demo state: which demo suggestions were confirmed or dismissed this session.
-// Resets on reload; never reaches the API.
-const demoSuggestionConfirmed = new Set<string>();
-const demoSuggestionDismissed = new Set<string>();
+// Resets on reload; never reaches the API. One fingerprint starts dismissed so
+// the collapsed Dismissed list has something in it.
+const demoSuggestionConfirmed = new Map<string, { head: string; members: string[] }>();
+const demoSuggestionDismissed = new Set<string>(mockReplicaSuggestions.suggestions.filter(s => s.dismissed).map(s => s.fingerprint));
+
+// applyDemoConfirmedGroups overlays this session's demo confirms onto the mock
+// node list so a confirmed group shows up as head/worker nodes, the same shape
+// the live node payload has after a real confirm.
+export function applyDemoConfirmedGroups(nodes: GPUNode[]): GPUNode[] {
+  if (demoSuggestionConfirmed.size === 0) return nodes;
+  const roles = new Map<string, { members: string[]; head: string }>();
+  for (const g of demoSuggestionConfirmed.values()) {
+    for (const m of g.members) roles.set(m, { members: [...g.members], head: g.head });
+  }
+  return nodes.map(n => {
+    const g = roles.get(n.name);
+    if (!g) return n;
+    return { ...n, replicaPeers: { members: g.members, head: g.head }, schedulingRole: n.name === g.head ? 'head' : 'worker', replicaHead: g.head };
+  });
+}
 
 function demoSuggestionsView(includeDismissed: boolean): ReplicaSuggestionsResponse {
   const live = mockReplicaSuggestions.suggestions.filter(s => !demoSuggestionConfirmed.has(s.fingerprint));
@@ -644,11 +670,31 @@ export async function fetchReplicaSuggestions(includeDismissed = false, demo = f
   return { suggestions: j.suggestions ?? [], coverage: j.coverage ?? [], dismissedCount: j.dismissedCount ?? 0 };
 }
 
-export async function confirmReplicaSuggestion(fingerprint: string, demo = false): Promise<ReplicaSuggestionConfirmResult> {
+// confirmFailure keeps the server's own sentence for a refused adopt: it names
+// the nodes outside the group that still declare a member, which the operator
+// needs to fix first. Every other failure uses the fixed wording.
+async function confirmFailure(res: Response, adopt: boolean): Promise<Error> {
+  if (adopt && res.status === 409) {
+    const j: { error?: unknown } = await res.json().catch(() => ({}));
+    const text = typeof j.error === 'string' ? j.error.trim().replace(/[.\s]+$/, '') : '';
+    if (text) return new Error(`${text}. Nothing was changed.`);
+  }
+  if (adopt && res.status === 400) return new Error('Could not adopt the detected group. Nothing was changed.');
+  return new Error(confirmErrorCopy(res.status));
+}
+
+export async function confirmReplicaSuggestion(fingerprint: string, demo = false, opts?: ReplicaConfirmOptions): Promise<ReplicaSuggestionConfirmResult> {
+  const adopt = opts?.adopt === true;
   if (DEMO || demo) {
     const s = mockReplicaSuggestions.suggestions.find(x => x.fingerprint === fingerprint && !demoSuggestionConfirmed.has(x.fingerprint));
-    if (!s || !s.confirmable) throw new Error(confirmErrorCopy(s ? 400 : 404));
-    demoSuggestionConfirmed.add(fingerprint);
+    if (!s) throw new Error(confirmErrorCopy(404));
+    if (adopt) {
+      if (s.state !== 'contradicts_declared') throw new Error(confirmErrorCopy(409));
+      if (!opts?.declaredSnapshot || !sameDeclared(opts.declaredSnapshot, s.declared)) throw new Error(confirmErrorCopy(409));
+    } else if (!s.confirmable) {
+      throw new Error(confirmErrorCopy(s.state === 'contradicts_declared' ? 409 : 400));
+    }
+    demoSuggestionConfirmed.set(fingerprint, { head: s.head, members: [...s.members] });
     return demoDelay({
       fingerprint,
       head: s.head,
@@ -656,26 +702,34 @@ export async function confirmReplicaSuggestion(fingerprint: string, demo = false
       roles: s.members.map(m => ({ node: m, role: m === s.head ? 'head' : 'worker', head: s.head })),
     });
   }
-  const res = await apiFetch(`${BASE}/replica-suggestions/${encodeURIComponent(fingerprint)}/confirm`, {
-    method: 'POST', headers: authHeaders(),
-  });
-  if (!res.ok) throw new Error(confirmErrorCopy(res.status));
+  const init: RequestInit = { method: 'POST', headers: authHeaders() };
+  if (adopt) {
+    init.headers = { ...authHeaders(), 'Content-Type': 'application/json' };
+    init.body = JSON.stringify({ adopt: true, declaredSnapshot: opts?.declaredSnapshot ?? [] });
+  }
+  const res = await apiFetch(`${BASE}/replica-suggestions/${encodeURIComponent(fingerprint)}/confirm`, init);
+  if (!res.ok) throw await confirmFailure(res, adopt);
   return res.json();
 }
 
-async function setReplicaSuggestionDismissed(fingerprint: string, dismiss: boolean, demo: boolean): Promise<void> {
+// `state` is the suggestion state the operator saw when dismissing, so the
+// server can bring the suggestion back if that state changes later.
+async function setReplicaSuggestionDismissed(fingerprint: string, dismiss: boolean, demo: boolean, state?: ReplicaSuggestionState): Promise<void> {
   if (DEMO || demo) {
     if (dismiss) demoSuggestionDismissed.add(fingerprint); else demoSuggestionDismissed.delete(fingerprint);
     return demoDelay(undefined);
   }
-  const res = await apiFetch(`${BASE}/replica-suggestions/${encodeURIComponent(fingerprint)}/dismiss`, {
-    method: dismiss ? 'POST' : 'DELETE', headers: authHeaders(),
-  });
+  const init: RequestInit = { method: dismiss ? 'POST' : 'DELETE', headers: authHeaders() };
+  if (dismiss && state) {
+    init.headers = { ...authHeaders(), 'Content-Type': 'application/json' };
+    init.body = JSON.stringify({ state });
+  }
+  const res = await apiFetch(`${BASE}/replica-suggestions/${encodeURIComponent(fingerprint)}/dismiss`, init);
   if (!res.ok) throw new Error(dismiss ? 'Could not dismiss the suggestion.' : 'Could not restore the suggestion.');
 }
 
-export function dismissReplicaSuggestion(fingerprint: string, demo = false): Promise<void> {
-  return setReplicaSuggestionDismissed(fingerprint, true, demo);
+export function dismissReplicaSuggestion(fingerprint: string, demo = false, state?: ReplicaSuggestionState): Promise<void> {
+  return setReplicaSuggestionDismissed(fingerprint, true, demo, state);
 }
 
 export function restoreReplicaSuggestion(fingerprint: string, demo = false): Promise<void> {

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Plus, Trash2, Server, Thermometer, Cpu, Clock, Activity, Pencil, X, Pin, Flame, Settings2, Radio, Copy, Fan, MemoryStick, HardDrive, ChevronRight } from 'lucide-react';
 import { StatusDot } from '../components/StatusDot';
 import { VramBar } from '../components/VramBar';
@@ -10,17 +10,19 @@ import { SearchInput } from '../components/SearchInput';
 import { SignalFilter } from '../components/SignalFilter';
 import { EmptyState } from '../components/EmptyState';
 import { Modal } from '../components/Modal';
-import { ReplicaSuggestionStrip } from '../components/ReplicaSuggestionStrip';
+import { ReplicaGroupsTab } from '../components/ReplicaGroupsTab';
 import { ModelConfigModal } from '../components/ModelConfigModal';
 import { CustomSelect } from '../components/Select';
 import { RuntimeBadge } from '../components/RuntimeBadge';
 import { mockGPUNodes, mockRuntimeLogLines } from '../lib/mockData';
 import { readLastNodeCount, writeLastNodeCount } from '../lib/nodeCount';
 import { VRAM_PRESSURE_THRESHOLD } from './Dashboard';
-import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, probeNodeTLS, fetchModelFit, unloadModel, getPinned, getMarborAgent, enableMarborAgent, regenerateMarborAgentToken, disableMarborAgent, checkNodeHealth, fetchReplicaSuggestions, getNodeControl, acceptNodeControl, clearNodeControl, startNodeRuntime, stopNodeRuntime, restartNodeRuntime, getNodeRuntimeLogs } from '../lib/api';
+import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, probeNodeTLS, fetchModelFit, unloadModel, getPinned, getMarborAgent, enableMarborAgent, regenerateMarborAgentToken, disableMarborAgent, checkNodeHealth, fetchReplicaSuggestions, applyDemoConfirmedGroups, getNodeControl, acceptNodeControl, clearNodeControl, startNodeRuntime, stopNodeRuntime, restartNodeRuntime, getNodeRuntimeLogs } from '../lib/api';
 import type { MarborAgentStatus, NodeHealthCheckResult, NodeControlStatus, ReplicaSuggestionsResponse } from '../lib/api';
 import type { GPUNode, ModelFitResponse, NodeFit, FitStatus } from '../types';
 import { formatDurationLong } from '../lib/time';
+import { actionableCount, bucketSuggestions, chipsByNode, hasReplicaContent, readDismissedReady, readyFingerprints, readyLineVisible, writeDismissedReady } from '../lib/replicaGroups';
+import type { NodeChip } from '../lib/replicaGroups';
 
 // vramOverridesToString mirrors the CLI's --vram-override comma-separated
 // "model=mb" convention, same as the editGPUIndices
@@ -313,7 +315,7 @@ function NodeCardSkeleton() {
   );
 }
 
-function NodeCard({ node, pinnedModels, replicaWorkers, onRemove, onDrain, onUndrain, onTogglePrewarm, onEdit, onUnload, onConfigureModel, onManageAgent, onGoToReplicaHead, onGoToReplicaMember, isHighlighted, highlightSource }: {
+function NodeCard({ node, pinnedModels, replicaWorkers, onRemove, onDrain, onUndrain, onTogglePrewarm, onEdit, onUnload, onConfigureModel, onManageAgent, onGoToReplicaHead, onGoToReplicaMember, replicaChips, isHighlighted, highlightSource }: {
   node: GPUNode;
   pinnedModels: string[];
   // Names of confirmed worker nodes whose resolved head is this node - empty
@@ -331,6 +333,8 @@ function NodeCard({ node, pinnedModels, replicaWorkers, onRemove, onDrain, onUnd
   onManageAgent: (node: GPUNode) => void;
   onGoToReplicaHead: (headName: string) => void;
   onGoToReplicaMember: (memberName: string) => void;
+  // Small chips from the replica suggestions (detected group head, no agent data).
+  replicaChips?: NodeChip[];
   isHighlighted?: boolean;
   highlightSource?: string | null;
 }) {
@@ -476,6 +480,13 @@ function NodeCard({ node, pinnedModels, replicaWorkers, onRemove, onDrain, onUnd
         className="text-xs font-medium px-1.5 py-0.5 rounded bg-info/15 text-info border border-info/30 whitespace-nowrap"
       >
         {workerCount > 0 ? `Replica head - ${workerCount} worker${workerCount === 1 ? '' : 's'}` : 'Replica head'}
+      </span>
+    ) });
+  }
+  for (const chip of replicaChips ?? []) {
+    statusPills.push({ sev: 1, key: `replica-chip-${chip.key}`, el: (
+      <span title={chip.title} className="text-xs font-medium px-1.5 py-0.5 rounded bg-secondary text-muted-foreground border border-border whitespace-nowrap">
+        {chip.label}
       </span>
     ) });
   }
@@ -872,6 +883,22 @@ export function GPUNodes() {
   const [agentToDisable, setAgentToDisable] = useState<string | null>(null);
   // Last good replica suggestions; a failed refresh keeps this list.
   const [replicaSuggestions, setReplicaSuggestions] = useState<ReplicaSuggestionsResponse | null>(null);
+  // suggestionsError: the last suggestions refresh failed (the node list is unaffected).
+  // suggestionsSettled: the first suggestions result, good or bad, has arrived.
+  const [suggestionsError, setSuggestionsError] = useState(false);
+  const [suggestionsSettled, setSuggestionsSettled] = useState(false);
+  // The Replica groups tab lives in the URL (?view=replicas), like the Models tabs.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const view: 'nodes' | 'replicas' = searchParams.get('view') === 'replicas' ? 'replicas' : 'nodes';
+  const setView = (v: 'nodes' | 'replicas') => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (v === 'replicas') next.set('view', 'replicas'); else next.delete('view');
+      return next;
+    }, { replace: true });
+  };
+  const [dismissedReady, setDismissedReady] = useState<string[]>(() => readDismissedReady());
+  const viewChecked = useRef(false);
   // pendingAgentReconfigure gates the "Reconfigure marbor agent connection?"
   // confirm - only shown when changing port/scheme on an ALREADY-enabled
   // agent (nothing to disrupt on the very first Enable, so that path stays
@@ -1411,12 +1438,16 @@ export function GPUNodes() {
     const requestId = ++nodesRequestId.current;
     if (demoMode) {
       if (!active || requestId !== nodesRequestId.current || currentAppPath() !== '/gpu-nodes') return;
-      setNodes(mockGPUNodes);
+      setNodes(applyDemoConfirmedGroups(mockGPUNodes));
       setIsLive(false);
       setError(null);
       await loadPinned(mockGPUNodes, active, requestId);
       const demoSuggestions = await fetchReplicaSuggestions(true, true).catch(() => null);
-      if (demoSuggestions && active && requestId === nodesRequestId.current && currentAppPath() === '/gpu-nodes') setReplicaSuggestions(demoSuggestions);
+      if (demoSuggestions && active && requestId === nodesRequestId.current && currentAppPath() === '/gpu-nodes') {
+        setReplicaSuggestions(demoSuggestions);
+        setSuggestionsError(false);
+        setSuggestionsSettled(true);
+      }
       return;
     }
     try {
@@ -1424,7 +1455,13 @@ export function GPUNodes() {
       // blank the node list: it just keeps the last good list.
       const [nodesResult, suggestionsResult] = await Promise.allSettled([fetchNodes(), fetchReplicaSuggestions(true)]);
       if (!active || requestId !== nodesRequestId.current || currentAppPath() !== '/gpu-nodes') return;
-      if (suggestionsResult.status === 'fulfilled') setReplicaSuggestions(suggestionsResult.value);
+      if (suggestionsResult.status === 'fulfilled') {
+        setReplicaSuggestions(suggestionsResult.value);
+        setSuggestionsError(false);
+      } else {
+        setSuggestionsError(true);
+      }
+      setSuggestionsSettled(true);
       if (nodesResult.status === 'rejected') throw nodesResult.reason;
       const data = nodesResult.value;
       setNodes(data || []);
@@ -1504,6 +1541,10 @@ export function GPUNodes() {
     setHighlightedNodes(set);
     setHighlightSource(from);
     if (set.size > 0) {
+      // The list stays mounted while another tab is showing, so a search or
+      // signal filter left behind would hide the very card being linked to.
+      setSearchQuery('');
+      setActiveSignals(new Set());
       const first = Array.from(set)[0] as string;
       const t1 = setTimeout(() => {
         const el = document.getElementById(`node-card-${first}`);
@@ -1555,6 +1596,25 @@ export function GPUNodes() {
     for (const k of Object.keys(map)) map[k].sort();
     return map;
   }, [nodes]);
+
+  const suggestionBuckets = useMemo(() => bucketSuggestions(replicaSuggestions?.suggestions ?? []), [replicaSuggestions]);
+  const replicaChips = useMemo(() => chipsByNode(replicaSuggestions), [replicaSuggestions]);
+  const showReplicaTab = hasReplicaContent(nodes, replicaSuggestions);
+  const readyIds = readyFingerprints(suggestionBuckets);
+  const dismissReadyLine = () => {
+    const next = Array.from(new Set([...dismissedReady, ...readyIds]));
+    writeDismissedReady(next);
+    setDismissedReady(next);
+  };
+
+  // A deep link to ?view=replicas falls back to Nodes only once, after the first
+  // results settle and only when there is nothing to show. Never later: a poll
+  // must not move the operator off the tab or out from under a dialog.
+  useEffect(() => {
+    if (viewChecked.current || fleetLoading || !suggestionsSettled) return;
+    viewChecked.current = true;
+    if (view === 'replicas' && !showReplicaTab && !suggestionsError) setView('nodes');
+  });
 
   const signalOptions = useMemo(() => SIGNAL_DEFS.map((s) => ({
     id: s.id,
@@ -2204,13 +2264,53 @@ export function GPUNodes() {
         </div>
       )}
 
-      <ReplicaSuggestionStrip
-        data={replicaSuggestions}
-        demo={demoMode}
-        onChanged={() => loadNodes()}
-        onEditNode={(name) => { const target = nodes.find(n => n.name === name); if (target) openEditModal(target); }}
-      />
+      {(showReplicaTab || view === 'replicas') && (
+        <div role="tablist" aria-label="GPU nodes views" className="flex items-center gap-1 p-1 bg-secondary rounded-lg w-fit">
+          {(['nodes', 'replicas'] as const).map((v) => (
+            <button
+              key={v}
+              role="tab"
+              aria-selected={view === v}
+              onClick={() => setView(v)}
+              className={`px-4 py-1.5 min-h-[40px] sm:min-h-0 text-sm font-medium rounded-md transition-colors duration-200 ease-out ${view === v ? 'bg-card shadow-sm text-foreground border border-border' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              {v === 'nodes' ? 'Nodes' : 'Replica groups'}
+              {v === 'replicas' && actionableCount(suggestionBuckets) > 0 && (
+                <span className="ml-2 px-1.5 py-0.5 rounded-full bg-primary/15 text-primary text-xs">{actionableCount(suggestionBuckets)}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
 
+      {view === 'nodes' && readyLineVisible(readyIds, dismissedReady) && (
+        <div className="px-4 py-2 bg-card border border-border rounded-xl text-sm flex items-center justify-between gap-3">
+          <span className="min-w-0 text-muted-foreground">
+            {suggestionBuckets.ready.length} multi-host {suggestionBuckets.ready.length === 1 ? 'group' : 'groups'} detected -{' '}
+            <button onClick={() => setView('replicas')} className="text-primary hover:underline min-h-[40px] sm:min-h-0">Review</button>
+          </span>
+          <button onClick={dismissReadyLine} className="shrink-0 min-w-[40px] min-h-[40px] flex items-center justify-center text-muted-foreground hover:text-foreground" aria-label="Dismiss multi-host group prompt">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {view === 'replicas' && (
+        <ReplicaGroupsTab
+          data={replicaSuggestions}
+          loadError={suggestionsError}
+          nodes={nodes}
+          demo={demoMode}
+          onChanged={() => loadNodes()}
+          onEditNode={(name) => { const target = nodes.find(n => n.name === name); if (target) openEditModal(target); }}
+          onGoToNode={goToReplicaMember}
+        />
+      )}
+
+      {/* Stays mounted while the Replica groups tab shows, so card and filter
+          state survive a tab switch. The hidden attribute also takes it out of
+          the accessibility tree and the tab order. */}
+      <div hidden={view !== 'nodes'} className="space-y-6">
       {/* Search */}
       <div className="max-w-md">
         <SearchInput
@@ -2241,7 +2341,7 @@ export function GPUNodes() {
           [...Array(skeletonNodes)].map((_, i) => <NodeCardSkeleton key={i} />)
         ) : (
           visibleNodes.map((node) => (
-          <NodeCard key={node.id} node={node} pinnedModels={pinnedByNode[node.name] ?? []} replicaWorkers={workersByHead[node.name] ?? []} onRemove={(name) => { setActionError(null); setNodeToDelete(name); }} onDrain={(name) => { setActionError(null); setNodeToDrain(name); }} onUndrain={(name) => { setActionError(null); setNodeToUndrain(name); }} onTogglePrewarm={(name, disabled) => { setActionError(null); setPrewarmToToggle({ name, disabled }); }} onEdit={openEditModal} onUnload={(nodeName, model) => { setActionError(null); setModelToUnload({ nodeName, model }); }} onConfigureModel={(modelName, nodeName, runtime) => setConfigTarget({ model: modelName, node: nodeName, runtime })}           onManageAgent={openAgentModal} onGoToReplicaHead={goToReplicaHead} onGoToReplicaMember={goToReplicaMember} isHighlighted={highlightedNodes.has(node.name)} highlightSource={highlightSource} />
+          <NodeCard key={node.id} node={node} pinnedModels={pinnedByNode[node.name] ?? []} replicaWorkers={workersByHead[node.name] ?? []} replicaChips={replicaChips[node.name]} onRemove={(name) => { setActionError(null); setNodeToDelete(name); }} onDrain={(name) => { setActionError(null); setNodeToDrain(name); }} onUndrain={(name) => { setActionError(null); setNodeToUndrain(name); }} onTogglePrewarm={(name, disabled) => { setActionError(null); setPrewarmToToggle({ name, disabled }); }} onEdit={openEditModal} onUnload={(nodeName, model) => { setActionError(null); setModelToUnload({ nodeName, model }); }} onConfigureModel={(modelName, nodeName, runtime) => setConfigTarget({ model: modelName, node: nodeName, runtime })}           onManageAgent={openAgentModal} onGoToReplicaHead={goToReplicaHead} onGoToReplicaMember={goToReplicaMember} isHighlighted={highlightedNodes.has(node.name)} highlightSource={highlightSource} />
           )))}
       </div>
 
@@ -2351,6 +2451,8 @@ export function GPUNodes() {
           )}
         </div>
       )}
+
+      </div>
 
       {/* Add Node Modal */}
       <Modal
