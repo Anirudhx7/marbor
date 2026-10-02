@@ -38,7 +38,7 @@ const ProtocolVersion = 1
 // not current connection state. An agent can be capable and still be dialed
 // over plain http:// if the node hasn't been migrated yet (opt-in,
 // node-by-node).
-var capabilities = []string{"status", "models.pull", "models.list", "models.delete", "models.unload", "runtime.health_check", "runtime.start", "runtime.stop", "runtime.restart", "runtime.logs", "runtime.disk", "transport.tls", "deployment.gpu_scope"}
+var capabilities = []string{"status", "models.pull", "models.list", "models.delete", "models.unload", "runtime.health_check", "runtime.start", "runtime.stop", "runtime.restart", "runtime.logs", "runtime.disk", "transport.tls", "deployment.gpu_scope", "deployment.report", "deployment.topology"}
 
 // Telemetry is the canonical, versioned JSON payload served at
 // GET /v1/status - the Marbor Agent Protocol's root resource. GET /metrics
@@ -159,6 +159,11 @@ type HostTelemetry struct {
 	Hostname      string   `json:"hostname,omitempty"`
 	UptimeSeconds int64    `json:"uptime_seconds,omitempty"`
 	BootTime      int64    `json:"boot_time,omitempty"`
+	// Addrs are this host's own unicast, non-loopback, non-link-local IP
+	// addresses (sorted, at most 32), so a multi-host launch can be matched
+	// to the machines it names. Empty means unknown. An agent running inside
+	// a bridged container reports that container's addresses.
+	Addrs []string `json:"addrs,omitempty"`
 }
 
 // RuntimeInfo is the Marbor Agent Protocol's "runtime" resource - kept
