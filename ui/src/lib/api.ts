@@ -1,5 +1,5 @@
 import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, CloudProviderInput, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, QuantRecommendation, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry, ModelConfig, LocalModel, BenchmarkRun, BackupFileInfo, SpillCounterRow, RoutingDecision, ModelAlias } from '../types';
-import { mockCloudProviders, mockSavings } from './mockData';
+import { mockCloudProviders, mockSavings, mockReplicaSuggestions } from './mockData';
 
 const BASE = '/admin';
 
@@ -550,6 +550,136 @@ export async function patchNode(name: string, data: { vram_total_mb?: number; gp
   });
   if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to patch node'); }
   return res.json() as Promise<import('../types').GPUNode>;
+}
+
+// --- Replica suggestions ---
+//
+// Multi-host launches the agents report, matched across nodes. Nothing here
+// is applied on its own: confirm declares the same replica membership on every
+// member in one step. The demo path below only ever touches local demo state.
+
+export type ReplicaSuggestionState = 'complete' | 'incomplete' | 'conflicting' | 'contradicts_declared';
+export type TopologyCoverageState = 'reporting' | 'agent_update_needed' | 'no_agent' | 'env_unreadable';
+
+export interface ReplicaSuggestionEvidence {
+  node: string;
+  source: string;
+  detail: string;
+}
+
+export interface ReplicaSuggestionDeclared {
+  node: string;
+  members: string[];
+  head: string;
+}
+
+export interface ReplicaSuggestion {
+  fingerprint: string;
+  launcher: 'vllm-mp' | 'llamacpp-rpc' | string;
+  runtime: string;
+  state: ReplicaSuggestionState;
+  reason: string;
+  head: string;
+  members: string[];
+  evidence: ReplicaSuggestionEvidence[];
+  missing: string[];
+  declared: ReplicaSuggestionDeclared[];
+  confirmable: boolean;
+  dismissed: boolean;
+}
+
+export interface TopologyCoverage {
+  node: string;
+  host: string;
+  state: TopologyCoverageState;
+  detected: boolean;
+  detail: string;
+}
+
+export interface ReplicaSuggestionsResponse {
+  suggestions: ReplicaSuggestion[];
+  coverage: TopologyCoverage[];
+  dismissedCount: number;
+}
+
+export interface ReplicaSuggestionConfirmResult {
+  fingerprint: string;
+  head: string;
+  members: string[];
+  roles: { node: string; role: string; head: string }[];
+}
+
+// Demo state: which demo suggestions were confirmed or dismissed this session.
+// Resets on reload; never reaches the API.
+const demoSuggestionConfirmed = new Set<string>();
+const demoSuggestionDismissed = new Set<string>();
+
+function demoSuggestionsView(includeDismissed: boolean): ReplicaSuggestionsResponse {
+  const live = mockReplicaSuggestions.suggestions.filter(s => !demoSuggestionConfirmed.has(s.fingerprint));
+  const dismissedCount = live.filter(s => demoSuggestionDismissed.has(s.fingerprint)).length;
+  const suggestions = live
+    .map(s => ({ ...s, dismissed: demoSuggestionDismissed.has(s.fingerprint) }))
+    .filter(s => includeDismissed || !s.dismissed);
+  return { suggestions, coverage: mockReplicaSuggestions.coverage.map(c => ({ ...c })), dismissedCount };
+}
+
+// confirmErrorCopy is fixed wording per status: raw server text never reaches
+// the operator.
+function confirmErrorCopy(status: number): string {
+  switch (status) {
+    case 404: return 'This suggestion is no longer there. The list has been refreshed.';
+    case 409: return 'This suggestion changed since it was detected, or a member already declares something different. Review the refreshed list and try again. Nothing was changed.';
+    case 400: return 'This suggestion is not complete enough to confirm. Nothing was changed.';
+    default: return 'Could not confirm the suggestion. Nothing was changed.';
+  }
+}
+
+// `demo` is the page's runtime demo toggle; the build-time flag always wins.
+export async function fetchReplicaSuggestions(includeDismissed = false, demo = false): Promise<ReplicaSuggestionsResponse> {
+  if (DEMO || demo) return demoDelay(demoSuggestionsView(includeDismissed));
+  const q = includeDismissed ? '?includeDismissed=true' : '';
+  const res = await apiFetch(`${BASE}/replica-suggestions${q}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch replica suggestions');
+  const j = await res.json();
+  return { suggestions: j.suggestions ?? [], coverage: j.coverage ?? [], dismissedCount: j.dismissedCount ?? 0 };
+}
+
+export async function confirmReplicaSuggestion(fingerprint: string, demo = false): Promise<ReplicaSuggestionConfirmResult> {
+  if (DEMO || demo) {
+    const s = mockReplicaSuggestions.suggestions.find(x => x.fingerprint === fingerprint && !demoSuggestionConfirmed.has(x.fingerprint));
+    if (!s || !s.confirmable) throw new Error(confirmErrorCopy(s ? 400 : 404));
+    demoSuggestionConfirmed.add(fingerprint);
+    return demoDelay({
+      fingerprint,
+      head: s.head,
+      members: [...s.members],
+      roles: s.members.map(m => ({ node: m, role: m === s.head ? 'head' : 'worker', head: s.head })),
+    });
+  }
+  const res = await apiFetch(`${BASE}/replica-suggestions/${encodeURIComponent(fingerprint)}/confirm`, {
+    method: 'POST', headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(confirmErrorCopy(res.status));
+  return res.json();
+}
+
+async function setReplicaSuggestionDismissed(fingerprint: string, dismiss: boolean, demo: boolean): Promise<void> {
+  if (DEMO || demo) {
+    if (dismiss) demoSuggestionDismissed.add(fingerprint); else demoSuggestionDismissed.delete(fingerprint);
+    return demoDelay(undefined);
+  }
+  const res = await apiFetch(`${BASE}/replica-suggestions/${encodeURIComponent(fingerprint)}/dismiss`, {
+    method: dismiss ? 'POST' : 'DELETE', headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(dismiss ? 'Could not dismiss the suggestion.' : 'Could not restore the suggestion.');
+}
+
+export function dismissReplicaSuggestion(fingerprint: string, demo = false): Promise<void> {
+  return setReplicaSuggestionDismissed(fingerprint, true, demo);
+}
+
+export function restoreReplicaSuggestion(fingerprint: string, demo = false): Promise<void> {
+  return setReplicaSuggestionDismissed(fingerprint, false, demo);
 }
 
 export async function patchKey(name: string, data: { rate_limit?: number; daily_limit?: number; monthly_limit?: number; daily_usd_cap?: number; monthly_usd_cap?: number; models?: string[]; expires_at?: string; local_only?: boolean; allow_local_degradation?: boolean }) {

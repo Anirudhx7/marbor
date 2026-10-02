@@ -620,6 +620,12 @@ type Router struct {
 	// node on it is polled for /api/ps as normal but never has its agent
 	// fields (AgentPresent, FanPercent, RAMUsedMB, DiskFreeGB) populated.
 	marborAgents map[string]MarborAgentConfig
+	// hostEvidence holds the latest host-wide agent report per host (keyed by
+	// NodeState.Host, the same key marborAgents uses) for replica suggestion
+	// correlation. Guarded by hostEvidenceMu only - never held together with
+	// r.mu or a node lock. See host_evidence.go.
+	hostEvidenceMu sync.RWMutex
+	hostEvidence   map[string]HostEvidence
 	// nodeControl holds the per-node accepted ControlDriver config,
 	// guarded by r.mu same as marborAgents. Absent (or Configured: false)
 	// means lifecycle actions must return the "no control driver

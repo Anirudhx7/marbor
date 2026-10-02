@@ -1,5 +1,5 @@
 import { GPUNode, APIKey, Settings, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelCatalogResponse, ModelConfig, BenchmarkRun, SpillCounterRow, RoutingDecision, ModelAlias, QuantRecommendation } from '../types';
-import type { SystemInfo } from './api';
+import type { SystemInfo, ReplicaSuggestionsResponse } from './api';
 
 const GB = 1024;
 const GiB = 1024 * 1024 * 1024;
@@ -1825,3 +1825,70 @@ export function setMockModelAlias(alias: string, target: string): ModelAlias {
 export function deleteMockModelAlias(alias: string): void {
   demoModelAliasStore().delete(alias);
 }
+
+// mockReplicaSuggestions is the demo data for the GPU nodes suggestion strip:
+// one complete llama.cpp pair, one incomplete vLLM group, and one vLLM group
+// whose members declare something different from what was detected. Static and
+// plausible; it only ever feeds the demo path in api.ts, never a live fetch.
+export const mockReplicaSuggestions: ReplicaSuggestionsResponse = {
+  suggestions: [
+    {
+      fingerprint: '3f9a1c27b8d04e56',
+      launcher: 'llamacpp-rpc',
+      runtime: 'llamacpp',
+      state: 'complete',
+      reason: '',
+      head: 'gpu-node-04',
+      members: ['gpu-node-04', 'gpu-node-06'],
+      evidence: [
+        { node: 'gpu-node-04', source: 'command line', detail: 'RPC servers: 10.0.0.16:50052' },
+        { node: 'gpu-node-06', source: 'address match', detail: 'owns RPC server 10.0.0.16:50052' },
+      ],
+      missing: [],
+      declared: [],
+      confirmable: true,
+      dismissed: false,
+    },
+    {
+      fingerprint: '7c2e90d4a1b35f68',
+      launcher: 'vllm-mp',
+      runtime: 'vllm',
+      state: 'incomplete',
+      reason: 'rank 1 has not been seen. Register its host as a node and update its agent; the worker will show down because a headless worker serves no HTTP',
+      head: 'gpu-node-02',
+      members: ['gpu-node-02'],
+      evidence: [
+        { node: 'gpu-node-02', source: 'command line', detail: 'rank 0 of 2, master 10.0.0.12:29500' },
+      ],
+      missing: ['rank 1 has not been seen. Register its host as a node and update its agent; the worker will show down because a headless worker serves no HTTP'],
+      declared: [],
+      confirmable: false,
+      dismissed: false,
+    },
+    {
+      fingerprint: 'b5d1e7a3c9082f14',
+      launcher: 'vllm-mp',
+      runtime: 'vllm',
+      state: 'contradicts_declared',
+      reason: 'a member already declares a different replica membership; clear or fix it first',
+      head: 'gpu-node-09',
+      members: ['gpu-node-09', 'gpu-node-10'],
+      evidence: [
+        { node: 'gpu-node-09', source: 'command line', detail: 'rank 0 of 2, master 10.0.0.19:29500' },
+        { node: 'gpu-node-10', source: 'command line', detail: 'rank 1 of 2 (headless), master 10.0.0.19:29500' },
+      ],
+      missing: [],
+      declared: [
+        { node: 'gpu-node-09', members: ['gpu-node-09', 'gpu-node-10'], head: 'gpu-node-09' },
+        { node: 'gpu-node-10', members: ['gpu-node-09', 'gpu-node-10'], head: 'gpu-node-10' },
+      ],
+      confirmable: false,
+      dismissed: false,
+    },
+  ],
+  coverage: [
+    { node: 'gpu-node-03', host: '10.0.0.13', state: 'agent_update_needed', detected: false, detail: 'the agent is too old to report launch details' },
+    { node: 'gpu-node-06', host: '10.0.0.16', state: 'no_agent', detected: false, detail: 'no marbor agent is enabled on this host' },
+  ],
+  dismissedCount: 0,
+};
