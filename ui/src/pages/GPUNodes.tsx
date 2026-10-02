@@ -1541,6 +1541,10 @@ export function GPUNodes() {
     setHighlightedNodes(set);
     setHighlightSource(from);
     if (set.size > 0) {
+      // The list stays mounted while another tab is showing, so a search or
+      // signal filter left behind would hide the very card being linked to.
+      setSearchQuery('');
+      setActiveSignals(new Set());
       const first = Array.from(set)[0] as string;
       const t1 = setTimeout(() => {
         const el = document.getElementById(`node-card-${first}`);
@@ -2303,7 +2307,10 @@ export function GPUNodes() {
         />
       )}
 
-      {view === 'nodes' && (<>
+      {/* Stays mounted while the Replica groups tab shows, so card and filter
+          state survive a tab switch. The hidden attribute also takes it out of
+          the accessibility tree and the tab order. */}
+      <div hidden={view !== 'nodes'} className="space-y-6">
       {/* Search */}
       <div className="max-w-md">
         <SearchInput
@@ -2445,7 +2452,7 @@ export function GPUNodes() {
         </div>
       )}
 
-      </>)}
+      </div>
 
       {/* Add Node Modal */}
       <Modal

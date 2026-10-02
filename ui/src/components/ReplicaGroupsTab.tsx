@@ -9,7 +9,7 @@ import type { ReplicaSuggestion, ReplicaSuggestionsResponse } from '../lib/api';
 import type { GPUNode } from '../types';
 import {
   bucketSuggestions, confirmedChip, coverageLine, coverageSummary, deriveConfirmedGroups, detectedLaunchText,
-  gpusText, launcherLabel, workersOf,
+  gpusText, launcherLabel, sameDeclared, workersOf,
 } from '../lib/replicaGroups';
 import type { ConfirmedGroup } from '../lib/replicaGroups';
 
@@ -43,7 +43,7 @@ function modalStaleNote(modal: ReplicaModalTarget, data: ReplicaSuggestionsRespo
   if (!data) return null;
   const live = data.suggestions.find(x => x.fingerprint === modal.suggestion.fingerprint);
   const wanted = modal.mode === 'adopt' ? 'contradicts_declared' : 'complete';
-  if (live && live.state === wanted) return null;
+  if (live && live.state === wanted && (modal.mode !== 'adopt' || sameDeclared(live.declared, modal.suggestion.declared))) return null;
   if (!live) return 'This group is no longer a suggestion, so nothing was changed. The list has been refreshed.';
   if (live.state === 'complete') return 'This group is now complete and ready to confirm. Nothing was changed. Review it below.';
   return 'This group changed while you were reviewing it. Nothing was changed. Review it again below.';

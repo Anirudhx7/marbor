@@ -1,5 +1,6 @@
 import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, CloudProviderInput, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, QuantRecommendation, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry, ModelConfig, LocalModel, BenchmarkRun, BackupFileInfo, SpillCounterRow, RoutingDecision, ModelAlias } from '../types';
 import { mockCloudProviders, mockSavings, mockReplicaSuggestions } from './mockData';
+import { sameDeclared } from './replicaGroups';
 
 const BASE = '/admin';
 
@@ -680,10 +681,6 @@ async function confirmFailure(res: Response, adopt: boolean): Promise<Error> {
   }
   if (adopt && res.status === 400) return new Error('Could not adopt the detected group. Nothing was changed.');
   return new Error(confirmErrorCopy(res.status));
-}
-
-function sameDeclared(a: ReplicaSuggestionDeclared[], b: ReplicaSuggestionDeclared[]): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 export async function confirmReplicaSuggestion(fingerprint: string, demo = false, opts?: ReplicaConfirmOptions): Promise<ReplicaSuggestionConfirmResult> {

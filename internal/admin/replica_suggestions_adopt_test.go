@@ -101,6 +101,28 @@ func TestReplicaSuggestions_AdoptValidationAndRefusals(t *testing.T) {
 	}
 }
 
+func TestReplicaSuggestions_AdoptSnapshotEntryCountIsCapped(t *testing.T) {
+	build := func(n int) string {
+		entries := make([]string, 0, n)
+		for i := 0; i < n; i++ {
+			entries = append(entries, fmt.Sprintf(`{"node":"n%d","head":"n%d","members":["n%d"]}`, i, i, i))
+		}
+		return adoptBody("[" + strings.Join(entries, ",") + "]")
+	}
+	l := newSuggLab(t, nil)
+	fp := l.makeContradiction()
+
+	rec := l.confirm(fp, build(257))
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "too many") {
+		t.Fatalf("257 entries: status %d body %s, want 400 mentioning too many", rec.Code, rec.Body.String())
+	}
+	// At the cap the request passes validation and reaches the state check.
+	rec = l.confirm(fp, build(256))
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("256 entries: status %d body %s, want 409 from the snapshot comparison", rec.Code, rec.Body.String())
+	}
+}
+
 func TestReplicaSuggestions_AdoptRefusedWhenAnOutsideNodeNamesAMember(t *testing.T) {
 	l := newSuggLab(t, nil)
 	fp := l.makeContradiction()

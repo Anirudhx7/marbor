@@ -365,12 +365,19 @@ func (s *Server) handleConfirmReplicaSuggestion(w http.ResponseWriter, r *http.R
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
+// maxDeclaredSnapshotEntries bounds the snapshot an adopt request may carry. A
+// real group declares one entry per member, far below this.
+const maxDeclaredSnapshotEntries = 256
+
 // normalizeDeclaredSnapshot turns the snapshot a client sent into a map keyed by
 // node with members deduplicated and sorted. It returns the message for the 400
 // the caller should answer when the snapshot is missing or malformed.
 func normalizeDeclaredSnapshot(in []replicaSuggestionDeclaredResp) (map[string]replicaSuggestionDeclaredResp, string) {
 	if len(in) == 0 {
 		return nil, "adopt requires declaredSnapshot: the declared entries the suggestion showed"
+	}
+	if len(in) > maxDeclaredSnapshotEntries {
+		return nil, fmt.Sprintf("declaredSnapshot has too many entries (limit %d)", maxDeclaredSnapshotEntries)
 	}
 	out := make(map[string]replicaSuggestionDeclaredResp, len(in))
 	for _, d := range in {
@@ -528,6 +535,8 @@ func (s *Server) setSuggestionDismissed(w http.ResponseWriter, r *http.Request, 
 			return
 		}
 		if state == "" {
+			// Computed outside nodePatchMu on purpose: dismiss only changes
+			// visibility, so a state that moves in between is harmless.
 			sugg, _ := s.router.ReplicaSuggestions()
 			for _, sg := range sugg {
 				if sg.Fingerprint == fp {
@@ -536,6 +545,9 @@ func (s *Server) setSuggestionDismissed(w http.ResponseWriter, r *http.Request, 
 				}
 			}
 		}
+		// A fingerprint that is not currently suggested leaves state empty and
+		// stores a plain legacy entry, which hides it in any state. That is by
+		// design and matches the documented no-body behavior.
 		if state != "" {
 			entry = fp + ":" + state
 		}

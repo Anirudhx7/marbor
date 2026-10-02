@@ -92,7 +92,9 @@ export function ReplicaSuggestionCard({ suggestion: s, nodes, disabled, onReview
             <div className="p-3 rounded-lg bg-secondary/50 min-w-0">
               <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Still needed</p>
               {s.missing.length === 0 ? (
-                <p className="mt-1 text-muted-foreground">Fix the conflict on the hosts above; this card updates on its own.</p>
+                <p className="mt-1 text-muted-foreground">
+                  {s.state === 'conflicting' ? 'Fix the conflict on the hosts above; this card updates on its own.' : '-'}
+                </p>
               ) : (
                 <ul className="mt-1 space-y-1">
                   {s.missing.map(m => <li key={m} className="break-words">{m}</li>)}

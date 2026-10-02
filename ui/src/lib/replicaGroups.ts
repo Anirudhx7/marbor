@@ -5,7 +5,7 @@
 // value is `-`.
 
 import type { GPUNode } from '../types';
-import type { ReplicaSuggestion, ReplicaSuggestionsResponse, TopologyCoverage } from './api';
+import type { ReplicaSuggestion, ReplicaSuggestionDeclared, ReplicaSuggestionsResponse, TopologyCoverage } from './api';
 
 export function launcherLabel(s: ReplicaSuggestion): string {
   if (s.launcher === 'vllm-mp') return 'vLLM multi-host';
@@ -145,6 +145,21 @@ export function outsideDeclarers(s: ReplicaSuggestion, nodes: readonly GPUNode[]
     if (mentioned || names.some(m => s.members.includes(m))) found.push(n.name);
   }
   return found;
+}
+
+// sameDeclared compares two declared[] lists ignoring entry order, member order
+// and JSON key order, the way the server compares an adopt snapshot.
+export function sameDeclared(a: readonly ReplicaSuggestionDeclared[], b: readonly ReplicaSuggestionDeclared[]): boolean {
+  if (a.length !== b.length) return false;
+  const byNode = new Map(b.map(d => [d.node, d] as const));
+  if (byNode.size !== b.length) return false;
+  return a.every(x => {
+    const y = byNode.get(x.node);
+    if (!y || x.head !== y.head) return false;
+    const xm = [...new Set(x.members)].sort();
+    const ym = [...new Set(y.members)].sort();
+    return xm.length === ym.length && xm.every((m, i) => m === ym[i]);
+  });
 }
 
 export function keepDeclaredCopy(s: ReplicaSuggestion, nodes: readonly GPUNode[]): string {
