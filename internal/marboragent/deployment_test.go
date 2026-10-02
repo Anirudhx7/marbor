@@ -132,6 +132,8 @@ func fakeCollector(readEnv bool, environ map[int]string, cmds map[string]string)
 		}
 		return []byte(v), nil
 	}
+	// Never read the real /proc of the machine running the tests.
+	c.readCmdline = func(int) ([]byte, error) { return nil, errors.New("no such process") }
 	c.run = func(_ context.Context, name string, args ...string) ([]byte, error) {
 		key := name + " " + strings.Join(args, " ")
 		out, ok := cmds[key]

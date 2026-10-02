@@ -72,7 +72,10 @@ type Scheduler struct {
 	// deploy finds runtime processes and their GPU scope. Configured once,
 	// before Seed, and read only from refresh().
 	deploy *deploymentCollector
-	snap   atomic.Pointer[Telemetry]
+	// hostAddrs lists this host's own addresses; a field so tests need no
+	// real network. Read only from refresh().
+	hostAddrs func() []string
+	snap      atomic.Pointer[Telemetry]
 }
 
 // NewScheduler creates a Scheduler for the given agent_version string,
@@ -108,6 +111,7 @@ func newSchedulerWithBackends(version string, gpu GPUCollector, host HostCollect
 		versionCache:  make(map[string]versionCacheEntry),
 		runtimeClient: &http.Client{Timeout: 5 * time.Second},
 		deploy:        newDeploymentCollector(false),
+		hostAddrs:     localHostAddrs,
 	}
 }
 
@@ -181,6 +185,18 @@ func (s *Scheduler) refresh() {
 	}
 
 	t.Host = s.host.Collect(ctx)
+	// Addresses are added to a copy: the collector may hand back a shared
+	// value, and an empty list means unknown, not "no addresses".
+	if s.hostAddrs != nil {
+		if addrs := s.hostAddrs(); len(addrs) > 0 {
+			h := HostTelemetry{}
+			if t.Host != nil {
+				h = *t.Host
+			}
+			h.Addrs = addrs
+			t.Host = &h
+		}
+	}
 
 	// A host-scoped agent re-scans every candidate port every cycle (unlike
 	// the old single-runtime "detect once, fixed for the process lifetime"
