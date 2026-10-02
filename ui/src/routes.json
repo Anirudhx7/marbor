@@ -1,0 +1,16 @@
+[
+  { "path": "/", "page": "Dashboard" },
+  { "path": "/activity", "page": "Activity" },
+  { "path": "/gpu-nodes", "page": "GPUNodes" },
+  { "path": "/api-keys", "page": "APIKeys" },
+  { "path": "/routing", "page": "Routing" },
+  { "path": "/metrics", "page": "Metrics" },
+  { "path": "/settings", "page": "SettingsPage" },
+  { "path": "/analytics", "page": "Analytics" },
+  { "path": "/models", "page": "Models" },
+  { "path": "/model-advisor", "page": "ModelAdvisor" },
+  { "path": "/requests", "page": "Requests" },
+  { "path": "/warmup", "page": "Warmup" },
+  { "path": "/benchmark", "page": "Benchmark" },
+  { "path": "/users", "page": "Users", "adminOnly": true }
+]

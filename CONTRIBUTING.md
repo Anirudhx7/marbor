@@ -30,6 +30,18 @@ make dev-ui     # Hot-reload UI at :5173, proxies API to :8080
 
 Run `./marbor` (or `make backend`) first so there is a backend to hit.
 
+## Demo crawl
+
+The static demo (`/demo/`) has no backend, so every API call the UI makes needs a demo path (an `if (DEMO)` branch in `ui/src/lib/api.ts`, or the page's `useDemoMode` path with data in `ui/src/lib/mockData.ts`). CI loads every dashboard route of the demo build in headless Chrome and fails on a failed backend request, a page error, a console error or a blank page. To run it locally:
+
+```bash
+cd ui
+VITE_FORCE_DEMO=true npm run build
+npm run demo:crawl
+```
+
+It drives an installed Chrome (nothing is downloaded); set `DEMO_CRAWL_CHANNEL=msedge` or `DEMO_CRAWL_CHROME=/path/to/chrome` if you do not have Google Chrome. The routes come from `ui/src/routes.json`: a new page needs an entry there and in the page map in `ui/src/App.tsx`.
+
 ## Pull Requests
 
 - **Conventional commits:** `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:`

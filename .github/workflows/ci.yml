@@ -182,6 +182,13 @@ jobs:
           VITE_FORCE_DEMO: 'true'
           VITE_APP_VERSION: ${{ github.ref_name }}
 
+      # Loads every dashboard route of the demo build in the Chrome that ships
+      # on ubuntu-latest and fails on a failed backend request, a page error,
+      # a console error or a blank page. Reuses the build above.
+      - name: Crawl demo build
+        working-directory: ./ui
+        run: npm run demo:crawl
+
   govulncheck:
     runs-on: ubuntu-latest
     timeout-minutes: 15

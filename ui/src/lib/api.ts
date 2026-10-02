@@ -456,6 +456,8 @@ export async function fetchKeys(): Promise<APIKey[]> {
 }
 
 export async function fetchLiveRequests(): Promise<LiveRequest[]> {
+  // The static demo has no backend; useLiveRequests falls back to generated demo traffic on failure.
+  if (DEMO) throw new Error('live requests unavailable in demo');
   const res = await apiFetch(`${BASE}/requests/live`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch requests');
   return res.json();
@@ -1061,6 +1063,8 @@ export async function fetchCloudBudgetStatus(): Promise<CloudBudgetStatus> {
 }
 
 export async function fetchHealth(): Promise<{ version: string; proxy_port: number; status: string }> {
+  // No backend in the static demo; callers keep the build-time version.
+  if (DEMO) throw new Error('health unavailable in demo');
   const res = await fetch('/health');
   if (!res.ok) throw new Error('health check failed');
   return res.json();
