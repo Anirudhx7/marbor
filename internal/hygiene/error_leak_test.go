@@ -68,22 +68,22 @@ var rawErrRefPattern = regexp.MustCompile(`\berr\b`)
 // leak found by this test should be fixed by routing through
 // writeServerError/writeCorrelatedError, not exempted.
 var errorLeakExceptions = map[string]bool{
-	"internal/admin/admin.go:2753": true,
-	"internal/admin/admin.go:2882": true,
-	"internal/admin/admin.go:3483": true,
-	"internal/admin/admin.go:7549": true,
-	"internal/admin/admin.go:7849": true,
-	"internal/admin/admin.go:8212": true,
-	"internal/admin/admin.go:3499": true,
-	"internal/admin/admin.go:3503": true,
-	"internal/admin/admin.go:4076": true,
-	"internal/admin/admin.go:4088": true,
-	"internal/admin/admin.go:5392": true,
-	"internal/admin/admin.go:5526": true,
-	"internal/admin/admin.go:5660": true,
-	"internal/admin/admin.go:5804": true,
-	"internal/admin/admin.go:8631": true,
-	"internal/admin/admin.go:8743": true,
+	"internal/admin/admin.go:2764": true,
+	"internal/admin/admin.go:2893": true,
+	"internal/admin/admin.go:3494": true,
+	"internal/admin/admin.go:7560": true,
+	"internal/admin/admin.go:7860": true,
+	"internal/admin/admin.go:8223": true,
+	"internal/admin/admin.go:3510": true,
+	"internal/admin/admin.go:3514": true,
+	"internal/admin/admin.go:4087": true,
+	"internal/admin/admin.go:4099": true,
+	"internal/admin/admin.go:5403": true,
+	"internal/admin/admin.go:5537": true,
+	"internal/admin/admin.go:5671": true,
+	"internal/admin/admin.go:5815": true,
+	"internal/admin/admin.go:8642": true,
+	"internal/admin/admin.go:8754": true,
 }
 
 // adminGoFiles returns the repo root and every non-test .go file tracked

@@ -255,6 +255,41 @@ func buildRoot() *Command {
 						NeedsAuth: true,
 						Run:       func(ctx *RunCtx) int { return runNodesFit(ctx.Flags, ctx.Stdout, ctx.Stderr) },
 					},
+					{
+						Name:      "suggestions",
+						Short:     "list multi-host replica groups detected from agent launch details, and confirm or dismiss them",
+						NeedsAuth: true,
+						Flags: []FlagSpec{
+							{Name: "all", Kind: FlagBool, Usage: "also show dismissed suggestions"},
+						},
+						Run: runNodesSuggestions,
+						Sub: []*Command{
+							{
+								Name:      "confirm",
+								Short:     "declare a detected replica group on every member in one step",
+								NeedsAuth: true,
+								Args:      []ArgSpec{{Name: "id"}},
+								Flags: []FlagSpec{
+									{Name: "yes", Kind: FlagBool, Usage: "confirm without prompting"},
+								},
+								Run: func(ctx *RunCtx) int { return runNodesSuggestionsConfirm(ctx, ctx.Args[0]) },
+							},
+							{
+								Name:      "dismiss",
+								Short:     "hide a suggestion until its members change",
+								NeedsAuth: true,
+								Args:      []ArgSpec{{Name: "id"}},
+								Run:       func(ctx *RunCtx) int { return runNodesSuggestionsDismiss(ctx, ctx.Args[0], true) },
+							},
+							{
+								Name:      "restore",
+								Short:     "show a dismissed suggestion again",
+								NeedsAuth: true,
+								Args:      []ArgSpec{{Name: "id"}},
+								Run:       func(ctx *RunCtx) int { return runNodesSuggestionsDismiss(ctx, ctx.Args[0], false) },
+							},
+						},
+					},
 				},
 			},
 			{

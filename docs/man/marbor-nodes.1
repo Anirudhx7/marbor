@@ -126,6 +126,28 @@ disable predictive prewarm for this node
 .TP
 .B fit
 show per\-node VRAM fit analysis for resident/warm models
+.TP
+.B suggestions
+list multi\-host replica groups detected from agent launch details, and confirm or dismiss them
+.RS
+.TP
+.B \-\-all
+also show dismissed suggestions
+.RE
+.TP
+.B suggestions confirm <id>
+declare a detected replica group on every member in one step
+.RS
+.TP
+.B \-\-yes
+confirm without prompting
+.RE
+.TP
+.B suggestions dismiss <id>
+hide a suggestion until its members change
+.TP
+.B suggestions restore <id>
+show a dismissed suggestion again
 .SH FLAGS
 .TP
 .B \-\-server

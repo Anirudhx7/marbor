@@ -11,6 +11,10 @@ var ErrNoAdminCreds = errors.New("store: no admin credentials set")
 // ErrNotFound is returned by GetSetting when the key does not exist.
 var ErrNotFound = errors.New("store: key not found")
 
+// ErrNodeNotRegistered is returned by SetReplicaPeersBatch when a named node has
+// no registered row.
+var ErrNodeNotRegistered = errors.New("store: node is not registered")
+
 // ErrUserNotFound is returned by GetUserByUsername / GetUserByID when no row matches.
 var ErrUserNotFound = errors.New("store: user not found")
 
@@ -62,6 +66,10 @@ type Store interface {
 	// deployment-aware placement tp|pp|ep|dp)
 	UpsertNodeOverride(name string, vramTotalMB *int64, gpuModel *string, runtime *string, gpuIndices *[]int, maxInFlight *int, tlsFingerprint *string, parallelismType *string, parallelismWidth *int, vramOverrides *map[string]int64, replicaPeers *ReplicaPeers) error
 	NodeOverrides() (map[string]NodeOverride, error)
+	// SetReplicaPeersBatch sets replica_peers for several nodes in one
+	// transaction and touches no other override column. It fails the whole
+	// batch, writing nothing, if any named node has no registered row.
+	SetReplicaPeersBatch(peers map[string]ReplicaPeers) error
 
 	// Node drain state
 	SetNodeDrain(name string, draining bool, reason string, graceSeconds int) error
@@ -780,6 +788,7 @@ func (NopStore) UpsertNodeOverride(_ string, _ *int64, _ *string, _ *string, _ *
 	return nil
 }
 func (NopStore) NodeOverrides() (map[string]NodeOverride, error)      { return nil, nil }
+func (NopStore) SetReplicaPeersBatch(_ map[string]ReplicaPeers) error { return nil }
 func (NopStore) SetNodeDrain(_ string, _ bool, _ string, _ int) error { return nil }
 func (NopStore) NodeDrainStates() (map[string]NodeDrainState, error)  { return nil, nil }
 func (NopStore) UpsertMarborAgent(_ MarborAgentRecord) error          { return nil }
