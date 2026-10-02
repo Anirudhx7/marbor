@@ -26,8 +26,11 @@ type deploymentCollector struct {
 	readRuntimeEnv bool
 	ps             func() (string, error)
 	readEnviron    func(pid int) ([]byte, error)
-	run            commandRunner
-	dockerSocket   string
+	// readCmdline returns /proc/<pid>/cmdline (NUL separated arguments), which
+	// keeps argument boundaries that ps output loses.
+	readCmdline  func(pid int) ([]byte, error)
+	run          commandRunner
+	dockerSocket string
 }
 
 func newDeploymentCollector(readRuntimeEnv bool) *deploymentCollector {
@@ -35,6 +38,7 @@ func newDeploymentCollector(readRuntimeEnv bool) *deploymentCollector {
 		readRuntimeEnv: readRuntimeEnv,
 		ps:             psList,
 		readEnviron:    readProcEnviron,
+		readCmdline:    readProcCmdline,
 		run:            runCommand,
 		dockerSocket:   "/var/run/docker.sock",
 	}
@@ -51,6 +55,21 @@ func readProcEnviron(pid int) ([]byte, error) {
 		return nil, errEnvironUnsupported
 	}
 	return os.ReadFile("/proc/" + strconv.Itoa(pid) + "/environ")
+}
+
+// maxCmdlineBytes bounds how much of a process's command line is read.
+const maxCmdlineBytes = 256 * 1024
+
+func readProcCmdline(pid int) ([]byte, error) {
+	if runtime.GOOS != "linux" {
+		return nil, errEnvironUnsupported
+	}
+	f, err := os.Open("/proc/" + strconv.Itoa(pid) + "/cmdline")
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return io.ReadAll(io.LimitReader(f, maxCmdlineBytes))
 }
 
 // psList lists every process as "pid ppid args" lines. Isolated for tests.
@@ -168,12 +187,20 @@ func (c *deploymentCollector) collectFromPS(psOutput string, detected []Detected
 		}
 		par, caps := parseParallelismFromArgs(runtimeHint, p.args)
 		port := extractPortFromArgs(p.args)
+		// Topology uses the runtime the process's own arguments name, before
+		// any renaming to a detected runtime below.
+		topo := c.topologyForProcess(runtimeHint, p)
+		// A headless worker serves no HTTP, and a process recognised only by
+		// its executable name carries no port or name of its own, so neither
+		// may borrow a different runtime's name and port.
+		headless := topo != nil && topo.RoleHint == "worker"
+		nameOnly := argv0Runtime(lower) != ""
 		// If we have a detected runtime on same port, prefer its Name
 		if port > 0 {
 			if name, ok := portToRuntime[port]; ok {
 				runtimeHint = name
 			}
-		} else if len(detected) == 1 {
+		} else if len(detected) == 1 && !headless && (!nameOnly || detected[0].Name == runtimeHint) {
 			// Single runtime host - attribute lone detection's port
 			port = detected[0].Port
 			if detected[0].Name != "" {
@@ -186,6 +213,7 @@ func (c *deploymentCollector) collectFromPS(psOutput string, detected []Detected
 			Parallelism: par,
 			Caps:        caps,
 			Source:      "ps",
+			Topology:    topo,
 		}
 		rep.GPUScope, rep.GPUGroup = c.scopeForProcess(p.pid, tree, probe)
 		reports = appendDeduped(reports, rep)
@@ -194,17 +222,52 @@ func (c *deploymentCollector) collectFromPS(psOutput string, detected []Detected
 }
 
 // appendDeduped keeps one report per port+runtime, preferring the one that
-// carries parallelism.
+// carries parallelism or topology evidence.
 func appendDeduped(reports []DeploymentReport, rep DeploymentReport) []DeploymentReport {
 	for i, existing := range reports {
 		if existing.Port == rep.Port && existing.Runtime == rep.Runtime {
-			if existing.Parallelism == nil && rep.Parallelism != nil {
+			if (existing.Parallelism == nil && rep.Parallelism != nil) || (existing.Topology == nil && rep.Topology != nil) {
 				reports[i] = rep
 			}
 			return reports
 		}
 	}
 	return append(reports, rep)
+}
+
+// argvTokens returns the process's arguments as separate tokens. It prefers
+// /proc/<pid>/cmdline, which keeps argument boundaries, but only when that
+// agrees with the ps line (so a pid reused since ps ran cannot lend its
+// arguments to this report); otherwise it splits the ps line.
+func (c *deploymentCollector) argvTokens(p psProc) []string {
+	if p.pid > 0 && c.readCmdline != nil {
+		if raw, err := c.readCmdline(p.pid); err == nil {
+			toks := splitCmdline(raw)
+			joined := strings.Join(strings.Fields(strings.Join(toks, " ")), " ")
+			if len(toks) > 0 && strings.HasPrefix(joined, p.args) {
+				return toks
+			}
+		}
+	}
+	return strings.Fields(p.args)
+}
+
+// topologyForProcess builds topology evidence for one process from its
+// arguments and, for llama.cpp only, the allowlisted LLAMA_ARG_RPC variable
+// when the operator opted in to reading runtime environments.
+func (c *deploymentCollector) topologyForProcess(rt string, p psProc) *Topology {
+	in := topologyInput{runtime: rt, tokens: c.argvTokens(p), argvSource: "cmdline", envSource: "env"}
+	if rt == "llamacpp" && c.readRuntimeEnv && p.pid > 0 {
+		if _, hasArg := flagValue(in.tokens, "--rpc"); !hasArg {
+			blob, err := c.readEnviron(p.pid)
+			if err != nil {
+				in.envUnreadable = true
+			} else {
+				in.env = topologyEnvList(strings.Split(string(blob), "\x00"))
+			}
+		}
+	}
+	return buildTopology(in)
 }
 
 // scopeForProcess learns the GPU scope of the runtime process pid: its own
@@ -309,6 +372,13 @@ func parseDockerInspect(inspectJSON string) *dockerDeployment {
 		Source:      "docker",
 	}
 	rep.GPUScope, rep.GPUGroup = scopeFromEnv(allowlistedEnvList(cont.Config.Env), "docker-env:")
+	rep.Topology = buildTopology(topologyInput{
+		runtime:    runtimeHint,
+		tokens:     append(append([]string(nil), cont.Config.Cmd...), cont.Args...),
+		argvSource: "docker-cmd",
+		env:        topologyEnvList(cont.Config.Env),
+		envSource:  "docker-env",
+	})
 	return &dockerDeployment{report: rep, pid: cont.State.Pid}
 }
 

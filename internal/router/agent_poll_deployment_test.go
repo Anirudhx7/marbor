@@ -1,6 +1,9 @@
 package router
 
 import (
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/Anirudhx7/marbor/internal/config"
@@ -293,5 +296,108 @@ func TestApplyAgentTelemetry_OldAgentWithoutScopeIsNotTrusted(t *testing.T) {
 	}
 	if n.EffectiveDetectedRequiredGPUs() != 8 {
 		t.Fatalf("still shown to the operator")
+	}
+}
+
+// agentWithDeployment serves a hand-built /v1/status payload carrying the
+// new topology and host address fields next to one llama.cpp deployment on
+// the given port, the way a newer agent would send it.
+func agentWithDeployment(t *testing.T, port int, extra string) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{
+			"agent": {"version": "v9.9.9", "protocol_version": 1, "platform": "linux", "architecture": "amd64"},
+			"capabilities": ["status", "deployment.report", "deployment.topology"],
+			"host": {"hostname": "h1", "addrs": ["10.0.0.5", "fd00::5"]},
+			"health": {"runtime_reachable": true},
+			"deployments": [{
+				"runtime": "llamacpp", "port": %d, "source": "ps",
+				"parallelism": {"type": "tp", "width": 2},
+				"topology": {"launcher": "llamacpp-rpc", "rpc_servers": ["10.0.0.6:50052"], "evidence": ["cmdline:--rpc"], "future_field": 1}
+				%s
+			}],
+			"last_updated": "2026-07-17T00:00:00Z"
+		}`, port, extra)
+	}))
+}
+
+func TestPollAgentTelemetryDecodesTopologyAndHostAddrs(t *testing.T) {
+	psSrv := nodePSServer()
+	defer psSrv.Close()
+	agentSrv := agentWithDeployment(t, mustPort(t, psSrv.URL), "")
+	defer agentSrv.Close()
+
+	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{{Name: "gpu-0", URL: psSrv.URL}}, nil)
+	r.SetMarborAgent(r.nodes[0].Host, true, mustPort(t, agentSrv.URL), "tok", "http")
+	r.pollAgentHosts()
+
+	n := r.nodes[0]
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	if !n.AgentPresent || n.AgentVersion != "v9.9.9" {
+		t.Fatalf("poll must succeed with the new fields: present=%v version=%q", n.AgentPresent, n.AgentVersion)
+	}
+	if n.Hostname != "h1" {
+		t.Fatalf("existing host fields must still populate: %q", n.Hostname)
+	}
+	if n.DetectedRuntime != "llamacpp" || n.DetectedParallelismType != "tp" || n.DetectedParallelismWidth != 2 || n.DetectedSource != "ps" {
+		t.Fatalf("existing detected fields must populate: %q %q %d %q", n.DetectedRuntime, n.DetectedParallelismType, n.DetectedParallelismWidth, n.DetectedSource)
+	}
+}
+
+// A llama.cpp deployment that the agent now reports follows the same rules as
+// any other: a declared value always wins, and an unconfirmed detection is
+// information only.
+func TestNewlyReportedLlamaCppDeploymentObeysDeclaredWins(t *testing.T) {
+	psSrv := nodePSServer()
+	defer psSrv.Close()
+	agentSrv := agentWithDeployment(t, mustPort(t, psSrv.URL), "")
+	defer agentSrv.Close()
+
+	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{{Name: "gpu-0", URL: psSrv.URL}}, nil)
+	n := r.nodes[0]
+	n.DeclaredGPUIndices = []int{0, 1, 2, 3}
+	n.ParallelismType = "tp"
+	n.ParallelismWidth = 4
+	r.SetMarborAgent(n.Host, true, mustPort(t, agentSrv.URL), "tok", "http")
+	r.pollAgentHosts()
+
+	if got := n.EffectiveRequiredGPUs(); got != 4 {
+		t.Fatalf("declared must win over the detected width 2: got %d", got)
+	}
+	n.mu.RLock()
+	declared, width, detected := append([]int(nil), n.DeclaredGPUIndices...), n.ParallelismWidth, n.DetectedParallelismWidth
+	n.mu.RUnlock()
+	if len(declared) != 4 || width != 4 || detected != 2 {
+		t.Fatalf("declared values changed or detection missing: %v %d %d", declared, width, detected)
+	}
+}
+
+func TestNewlyReportedLlamaCppDeploymentIsFallbackOnlyWhenConfirmed(t *testing.T) {
+	// Nothing declared and the agent did not confirm the scope: shown, not enforced.
+	psSrv := nodePSServer()
+	defer psSrv.Close()
+	agentSrv := agentWithDeployment(t, mustPort(t, psSrv.URL), "")
+	defer agentSrv.Close()
+	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{{Name: "gpu-0", URL: psSrv.URL}}, nil)
+	r.SetMarborAgent(r.nodes[0].Host, true, mustPort(t, agentSrv.URL), "tok", "http")
+	r.pollAgentHosts()
+	if got := r.nodes[0].EffectiveRequiredGPUs(); got != 0 {
+		t.Fatalf("an unconfirmed detection must not drive placement: got %d", got)
+	}
+	if got := r.nodes[0].EffectiveDetectedRequiredGPUs(); got != 2 {
+		t.Fatalf("detection must still be shown: got %d", got)
+	}
+
+	// The same report with a confirmed scope is the fallback when nothing is declared.
+	confirmed := `, "gpu_group": [0, 1], "gpu_scope": {"indices": [0, 1], "cross_checked": true, "source": "environ:CUDA_VISIBLE_DEVICES"}`
+	agent2 := agentWithDeployment(t, mustPort(t, psSrv.URL), confirmed)
+	defer agent2.Close()
+	r2 := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{{Name: "gpu-0", URL: psSrv.URL}}, nil)
+	r2.SetMarborAgent(r2.nodes[0].Host, true, mustPort(t, agent2.URL), "tok", "http")
+	r2.pollAgentHosts()
+	if got := r2.nodes[0].EffectiveRequiredGPUs(); got != 2 {
+		t.Fatalf("a confirmed detection is the fallback when nothing is declared: got %d", got)
 	}
 }

@@ -54,7 +54,7 @@ func runServiceInstall(args []string, version string) {
 	enrollFlag := fs.String("enroll", "", "one-time enrollment code from the marbor admin UI, exchanged for the real token (or set the MARBOR_ENROLL env var); requires --server")
 	serverFlag := fs.String("server", "", "marbor admin base URL, required together with --enroll (or set the MARBOR_SERVER env var)")
 	refreshInterval := fs.Duration("refresh-interval", 0, "how often the installed service re-collects telemetry (default: the agent's own built-in default)")
-	readRuntimeEnv := fs.Bool("read-runtime-env", false, "let the installed service read each inference runtime process's own environment to learn which GPUs it was pointed at (only GPU visibility variables are extracted); needs the same user or root; off by default; does not gate the docker socket path, which separately reads a container's configured environment through docker inspect with the same allowlist")
+	readRuntimeEnv := fs.Bool("read-runtime-env", false, "let the installed service read each inference runtime process's own environment to learn which GPUs it was pointed at (only the GPU visibility variables and llama.cpp's LLAMA_ARG_RPC are extracted); needs the same user or root; off by default; does not gate the docker socket path, which separately reads a container's configured environment through docker inspect with the same allowlist")
 	usage := func(w io.Writer) {
 		fmt.Fprintf(w, "marbor-agent service install - register the Marbor Agent as a persistent, auto-restarting OS service\n\n")
 		fmt.Fprintf(w, "Usage:\n  marbor-agent service install --port=<port>   (set the MARBOR_AGENT_SECRET env var)\n")

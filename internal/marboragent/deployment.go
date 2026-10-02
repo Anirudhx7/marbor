@@ -53,6 +53,10 @@ type DeploymentReport struct {
 	// Source says where the parallelism shape came from: ps|docker. It does
 	// not describe the GPU scope; GPUScope.Source does that.
 	Source string `json:"source,omitempty"`
+	// Topology is multi-host launch evidence, present only when the launch
+	// itself states distributed intent. Absent means none was found or it
+	// could not be read, never a single-node claim.
+	Topology *Topology `json:"topology,omitempty"`
 }
 
 // parallelArgsREs matches runtime-specific parallelism flags in a process
@@ -166,7 +170,32 @@ func firstInt(strs ...string) int {
 	return 0
 }
 
+// argv0Runtime recognises a runtime from the executable name alone: an exact
+// match on the basename of the first argument (".exe" stripped), never a
+// substring, so "llama-server-proxy" and a model path that happens to contain
+// a runtime name do not count. Only llama-server is recognised; llama-cli is
+// interactive and serves no port.
+func argv0Runtime(args string) string {
+	f := strings.Fields(args)
+	if len(f) == 0 {
+		return ""
+	}
+	name := f[0]
+	if i := strings.LastIndexAny(name, `/\`); i >= 0 {
+		name = name[i+1:]
+	}
+	if strings.TrimSuffix(strings.ToLower(name), ".exe") == "llama-server" {
+		return "llamacpp"
+	}
+	return ""
+}
+
 func detectRuntimeFromArgs(args string) string {
+	// The executable name is checked first so a llama-server whose model path
+	// mentions another runtime is still classified as llama.cpp.
+	if rt := argv0Runtime(args); rt != "" {
+		return rt
+	}
 	switch {
 	case strings.Contains(args, "vllm"):
 		return "vllm"
