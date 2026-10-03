@@ -16,6 +16,7 @@ import { CustomSelect } from '../components/Select';
 import { RuntimeBadge } from '../components/RuntimeBadge';
 import { mockGPUNodes, mockRuntimeLogLines } from '../lib/mockData';
 import { readLastNodeCount, writeLastNodeCount } from '../lib/nodeCount';
+import { isReplicaMember, replicaImpactCopy } from '../lib/replicaImpact';
 import { VRAM_PRESSURE_THRESHOLD } from './Dashboard';
 import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, probeNodeTLS, fetchModelFit, unloadModel, getPinned, getMarborAgent, enableMarborAgent, regenerateMarborAgentToken, disableMarborAgent, checkNodeHealth, fetchReplicaSuggestions, applyDemoConfirmedGroups, getNodeControl, acceptNodeControl, clearNodeControl, startNodeRuntime, stopNodeRuntime, restartNodeRuntime, getNodeRuntimeLogs } from '../lib/api';
 import type { MarborAgentStatus, NodeHealthCheckResult, NodeControlStatus, ReplicaSuggestionsResponse } from '../lib/api';
@@ -230,6 +231,18 @@ function AgentBadge({ present, version }: { present?: boolean; version?: string 
       <Radio className="w-3 h-3 opacity-50" />
       No Agent
     </span>
+  );
+}
+
+// ReplicaImpactNotice shows what a stop/restart/drain does to a multi-host
+// replica inside a confirm dialog. Renders nothing for a standalone node
+// (text is null), so those dialogs are unchanged.
+function ReplicaImpactNotice({ text }: { text: string | null }) {
+  if (!text) return null;
+  return (
+    <p role="note" className="text-xs rounded-lg border border-amber-500/40 bg-amber-500/10 text-foreground p-3">
+      <span className="font-semibold">Multi-host replica: </span>{text}
+    </p>
   );
 }
 
@@ -1107,9 +1120,13 @@ export function GPUNodes() {
       return;
     }
     try {
+      // This only runs from the confirm dialog, which has just shown the
+      // replica impact copy for a replica member - the acknowledgement the
+      // server requires for stop/restart on one is sent from here only.
+      const ackReplica = isReplicaMember(agentNode);
       if (action === 'start') await startNodeRuntime(agentNode.name);
-      else if (action === 'stop') await stopNodeRuntime(agentNode.name);
-      else await restartNodeRuntime(agentNode.name);
+      else if (action === 'stop') await stopNodeRuntime(agentNode.name, ackReplica);
+      else await restartNodeRuntime(agentNode.name, ackReplica);
       // Refresh immediately instead of waiting up to 10s for the next poll
       // tick - the modal's agentNode.runtimeStatus otherwise looks stale
       // right after a successful action even though the change already
@@ -3120,6 +3137,7 @@ export function GPUNodes() {
         confirmLabel="Drain node"
         confirmClassName="px-4 py-2 bg-amber-600 hover:bg-amber-600/90 text-white font-medium rounded-lg text-sm transition-colors shadow-sm"
       >
+        <ReplicaImpactNotice text={replicaImpactCopy(nodes.find(n => n.name === nodeToDrain), 'drain')} />
         {/* Grace-period input disabled until the enforcement engine that reads it
         ships (the future rolling-upgrade/orchestration feature). Uncomment when
         that lands - drainGraceSeconds/setDrainGraceSeconds and the onConfirm/
@@ -3930,6 +3948,9 @@ export function GPUNodes() {
             {runtimeActionConfirm === 'stop' && 'Disruptive and immediate: any in-flight requests on this node fail right now, and all warm/loaded models are evicted from VRAM. Marbor routes new requests to other nodes, but this node serves nothing until you start it again.'}
             {runtimeActionConfirm === 'restart' && 'Disruptive and immediate: the runtime process is killed and relaunched. In-flight requests on this node fail, and all warm/loaded models are evicted and must reload from cold on next use. The process comes back up on its own once restarted - no separate start needed.'}
           </p>
+          {runtimeActionConfirm && runtimeActionConfirm !== 'start' && (
+            <ReplicaImpactNotice text={replicaImpactCopy(agentNode, runtimeActionConfirm)} />
+          )}
           {runtimeActionError && (
             <p className="text-sm text-destructive">{runtimeActionError}</p>
           )}

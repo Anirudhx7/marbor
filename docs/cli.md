@@ -348,6 +348,8 @@ start/stop/restart/logs/drain/undrain/health on one node
 
 "start|stop|restart" requires the target node to have an operator-accepted control driver (see "node control accept") - a node with none configured returns an error rather than guessing one.
 
+"stop|restart" on the head, a worker, or an unresolved member of a multi-host replica is rejected unless --acknowledge-replica is passed: stopping any member breaks the replica, and marbor does not restart the other members. "drain" on a replica member is allowed and prints what it does: draining a worker has no routing effect, draining the head drains the replica.
+
 "logs" is a point-in-time snapshot, not a live tail. A node whose control driver has no real log source (e.g. a bare PID-file process with no supervisor) returns a clear "not supported" error.
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
@@ -366,11 +368,19 @@ stop the node's inference runtime process
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
+Flags:
+
+- `--acknowledge-replica` - proceed when the node is part of a multi-host replica (stopping any member breaks the replica)
+
 #### `restart <node>`
 
 restart the node's inference runtime process
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--acknowledge-replica` - proceed when the node is part of a multi-host replica (stopping any member breaks the replica)
 
 #### `logs <node>`
 
