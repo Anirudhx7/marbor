@@ -154,6 +154,9 @@ func TestLegacySHA256AdminRecoveredWithForcedPasswordChange(t *testing.T) {
 	if strings.Contains(logs, legacyHash) {
 		t.Errorf("startup log leaked the legacy hash: %s", logs)
 	}
+	if logLeaksDefaultPassword(logs) {
+		t.Errorf("startup log leaked the default password: %s", logs)
+	}
 
 	if rec := loginAs(t, s, "legacyadmin", "legacy-Passw0rd!"); rec.Code != http.StatusUnauthorized {
 		t.Errorf("login with an old legacy password: status = %d, want 401", rec.Code)
@@ -294,6 +297,94 @@ type failingCreateStore struct{ store.Store }
 
 func (failingCreateStore) CreateUser(store.User) (int64, error) {
 	return 0, errors.New("simulated create failure")
+}
+
+// failingSkipCapStore lets CreateUser succeed but fails the first UpdateUser
+// that follows it, which is the write that stores the skip cap during legacy
+// admin recovery. Later updates pass through untouched.
+type failingSkipCapStore struct {
+	store.Store
+	mu          sync.Mutex
+	failNextUpd bool
+}
+
+func (f *failingSkipCapStore) CreateUser(u store.User) (int64, error) {
+	id, err := f.Store.CreateUser(u)
+	if err == nil {
+		f.mu.Lock()
+		f.failNextUpd = true
+		f.mu.Unlock()
+	}
+	return id, err
+}
+
+func (f *failingSkipCapStore) UpdateUser(u store.User) error {
+	f.mu.Lock()
+	fail := f.failNextUpd
+	f.failNextUpd = false
+	f.mu.Unlock()
+	if fail {
+		return errors.New("simulated skip-cap write failure")
+	}
+	return f.Store.UpdateUser(u)
+}
+
+// logLeaksDefaultPassword reports whether logs print the default password as
+// a standalone value. The default password is the word admin, which also
+// appears inside account names and prose, so only the quoted and
+// "password: value" forms count as a leak.
+func logLeaksDefaultPassword(logs string) bool {
+	for _, form := range []string{`"` + defaultAdminPassword + `"`, `'` + defaultAdminPassword + `'`, "password: " + defaultAdminPassword, "password=" + defaultAdminPassword} {
+		if strings.Contains(logs, form) {
+			return true
+		}
+	}
+	return false
+}
+
+// If the skip-cap write fails after the recovered account was created, the
+// account is removed rather than left with a skippable forced change. Nothing
+// may be left on the default password, no second default admin may appear, and
+// neither the default password nor the legacy hash may be logged.
+func TestLegacyRecoverySkipCapWriteFailureRemovesAccount(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "legacy-skipcap.db"))
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(func() { st.Close() })
+	legacyHash := strings.Repeat("0", 64)
+	if err := st.SetAdminCreds(store.AdminCreds{Username: "legacyadmin", PasswordHash: legacyHash, Salt: "00"}); err != nil {
+		t.Fatalf("SetAdminCreds: %v", err)
+	}
+	buf := captureLog(t)
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{}, nil)
+	s := NewServer(r, nil, config.Config{}, &failingSkipCapStore{Store: st})
+
+	if _, err := st.GetUserByUsername("legacyadmin"); err == nil {
+		t.Error("recovered user row still exists after the skip-cap write failed")
+	}
+	if _, err := st.GetUserByUsername("admin"); err == nil {
+		t.Error("a default admin user was created after the failed recovery")
+	}
+	if n, _ := st.CountAdminUsers(); n != 0 {
+		t.Errorf("%d admin users exist after the failed recovery, want 0", n)
+	}
+	for _, user := range []string{"legacyadmin", "admin"} {
+		if rec := loginAs(t, s, user, defaultAdminPassword); rec.Code == http.StatusOK {
+			t.Errorf("login as %q with the default password succeeded after the failed recovery", user)
+		}
+	}
+
+	logs := buf.String()
+	if !strings.Contains(logs, "could not migrate legacy admin") {
+		t.Errorf("failure was not logged: %s", logs)
+	}
+	if logLeaksDefaultPassword(logs) {
+		t.Errorf("log leaked the default password: %s", logs)
+	}
+	if strings.Contains(logs, legacyHash) {
+		t.Errorf("log leaked the legacy hash: %s", logs)
+	}
 }
 
 // A failed legacy migration must not fall through to creating a second
