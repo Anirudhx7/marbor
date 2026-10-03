@@ -23,7 +23,7 @@ import {
 import { startPull, isPullActive, subscribe as subscribePullProgress, getSnapshot as getPullProgressSnapshot } from '../lib/pullProgress';
 import { isDownloadOnlyRuntime, pullOptionsFor, sizeNotCurated as isSizeNotCurated } from '../lib/downloadOnly';
 import { useDemoMode } from '../hooks/useDemoMode';
-import { mockHFModels, mockHFRepoDetails, mockSystemInfo, mockModelCatalogResponse, mockFavorites, pickQuant } from '../lib/mockData';
+import { mockHFModels, mockHFSafetensorsModels, mockSafetensorsRepo, mockHFRepoDetails, mockSystemInfo, mockModelCatalogResponse, mockFavorites, pickQuant } from '../lib/mockData';
 import type { CatalogModelFit } from '../types';
 import { readLastModelCount, writeLastModelCount, readLastNodeCount } from '../lib/nodeCount';
 import { CustomDatePicker } from '../components/DateTimePicker';
@@ -166,7 +166,14 @@ function NodeVramCard({ node }: { node: any }) {
   );
 }
 
-const HF_ROW_CAVEAT = 'Size typed from the Hugging Face repo (approximate); VRAM is an estimate for a typical context. Quantization support depends on the GPU.';
+// Mirrors ggufOnlyRuntime(runtime) in internal/admin/catalog.go: Ollama and
+// llama.cpp load GGUF files one by one, every other runtime loads a whole
+// safetensors repo. Phrases copy and picks the demo's repo family only; no
+// request is gated on it.
+const isGGUFRuntime = (runtime: string | null | undefined) =>
+  !runtime || runtime === 'ollama' || runtime === 'llamacpp';
+
+const HF_ROW_CAVEAT ='Size typed from the Hugging Face repo (approximate); VRAM is an estimate for a typical context. Quantization support depends on the GPU.';
 
 const FIT_REASON_TEXT: Record<string, string> = {
   too_large: 'Too large for this node',
@@ -452,16 +459,29 @@ function ModelDetailPanel({
 
   const fetchDetails = useCallback(async (len: number) => {
     if (demoMode) {
-      const mock = mockHFRepoDetails[model.id];
+      const safetensors = isGGUFRuntime(nodeRuntime) ? undefined : mockSafetensorsRepo(model.id);
+      const mock = safetensors
+        ? {
+            // A safetensors runtime loads the whole repo as one unit: a single variant,
+            // sized and fitted like the server does (weights x1.2 plus 0.2 MiB per token
+            // of context, against this node's GPU memory).
+            variants: [{ tag: model.id, quantization: safetensors.quantization, size_mb: safetensors.size_mb, recommended: true, downloaded: false, vram_est_mb: 0, fit: 'unknown' as const }],
+          } as any
+        : mockHFRepoDetails[model.id];
       const diskFreeGB = mock?.disk_free_gb ?? 500;
       const diskFit = (sizeMB: number): 'ok' | 'insufficient' | 'unknown' =>
         sizeMB / 1024 > diskFreeGB ? 'insufficient' : 'ok';
       if (mock) {
         const adjustedVariants = mock.variants.map((v: any) => {
-          const estVram = v.size_mb * 1.10 + len * 0.15;
+          let estVram = v.size_mb * 1.10 + len * 0.15;
           let fit: 'green' | 'yellow' | 'red' = 'green';
           if (estVram > 24576) fit = 'red';
           else if (estVram > 10240) fit = 'yellow';
+          if (safetensors) {
+            const totalMB = nodeVRAMTotalBytes / (1024 * 1024);
+            estVram = v.size_mb * 1.2 + len * 0.2;
+            fit = totalMB <= 0 ? 'green' : estVram <= totalMB * 0.85 ? 'green' : estVram <= totalMB ? 'yellow' : 'red';
+          }
           // Demo-only: context_feasibility is static mock data keyed to
           // whatever context length the mock author picked, so it must be
           // re-pinned to the slider's actual value here or the note goes
@@ -534,7 +554,7 @@ function ModelDetailPanel({
     } finally {
       if (currentNodeRef.current === targetNode) setLoading(false);
     }
-  }, [demoMode, model.id, model.downloads, model.likes, model.tags, model.lastModified, nodeName, nodeRuntime]);
+  }, [demoMode, model.id, model.downloads, model.likes, model.tags, model.lastModified, nodeName, nodeRuntime, nodeVRAMTotalBytes]);
 
   useEffect(() => { fetchDetails(ctxLen); }, [ctxLen, fetchDetails]);
 
@@ -671,7 +691,7 @@ function ModelDetailPanel({
               </p>
             )}
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">
-              {(!nodeRuntime || nodeRuntime === 'ollama' || nodeRuntime === 'llamacpp') ? 'GGUF File Quantizations' : 'Safetensors Repository'}
+              {isGGUFRuntime(nodeRuntime) ? 'GGUF File Quantizations' : 'Safetensors Repository'}
             </span>
             <div className="space-y-1.5">
               {details.variants.map((v) => {
@@ -747,7 +767,7 @@ function ModelDetailPanel({
           </div>
         ) : (
           <p className="text-xs text-muted-foreground py-4 text-center">
-            {(!nodeRuntime || nodeRuntime === 'ollama' || nodeRuntime === 'llamacpp') ? 'No GGUF files found in this repository.' : 'No safetensors weights found in this repository.'}
+            {isGGUFRuntime(nodeRuntime) ? 'No GGUF files found in this repository.' : 'No safetensors weights found in this repository.'}
           </p>
         )}
       </div>
@@ -941,9 +961,7 @@ export function ModelAdvisor() {
   const [runtimeOverride, setRuntimeOverride] = useState<string | null>(null);
   useEffect(() => { setRuntimeOverride(null); }, [selectedNode]);
   const browseRuntime = runtimeOverride ?? activeNode?.runtime ?? null;
-  // Mirrors ggufOnlyRuntime(runtime) in internal/admin/catalog.go - used only
-  // to phrase the "how to add models" copy, not to gate any request.
-  const browseRuntimeIsGGUF = browseRuntime == null || browseRuntime === '' || browseRuntime === 'ollama' || browseRuntime === 'llamacpp';
+  const browseRuntimeIsGGUF = isGGUFRuntime(browseRuntime);
 
   // Track grid column count to insert panel at end of the correct row
   useEffect(() => {
@@ -1013,7 +1031,9 @@ export function ModelAdvisor() {
       if (demoMode) {
         setSearchError(null);
         const q = debouncedSearch.trim().toLowerCase();
-        let filtered = q === '' ? mockHFModels : mockHFModels.filter(m => m.id.toLowerCase().includes(q));
+        // Same split the server makes: a safetensors runtime browses safetensors repos.
+        const pool = browseRuntimeIsGGUF ? mockHFModels : mockHFSafetensorsModels;
+        let filtered = q === '' ? pool : pool.filter(m => m.id.toLowerCase().includes(q));
         if (minDl) filtered = filtered.filter(m => m.downloads >= minDl);
         if (minLk) filtered = filtered.filter(m => m.likes >= minLk);
         if (createdAfter) filtered = filtered.filter(m => m.lastModified >= createdAfter);
