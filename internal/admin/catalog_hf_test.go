@@ -3,9 +3,13 @@ package admin
 import (
 	"encoding/json"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"math"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -513,6 +517,77 @@ func TestHandleModelCatalog_UnrecognisedRuntimeGetsNoHFRows(t *testing.T) {
 					t.Errorf("runtime %q: %s shows the Hugging Face row, only vllm and tgi may", rt, m.Name)
 				}
 			}
+		}
+	}
+}
+
+// bannedHTTPSelectors are the net/http package-level names that use the
+// process-wide default client or transport.
+var bannedHTTPSelectors = map[string]bool{
+	"DefaultClient": true, "DefaultTransport": true,
+	"Get": true, "Post": true, "Head": true, "PostForm": true,
+}
+
+// httpDefaultClientUses returns the position of every net/http default-client
+// selector (http.DefaultClient, http.Get, ...) in one Go source file.
+func httpDefaultClientUses(filename, src string) ([]string, error) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, filename, src, 0)
+	if err != nil {
+		return nil, err
+	}
+	var hits []string
+	ast.Inspect(f, func(n ast.Node) bool {
+		sel, ok := n.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		if id, ok := sel.X.(*ast.Ident); ok && id.Name == "http" && bannedHTTPSelectors[sel.Sel.Name] {
+			hits = append(hits, fmt.Sprintf("%s: http.%s", fset.Position(sel.Pos()), sel.Sel.Name))
+		}
+		return true
+	})
+	return hits, nil
+}
+
+func TestOutboundHTTPSourceGuard_DetectsViolation(t *testing.T) {
+	src := "package admin\nimport \"net/http\"\nfunc f() { _, _ = http.Get(\"x\"); _ = http.DefaultClient }\n"
+	hits, err := httpDefaultClientUses("x.go", src)
+	if err != nil || len(hits) != 2 {
+		t.Fatalf("want 2 hits, got %v (err %v)", hits, err)
+	}
+}
+
+// TestOutboundHTTPSourceGuard fails if non-test code in package admin reaches
+// the network through the process-wide default client. The handler-level
+// no-outbound-HTTP test only swaps the shared Hugging Face client (swapping the
+// global default client raced with a leaked goroutine from another test), so
+// this source guard catches a new code path that bypasses the shared client.
+func TestOutboundHTTPSourceGuard(t *testing.T) {
+	// File name -> reason it may use the default client. Currently empty.
+	allow := map[string]string{}
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || filepath.Ext(name) != ".go" || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		if _, ok := allow[name]; ok {
+			continue
+		}
+		b, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		hits, err := httpDefaultClientUses(name, string(b))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, h := range hits {
+			t.Errorf("default HTTP client used outside the shared client: %s", h)
 		}
 	}
 }
