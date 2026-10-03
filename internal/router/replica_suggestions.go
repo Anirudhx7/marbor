@@ -536,6 +536,8 @@ func (c *correlator) vllmGroups(atts []attribution) []candidate {
 		t := a.topo
 		if t.MasterAddr == "" {
 			// A one node launch has no peers to match, so it is not a group.
+			// Zero or negative cannot occur (the agent clamps the node count
+			// to at least 1). An unknown (nil) count keeps the card.
 			if t.NNodes != nil && *t.NNodes <= 1 {
 				continue
 			}
