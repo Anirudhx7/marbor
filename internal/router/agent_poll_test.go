@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
-	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -521,10 +520,7 @@ func TestPollAgentTelemetryNewerProtocolVersionLoggedOnce(t *testing.T) {
 	}, nil)
 	r.SetMarborAgent(r.nodes[0].Host, true, agentPort, "tok", "http")
 
-	var logBuf bytes.Buffer
-	oldOutput := log.Writer()
-	log.SetOutput(&logBuf)
-	defer log.SetOutput(oldOutput)
+	logBuf := captureLog(t)
 
 	r.pollAgentHosts()
 	r.pollAgentHosts()
@@ -750,10 +746,7 @@ func TestAgentProtocolWarned_ContinuityWarnsOnceAcrossDownUpCycle(t *testing.T) 
 	}, nil)
 	r.SetMarborAgent(r.nodes[0].Host, true, agentPort, "tok", "http")
 
-	var logBuf bytes.Buffer
-	oldOutput := log.Writer()
-	log.SetOutput(&logBuf)
-	defer log.SetOutput(oldOutput)
+	logBuf := captureLog(t)
 
 	// First success: warning latches and logs once.
 	r.pollAgentHosts()
@@ -934,8 +927,7 @@ func TestPollAgentTelemetryOversizeBodyIsUnreachable(t *testing.T) {
 
 	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"agent": {"version": "v1.0.0", "protocol_version": 1}}`))
-		w.Write(bytes.Repeat([]byte(" "), maxAgentStatusBodyBytes+1024))
+		_, _ = w.Write(paddedStatusBody(maxAgentStatusBodyBytes + 1024))
 	}))
 	defer agentSrv.Close()
 	agentPort := mustPort(t, agentSrv.URL)
@@ -945,10 +937,7 @@ func TestPollAgentTelemetryOversizeBodyIsUnreachable(t *testing.T) {
 	}, nil)
 	r.SetMarborAgent(r.nodes[0].Host, true, agentPort, "tok", "http")
 
-	var logBuf bytes.Buffer
-	oldOutput := log.Writer()
-	log.SetOutput(&logBuf)
-	defer log.SetOutput(oldOutput)
+	logBuf := captureLog(t)
 
 	r.pollAgentHosts()
 	r.pollAgentHosts()
@@ -958,7 +947,7 @@ func TestPollAgentTelemetryOversizeBodyIsUnreachable(t *testing.T) {
 	if r.nodes[0].AgentPresent {
 		t.Error("AgentPresent = true, want false for an oversize status body")
 	}
-	if r.nodes[0].AgentFailures < 2 {
+	if r.nodes[0].AgentFailures != 2 {
 		t.Errorf("AgentFailures = %d, want 2 (each oversize poll is a failed poll)", r.nodes[0].AgentFailures)
 	}
 	if got := strings.Count(logBuf.String(), "status response exceeds"); got != 1 {
@@ -975,8 +964,8 @@ func TestPollAgentTelemetryUnderCapBodyWithUnknownFieldsDecodes(t *testing.T) {
 
 	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"agent": {"version": "v9.0.0", "protocol_version": 1, "future": 1}, "unknown_block": {"a": [1,2,3]}}`))
-		w.Write(bytes.Repeat([]byte(" "), 64*1024))
+		_, _ = w.Write([]byte(`{"agent": {"version": "v9.0.0", "protocol_version": 1, "future": 1}, "unknown_block": {"a": [1,2,3]}}`))
+		_, _ = w.Write(bytes.Repeat([]byte(" "), 64*1024))
 	}))
 	defer agentSrv.Close()
 	agentPort := mustPort(t, agentSrv.URL)
