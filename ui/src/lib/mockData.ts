@@ -1221,6 +1221,18 @@ const mockModelCatalogBase: ModelCatalogResponse = {
         { tag: 'llama3.3:70b-q2_k', quantization: 'Q2_K', vram_est_mb: 27500, size_mb: 26000, recommended: false },
       ],
     },
+    {
+      name: 'deepseek-r1:70b',
+      display_name: 'DeepSeek R1 70B',
+      description: 'Largest R1 distill. Frontier-class reasoning, needs datacenter-class VRAM.',
+      param_count: '70B',
+      categories: ['reasoning'],
+      popular: false,
+      rank: 11,
+      variants: [
+        { tag: 'deepseek-r1:70b', quantization: 'Q4_K_M', vram_est_mb: 43000, size_mb: 42000, recommended: true },
+      ],
+    },
   ],
   nodes: [
     {
@@ -1340,11 +1352,33 @@ export function pickQuant(cands: PickCandidate[]): QuantRecommendation {
 // the demo list always agrees with the pick rule above.
 const MOCK_DOWNLOADED: Record<string, string[]> = { 'gpu-node-01': ['llama3.3:8b', 'deepseek-r1:7b'] };
 
+// Hugging Face equivalents a vLLM or TGI node offers instead of the Ollama
+// variants: one full-precision repo per mapped model, size in MiB typed from
+// the repo (0 = not curated yet, shown as "-"). Mirrors the server's static
+// table for the demo's models; qwen3:8b stands in for a model added to the
+// table before its size is known. Fit uses the server rule: the largest single
+// GPU, safetensors weights x1.2 plus an 8192-token context at 0.2 MiB per token.
+const MOCK_HF_REPOS: Record<string, { repo: string; size_mb: number; quantization: string }> = {
+  'deepseek-r1:7b': { repo: 'deepseek-ai/DeepSeek-R1-Distill-Qwen-7B', size_mb: 14525, quantization: 'BF16' },
+  'qwen2.5:14b': { repo: 'Qwen/Qwen2.5-14B-Instruct', size_mb: 28171, quantization: 'BF16' },
+  'deepseek-r1:32b': { repo: 'deepseek-ai/DeepSeek-R1-Distill-Qwen-32B', size_mb: 62492, quantization: 'BF16' },
+  'deepseek-r1:70b': { repo: 'deepseek-ai/DeepSeek-R1-Distill-Llama-70B', size_mb: 134570, quantization: 'BF16' },
+  'qwen3:8b': { repo: 'Qwen/Qwen3-8B', size_mb: 0, quantization: 'BF16' },
+};
+
 function mockNodeModels(base: ModelCatalogResponse, node: ModelCatalogResponse['nodes'][number]) {
+  const total = node.vram_total_bytes / (1024 * 1024);
+  const downloadOnly = node.runtime === 'vllm' || node.runtime === 'tgi';
   return base.catalog.map(cm => {
-    const variants = cm.variants.map(v => {
-      const total = node.vram_total_bytes / (1024 * 1024);
-      const fit = node.runtime && node.runtime !== 'ollama' ? 'incompatible'
+    const hf = downloadOnly ? MOCK_HF_REPOS[cm.name] : undefined;
+    const source = hf
+      ? [{ tag: hf.repo, quantization: hf.quantization, size_mb: hf.size_mb, recommended: true,
+          vram_est_mb: hf.size_mb > 0 ? Math.floor(hf.size_mb * 1.2 + 8192 * 0.2) : 0 }]
+      : cm.variants;
+    const variants = source.map(v => {
+      // A size of 0 is unknown: never classified, or it would read as a green 0.
+      const fit = hf ? (v.size_mb === 0 ? 'unknown' : v.vram_est_mb <= total * 0.85 ? 'green' : v.vram_est_mb <= total ? 'yellow' : 'red')
+        : node.runtime && node.runtime !== 'ollama' ? 'incompatible'
         : v.vram_est_mb <= total * 0.85 ? 'green' : v.vram_est_mb <= total ? 'yellow' : 'red';
       const disk_fit = !node.disk_known ? 'unknown' : v.size_mb / 1024 > node.disk_free_gb ? 'insufficient' : 'ok';
       return { ...v, fit, disk_fit } as typeof v & { fit: any; disk_fit: any };

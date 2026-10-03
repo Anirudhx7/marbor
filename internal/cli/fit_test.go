@@ -136,3 +136,25 @@ func TestFitNote_Branches(t *testing.T) {
 		t.Errorf("pick cell without quantization = %q, want x", got)
 	}
 }
+
+func TestRun_Fit_HuggingFaceRowsOnVLLMNode(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"nodes":[{"name":"gpu-v","models":[
+ {"name":"qwen2.5:7b","recommendation":{"picked":true,"tag":"Qwen/Qwen2.5-7B-Instruct","quantization":"BF16","vram_est_mb":17500,"fit":"green"}},
+ {"name":"phi4:14b","recommendation":{"picked":false,"reason":"vram_unknown"}}]}]}`))
+	}))
+	t.Cleanup(srv.Close)
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
+
+	code, out, errOut := runFitCmd(t, srv)
+	if code != ExitOK {
+		t.Fatalf("exit %d, stderr %s", code, errOut)
+	}
+	for _, want := range []string{"Qwen/Qwen2.5-7B-Instruct (BF16)", "~17500 MB", "VRAM or model size unknown"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q:\n%s", want, out)
+		}
+	}
+}

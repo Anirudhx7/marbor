@@ -294,3 +294,45 @@ func TestRun_Models_UnknownAction_Errors(t *testing.T) {
 		t.Fatalf("expected an unknown-action error on stderr, got: %s", stderr.String())
 	}
 }
+
+func pullWithNodeRuntime(t *testing.T, runtime string) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/admin/nodes/gpu-0/pull":
+			w.WriteHeader(http.StatusAccepted)
+			w.Write([]byte(`{"ok":true,"node":"gpu-0","model":"Qwen/Qwen2.5-7B-Instruct"}`))
+		case "/admin/v1/nodes":
+			w.Write([]byte(`[{"name":"gpu-1","runtime":"ollama"},{"name":"gpu-0","runtime":"` + runtime + `"}]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"models", "pull", "gpu-0", "Qwen/Qwen2.5-7B-Instruct", "--server", srv.URL}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
+	}
+	return stdout.String()
+}
+
+func TestRun_ModelsPull_VLLMAndTGIAnnounceRelaunch(t *testing.T) {
+	for _, rt := range []string{"vllm", "tgi"} {
+		out := pullWithNodeRuntime(t, rt)
+		if !strings.Contains(out, "this only downloads; relaunch the runtime to serve it") {
+			t.Errorf("%s pull output = %q, want the relaunch note", rt, out)
+		}
+	}
+}
+
+func TestRun_ModelsPull_OllamaOutputUnchanged(t *testing.T) {
+	out := pullWithNodeRuntime(t, "ollama")
+	if out != "gpu-0: pull started for Qwen/Qwen2.5-7B-Instruct\n" {
+		t.Errorf("ollama pull output = %q, want the plain started line", out)
+	}
+}

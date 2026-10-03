@@ -248,7 +248,7 @@ function PullJobCard({ job }: { job: PullProgressState }) {
 
           {job.status === 'success' && (
             <>
-              <p className="text-xs text-success font-medium">Pull complete.</p>
+              <p className="text-xs text-success font-medium">{job.completionNote || 'Pull complete.'}</p>
               {hasBytes && (
                 <p className="text-xs text-muted-foreground mt-1">
                   {formatBytes(job.bytesTotal)} downloaded
