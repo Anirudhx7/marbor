@@ -60,9 +60,11 @@ lever for raising this ceiling; do not expect adding GPU nodes to increase write
 A precise linear/sub-linear verdict needs a re-run on a dedicated (uncontended) host.
 
 **What this means operationally:** at the low hundreds of req/s, marbor's audit/request-log/stats
-recording can start silently dropping entries (each drop is logged, never a request failure) well
-before request-serving itself is affected. An honest small number is the point of this section - if
-your fleet's real traffic approaches ~200 req/s sustained, budget for this and watch the marbor's own
+recording can start dropping entries well before request-serving itself is affected. A drop is never
+a request failure. Audit drops are counted in `marbor_audit_dropped_total` and warned about in the log
+at most once every 30 seconds; request-log and stats drops each write a "queue full" log line. An
+honest small number is the point of this section - if your fleet's real traffic approaches ~200 req/s
+sustained, budget for this and watch both the `marbor_audit_dropped_total` counter and the marbor's own
 log output for "queue full" lines rather than assuming headroom.
 
 ---

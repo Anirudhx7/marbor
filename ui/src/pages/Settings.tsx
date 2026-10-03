@@ -1488,7 +1488,7 @@ export function SettingsPage() {
               <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
                 <div>
                   <p className="text-sm font-medium text-foreground">Audit log</p>
-                  <p className="text-xs text-muted-foreground">Append-only request audit trail</p>
+                  <p className="text-xs text-muted-foreground">Best-effort request audit trail</p>
                 </div>
                 <Toggle on={settings.auditEnabled} onToggle={() => setSettings({ ...settings, auditEnabled: !settings.auditEnabled })} />
               </div>

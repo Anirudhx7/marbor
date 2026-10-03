@@ -405,9 +405,9 @@ section,#install{scroll-margin-top:96px}
 </table></div>
 <hr/>
 <h2 id="audit-trail-for-financial-verification">Audit Trail for Financial Verification<a class="anchor" href="#audit-trail-for-financial-verification" aria-label="Link to section">#</a></h2>
-<p>Every routed request is recorded in the SQLite audit trail (when enabled) with:</p>
+<p>Requests that reach proxy completion handling are recorded, best-effort, in the SQLite audit trail (when enabled). Requests rejected earlier (authentication failures, expired keys, rate limits, quota rejections) are not recorded, and entries are dropped when the async write queue is full (see <code>marbor_audit_dropped_total</code>), so totals can undercount under heavy load. Each recorded entry carries:</p>
 <ul><li>Request ID (crypto/rand generated)</li><li>Timestamp</li><li>API key name (never the key value)</li><li>Model requested</li><li>Target node (or cloud provider)</li><li>Token counts (prompt + completion)</li><li>Calculated cost (saved or spent)</li><li>HTTP status and latency</li></ul>
-<p>This log is the source of truth for financial reconciliation. It can be ingested into any log aggregator (Splunk, Elastic, Datadog) for custom reporting, cost allocation, and audit compliance.</p>
+<p>This log is the best available per-request record for financial reconciliation, but it is not lossless; cross-check against <code>marbor_audit_dropped_total</code> before treating gaps as zero usage. It can be ingested into any log aggregator (Splunk, Elastic, Datadog) for custom reporting, cost allocation, and audit compliance.</p>
 
       <div class="doc-foot-edit">
         <nav class="pager" aria-label="Documentation pages"><a class="page-card prev" rel="prev" href="../docs/LIMITATIONS.html"><span class="dir">← Previous</span><span class="lbl">Known limitations</span></a><a class="page-card next" rel="next" href="../docs/USE-CASES.html"><span class="dir">Next →</span><span class="lbl">Ollama alternatives &amp; use cases</span></a></nav>

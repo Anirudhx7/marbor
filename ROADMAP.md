@@ -47,7 +47,7 @@ production-hardened and free for any use under Apache-2.0.
 - Active/active HA - run two independent instances behind any TCP/L4 load balancer; peer `/health` awareness eliminates the single-proxy SPOF (v0.7.0)
 - Cost-aware cloud overflow - OpenAI/Anthropic fallback only when local capacity is saturated, with real per-token cost tracking and savings math (v0.2.x-v0.3.x)
 - Auth, per-key model allow-lists, rate limits, and daily/monthly quotas persisted across restarts (v0.3.x)
-- Observability - embedded admin dashboard, 14 Prometheus metrics, append-only audit log, analytics (v0.2.x-v0.9.x)
+- Observability - embedded admin dashboard, 14 Prometheus metrics, best-effort request audit log, analytics (v0.2.x-v0.9.x)
 - Day-2 ops - node drain, runtime key/node mutation, SIGHUP + HTTP config reload, structured JSON logging (v0.9.0)
 - `marbor bench` - reproducible cold-vs-warm TTFT measured through the marbor proxy (v0.11-v0.14)
 - Router decomposition - `placement` / `health` / `queue` split behind interfaces, so the next stages extend safely without touching the hot path (v0.11-v0.14)
