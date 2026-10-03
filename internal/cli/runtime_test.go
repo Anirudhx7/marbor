@@ -369,3 +369,80 @@ func TestRun_RuntimeDrain_ReplicaWarning(t *testing.T) {
 		t.Errorf("normal drain output must still print, got %q", stdout.String())
 	}
 }
+
+func TestRun_RuntimeStop_AcknowledgeReplica_SendsAck(t *testing.T) {
+	var gotQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"runtime", "stop", "gpu-1", "--acknowledge-replica", "--server", srv.URL}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
+	}
+	if gotQuery != "acknowledge_replica=true" {
+		t.Errorf("stop with the flag should send the acknowledgement, got %q", gotQuery)
+	}
+}
+
+func TestRun_RuntimeStart_HasNoAcknowledgeReplicaFlag(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("start with an unknown flag must not reach the server: %s", r.URL)
+	}))
+	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"runtime", "start", "gpu-1", "--acknowledge-replica", "--server", srv.URL}, &stdout, &stderr)
+	if code != ExitUserError {
+		t.Fatalf("expected exit %d for an unknown flag on start, got %d (stderr: %s)", ExitUserError, code, stderr.String())
+	}
+}
+
+func TestRun_RuntimeRestart_ReplicaWarning_TextMode(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"ok":true,"replica":{"role":"head","head":"gpu-0","warning":"takes the whole replica offline"}}`))
+	}))
+	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"runtime", "restart", "gpu-0", "--acknowledge-replica", "--server", srv.URL}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "warning: takes the whole replica offline") {
+		t.Errorf("text mode should print the replica warning to stderr, got %q", stderr.String())
+	}
+	if strings.Contains(stdout.String(), "warning") || strings.Contains(stdout.String(), "replica") {
+		t.Errorf("warning must not pollute stdout: %q", stdout.String())
+	}
+}
+
+func TestRun_RuntimeStop_MalformedSuccessBody_NotesAndSucceeds(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"ok":true,"replica":`))
+	}))
+	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"runtime", "stop", "gpu-1", "--acknowledge-replica", "--server", srv.URL}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("a malformed success body must not fail the action: exit %d (stderr: %s)", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "replica details are unavailable") {
+		t.Errorf("stderr should say replica detail was unavailable, got %q", stderr.String())
+	}
+}
