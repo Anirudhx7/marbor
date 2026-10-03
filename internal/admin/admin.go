@@ -5289,7 +5289,11 @@ func generatePassword(length int) string {
 const defaultAdminPassword = "admin"
 
 // ensureAdminUser sets up the initial admin in the users table on first run.
-// If the legacy admin_credentials table has data, it migrates that row.
+// If the legacy admin_credentials table has data, it migrates that row: a
+// bcrypt hash is carried over as is, while a hash the bcrypt-only login cannot
+// verify (the old iterated SHA-256 form) is replaced by the documented default
+// password with a forced change, keeping the legacy username, so the account is
+// recoverable instead of permanently locked out.
 // On a completely fresh install it creates admin/admin and forces a
 // password change on first login - no secret is generated or logged.
 func (s *Server) ensureAdminUser() {
@@ -5300,10 +5304,11 @@ func (s *Server) ensureAdminUser() {
 	// Migrate from legacy single-admin table if present.
 	if has, _ := s.st.HasAdminCredentials(); has {
 		if uname, hash, salt, err := s.st.GetLegacyAdminCreds(); err == nil {
+			uname = strings.TrimSpace(uname)
 			if uname == "" {
 				uname = "admin"
 			}
-			if _, err2 := s.st.CreateUser(store.User{
+			migrated := store.User{
 				Username:           uname,
 				Role:               "admin",
 				Status:             "active",
@@ -5311,10 +5316,51 @@ func (s *Server) ensureAdminUser() {
 				Salt:               salt,
 				MustChangePassword: false,
 				CreatedAt:          time.Now(),
-			}); err2 == nil {
-				log.Printf("admin: migrated legacy credentials to users table (username: %s)", uname)
+			}
+			usable := isBcryptHash(hash)
+			if !usable {
+				// Never copy the unusable hash: it can never authenticate.
+				newHash, hashErr := hashPassword(defaultAdminPassword)
+				if hashErr != nil {
+					log.Printf("admin: could not hash recovery password for legacy admin %q: %v", uname, hashErr)
+					return
+				}
+				migrated.PasswordHash = newHash
+				migrated.Salt = ""
+				migrated.MustChangePassword = true
+				// The account sits on the public default password until the
+				// real administrator changes it, so skipping the forced change
+				// must not be possible: it would hand any host that can reach
+				// the dashboard a full-privilege session.
+			}
+			id, err2 := s.st.CreateUser(migrated)
+			if err2 == nil && !usable {
+				// CreateUser does not persist the skip counter, so set it with
+				// an update. The account sits on the public default password
+				// until the real administrator changes it, so skipping the
+				// forced change must be impossible (it would hand any host that
+				// can reach the dashboard a full-privilege session). If the cap
+				// cannot be stored, remove the account rather than leave it
+				// skippable.
+				migrated.ID = id
+				migrated.SkipPasswordCount = maxSkipPasswordChanges
+				if err2 = s.st.UpdateUser(migrated); err2 != nil {
+					_ = s.st.DeleteUser(id)
+				}
+			}
+			if err2 != nil {
+				// Do not fall through to the fresh-install branch: that would
+				// create a second admin on the default password and hide the
+				// real account from the operator.
+				log.Printf("admin: could not migrate legacy admin %q to the users table: %v", uname, err2)
 				return
 			}
+			if usable {
+				log.Printf("admin: migrated legacy credentials to users table (username: %q)", uname)
+			} else {
+				logLegacyAdminRecoveryWarning(uname)
+			}
+			return
 		}
 	}
 	// Fresh install: well-known default, force change on first login.
@@ -5336,33 +5382,53 @@ func (s *Server) ensureAdminUser() {
 		return
 	}
 	log.Printf("admin: created default admin account (username: admin); password must be changed on first login")
-	logDefaultAdminCredentialWarning(true)
+	logDefaultAdminCredentialWarning("admin", true)
+}
+
+// isBcryptHash reports whether hash is a well-formed bcrypt hash, i.e. one the
+// login path (bcrypt-only) can possibly verify.
+func isBcryptHash(hash string) bool {
+	_, err := bcrypt.Cost([]byte(hash))
+	return err == nil
+}
+
+// logLegacyAdminRecoveryWarning tells the operator that a legacy admin
+// credential could not be carried over and was reset to the default password.
+// It names the account but never logs the password or any hash.
+func logLegacyAdminRecoveryWarning(username string) {
+	log.Printf("WARNING: legacy admin account %q could not be migrated: its stored password hash is an old format that login no longer accepts. "+
+		"The account was recreated with the documented default password and a forced password change. "+
+		"Log in as %q immediately and set a new password; until then anyone who can reach the dashboard (plaintext HTTP) can log in as this administrator.",
+		username, username)
 }
 
 // warnIfDefaultAdminCredential logs a startup warning when the built-in admin
 // account still accepts the well-known default password, so a restart before the
 // first-login change does not go quiet about it.
 func (s *Server) warnIfDefaultAdminCredential() {
-	u, err := s.st.GetUserByUsername("admin")
-	if err != nil || u.Role != "admin" {
+	users, err := s.st.ListUsers()
+	if err != nil {
 		return
 	}
-	if verifyPassword(u.PasswordHash, defaultAdminPassword) {
-		logDefaultAdminCredentialWarning(u.MustChangePassword)
+	for _, u := range users {
+		if u.Role == "admin" && u.Status == "active" && verifyPassword(u.PasswordHash, defaultAdminPassword) {
+			logDefaultAdminCredentialWarning(u.Username, u.MustChangePassword)
+		}
 	}
 }
 
 // logDefaultAdminCredentialWarning is the one place the default-credential
 // warning text lives. The dashboard is plain HTTP by design, so the warning
 // covers both the credential and the transport.
-func logDefaultAdminCredentialWarning(mustChange bool) {
+func logDefaultAdminCredentialWarning(username string, mustChange bool) {
 	change := "Change the password now (no first-login change is being forced on this account)."
 	if mustChange {
 		change = "A password change is required at first login before normal administration."
 	}
-	log.Printf("WARNING: the default admin login admin / admin is still active. %s "+
+	log.Printf("WARNING: the default admin login %q / %q is still active. %s "+
 		"The admin dashboard is served over plaintext HTTP, so any host that can reach it can take over the control plane until the password is changed: "+
-		"change the password immediately, and for any exposed deployment keep the dashboard on 127.0.0.1 or put TLS in front of it (reverse proxy).", change)
+		"change the password immediately, and for any exposed deployment keep the dashboard on 127.0.0.1 or put TLS in front of it (reverse proxy).",
+		username, defaultAdminPassword, change)
 }
 
 // maskKey returns a non-reversible preview of an API key so the list endpoint

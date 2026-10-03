@@ -3,10 +3,10 @@ package admin
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -46,8 +46,9 @@ func (b *syncBuffer) Reset() {
 func captureLog(t *testing.T) *syncBuffer {
 	t.Helper()
 	buf := &syncBuffer{}
+	prev := log.Writer()
 	log.SetOutput(buf)
-	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	t.Cleanup(func() { log.SetOutput(prev) })
 	return buf
 }
 
@@ -92,47 +93,135 @@ func TestAdmin_KeyListMalformedExpiryNotActive(t *testing.T) {
 	}
 }
 
-// Credentials carried over from the legacy single-admin table hold an iterated
-// SHA-256 hash. Login verifies bcrypt only, so they cannot authenticate: the
-// migrated account is locked out until reset, and the default admin/admin
-// password does not become a way in.
-func TestLegacySHA256AdminCredentialsCannotAuthenticate(t *testing.T) {
+func loginAs(t *testing.T, s *Server, user, pass string) *httptest.ResponseRecorder {
+	t.Helper()
+	body := `{"username":"` + user + `","password":"` + pass + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/admin/login", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	return rec
+}
+
+func newLegacyServer(t *testing.T, username, passwordHash string) (*Server, store.Store) {
+	t.Helper()
 	st, err := store.Open(filepath.Join(t.TempDir(), "legacy.db"))
 	if err != nil {
 		t.Fatalf("store.Open: %v", err)
 	}
 	t.Cleanup(func() { st.Close() })
-
-	const legacyPassword = "legacy-Passw0rd!"
-	// Shape of an old hex(sha256) hash; the value only has to not be bcrypt.
-	legacyHash := strings.Repeat("0", 64)
-	if err := st.SetAdminCreds(store.AdminCreds{Username: "admin", PasswordHash: legacyHash, Salt: "00"}); err != nil {
+	if err := st.SetAdminCreds(store.AdminCreds{Username: username, PasswordHash: passwordHash, Salt: "00"}); err != nil {
 		t.Fatalf("SetAdminCreds: %v", err)
 	}
-
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{}, nil)
-	s := NewServer(r, nil, config.Config{}, st) // migrates the legacy row into users
+	return NewServer(r, nil, config.Config{}, st), st // migrates the legacy row into users
+}
 
-	u, err := st.GetUserByUsername("admin")
+// A legacy row holding an old iterated SHA-256 hash cannot be verified by the
+// bcrypt-only login. The migration must not copy it: it recreates the legacy
+// username as an active admin on the documented default password with a forced
+// change, warns naming the account (never the hash), and the old password no
+// longer works.
+func TestLegacySHA256AdminRecoveredWithForcedPasswordChange(t *testing.T) {
+	buf := captureLog(t)
+	legacyHash := strings.Repeat("0", 64) // shape of a hex sha256; just not bcrypt
+	s, st := newLegacyServer(t, "legacyadmin", legacyHash)
+
+	u, err := st.GetUserByUsername("legacyadmin")
 	if err != nil {
-		t.Fatalf("migrated user missing: %v", err)
+		t.Fatalf("legacy username not preserved: %v", err)
 	}
-	if u.PasswordHash != legacyHash {
-		t.Fatalf("migration changed the stored hash; the test no longer models a legacy credential")
+	if _, err := st.GetUserByUsername("admin"); err == nil {
+		t.Error("a separate default 'admin' user was created; the legacy username must be reused")
+	}
+	if u.Role != "admin" || u.Status != "active" {
+		t.Errorf("recovered user role/status = %q/%q, want admin/active", u.Role, u.Status)
+	}
+	if !u.MustChangePassword {
+		t.Error("recovered admin must have MustChangePassword = true")
+	}
+	if u.PasswordHash == legacyHash || !isBcryptHash(u.PasswordHash) {
+		t.Error("the unusable legacy hash was copied into users instead of being replaced")
+	}
+	if !verifyPassword(u.PasswordHash, defaultAdminPassword) {
+		t.Error("recovered admin does not verify against the documented default password")
 	}
 
-	for _, pw := range []string{legacyPassword, defaultAdminPassword, legacyHash} {
-		body := `{"username":"admin","password":"` + pw + `"}`
-		req := httptest.NewRequest(http.MethodPost, "/admin/login", strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
-		rec := httptest.NewRecorder()
-		s.Handler().ServeHTTP(rec, req)
-		if rec.Code != http.StatusUnauthorized {
-			t.Errorf("login with %q against a legacy hash: status = %d, want 401", pw, rec.Code)
+	logs := buf.String()
+	if !strings.Contains(logs, `"legacyadmin"`) || !strings.Contains(logs, "Log in") {
+		t.Errorf("startup warning must name the account and tell the admin to change the password: %s", logs)
+	}
+	if strings.Contains(logs, legacyHash) {
+		t.Errorf("startup log leaked the legacy hash: %s", logs)
+	}
+
+	if rec := loginAs(t, s, "legacyadmin", "legacy-Passw0rd!"); rec.Code != http.StatusUnauthorized {
+		t.Errorf("login with an old legacy password: status = %d, want 401", rec.Code)
+	}
+
+	// Default password works, but only into the forced-change flow.
+	rec := loginAs(t, s, "legacyadmin", defaultAdminPassword)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("login with the recovery password: status = %d, body: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode login response: %v", err)
+	}
+	if resp["must_change_password"] != true {
+		t.Errorf("login response must_change_password = %v, want true", resp["must_change_password"])
+	}
+	var cookie *http.Cookie
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == sessionCookieName {
+			cookie = c
 		}
 	}
-	if verifyPassword(legacyHash, legacyPassword) {
-		t.Error("verifyPassword accepted a non-bcrypt legacy hash")
+	if cookie == nil {
+		t.Fatal("no session cookie after login")
+	}
+	skipReq := httptest.NewRequest(http.MethodPost, "/admin/skip-password-change", nil)
+	skipReq.AddCookie(cookie)
+	skipRec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(skipRec, skipReq)
+	if skipRec.Code != http.StatusForbidden || !strings.Contains(skipRec.Body.String(), "skip_limit_reached") {
+		t.Errorf("skipping the forced change on a recovered default-password account: status = %d body = %s, want 403 skip_limit_reached", skipRec.Code, skipRec.Body.String())
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/keys", nil)
+	req.AddCookie(cookie)
+	blocked := httptest.NewRecorder()
+	s.Handler().ServeHTTP(blocked, req)
+	if blocked.Code != http.StatusForbidden || !strings.Contains(blocked.Body.String(), "password_change_required") {
+		t.Errorf("normal admin API with a must-change session: status = %d body = %s, want 403 password_change_required", blocked.Code, blocked.Body.String())
+	}
+
+}
+
+// A legacy row that already holds a bcrypt hash migrates unchanged: same
+// username, same hash, no forced change, and the existing password still works.
+func TestLegacyBcryptAdminMigratesUnchanged(t *testing.T) {
+	hash, err := hashPassword("Ops-Secret-1")
+	if err != nil {
+		t.Fatalf("hashPassword: %v", err)
+	}
+	s, st := newLegacyServer(t, "ops", hash)
+
+	u, err := st.GetUserByUsername("ops")
+	if err != nil {
+		t.Fatalf("legacy username not preserved: %v", err)
+	}
+	if u.PasswordHash != hash {
+		t.Error("a valid bcrypt hash must be migrated as is")
+	}
+	if u.MustChangePassword {
+		t.Error("a valid bcrypt migration must keep MustChangePassword = false")
+	}
+	if rec := loginAs(t, s, "ops", "Ops-Secret-1"); rec.Code != http.StatusOK {
+		t.Errorf("login with the carried-over password: status = %d, want 200", rec.Code)
+	}
+	if rec := loginAs(t, s, "ops", defaultAdminPassword); rec.Code != http.StatusUnauthorized {
+		t.Errorf("default password must not work on a migrated bcrypt account: status = %d, want 401", rec.Code)
 	}
 }
 
@@ -148,7 +237,7 @@ func TestDefaultAdminCredentialWarning(t *testing.T) {
 
 	buf := captureLog(t)
 	NewServer(r, nil, config.Config{}, st)
-	for _, want := range []string{"admin / admin", "password change is required", "plaintext HTTP", "TLS"} {
+	for _, want := range []string{`"admin" / "admin"`, "password change is required", "plaintext HTTP", "TLS"} {
 		if !strings.Contains(buf.String(), want) {
 			t.Errorf("first boot warning missing %q: %s", want, buf.String())
 		}
@@ -156,7 +245,7 @@ func TestDefaultAdminCredentialWarning(t *testing.T) {
 
 	buf.Reset()
 	NewServer(r, nil, config.Config{}, st) // restart, password unchanged
-	if !strings.Contains(buf.String(), "default admin login admin / admin is still active") {
+	if !strings.Contains(buf.String(), `default admin login "admin" / "admin" is still active`) {
 		t.Errorf("restart with default credential gave no warning: %s", buf.String())
 	}
 
@@ -172,7 +261,74 @@ func TestDefaultAdminCredentialWarning(t *testing.T) {
 	}
 	buf.Reset()
 	NewServer(r, nil, config.Config{}, st)
-	if strings.Contains(buf.String(), "admin / admin") {
+	if strings.Contains(buf.String(), `"admin" / "admin"`) {
 		t.Errorf("warning still logged after the password was changed: %s", buf.String())
+	}
+}
+
+// Whitespace around the legacy username is trimmed; an empty or blank one falls
+// back to "admin"; an empty legacy hash is unusable and is recovered too.
+func TestLegacyAdminUsernameAndEmptyHashEdgeCases(t *testing.T) {
+	for _, tt := range []struct {
+		name, legacyUser, wantUser string
+	}{
+		{"padded username trimmed", "  ops  ", "ops"},
+		{"blank username falls back to admin", "   ", "admin"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, st := newLegacyServer(t, tt.legacyUser, "") // empty hash: not bcrypt
+			u, err := st.GetUserByUsername(tt.wantUser)
+			if err != nil {
+				t.Fatalf("user %q not created: %v", tt.wantUser, err)
+			}
+			if !u.MustChangePassword || !verifyPassword(u.PasswordHash, defaultAdminPassword) {
+				t.Errorf("empty legacy hash must be recovered onto the default password with a forced change")
+			}
+		})
+	}
+}
+
+// failingCreateStore makes CreateUser fail so the legacy branch's error path is
+// exercised.
+type failingCreateStore struct{ store.Store }
+
+func (failingCreateStore) CreateUser(store.User) (int64, error) {
+	return 0, errors.New("simulated create failure")
+}
+
+// A failed legacy migration must not fall through to creating a second
+// admin/admin account on the default password.
+func TestLegacyMigrationCreateFailureDoesNotCreateDefaultAdmin(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "legacy-fail.db"))
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(func() { st.Close() })
+	if err := st.SetAdminCreds(store.AdminCreds{Username: "legacyadmin", PasswordHash: strings.Repeat("0", 64), Salt: "00"}); err != nil {
+		t.Fatalf("SetAdminCreds: %v", err)
+	}
+	buf := captureLog(t)
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{}, nil)
+	NewServer(r, nil, config.Config{}, failingCreateStore{st})
+
+	if n, _ := st.CountAdminUsers(); n != 0 {
+		t.Errorf("%d admin users exist after a failed migration; none should be created", n)
+	}
+	if !strings.Contains(buf.String(), "could not migrate legacy admin") {
+		t.Errorf("failure was not logged: %s", buf.String())
+	}
+}
+
+// After a recovery, a restart still warns, naming the preserved (non-"admin")
+// username, until the password is changed.
+func TestRecoveredAdminKeepsWarningOnRestart(t *testing.T) {
+	buf := captureLog(t)
+	s, st := newLegacyServer(t, "legacyadmin", strings.Repeat("0", 64))
+	_ = s
+	buf.Reset()
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{}, nil)
+	NewServer(r, nil, config.Config{}, st) // restart
+	if !strings.Contains(buf.String(), `"legacyadmin" / "admin" is still active`) {
+		t.Errorf("restart did not warn about the recovered default-password account: %s", buf.String())
 	}
 }
