@@ -1400,6 +1400,24 @@ export const mockModelCatalogResponse: ModelCatalogResponse = {
   nodes: mockModelCatalogBase.nodes.map(n => ({ ...n, models: mockNodeModels(mockModelCatalogBase, n) })),
 };
 
+// What a vLLM, TGI or MLX node browses instead of GGUF repos: the full-precision
+// safetensors repos from MOCK_HF_REPOS (uncurated sizes left out), each one a
+// single variant sized like the server does it (weights x1.2 plus the context).
+export const mockHFSafetensorsModels = Object.values(MOCK_HF_REPOS)
+  .filter(r => r.size_mb > 0)
+  .map((r, i) => ({
+    id: r.repo,
+    downloads: 410000 - i * 62000,
+    likes: 2100 - i * 310,
+    tags: ['text-generation', 'safetensors', 'conversational'],
+    lastModified: '2026-06-20T08:00:00Z',
+    pipeline_tag: 'text-generation',
+  }));
+
+export function mockSafetensorsRepo(repoId: string): { size_mb: number; quantization: string } | undefined {
+  return Object.values(MOCK_HF_REPOS).find(r => r.repo === repoId && r.size_mb > 0);
+}
+
 export const mockFavorites = [
   'bartowski/DeepSeek-R1-Distill-Qwen-8B-GGUF',
   'Qwen/Qwen2.5-Coder-7B-Instruct-GGUF',
