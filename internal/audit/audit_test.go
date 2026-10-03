@@ -2,12 +2,16 @@ package audit
 
 import (
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/Anirudhx7/marbor/internal/store"
 )
@@ -150,5 +154,91 @@ func TestLogAfterCloseIsDiscardedAndCounted(t *testing.T) {
 	}
 	if len(lines) != 1 || !strings.Contains(lines[0], "logged after Close") {
 		t.Fatalf("warnings = %v, want one post-Close warning", lines)
+	}
+}
+
+// A caller must never be held up by a full queue: Log has to return promptly
+// even while the store is stalled and every queue slot is taken.
+func TestLogQueueFullReturnsPromptly(t *testing.T) {
+	bs := &blockingStore{entered: make(chan struct{}), release: make(chan struct{})}
+	l := New(bs, true)
+	l.logf = func(string, ...any) {}
+	defer func() { close(bs.release); l.Close() }()
+
+	l.Log(Entry{RequestID: "first"})
+	<-bs.entered
+	for i := 0; i < writeQueueSize; i++ {
+		l.Log(Entry{RequestID: "fill"})
+	}
+
+	returned := make(chan struct{})
+	go func() {
+		l.Log(Entry{RequestID: "overflow"})
+		close(returned)
+	}()
+	select {
+	case <-returned:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Log blocked on a full queue")
+	}
+	if got := l.Dropped(); got != 1 {
+		t.Fatalf("Dropped() = %d, want 1", got)
+	}
+}
+
+// scrapeDropped reads marbor_audit_dropped_total from the real exposition
+// output, parsing the text body line by line.
+func scrapeDropped(t *testing.T) float64 {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	promhttp.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("metrics status = %d", rec.Code)
+	}
+	const prefix = "marbor_audit_dropped_total "
+	for _, line := range strings.Split(rec.Body.String(), "\n") {
+		if strings.HasPrefix(line, prefix) {
+			v, err := strconv.ParseFloat(strings.TrimSpace(strings.TrimPrefix(line, prefix)), 64)
+			if err != nil {
+				t.Fatalf("parse %q: %v", line, err)
+			}
+			return v
+		}
+	}
+	t.Fatal("marbor_audit_dropped_total line not found in exposition output")
+	return 0
+}
+
+// The drop counter must show up on the metrics endpoint itself, not only in
+// the registry. The registry is process-global, so compare a delta.
+func TestAuditDroppedExposedOnMetricsEndpoint(t *testing.T) {
+	before := scrapeDropped(t)
+
+	l := New(store.NopStore{}, true)
+	l.logf = func(string, ...any) {}
+	l.Close()
+	l.Log(Entry{RequestID: "late"}) // a post-Close Log is counted as a drop
+
+	if after := scrapeDropped(t); after != before+1 {
+		t.Fatalf("exposed marbor_audit_dropped_total = %v, want %v", after, before+1)
+	}
+}
+
+// Drops caused by logging after Close feed the metric too, not just the
+// logger's own counter.
+func TestLogAfterCloseCountsMetric(t *testing.T) {
+	l := New(store.NopStore{}, true)
+	l.logf = func(string, ...any) {}
+	l.Close()
+
+	before := droppedMetric(t)
+	for i := 0; i < 4; i++ {
+		l.Log(Entry{RequestID: "late"})
+	}
+	if got := droppedMetric(t) - before; got != 4 {
+		t.Fatalf("metric delta = %v after 4 post-Close Logs, want 4", got)
+	}
+	if got := l.Dropped(); got != 4 {
+		t.Fatalf("Dropped() = %d, want 4", got)
 	}
 }

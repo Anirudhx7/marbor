@@ -44,6 +44,13 @@ type Logger struct {
 	closeOnce sync.Once
 	wg        sync.WaitGroup
 
+	// mu is the lifecycle lock. Log holds it for reading across its closed
+	// check and its non-blocking send; Close takes it for writing only to flip
+	// closed. It is a leaf lock: nothing holds it across a store call, a
+	// channel receive, close(done) or wg.Wait, and the writer goroutine never
+	// takes it.
+	mu sync.RWMutex
+
 	// lastAppendErrLog rate-limits the "audit append failed" log line (see
 	// logAppendErr) - only run() touches it, so no lock is needed.
 	lastAppendErrLog time.Time
@@ -135,11 +142,12 @@ func (l *Logger) run() {
 				l.logAppendErr(err)
 			}
 		case <-l.done:
-			// Drain whatever is already buffered, then stop. writes is never
-			// closed (Log keeps sending on it via a non-blocking select even
-			// after Close), so this only races benignly: any entry enqueued
-			// after the drain below just sits unread, it never panics on a
-			// closed channel.
+			// Drain whatever is already buffered, then stop. Close flips
+			// closed under the write lock before it closes done, and Log
+			// checks closed and sends under the read lock, so every entry
+			// that was accepted is already in writes by now and no further
+			// send can succeed. Draining until empty is therefore final.
+			// writes is never closed, so a late Log never panics.
 			for {
 				select {
 				case e := <-l.writes:
@@ -172,13 +180,6 @@ func (l *Logger) Log(e Entry) {
 	if l == nil || !l.enabled.Load() {
 		return
 	}
-	if l.closed.Load() {
-		// Logging after Close is a lifecycle bug in the caller: nothing will
-		// ever drain the queue. Count it like any other drop so it is visible
-		// instead of silently piling up unread.
-		l.recordDrop("entry logged after Close")
-		return
-	}
 	entry := store.AuditEntry{
 		Time:          e.Time,
 		RequestID:     e.RequestID,
@@ -191,9 +192,23 @@ func (l *Logger) Log(e Entry) {
 		CloudModel:    e.CloudModel,
 		RoutingReason: e.RoutingReason,
 	}
+	// The closed check and the send share one read lock, so Close cannot
+	// finish its transition between them. Only the check and a non-blocking
+	// send run under the lock; drops are counted after it is released.
+	l.mu.RLock()
+	if l.closed.Load() {
+		l.mu.RUnlock()
+		// Logging after Close is a lifecycle bug in the caller: nothing will
+		// ever drain the queue. Count it like any other drop so it is visible
+		// instead of silently piling up unread.
+		l.recordDrop("entry logged after Close")
+		return
+	}
 	select {
 	case l.writes <- entry:
+		l.mu.RUnlock()
 	default:
+		l.mu.RUnlock()
 		l.recordDrop("write queue full")
 	}
 }
@@ -267,7 +282,12 @@ func (l *Logger) Close() error {
 		return nil
 	}
 	l.closeOnce.Do(func() {
+		// Waits for every in-flight Log (check plus send), then blocks later
+		// ones. Released before the drain so a slow store write never stalls
+		// request goroutines: they see closed and drop immediately.
+		l.mu.Lock()
 		l.closed.Store(true)
+		l.mu.Unlock()
 		close(l.done)
 		l.wg.Wait()
 	})
