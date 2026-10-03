@@ -191,8 +191,12 @@ func (r *Router) pollAgentHost(host string, cfg MarborAgentConfig, members []*No
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxAgentStatusBodyBytes+1))
-	if err == nil && len(body) > maxAgentStatusBodyBytes {
-		if r.allowEvidenceLog("oversize:" + host) {
+	if err != nil {
+		if r.allowHostLog("read:" + host) {
+			log.Printf("router: reading agent status from host %q failed: %v; treating the agent as unreachable", host, err)
+		}
+	} else if len(body) > maxAgentStatusBodyBytes {
+		if r.allowHostLog("oversize:" + host) {
 			log.Printf("router: agent status response exceeds %d bytes on host %q; treating the agent as unreachable", maxAgentStatusBodyBytes, host)
 		}
 		err = errors.New("agent status response too large")

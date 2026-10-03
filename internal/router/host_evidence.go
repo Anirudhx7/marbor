@@ -10,6 +10,7 @@ package router
 
 import (
 	"log"
+	"strings"
 	"time"
 
 	"github.com/Anirudhx7/marbor/internal/marboragent"
@@ -23,10 +24,13 @@ const (
 	maxHostEvidenceAddrs       = 64
 	maxHostEvidenceDeployments = 64
 
-	// evidenceLogInterval is the minimum gap between repeats of the same
-	// per-host evidence warning.
-	evidenceLogInterval = 10 * time.Minute
+	// hostLogInterval is the minimum gap between repeats of the same
+	// per-host agent warning.
+	hostLogInterval = 10 * time.Minute
 )
+
+// hostLogKeyPrefixes lists every rate-limit key prefix; a key is prefix+host.
+var hostLogKeyPrefixes = []string{"truncate:", "oversize:", "read:"}
 
 // HostEvidence is one agent's latest host-level report. Host is the same key
 // pollAgentHosts groups nodes by (the raw NodeState.Host string).
@@ -46,7 +50,7 @@ type HostEvidence struct {
 // code reaches it through the poll alone.
 func (r *Router) RecordHostEvidence(ev HostEvidence) {
 	if len(ev.Addrs) > maxHostEvidenceAddrs || len(ev.Deployments) > maxHostEvidenceDeployments {
-		if r.allowEvidenceLog("truncate:" + ev.Host) {
+		if r.allowHostLog("truncate:" + ev.Host) {
 			log.Printf("router: agent on host %q reported %d addresses and %d deployments; retaining the first %d and %d, so replica detection may miss groups on this host",
 				ev.Host, len(ev.Addrs), len(ev.Deployments), maxHostEvidenceAddrs, maxHostEvidenceDeployments)
 		}
@@ -69,19 +73,21 @@ func (r *Router) RecordHostEvidence(ev HostEvidence) {
 	r.hostEvidenceMu.Unlock()
 }
 
-// allowEvidenceLog reports whether the warning for key may be logged now, and
-// if so records the time. A key logs at most once per evidenceLogInterval.
-func (r *Router) allowEvidenceLog(key string) bool {
+// allowHostLog reports whether the warning for key may be logged now, and
+// if so records the time. A key logs at most once per hostLogInterval. The
+// rate-limit map shares hostEvidenceMu on purpose: the critical section is a
+// single map lookup and write, so a separate mutex would add nothing.
+func (r *Router) allowHostLog(key string) bool {
 	now := time.Now()
 	r.hostEvidenceMu.Lock()
 	defer r.hostEvidenceMu.Unlock()
-	if r.evidenceLogAt == nil {
-		r.evidenceLogAt = make(map[string]time.Time)
+	if r.hostLogAt == nil {
+		r.hostLogAt = make(map[string]time.Time)
 	}
-	if last, ok := r.evidenceLogAt[key]; ok && now.Sub(last) < evidenceLogInterval {
+	if last, ok := r.hostLogAt[key]; ok && now.Sub(last) < hostLogInterval {
 		return false
 	}
-	r.evidenceLogAt[key] = now
+	r.hostLogAt[key] = now
 	return true
 }
 
@@ -90,6 +96,9 @@ func (r *Router) allowEvidenceLog(key string) bool {
 func (r *Router) DropHostEvidence(host string) {
 	r.hostEvidenceMu.Lock()
 	delete(r.hostEvidence, host)
+	for _, prefix := range hostLogKeyPrefixes {
+		delete(r.hostLogAt, prefix+host)
+	}
 	r.hostEvidenceMu.Unlock()
 }
 
@@ -101,6 +110,15 @@ func (r *Router) dropHostEvidenceNotIn(keep map[string][]*NodeState) {
 	for host := range r.hostEvidence {
 		if _, ok := keep[host]; !ok {
 			delete(r.hostEvidence, host)
+		}
+	}
+	for key := range r.hostLogAt {
+		for _, prefix := range hostLogKeyPrefixes {
+			if host, ok := strings.CutPrefix(key, prefix); ok {
+				if _, kept := keep[host]; !kept {
+					delete(r.hostLogAt, key)
+				}
+			}
 		}
 	}
 	r.hostEvidenceMu.Unlock()
