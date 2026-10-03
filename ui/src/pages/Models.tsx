@@ -7,7 +7,7 @@ import { SearchInput } from '../components/SearchInput';
 import { EmptyState } from '../components/EmptyState';
 import { mockModelCatalog, mockGPUNodes } from '../lib/mockData';
 import { fetchModels, fetchNodes, deleteNodeModel } from '../lib/api';
-import { startPull, onPullSuccess } from '../lib/pullProgress';
+import { startPull, onPullSuccess, isDownloadOnlyRuntime, pullOptionsFor } from '../lib/pullProgress';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import type { ModelCatalog, ModelEntry, GPUNode } from '../types';
 import { Modal } from '../components/Modal';
@@ -621,6 +621,11 @@ export function Models() {
   const [pullModelName, setPullModelName] = useState('');
   const [pullVerifyLoad, setPullVerifyLoad] = useState(true);
   const [runtimeByNode, setRuntimeByNode] = useState<Record<string, string>>({});
+  // vLLM and TGI serve one launched model: a pull only downloads, so the load check is
+  // hidden and off for them and the finished pull says to relaunch the runtime.
+  // Never undefined at pull time: the node list and selected node are set together before the modal opens.
+  const pullRuntime = pullNodesList.find((n) => n.name === pullSelectedNode)?.runtime;
+  const pullDownloadOnly = isDownloadOnlyRuntime(pullRuntime);
   // Resolved replica topology per node name, joined from the same node-list
   // fetch above. Lets the waste/shard math below tell one sharded instance
   // (a resolved head + its workers) apart from genuinely duplicated warm
@@ -695,7 +700,8 @@ export function Models() {
   const handleGeneralPull = () => {
     const trimmedModel = pullModelName.trim();
     if (!trimmedModel || !pullSelectedNode) return;
-    startPull(pullSelectedNode, trimmedModel, demoMode, pullVerifyLoad);
+    const opts = pullOptionsFor(pullRuntime, pullVerifyLoad);
+    startPull(pullSelectedNode, trimmedModel, demoMode, opts.verifyLoad, opts.completionNote);
     setPullModelName('');
     setIsPullModalOpen(false);
   };
@@ -1177,19 +1183,25 @@ export function Models() {
             />
           </div>
 
-          <label className="flex items-start gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={pullVerifyLoad}
-              onChange={(e) => setPullVerifyLoad(e.target.checked)}
-              className="mt-0.5 accent-primary cursor-pointer"
-            />
-            <span className="text-xs text-muted-foreground leading-normal">
-              Verify it loads before reporting success. Recommended for community/Hugging Face
-              models - some architectures download fine but fail to load; this catches that at
-              pull time instead of the first time something tries to use the model.
-            </span>
-          </label>
+          {pullDownloadOnly ? (
+            <p className="text-xs text-muted-foreground leading-normal">
+              Load check is not available for this runtime; relaunch the runtime to serve the download.
+            </p>
+          ) : (
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={pullVerifyLoad}
+                onChange={(e) => setPullVerifyLoad(e.target.checked)}
+                className="mt-0.5 accent-primary cursor-pointer"
+              />
+              <span className="text-xs text-muted-foreground leading-normal">
+                Verify it loads before reporting success. Recommended for community/Hugging Face
+                models - some architectures download fine but fail to load; this catches that at
+                pull time instead of the first time something tries to use the model.
+              </span>
+            </label>
+          )}
 
           <div className="flex items-center justify-end gap-3 pt-2">
             <button

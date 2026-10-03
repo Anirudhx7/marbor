@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -292,5 +293,106 @@ func TestRun_Models_UnknownAction_Errors(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "unknown models action") {
 		t.Fatalf("expected an unknown-action error on stderr, got: %s", stderr.String())
+	}
+}
+
+const relaunchNote = "this only downloads; relaunch the runtime to serve it"
+
+type pullResult struct {
+	stdout, stderr string
+	nodeLookups    int
+}
+
+// pullOnNode runs `models pull gpu-0` against a stub server whose node list
+// reports the given runtime for gpu-0 (and ollama for gpu-1). nodesStatus is the
+// HTTP status of the node list (an empty runtime leaves gpu-0 out of the list);
+// extraArgs are appended to the command.
+func pullOnNode(t *testing.T, runtime string, nodesStatus int, extraArgs ...string) pullResult {
+	t.Helper()
+	var lookups atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/admin/nodes/gpu-0/pull":
+			w.WriteHeader(http.StatusAccepted)
+			w.Write([]byte(`{"ok":true,"node":"gpu-0","model":"Qwen/Qwen2.5-7B-Instruct"}`))
+		case "/admin/v1/nodes":
+			lookups.Add(1)
+			if nodesStatus != http.StatusOK {
+				w.WriteHeader(nodesStatus)
+				w.Write([]byte(`{"error":"boom"}`))
+				return
+			}
+			if runtime == "" { // gpu-0 absent from the node list
+				w.Write([]byte(`[{"name":"gpu-1","runtime":"ollama"}]`))
+				return
+			}
+			w.Write([]byte(`[{"name":"gpu-1","runtime":"ollama"},{"name":"gpu-0","runtime":"` + runtime + `"}]`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
+
+	var stdout, stderr bytes.Buffer
+	args := append([]string{"models", "pull", "gpu-0", "Qwen/Qwen2.5-7B-Instruct", "--server", srv.URL}, extraArgs...)
+	if code := Run(args, &stdout, &stderr); code != ExitOK {
+		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
+	}
+	return pullResult{stdout.String(), stderr.String(), int(lookups.Load())}
+}
+
+const plainPullLine = "gpu-0: pull started for Qwen/Qwen2.5-7B-Instruct\n"
+
+func TestRun_ModelsPull_VLLMAndTGIAnnounceRelaunchOnStderr(t *testing.T) {
+	for _, rt := range []string{"vllm", "tgi"} {
+		got := pullOnNode(t, rt, http.StatusOK)
+		if got.stdout != plainPullLine {
+			t.Errorf("%s: stdout = %q, want only the plain started line (scripts parse it)", rt, got.stdout)
+		}
+		if !strings.Contains(got.stderr, relaunchNote) {
+			t.Errorf("%s: stderr = %q, want the relaunch note", rt, got.stderr)
+		}
+	}
+}
+
+func TestRun_ModelsPull_OtherRuntimesPrintNoRelaunchNote(t *testing.T) {
+	for _, rt := range []string{"ollama", "mlx", "llamacpp"} {
+		got := pullOnNode(t, rt, http.StatusOK)
+		if got.nodeLookups != 1 {
+			t.Errorf("%s: %d node lookups, want 1 (the runtime must actually be checked)", rt, got.nodeLookups)
+		}
+		if got.stdout != plainPullLine || got.stderr != "" {
+			t.Errorf("%s: stdout %q stderr %q, want the plain started line and nothing on stderr", rt, got.stdout, got.stderr)
+		}
+	}
+}
+
+func TestRun_ModelsPull_NodeLookupFailureWarnsOnStderr(t *testing.T) {
+	got := pullOnNode(t, "vllm", http.StatusInternalServerError)
+	if got.stdout != plainPullLine {
+		t.Errorf("stdout = %q, want the plain started line", got.stdout)
+	}
+	if !strings.Contains(got.stderr, "warning: could not look up the node runtime") {
+		t.Errorf("stderr = %q, want a lookup warning, not silence", got.stderr)
+	}
+}
+
+func TestRun_ModelsPull_NodeMissingFromListWarnsOnStderr(t *testing.T) {
+	got := pullOnNode(t, "", http.StatusOK)
+	if got.stdout != plainPullLine {
+		t.Errorf("stdout = %q, want the plain started line", got.stdout)
+	}
+	if !strings.Contains(got.stderr, "warning: node gpu-0 not found") {
+		t.Errorf("stderr = %q, want a not-found warning, not silence", got.stderr)
+	}
+}
+
+func TestRun_ModelsPull_JSONModeSkipsNodeLookup(t *testing.T) {
+	got := pullOnNode(t, "vllm", http.StatusOK, "--json")
+	if got.nodeLookups != 0 || got.stderr != "" {
+		t.Errorf("--json: %d node lookups, stderr %q, want none", got.nodeLookups, got.stderr)
 	}
 }

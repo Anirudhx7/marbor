@@ -798,26 +798,42 @@ func (s *Server) handleModelCatalog(w http.ResponseWriter, r *http.Request) {
 
 		// Every compiled catalogModels tag is an Ollama-library-format string
 		// (see classifyPullTagFormat) - computed once per node, not per
-		// variant, since it depends only on nodeRuntime.
+		// variant, since it depends only on nodeRuntime. A vLLM/TGI node swaps in
+		// a Hugging Face row for the models in catalogHFRepos (see below).
 		catalogIncompatible := pullFormatIncompatible("ollama-library", nodeRuntime)
 
 		models := make([]catalogModelFit, 0, len(catalogModels))
 		for _, cm := range catalogModels {
-			variants := make([]catalogVariantFit, 0, len(cm.Variants))
-			for _, v := range cm.Variants {
-				estBytes := v.VRAMEstMB * 1024 * 1024
-				fit := classifyFit(estBytes, vramTotalBytes, vramSource)
+			// A vLLM/TGI node shows one Hugging Face row for a mapped model
+			// (see catalogHFRepos) instead of the Ollama variants.
+			src, incompatible := cm.Variants, catalogIncompatible
+			hfVariant, hfFit, hfMapped := catalogHFVariant(cm.Name, nodeRuntime, vramTotalBytes, vramSource)
+			if hfMapped {
+				src, incompatible = []ModelVariant{hfVariant}, false
+			}
+			variants := make([]catalogVariantFit, 0, len(src))
+			for _, v := range src {
+				fit := hfFit
+				if !hfMapped {
+					fit = classifyFit(v.VRAMEstMB*1024*1024, vramTotalBytes, vramSource)
+				}
+				var diskFit string
+				if hfMapped && v.SizeMB <= 0 {
+					diskFit = hfUnknownSizeDiskFit(diskFreeGB, diskTotalGB, agentPresent)
+				} else {
+					diskFit = classifyDiskFit(v.SizeMB, diskFreeGB, diskTotalGB, agentPresent)
+				}
 				// "incompatible" overrides any capacity-based verdict: a
 				// capacity word (green/yellow/red) must never also carry a
 				// compatibility fact, and there is no VRAM amount that makes
 				// a format this runtime can't load fit anyway.
-				if catalogIncompatible {
+				if incompatible {
 					fit = "incompatible"
 				}
 				variants = append(variants, catalogVariantFit{
 					ModelVariant: v,
 					Fit:          fit,
-					DiskFit:      classifyDiskFit(v.SizeMB, diskFreeGB, diskTotalGB, agentPresent),
+					DiskFit:      diskFit,
 				})
 			}
 			cands := make([]quantCandidate, 0, len(variants))

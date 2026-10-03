@@ -60,12 +60,13 @@ if command -v powershell.exe &>/dev/null; then
     Set-Location ui
     npm ci; if (\$LASTEXITCODE -ne 0) { exit \$LASTEXITCODE }
     node node_modules\typescript\lib\tsc.js -b; if (\$LASTEXITCODE -ne 0) { exit \$LASTEXITCODE }
-    node node_modules\vite\bin\vite.js build; exit \$LASTEXITCODE
+    node node_modules\vite\bin\vite.js build; if (\$LASTEXITCODE -ne 0) { exit \$LASTEXITCODE }
+    npm test; exit \$LASTEXITCODE
   " || fail "UI build failed"
 else
   # Linux/macOS (CI): standard approach works fine.
   rm -rf ui/node_modules 2>/dev/null || true
-  (cd ui && npm ci && node node_modules/typescript/lib/tsc.js -b && node node_modules/vite/bin/vite.js build) || fail "UI build failed"
+  (cd ui && npm ci && node node_modules/typescript/lib/tsc.js -b && node node_modules/vite/bin/vite.js build && npm test) || fail "UI build or tests failed"
 fi
 
 echo "=== [2/7] Go: vet ==="

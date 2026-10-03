@@ -82,8 +82,9 @@ var internalIDExceptions = map[string]string{
 // positive is file-specific - a global entry blinds the guard everywhere.
 var internalIDFileExceptions = map[string]map[string]string{
 	"R1": {
-		"internal/admin/catalog.go": "DeepSeek-R1 is a real published model family; the curated catalog's names/tags/descriptions literally contain \"R1\" (e.g. 'deepseek-r1:7b', 'DeepSeek-R1 7B', 'Mid-size R1 distill') - not a guard citation",
-		"ui/src/lib/mockData.ts":    "DeepSeek-R1 model ids in demo fixtures literally contain \"R1\" (e.g. 'DeepSeek R1 7B', 'bartowski/DeepSeek-R1-Distill-Qwen-8B-GGUF') - not a guard citation",
+		"internal/admin/catalog.go":    "DeepSeek-R1 is a real published model family; the curated catalog's names/tags/descriptions literally contain \"R1\" (e.g. 'deepseek-r1:7b', 'DeepSeek-R1 7B', 'Mid-size R1 distill') - not a guard citation",
+		"internal/admin/catalog_hf.go": "Hugging Face repo ids of the DeepSeek-R1 distills (e.g. 'deepseek-ai/DeepSeek-R1-Distill-Qwen-7B') literally contain \"R1\" - not a guard citation",
+		"ui/src/lib/mockData.ts":       "DeepSeek-R1 model ids in demo fixtures literally contain \"R1\" (e.g. 'DeepSeek R1 7B', 'bartowski/DeepSeek-R1-Distill-Qwen-8B-GGUF') - not a guard citation",
 	},
 	// Brand-M logo SVG path data (lineto coordinates L30/L50/L70) is copied
 	// into every file below - the markup itself, not a LESSONS ref. Scoped

@@ -187,13 +187,13 @@ func TestHandleModelCatalog_RecommendationAppleUnified(t *testing.T) {
 func TestHandleModelCatalog_RecommendationIncompatibleRuntime(t *testing.T) {
 	ollama := mockOllamaServer(t)
 	defer ollama.Close()
-	s := singleNodeServer(t, ollama.URL, "vllm", func(n *router.NodeState) {
+	s := singleNodeServer(t, ollama.URL, "llamacpp", func(n *router.NodeState) {
 		n.VRAMTotalMB = 80 * 1024
 		n.VRAMSource = "declared"
 	})
 	n := catalogFor(t, s).Nodes[0]
 	if got := recFor(t, n, "llama3.1:8b"); got.Picked || got.Reason != reasonIncompatibleRuntime {
-		t.Errorf("recommendation on a vllm node = %+v, want incompatible_runtime", got)
+		t.Errorf("recommendation on a llamacpp node = %+v, want incompatible_runtime", got)
 	}
 }
 

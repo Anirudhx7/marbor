@@ -235,6 +235,9 @@ requires credentials: run "marbor login" once (recommended), or pass --username+
 
 start pulling a model onto a node (async - does not wait for completion)
 
+Starts the pull and returns; it does not wait for completion. On a vLLM or TGI node (use a Hugging Face owner/name) the pull
+only downloads the weights: relaunch the runtime on the node to serve the new model.
+
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
 #### `delete <node> <model>`
@@ -860,8 +863,9 @@ show which models fit each node and which quantization to pull
 
 With no argument, lists every built-in catalog model for each node: whether it fits the node's total VRAM and free disk, and
 the quantization to pull (flagged "tight" when it uses most of the VRAM). With an owner/name Hugging Face repo, shows the
-same for that repo; this queries the server once per node. Sizes are estimates; "-" means unknown. Read-only: nothing is
-pulled or changed.
+same for that repo; this queries the server once per node. Sizes are estimates; "-" means unknown. On vLLM and TGI nodes
+a curated model shows its Hugging Face equivalent (full precision, approximate size) when it has one; pulling it only
+downloads, so relaunch the runtime to serve it. Read-only: nothing is pulled or changed.
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 

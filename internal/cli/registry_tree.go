@@ -301,8 +301,10 @@ func buildRoot() *Command {
 				Run:       func(ctx *RunCtx) int { return runModels(ctx.Flags, ctx.Stdout, ctx.Stderr) },
 				Sub: []*Command{
 					{
-						Name:      "pull",
-						Short:     "start pulling a model onto a node (async - does not wait for completion)",
+						Name:  "pull",
+						Short: "start pulling a model onto a node (async - does not wait for completion)",
+						Long: "Starts the pull and returns; it does not wait for completion. On a vLLM or TGI node (use a Hugging Face owner/name) the pull\n" +
+							"only downloads the weights: relaunch the runtime on the node to serve the new model.",
 						NeedsAuth: true,
 						Args:      []ArgSpec{{Name: "node"}, {Name: "model"}},
 						Run: func(ctx *RunCtx) int {
@@ -1024,8 +1026,9 @@ func buildRoot() *Command {
 				Short: "show which models fit each node and which quantization to pull",
 				Long: "With no argument, lists every built-in catalog model for each node: whether it fits the node's total VRAM and free disk, and\n" +
 					"the quantization to pull (flagged \"tight\" when it uses most of the VRAM). With an owner/name Hugging Face repo, shows the\n" +
-					"same for that repo; this queries the server once per node. Sizes are estimates; \"-\" means unknown. Read-only: nothing is\n" +
-					"pulled or changed.",
+					"same for that repo; this queries the server once per node. Sizes are estimates; \"-\" means unknown. On vLLM and TGI nodes\n" +
+					"a curated model shows its Hugging Face equivalent (full precision, approximate size) when it has one; pulling it only\n" +
+					"downloads, so relaunch the runtime to serve it. Read-only: nothing is pulled or changed.",
 				Footer:    authFlags + "\n\nSee also: marbor nodes fit (downloaded models), marbor catalog (raw catalog).",
 				NeedsAuth: true,
 				Args:      []ArgSpec{{Name: "owner/name", Optional: true}},
