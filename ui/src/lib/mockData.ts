@@ -1352,6 +1352,8 @@ export function pickQuant(cands: PickCandidate[]): QuantRecommendation {
 // the demo list always agrees with the pick rule above.
 const MOCK_DOWNLOADED: Record<string, string[]> = { 'gpu-node-01': ['llama3.3:8b', 'deepseek-r1:7b'] };
 
+// Keep in sync with the server table (internal/admin/catalog_hf.go): same repos,
+// sizes, dtype and fit rule.
 // Hugging Face equivalents a vLLM or TGI node offers instead of the Ollama
 // variants: one full-precision repo per mapped model, size in MiB typed from
 // the repo (0 = not curated yet, shown as "-"). Mirrors the server's static
@@ -1380,7 +1382,8 @@ function mockNodeModels(base: ModelCatalogResponse, node: ModelCatalogResponse['
       const fit = hf ? (v.size_mb === 0 ? 'unknown' : v.vram_est_mb <= total * 0.85 ? 'green' : v.vram_est_mb <= total ? 'yellow' : 'red')
         : node.runtime && node.runtime !== 'ollama' ? 'incompatible'
         : v.vram_est_mb <= total * 0.85 ? 'green' : v.vram_est_mb <= total ? 'yellow' : 'red';
-      const disk_fit = !node.disk_known ? 'unknown' : v.size_mb / 1024 > node.disk_free_gb ? 'insufficient' : 'ok';
+      // A Hugging Face row with no curated size has no number to compare: unknown, never ok.
+      const disk_fit = !node.disk_known || (hf && v.size_mb === 0) ? 'unknown' : v.size_mb / 1024 > node.disk_free_gb ? 'insufficient' : 'ok';
       return { ...v, fit, disk_fit } as typeof v & { fit: any; disk_fit: any };
     });
     return {

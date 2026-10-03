@@ -160,14 +160,22 @@ func runModelsPull(flags *globalFlags, node, model string, stdout, stderr io.Wri
 
 	fmt.Fprintf(stdout, "%s: pull started for %s\n", node, model)
 	// vLLM and TGI serve one launched model: a pull only downloads the
-	// weights, so say what the operator still has to do. Best effort - a
-	// failed node lookup just leaves the plain line.
-	if nodes, err := client.Nodes(); err == nil {
-		for _, n := range nodes {
-			if n.Name == node && (n.Runtime == "vllm" || n.Runtime == "tgi") {
-				fmt.Fprintf(stdout, "%s: this only downloads; relaunch the runtime to serve it\n", node)
-			}
+	// weights, so say what the operator still has to do. The note goes to
+	// stderr so scripts reading stdout see the same line as before, and a
+	// failed lookup warns there instead of staying silent.
+	nodes, err := client.Nodes()
+	if err != nil {
+		fmt.Fprintf(stderr, "warning: could not look up the node runtime: %v\n", err)
+		return ExitOK
+	}
+	for _, n := range nodes {
+		if n.Name != node {
+			continue
 		}
+		if n.Runtime == "vllm" || n.Runtime == "tgi" {
+			fmt.Fprintf(stderr, "%s: this only downloads; relaunch the runtime to serve it\n", node)
+		}
+		break
 	}
 	return ExitOK
 }

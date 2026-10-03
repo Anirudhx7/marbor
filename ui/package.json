@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "demo:crawl": "node scripts/demo-crawl.mjs"
+    "demo:crawl": "node scripts/demo-crawl.mjs",
+    "test": "node --test scripts/download-only.test.mjs"
   },
   "overrides": {
     "typescript-eslint": {

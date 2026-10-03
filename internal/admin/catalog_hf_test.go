@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Anirudhx7/marbor/internal/marboragent"
 	"github.com/Anirudhx7/marbor/internal/router"
 )
 
@@ -28,6 +29,18 @@ func billionsInName(repo string) (float64, bool) {
 	}
 	v, err := strconv.ParseFloat(m[1], 64)
 	return v, err == nil
+}
+
+// expectedBillions is the parameter count, in billions, of each mapped model.
+// BF16/FP16 stores 2 bytes per parameter, so the weights are about 1.86 GiB per
+// billion parameters; the size check allows 1.7x to 2.4x GiB per billion
+// (rounding in the name, embeddings, tied or extra tensors).
+var expectedBillions = map[string]float64{
+	"qwen2.5:7b": 7, "qwen2.5:14b": 14, "qwen2.5:72b": 72,
+	"qwen2.5-coder:7b": 7, "qwen2.5-coder:32b": 32,
+	"deepseek-r1:7b": 7, "deepseek-r1:14b": 14, "deepseek-r1:32b": 32, "deepseek-r1:70b": 70,
+	"phi4:14b": 14, "phi3.5:3.8b": 3.8,
+	"codellama:7b": 7, "codellama:13b": 13,
 }
 
 func TestCatalogHFRepos_WellFormed(t *testing.T) {
@@ -56,19 +69,25 @@ func TestCatalogHFRepos_WellFormed(t *testing.T) {
 		if e.SizeMB < 0 {
 			t.Errorf("%q: negative size %d", name, e.SizeMB)
 		}
-		low := strings.ToLower(e.Repo)
-		if strings.HasPrefix(low, "meta-llama/") || strings.HasPrefix(low, "google/") || strings.HasPrefix(low, "mistralai/") {
-			t.Errorf("%q: repo %q is from an org whose models are gated", name, e.Repo)
+		// The parameter count is typed per model here, independent of the repo
+		// name, so repos with no size in the name (phi-4, Phi-3.5-mini) are
+		// checked too.
+		b, ok := expectedBillions[name]
+		if !ok {
+			t.Errorf("%q: add its parameter count (billions) to expectedBillions", name)
 		}
-		// BF16/FP16 stores 2 bytes per parameter, so the weights are about
-		// 1.86 GiB per billion parameters. Allow 1.7x to 2.4x GiB per billion
-		// (rounding in the name, embeddings, tied or extra tensors). Only
-		// checked where the parameter count is in the repo name.
-		if b, ok := billionsInName(e.Repo); ok && e.SizeMB > 0 {
+		if nb, named := billionsInName(e.Repo); named && ok && math.Abs(nb-b)/b > 0.1 {
+			t.Errorf("%q: repo name says %.1fB, expectedBillions says %.1fB", name, nb, b)
+		}
+		if e.SizeMB > 0 && ok {
 			lo, hi := b*1.7*1024, b*2.4*1024
 			if float64(e.SizeMB) < lo || float64(e.SizeMB) > hi {
 				t.Errorf("%q: size %d MiB is implausible for %.1fB parameters at 2 bytes each (want %.0f-%.0f MiB)", name, e.SizeMB, b, lo, hi)
 			}
+		}
+		low := strings.ToLower(e.Repo)
+		if strings.HasPrefix(low, "meta-llama/") || strings.HasPrefix(low, "google/") || strings.HasPrefix(low, "mistralai/") {
+			t.Errorf("%q: repo %q is from an org whose models are gated", name, e.Repo)
 		}
 	}
 	for name, reason := range catalogHFUnmapped {
@@ -90,7 +109,8 @@ func TestCatalogHFRepos_WellFormed(t *testing.T) {
 
 // TestCatalogHFRepos_Live checks every mapped repo against the real Hugging
 // Face API. Skipped unless MARBOR_HF_LIVE=1; never part of CI. Run it with -v
-// and copy the printed sizes into catalogHFRepos when SizeMB is 0.
+// and copy the printed sizes into catalogHFRepos when SizeMB is 0 (a 0 in a
+// mapped entry fails here so it cannot ship unnoticed).
 func TestCatalogHFRepos_Live(t *testing.T) {
 	if os.Getenv("MARBOR_HF_LIVE") != "1" {
 		t.Skip("set MARBOR_HF_LIVE=1 to check the table against huggingface.co")
@@ -139,6 +159,9 @@ func TestCatalogHFRepos_Live(t *testing.T) {
 				t.Fatalf("%s has no .safetensors files", e.Repo)
 			}
 			liveMiB := total / (1024 * 1024)
+			if liveMiB == 0 {
+				t.Fatalf("%s: safetensors total is under 1 MiB (%d bytes), not a real weights repo", e.Repo, total)
+			}
 			var dtype string
 			var most int64
 			for k, v := range info.Safetensors.Parameters {
@@ -147,38 +170,78 @@ func TestCatalogHFRepos_Live(t *testing.T) {
 				}
 			}
 			fmt.Printf("LIVE name=%s repo=%s gated=%s size_mib=%d dtype=%s\n", name, e.Repo, info.Gated, liveMiB, dtype)
-			if dtype != "" && dtype != e.Quant {
+			if dtype == "" {
+				t.Errorf("%s: Hugging Face reports no safetensors dtype, cannot confirm table dtype %s", e.Repo, e.Quant)
+			} else if dtype != e.Quant {
 				t.Errorf("%s stores %s weights, table says %s", e.Repo, dtype, e.Quant)
 			}
-			if e.SizeMB > 0 && math.Abs(float64(liveMiB-e.SizeMB))/float64(liveMiB) > 0.03 {
+			if e.SizeMB <= 0 {
+				t.Errorf("%s: table size is %d, set it to the live %d MiB", e.Repo, e.SizeMB, liveMiB)
+			} else if math.Abs(float64(liveMiB-e.SizeMB))/float64(liveMiB) > 0.03 {
 				t.Errorf("%s: table size %d MiB differs from live %d MiB by more than 3%%", e.Repo, e.SizeMB, liveMiB)
 			}
 		})
 	}
 }
 
-// hfNodeEntry serves the catalog for a one-node fleet running the given
-// runtime with the given declared VRAM, with Hugging Face access stubbed to
-// fail the test: the catalog list must never leave the process.
-func hfNodeEntry(t *testing.T, runtime string, vramMB int64) catalogNodeEntry {
+// hfNodeEntryWith serves the catalog for a one-node fleet running the given
+// runtime, with Hugging Face access stubbed to fail the test: the catalog list
+// must never leave the process. The package default transport and client are
+// swapped too, so a request that bypasses hfHTTPClient is caught as well;
+// loopback requests (the in-process mock runtime) still go through.
+func hfNodeEntryWith(t *testing.T, runtime string, mutate func(n *router.NodeState)) catalogNodeEntry {
 	t.Helper()
-	orig := hfHTTPClient.Transport
+	origTransport, origDefaultTransport, origDefaultClient := hfHTTPClient.Transport, http.DefaultTransport, http.DefaultClient
 	hfHTTPClient.Transport = failingRoundTripper{t: t}
-	defer func() { hfHTTPClient.Transport = orig }()
+	http.DefaultTransport = failingRoundTripper{t: t, next: origDefaultTransport}
+	http.DefaultClient = &http.Client{Transport: http.DefaultTransport}
+	defer func() {
+		hfHTTPClient.Transport, http.DefaultTransport, http.DefaultClient = origTransport, origDefaultTransport, origDefaultClient
+	}()
 	ollama := mockOllamaServer(t)
 	defer ollama.Close()
 	s := singleNodeServer(t, ollama.URL, runtime, func(n *router.NodeState) {
-		n.VRAMTotalMB = vramMB
-		n.VRAMSource = "declared"
+		if mutate != nil {
+			mutate(n)
+		}
 	})
 	return catalogFor(t, s).Nodes[0]
 }
 
-type failingRoundTripper struct{ t *testing.T }
+// hfNodeEntry is hfNodeEntryWith for a node with the given declared VRAM.
+func hfNodeEntry(t *testing.T, runtime string, vramMB int64) catalogNodeEntry {
+	t.Helper()
+	return hfNodeEntryWith(t, runtime, func(n *router.NodeState) {
+		n.VRAMTotalMB = vramMB
+		n.VRAMSource = "declared"
+	})
+}
+
+// failingRoundTripper fails the test on any outbound request, except loopback
+// ones when next is set (those are delegated to next).
+type failingRoundTripper struct {
+	t    *testing.T
+	next http.RoundTripper
+}
 
 func (f failingRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
+	if f.next != nil {
+		if h := r.URL.Hostname(); h == "127.0.0.1" || h == "localhost" || h == "::1" {
+			return f.next.RoundTrip(r)
+		}
+	}
 	f.t.Errorf("catalog handler made an outbound request to %s", r.URL)
 	return nil, fmt.Errorf("outbound request blocked")
+}
+
+// withHFSize sets the table size of one mapped model for the test.
+func withHFSize(t *testing.T, name string, sizeMB int64) {
+	t.Helper()
+	orig := catalogHFRepos[name]
+	e := orig
+	e.SizeMB = sizeMB
+	catalogHFRepos[name] = e
+	t.Cleanup(func() { catalogHFRepos[name] = orig })
 }
 
 func modelFor(t *testing.T, n catalogNodeEntry, name string) catalogModelFit {
@@ -194,6 +257,9 @@ func modelFor(t *testing.T, n catalogNodeEntry, name string) catalogModelFit {
 
 func TestHandleModelCatalog_VLLMRowsFromTable(t *testing.T) {
 	n := hfNodeEntry(t, "vllm", 24*1024)
+	if len(n.Models) != len(catalogModels) {
+		t.Fatalf("node lists %d models, want all %d catalog models", len(n.Models), len(catalogModels))
+	}
 
 	m := modelFor(t, n, "qwen2.5:7b")
 	e := catalogHFRepos["qwen2.5:7b"]
@@ -269,6 +335,9 @@ func TestHandleModelCatalog_TGIRows(t *testing.T) {
 func TestHandleModelCatalog_LlamaCppAndMLXStayIncompatible(t *testing.T) {
 	for _, rt := range []string{"llamacpp", "mlx"} {
 		n := hfNodeEntry(t, rt, 80*1024)
+		if len(n.Models) == 0 {
+			t.Fatalf("%s: node lists no models, the loop below would assert nothing", rt)
+		}
 		for _, m := range n.Models {
 			if m.Recommendation.Picked || m.Recommendation.Reason != reasonIncompatibleRuntime {
 				t.Errorf("%s: %q recommendation = %+v, want incompatible_runtime", rt, m.Name, m.Recommendation)
@@ -283,6 +352,30 @@ func TestHandleModelCatalog_OllamaRowsUnchanged(t *testing.T) {
 	if len(m.Variants) < 2 || m.Variants[0].Tag != "qwen2.5:7b" || m.Variants[0].Quantization != "Q4_K_M" {
 		t.Errorf("ollama variants = %+v, want the compiled Ollama tags", m.Variants)
 	}
+	// Every model keeps its compiled variants with the Ollama estimate and the
+	// 85% / 100% capacity bands of a 24 GB node, untouched by the Hugging Face rows.
+	const capMB = 24 * 1024
+	if len(n.Models) != len(catalogModels) {
+		t.Fatalf("node lists %d models, want %d", len(n.Models), len(catalogModels))
+	}
+	for i, got := range n.Models {
+		want := catalogModels[i]
+		if got.Name != want.Name || len(got.Variants) != len(want.Variants) || len(got.Variants) == 0 {
+			t.Fatalf("model %d = %s with %d variants, want %s with %d", i, got.Name, len(got.Variants), want.Name, len(want.Variants))
+		}
+		for j, v := range got.Variants {
+			cv := want.Variants[j]
+			wantFit := "red"
+			if float64(cv.VRAMEstMB) <= float64(capMB)*0.85 {
+				wantFit = "green"
+			} else if cv.VRAMEstMB <= capMB {
+				wantFit = "yellow"
+			}
+			if v.Tag != cv.Tag || v.VRAMEstMB != cv.VRAMEstMB || v.SizeMB != cv.SizeMB || v.Fit != wantFit {
+				t.Errorf("%s variant %d = %+v, want tag %s vram %d size %d fit %s", got.Name, j, v, cv.Tag, cv.VRAMEstMB, cv.SizeMB, wantFit)
+			}
+		}
+	}
 }
 
 func TestHandleModelCatalog_HFEstimateMatchesFeasibility(t *testing.T) {
@@ -292,5 +385,130 @@ func TestHandleModelCatalog_HFEstimateMatchesFeasibility(t *testing.T) {
 	est, fit, _ := computeContextFeasibility(e.SizeMB, hfListContextTokens, safetensorsOverheadMult, safetensorsPerTokenMBFallback, n.VRAMTotalBytes, n.VRAMSource, nil, "")
 	if v.VRAMEstMB != est/(1024*1024) || v.Fit != fit {
 		t.Errorf("list row = vram %d fit %q, want %d %q from computeContextFeasibility", v.VRAMEstMB, v.Fit, est/(1024*1024), fit)
+	}
+}
+
+// TestHandleModelCatalog_HFEstimateGolden pins absolute numbers, derived by hand
+// rather than through the production helpers: qwen2.5:7b is 14525 MiB of weights;
+// the estimate is weights x 1.2 (17430) plus 8192 context tokens x 0.2 MiB
+// (1638.4) = 19068.4, truncated to 19068 MiB. On an 80 GiB (81920 MiB) node that
+// is about 23%, green.
+func TestHandleModelCatalog_HFEstimateGolden(t *testing.T) {
+	n := hfNodeEntry(t, "vllm", 80*1024)
+	v := modelFor(t, n, "qwen2.5:7b").Variants[0]
+	if v.SizeMB != 14525 || v.VRAMEstMB != 19068 || v.Fit != "green" {
+		t.Errorf("qwen2.5:7b on 80 GiB = size %d vram %d fit %q, want 14525 / 19068 / green", v.SizeMB, v.VRAMEstMB, v.Fit)
+	}
+}
+
+func TestCatalogHFVariant_NonPositiveSizeIsUnknown(t *testing.T) {
+	for _, size := range []int64{0, -1} {
+		t.Run(fmt.Sprintf("size %d", size), func(t *testing.T) {
+			withHFSize(t, "qwen2.5:7b", size)
+			v, fit, ok := catalogHFVariant("qwen2.5:7b", "vllm", 80*1024*1024*1024, "declared")
+			if !ok || fit != "unknown" || v.VRAMEstMB != 0 || v.Recommended {
+				t.Errorf("variant %+v fit %q ok %v, want unknown fit, no estimate, not recommended", v, fit, ok)
+			}
+		})
+	}
+	if v, _, ok := catalogHFVariant("qwen2.5:7b", "tgi", 80*1024*1024*1024, "declared"); !ok || !v.Recommended || v.VRAMEstMB == 0 {
+		t.Errorf("sized variant = %+v ok %v, want recommended with an estimate", v, ok)
+	}
+}
+
+func TestHandleModelCatalog_HFSizeUnknownCases(t *testing.T) {
+	declared80 := func(n *router.NodeState) {
+		n.VRAMTotalMB = 80 * 1024
+		n.VRAMSource = "declared"
+	}
+	withDisk := func(freeGB, totalGB float64) func(n *router.NodeState) {
+		return func(n *router.NodeState) {
+			declared80(n)
+			n.AgentPresent = true
+			n.DiskFreeGB = freeGB
+			n.DiskTotalGB = totalGB
+		}
+	}
+	tests := []struct {
+		name     string
+		runtime  string
+		mutate   func(n *router.NodeState)
+		wantDisk string
+	}{
+		{"vllm no disk telemetry", "vllm", declared80, "unknown"},
+		{"tgi no disk telemetry", "tgi", declared80, "unknown"},
+		{"vllm unknown size on a nearly full disk is not ok", "vllm", withDisk(2, 100), "insufficient"},
+		{"tgi unknown size on a nearly full disk is not ok", "tgi", withDisk(2, 100), "insufficient"},
+		{"vllm unknown size with ample disk", "vllm", withDisk(500, 1000), "ok"},
+		{"unknown VRAM and unknown size", "vllm", func(n *router.NodeState) {}, "unknown"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			withHFSize(t, "qwen2.5:7b", 0)
+			m := modelFor(t, hfNodeEntryWith(t, tc.runtime, tc.mutate), "qwen2.5:7b")
+			v := m.Variants[0]
+			if v.Fit != "unknown" || v.DiskFit != tc.wantDisk || v.VRAMEstMB != 0 {
+				t.Errorf("variant = fit %q disk %q vram %d, want fit unknown disk %q vram 0", v.Fit, v.DiskFit, v.VRAMEstMB, tc.wantDisk)
+			}
+			if m.Recommendation.Picked || m.Recommendation.Reason != reasonVRAMUnknown {
+				t.Errorf("recommendation = %+v, want vram_unknown and no pick", m.Recommendation)
+			}
+		})
+	}
+}
+
+func TestHandleModelCatalog_HFRowDiskInsufficient(t *testing.T) {
+	n := hfNodeEntryWith(t, "vllm", func(n *router.NodeState) {
+		n.VRAMTotalMB = 80 * 1024
+		n.VRAMSource = "declared"
+		n.AgentPresent = true
+		n.DiskFreeGB = 10 // the 7B repo is about 15 GB
+		n.DiskTotalGB = 100
+	})
+	m := modelFor(t, n, "qwen2.5:7b")
+	if v := m.Variants[0]; v.DiskFit != "insufficient" || v.Fit != "green" {
+		t.Errorf("variant = fit %q disk %q, want green / insufficient", v.Fit, v.DiskFit)
+	}
+	if got := m.Recommendation; got.Picked || got.Reason != reasonDiskInsufficient {
+		t.Errorf("recommendation = %+v, want disk_insufficient", got)
+	}
+}
+
+func TestHandleModelCatalog_HFMultiGPUUsesLargestGPU(t *testing.T) {
+	n := hfNodeEntryWith(t, "vllm", func(n *router.NodeState) {
+		n.AgentPresent = true
+		n.VRAMSource = "agent"
+		n.VRAMTotalMB = 4 * 24576
+		n.AgentGPUs = []marboragent.GPUInfo{
+			{Index: 0, VRAMTotalMB: 24576}, {Index: 1, VRAMTotalMB: 24576},
+			{Index: 2, VRAMTotalMB: 24576}, {Index: 3, VRAMTotalMB: 24576},
+		}
+	})
+	if n.VRAMFitBasis != "largest" {
+		t.Fatalf("vram_fit_basis = %q, want largest", n.VRAMFitBasis)
+	}
+	// 14B BF16 needs about 35 GB: it fits the 96 GB total but not one 24 GB card.
+	if got := modelFor(t, n, "qwen2.5:14b").Recommendation; got.Picked || got.Reason != reasonTooLarge {
+		t.Errorf("14B on 4x24 GB = %+v, want too_large (sized against one GPU)", got)
+	}
+	if got := modelFor(t, n, "qwen2.5:7b").Recommendation; !got.Picked {
+		t.Errorf("7B on 4x24 GB = %+v, want picked", got)
+	}
+}
+
+func TestHandleModelCatalog_UnrecognisedRuntimeGetsNoHFRows(t *testing.T) {
+	for _, rt := range []string{"", "triton", "VLLM"} {
+		n := hfNodeEntry(t, rt, 80*1024)
+		if len(n.Models) == 0 {
+			t.Fatalf("runtime %q: node lists no models", rt)
+		}
+		for _, m := range n.Models {
+			repo := catalogHFRepos[m.Name].Repo
+			for _, v := range m.Variants {
+				if repo != "" && v.Tag == repo {
+					t.Errorf("runtime %q: %s shows the Hugging Face row, only vllm and tgi may", rt, m.Name)
+				}
+			}
+		}
 	}
 }

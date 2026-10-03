@@ -152,9 +152,52 @@ func TestRun_Fit_HuggingFaceRowsOnVLLMNode(t *testing.T) {
 	if code != ExitOK {
 		t.Fatalf("exit %d, stderr %s", code, errOut)
 	}
-	for _, want := range []string{"Qwen/Qwen2.5-7B-Instruct (BF16)", "~17500 MB", "VRAM or model size unknown"} {
-		if !strings.Contains(out, want) {
-			t.Errorf("output missing %q:\n%s", want, out)
+	var qwenRow, phiRow string
+	for _, line := range strings.Split(out, "\n") {
+		f := strings.Fields(line)
+		if len(f) < 2 || f[0] != "gpu-v" {
+			continue
+		}
+		switch f[1] {
+		case "qwen2.5:7b":
+			qwenRow = line
+		case "phi4:14b":
+			phiRow = line
+		}
+	}
+	for _, want := range []string{"Qwen/Qwen2.5-7B-Instruct (BF16)", "~17500 MB"} {
+		if !strings.Contains(qwenRow, want) {
+			t.Errorf("qwen row %q missing %q", qwenRow, want)
+		}
+	}
+	if strings.Contains(qwenRow, "unknown") || strings.Contains(qwenRow, "tight") {
+		t.Errorf("picked green row carries a caveat: %q", qwenRow)
+	}
+	if !strings.Contains(phiRow, "VRAM or model size unknown") || strings.Contains(phiRow, "~") {
+		t.Errorf("unsized row = %q, want the unknown note and no estimate", phiRow)
+	}
+}
+
+func TestRun_Fit_HelpExplainsHuggingFaceRows(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"fit", "--help"}, &stdout, &stderr); code != ExitOK {
+		t.Fatalf("exit %d, stderr %s", code, stderr.String())
+	}
+	for _, want := range []string{"vLLM and TGI nodes", "Hugging Face equivalent", "relaunch the runtime"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("fit --help missing %q:\n%s", want, stdout.String())
+		}
+	}
+}
+
+func TestRun_ModelsPull_HelpExplainsDownloadOnly(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"models", "pull", "--help"}, &stdout, &stderr); code != ExitOK {
+		t.Fatalf("exit %d, stderr %s", code, stderr.String())
+	}
+	for _, want := range []string{"vLLM or TGI node", "only downloads the weights", "relaunch the runtime"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("models pull --help missing %q:\n%s", want, stdout.String())
 		}
 	}
 }

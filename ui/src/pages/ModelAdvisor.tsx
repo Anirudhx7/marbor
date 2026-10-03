@@ -20,7 +20,8 @@ import {
   HFRepoDetails,
   ModelVariantFit,
 } from '../lib/api';
-import { startPull, isPullActive, isDownloadOnlyRuntime, DOWNLOAD_ONLY_NOTE, subscribe as subscribePullProgress, getSnapshot as getPullProgressSnapshot } from '../lib/pullProgress';
+import { startPull, isPullActive, subscribe as subscribePullProgress, getSnapshot as getPullProgressSnapshot } from '../lib/pullProgress';
+import { isDownloadOnlyRuntime, pullOptionsFor, sizeNotCurated as isSizeNotCurated } from '../lib/downloadOnly';
 import { useDemoMode } from '../hooks/useDemoMode';
 import { mockHFModels, mockHFRepoDetails, mockSystemInfo, mockModelCatalogResponse, mockFavorites, pickQuant } from '../lib/mockData';
 import type { CatalogModelFit } from '../types';
@@ -165,6 +166,8 @@ function NodeVramCard({ node }: { node: any }) {
   );
 }
 
+const HF_ROW_CAVEAT = 'Size typed from the Hugging Face repo (approximate); VRAM is an estimate for a typical context. Quantization support depends on the GPU.';
+
 const FIT_REASON_TEXT: Record<string, string> = {
   too_large: 'Too large for this node',
   vram_unknown: 'VRAM or model size unknown',
@@ -207,7 +210,7 @@ function NodeFitList({
   const canPullHere = !actualRuntime || actualRuntime === 'ollama' || agentPullCapable;
   // vLLM and TGI rows are a Hugging Face repo, not an Ollama tag: the size is typed
   // (approximate), and a pull only downloads (the runtime serves one launched model).
-  const hfRuntime = isDownloadOnlyRuntime(node.runtime ?? actualRuntime ?? undefined);
+  const hfRuntime = isDownloadOnlyRuntime(actualRuntime);
   const rowGrid = 'sm:grid sm:grid-cols-[minmax(0,1.5fr)_minmax(0,1.6fr)_6.5rem_6rem] sm:items-center sm:gap-3';
 
   const renderRow = (m: CatalogModelFit) => {
@@ -215,7 +218,7 @@ function NodeFitList({
     const isDiskShort = !r.picked && r.reason === 'disk_insufficient';
     const badge = r.picked ? r.fit : r.reason === 'too_large' ? 'red' : r.reason === 'incompatible_runtime' ? 'incompatible' : 'unknown';
     const isPulling = r.picked && pullJobs.some(j => j.node === node.name && j.model === r.tag && isPullActive(j.status));
-    const sizeNotCurated = hfRuntime && !r.picked && r.reason === 'vram_unknown' && m.variants?.[0]?.size_mb === 0;
+    const sizeNotCurated = isSizeNotCurated(hfRuntime, !!r.picked, r.reason, m.variants);
     return (
       <div key={m.name} className={`flex flex-col gap-1.5 text-xs rounded px-2.5 py-2 bg-secondary/50 border border-border/50 ${rowGrid}`}>
         <div className="min-w-0">
@@ -235,11 +238,11 @@ function NodeFitList({
           {r.picked ? (
             <span
               className="text-[11px] text-muted-foreground block"
-              title={hfRuntime
-                ? 'Size typed from the Hugging Face repo (approximate); VRAM is an estimate for a typical context. Quantization support depends on the GPU.'
-                : 'Estimated from the built-in catalog'}
+              title={hfRuntime ? HF_ROW_CAVEAT : 'Estimated from the built-in catalog'}
+              aria-describedby={hfRuntime ? 'hf-row-caveat' : undefined}
             >
-              {hfRuntime && <span className="block text-[10px] uppercase tracking-wider font-bold">Hugging Face equivalent</span>}
+              {hfRuntime && <span className="block text-[11px] uppercase tracking-wider font-bold">Hugging Face equivalent</span>}
+              {hfRuntime && m === fitRows[0] && <span id="hf-row-caveat" className="sr-only">{HF_ROW_CAVEAT}</span>}
               <span className="font-mono font-semibold text-foreground">{r.quantization}</span> &middot; est. {estGB(r.vram_est_mb)} VRAM
               <span className="font-mono text-[10px] block truncate" title={r.tag}>{r.tag}</span>
             </span>
@@ -368,7 +371,8 @@ function NodeFitList({
                 onClick={() => {
                   const tag = confirmPull.recommendation.tag;
                   setConfirmPull(null);
-                  startPull(node.name, tag, demoMode, false, hfRuntime ? DOWNLOAD_ONLY_NOTE : '');
+                  const opts = pullOptionsFor(actualRuntime, false);
+                  startPull(node.name, tag, demoMode, opts.verifyLoad, opts.completionNote);
                 }}
                 className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded bg-primary hover:bg-primary/90 text-primary-foreground cursor-pointer"
               >
@@ -416,9 +420,8 @@ function ModelDetailPanel({
   const [verifyLoad, setVerifyLoad] = useState(true);
   // vLLM and TGI serve one launched model: a pull only downloads, so the load check
   // is hidden and off for them, and the finished pull says to relaunch the runtime.
-  const downloadOnly = isDownloadOnlyRuntime(actualRuntime ?? undefined);
-  const pullVerify = downloadOnly ? false : verifyLoad;
-  const pullNote = downloadOnly ? DOWNLOAD_ONLY_NOTE : '';
+  const downloadOnly = isDownloadOnlyRuntime(actualRuntime);
+  const pullOpts = pullOptionsFor(actualRuntime, verifyLoad);
   const [vramConfirmVariant, setVramConfirmVariant] = useState<ModelVariantFit | null>(null);
   const pullJobs = useSyncExternalStore(subscribePullProgress, getPullProgressSnapshot);
   // Mirrors the node-identity guard pattern used in GPUNodes.tsx - a slower
@@ -550,7 +553,7 @@ function ModelDetailPanel({
       setVramConfirmVariant(variant);
       return;
     }
-    startPull(nodeName, variant.tag, demoMode, pullVerify, pullNote);
+    startPull(nodeName, variant.tag, demoMode, pullOpts.verifyLoad, pullOpts.completionNote);
   };
 
   // The pull-progress widget owns the download UI; this only needs to know
@@ -801,7 +804,7 @@ function ModelDetailPanel({
               <button
                 onClick={() => {
                   if (nodeName && vramConfirmVariant) {
-                    startPull(nodeName, vramConfirmVariant.tag, demoMode, pullVerify, pullNote);
+                    startPull(nodeName, vramConfirmVariant.tag, demoMode, pullOpts.verifyLoad, pullOpts.completionNote);
                   }
                   setVramConfirmVariant(null);
                 }}

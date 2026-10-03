@@ -7,7 +7,7 @@ import { SearchInput } from '../components/SearchInput';
 import { EmptyState } from '../components/EmptyState';
 import { mockModelCatalog, mockGPUNodes } from '../lib/mockData';
 import { fetchModels, fetchNodes, deleteNodeModel } from '../lib/api';
-import { startPull, onPullSuccess, isDownloadOnlyRuntime, DOWNLOAD_ONLY_NOTE } from '../lib/pullProgress';
+import { startPull, onPullSuccess, isDownloadOnlyRuntime, pullOptionsFor } from '../lib/pullProgress';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import type { ModelCatalog, ModelEntry, GPUNode } from '../types';
 import { Modal } from '../components/Modal';
@@ -698,7 +698,8 @@ export function Models() {
   const handleGeneralPull = () => {
     const trimmedModel = pullModelName.trim();
     if (!trimmedModel || !pullSelectedNode) return;
-    startPull(pullSelectedNode, trimmedModel, demoMode, pullDownloadOnly ? false : pullVerifyLoad, pullDownloadOnly ? DOWNLOAD_ONLY_NOTE : '');
+    const opts = pullOptionsFor(pullNodesList.find((n) => n.name === pullSelectedNode)?.runtime, pullVerifyLoad);
+    startPull(pullSelectedNode, trimmedModel, demoMode, opts.verifyLoad, opts.completionNote);
     setPullModelName('');
     setIsPullModalOpen(false);
   };

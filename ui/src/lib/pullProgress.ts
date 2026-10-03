@@ -188,14 +188,7 @@ function runDemoPull(key: string, node: string, model: string, verifyLoad: boole
   setTimeout(step, 400);
 }
 
-// vLLM and TGI serve one launched model, so a pull there only downloads the
-// weights. Callers pass DOWNLOAD_ONLY_NOTE as the completion note for them and
-// force the load check off (it would probe a model that is not being served).
-export const DOWNLOAD_ONLY_NOTE = 'Downloaded. Relaunch the runtime to serve it.';
-
-export function isDownloadOnlyRuntime(runtime: string | undefined): boolean {
-  return runtime === 'vllm' || runtime === 'tgi';
-}
+export { DOWNLOAD_ONLY_NOTE, isDownloadOnlyRuntime, pullOptionsFor } from './downloadOnly';
 
 // startPull begins tracking a new pull. `simulate` should be the caller's
 // runtime demo-mode flag (useDemoMode()) - passed in explicitly rather than

@@ -7,6 +7,7 @@ import { formatDurationShort } from '../lib/time';
 import { useDemoMode } from '../hooks/useDemoMode';
 import { mockGPUNodes } from '../lib/mockData';
 import { Modal } from './Modal';
+import { completionText } from '../lib/downloadOnly';
 
 function formatBytes(n: number): string {
   if (n <= 0) return '0 B';
@@ -248,7 +249,7 @@ function PullJobCard({ job }: { job: PullProgressState }) {
 
           {job.status === 'success' && (
             <>
-              <p className="text-xs text-success font-medium">{job.completionNote || 'Pull complete.'}</p>
+              <p className="text-xs text-success font-medium">{completionText(job.completionNote)}</p>
               {hasBytes && (
                 <p className="text-xs text-muted-foreground mt-1">
                   {formatBytes(job.bytesTotal)} downloaded

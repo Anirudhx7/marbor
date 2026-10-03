@@ -28,7 +28,10 @@ const hfListContextTokens = 8192
 // Licence rule, the single criterion for this table: a repo is mapped only if
 // Hugging Face reports it as not gated (TestCatalogHFRepos_Live proves it,
 // plus the presence of safetensors weights). Licence text is not a criterion.
-// A repo that is gated is unmapped with reason "gated", whatever its family.
+// A repo that is gated is unmapped with reason "gated", whatever its family. A
+// model whose repo was not checked is unmapped with reason "unverified" until a
+// curated edit maps it (the Mistral and Mixtral instruct repos report not gated
+// but are left out until someone confirms the choice of repo).
 var catalogHFRepos = map[string]catalogHFRepo{
 	"qwen2.5:7b":        {Repo: "Qwen/Qwen2.5-7B-Instruct", SizeMB: 14525, Quant: "BF16"},
 	"qwen2.5:14b":       {Repo: "Qwen/Qwen2.5-14B-Instruct", SizeMB: 28171, Quant: "BF16"},
@@ -54,8 +57,8 @@ var catalogHFUnmapped = map[string]string{
 	"llama3.1:8b":       "gated",
 	"llama3.1:70b":      "gated",
 	"llama3.3:70b":      "gated",
-	"mistral:7b":        "gated",
-	"mixtral:8x7b":      "gated",
+	"mistral:7b":        "unverified",
+	"mixtral:8x7b":      "unverified",
 	"gemma2:9b":         "gated",
 	"gemma2:27b":        "gated",
 	"nomic-embed-text":  "embedding model",
@@ -67,9 +70,10 @@ var catalogHFUnmapped = map[string]string{
 // shows for a mapped catalog model, plus its fit verdict. ok is false for any
 // other runtime or an unmapped model, which keep the Ollama variants.
 //
-// A SizeMB of 0 is unknown: the fit is set to "unknown" directly because
-// classifyFit would read a zero estimate as comfortably green.
-func catalogHFVariant(name, runtime string, vramTotalBytes int64, vramSource string) (v ModelVariant, fit string, ok bool) {
+// A SizeMB of 0 or less is unknown: the fit is set to "unknown" directly
+// because classifyFit would read a zero estimate as comfortably green, and the
+// row is not marked Recommended.
+func catalogHFVariant(name, runtime string, vramTotalBytes int64, vramSource string) (ModelVariant, string, bool) {
 	if runtime != "vllm" && runtime != "tgi" {
 		return ModelVariant{}, "", false
 	}
@@ -77,8 +81,8 @@ func catalogHFVariant(name, runtime string, vramTotalBytes int64, vramSource str
 	if !mapped {
 		return ModelVariant{}, "", false
 	}
-	v = ModelVariant{Tag: e.Repo, Quantization: e.Quant, SizeMB: e.SizeMB, Recommended: true}
-	if e.SizeMB == 0 {
+	v := ModelVariant{Tag: e.Repo, Quantization: e.Quant, SizeMB: e.SizeMB, Recommended: e.SizeMB > 0}
+	if e.SizeMB <= 0 {
 		return v, "unknown", true
 	}
 	estBytes, fit, _ := computeContextFeasibility(e.SizeMB, hfListContextTokens, safetensorsOverheadMult, safetensorsPerTokenMBFallback, vramTotalBytes, vramSource, nil, "")

@@ -813,10 +813,18 @@ func (s *Server) handleModelCatalog(w http.ResponseWriter, r *http.Request) {
 			}
 			variants := make([]catalogVariantFit, 0, len(src))
 			for _, v := range src {
-				estBytes := v.VRAMEstMB * 1024 * 1024
-				fit := classifyFit(estBytes, vramTotalBytes, vramSource)
+				var fit, diskFit string
 				if hfMapped {
 					fit = hfFit
+					if v.SizeMB <= 0 {
+						// No curated size: nothing to compare with free space.
+						diskFit = classifyUnknownSizeDiskFit(diskFreeGB, diskTotalGB, agentPresent)
+					}
+				} else {
+					fit = classifyFit(v.VRAMEstMB*1024*1024, vramTotalBytes, vramSource)
+				}
+				if diskFit == "" {
+					diskFit = classifyDiskFit(v.SizeMB, diskFreeGB, diskTotalGB, agentPresent)
 				}
 				// "incompatible" overrides any capacity-based verdict: a
 				// capacity word (green/yellow/red) must never also carry a
@@ -828,7 +836,7 @@ func (s *Server) handleModelCatalog(w http.ResponseWriter, r *http.Request) {
 				variants = append(variants, catalogVariantFit{
 					ModelVariant: v,
 					Fit:          fit,
-					DiskFit:      classifyDiskFit(v.SizeMB, diskFreeGB, diskTotalGB, agentPresent),
+					DiskFit:      diskFit,
 				})
 			}
 			cands := make([]quantCandidate, 0, len(variants))
