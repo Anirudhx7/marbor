@@ -134,3 +134,21 @@ func TestLogDisabledDoesNotCountDrops(t *testing.T) {
 	}
 	l.Close()
 }
+
+func TestLogAfterCloseIsDiscardedAndCounted(t *testing.T) {
+	l := New(store.NopStore{}, true)
+	var lines []string
+	l.logf = func(format string, args ...any) { lines = append(lines, fmt.Sprintf(format, args...)) }
+	l.Close()
+
+	l.Log(Entry{RequestID: "late"})
+	if got := l.Dropped(); got != 1 {
+		t.Fatalf("Dropped() = %d after post-Close Log, want 1", got)
+	}
+	if n := len(l.writes); n != 0 {
+		t.Fatalf("queue holds %d entries after post-Close Log, want 0", n)
+	}
+	if len(lines) != 1 || !strings.Contains(lines[0], "logged after Close") {
+		t.Fatalf("warnings = %v, want one post-Close warning", lines)
+	}
+}

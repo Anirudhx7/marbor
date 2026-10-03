@@ -35,7 +35,7 @@ API keys are generated and managed through the **API Keys** page of the admin da
 
 The admin dashboard and `/admin/v1/` API are gated by username/password login, not a static token.
 
-- Passwords are bcrypt-hashed; a fresh install creates a well-known `admin` / `admin` account and forces a password change (or an explicit skip) on first login. **Change it immediately in any deployment reachable beyond your own workstation.**
+- Passwords are bcrypt-hashed (cost 10, the Go `bcrypt.DefaultCost`) on every path that sets or resets one: fresh install, user creation, password change and admin reset. Credentials carried over from the legacy single-admin table by very old versions may hold an iterated SHA-256 hash instead; login verifies bcrypt only, so such a credential cannot authenticate and the account needs a password reset. A fresh install creates a well-known `admin` / `admin` account and forces a password change (or an explicit skip) on first login. **Change it immediately in any deployment reachable beyond your own workstation.**
 - A successful login issues a session token stored server-side (SQLite) and delivered to the browser as an `HttpOnly`, `SameSite=Lax` cookie - never in `localStorage`, never readable by JavaScript.
 - Login is rate-limited to 5 attempts per minute per client IP; admin-triggered password resets are limited to 3 per hour per IP. Both return a generic error on lockout (never revealing whether a username exists).
 - The admin server listens on `:8080` (all interfaces) by default for Docker port-mapping compatibility. On a bare-metal or VM deployment reachable from an untrusted network, set the `admin_bind_address` setting to `"127.0.0.1:8080"` via the Settings dashboard, and access it via SSH tunnel or reverse proxy instead.
@@ -65,6 +65,15 @@ The metrics port (9090) should not be exposed to untrusted networks. Scrape it f
 | Model name, node, status, latency | ✓ audit log |
 | Cloud provider used | ✓ audit log (`cloud: true`) |
 | Request ID (`X-Request-ID`) | ✓ audit log |
+
+Operators should treat the following as potentially sensitive when forwarding logs to external systems (Loki, Datadog, Splunk and similar), because each can carry tenant, project or workload identity:
+
+- **API key names** - often a team, customer or project name. Present in the audit log, request log and access log.
+- **Model names** (including aliases) - can reveal a confidential or fine-tuned workload.
+- **Node names, cloud provider identifiers and source IP addresses** - infrastructure topology and client location.
+- **Request IDs** - random, safe on their own, but they correlate entries across systems.
+
+marbor does not currently hash or redact key names in logs. Choose key names accordingly, and apply retention to forwarded copies the same way the `audit_retention_days` setting does for the local audit log.
 
 The audit log is stored directly in SQLite (`marbor.db`). Enable it via the admin Settings dashboard. Old audit entries are pruned automatically based on your configured retention period.
 

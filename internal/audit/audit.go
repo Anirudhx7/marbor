@@ -52,6 +52,7 @@ type Logger struct {
 	// from many request goroutines, so the drop-warning throttle below is
 	// atomic rather than lock-guarded; now and logf are swappable for tests.
 	dropped         atomic.Uint64
+	closed          atomic.Bool
 	lastDropLogNano atomic.Int64
 	now             func() time.Time
 	logf            func(format string, args ...any)
@@ -67,7 +68,7 @@ const writeQueueSize = 5000
 const dropLogInterval = 30 * time.Second
 
 // Dropped returns the cumulative number of entries dropped because the write
-// queue was full.
+// queue was full or the logger had already been closed.
 func (l *Logger) Dropped() uint64 {
 	if l == nil {
 		return 0
@@ -77,7 +78,7 @@ func (l *Logger) Dropped() uint64 {
 
 // recordDrop counts a dropped entry and emits a rate-limited warning with the
 // cumulative total.
-func (l *Logger) recordDrop() {
+func (l *Logger) recordDrop(reason string) {
 	total := l.dropped.Add(1)
 	metrics.AuditDropped()
 	nowNano := l.now().UnixNano()
@@ -88,7 +89,7 @@ func (l *Logger) recordDrop() {
 	if !l.lastDropLogNano.CompareAndSwap(last, nowNano) {
 		return
 	}
-	l.logf("audit logger: write queue full, audit entries are being dropped (%d dropped since start)", total)
+	l.logf("audit logger: %s, audit entries are being dropped (%d dropped since start)", reason, total)
 }
 
 // appendErrLogInterval bounds how often a persistently-failing
@@ -171,6 +172,13 @@ func (l *Logger) Log(e Entry) {
 	if l == nil || !l.enabled.Load() {
 		return
 	}
+	if l.closed.Load() {
+		// Logging after Close is a lifecycle bug in the caller: nothing will
+		// ever drain the queue. Count it like any other drop so it is visible
+		// instead of silently piling up unread.
+		l.recordDrop("entry logged after Close")
+		return
+	}
 	entry := store.AuditEntry{
 		Time:          e.Time,
 		RequestID:     e.RequestID,
@@ -186,7 +194,7 @@ func (l *Logger) Log(e Entry) {
 	select {
 	case l.writes <- entry:
 	default:
-		l.recordDrop()
+		l.recordDrop("write queue full")
 	}
 }
 
@@ -250,7 +258,8 @@ func FilterModel(entry Entry, model string) bool {
 // Close drains any in-flight audit entries and stops the async writer. Call
 // this after the HTTP servers have stopped accepting new requests and
 // before closing the store, or the writer can still be writing through l.st
-// after it's been closed. Safe to call more than once - main.go's
+// after it's been closed. Entries logged after Close are discarded and counted
+// as drops (see Dropped). Safe to call more than once - main.go's
 // os.Exit-before-defers restore path calls this explicitly, and the normal
 // shutdown path calls it again via defer.
 func (l *Logger) Close() error {
@@ -258,6 +267,7 @@ func (l *Logger) Close() error {
 		return nil
 	}
 	l.closeOnce.Do(func() {
+		l.closed.Store(true)
 		close(l.done)
 		l.wg.Wait()
 	})
