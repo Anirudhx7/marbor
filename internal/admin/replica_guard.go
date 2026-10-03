@@ -84,50 +84,39 @@ func (s *Server) replicaInfoFor(name string, action replicaAction) *replicaInfo 
 // members recover on their own. The members clause is omitted when the member
 // list is empty rather than printed blank.
 func replicaWarning(name string, action replicaAction, role router.SchedulingRole, info *replicaInfo) string {
-	members := ""
+	// memberList is " (members: a, b)" or "" when there are none.
+	memberList := ""
+	unresolvedList := " (members disagree on membership or head)"
 	if len(info.Members) > 0 {
-		members = "members: " + strings.Join(info.Members, ", ")
-	}
-	// paren renders " (lead; members: x)", " (lead)", " (members: x)" or "".
-	paren := func(lead string) string {
-		switch {
-		case lead != "" && members != "":
-			return " (" + lead + "; " + members + ")"
-		case lead != "":
-			return " (" + lead + ")"
-		case members != "":
-			return " (" + members + ")"
-		}
-		return ""
+		list := strings.Join(info.Members, ", ")
+		memberList = " (members: " + list + ")"
+		unresolvedList = " (members disagree on membership or head; members: " + list + ")"
 	}
 
 	if action == replicaActionDrain {
 		switch role {
 		case router.RoleHead:
-			return fmt.Sprintf("node %q is the head of a multi-host replica%s: draining it stops routing new requests to the whole replica.", name, paren(""))
+			return fmt.Sprintf("node %q is the head of a multi-host replica%s: draining it stops routing new requests to the whole replica.", name, memberList)
 		case router.RoleWorker:
 			return fmt.Sprintf("node %q is a worker in the multi-host replica headed by %q: draining a worker has no routing effect, because only the head receives requests. Drain the head %q to drain the replica.", name, info.Head, info.Head)
 		default:
-			return fmt.Sprintf("node %q is part of a multi-host replica declaration that does not resolve%s: its routing role cannot be determined until the declaration is fixed in the replica settings.", name, paren(""))
+			return fmt.Sprintf("node %q is part of a multi-host replica declaration that does not resolve%s: its routing role cannot be determined until the declaration is fixed in the replica settings.", name, memberList)
 		}
 	}
 
-	var verb string
-	switch action {
-	case replicaActionRestart:
+	// Only stop and restart reach here (drain returned above, and the guard
+	// never calls this for other actions).
+	verb := "stopping"
+	if action == replicaActionRestart {
 		verb = "restarting"
-	case replicaActionStop:
-		verb = "stopping"
-	default:
-		verb = string(action)
 	}
 	switch role {
 	case router.RoleHead:
-		return fmt.Sprintf("node %q is the head of a multi-host replica%s: %s its runtime takes the whole replica offline. Marbor does not restart the other members.", name, paren(""), verb)
+		return fmt.Sprintf("node %q is the head of a multi-host replica%s: %s its runtime takes the whole replica offline. Marbor does not restart the other members.", name, memberList, verb)
 	case router.RoleWorker:
-		return fmt.Sprintf("node %q is a worker in the multi-host replica headed by %q%s: %s its runtime breaks that replica. Marbor does not restart or re-sync the other members.", name, info.Head, paren(""), verb)
+		return fmt.Sprintf("node %q is a worker in the multi-host replica headed by %q%s: %s its runtime breaks that replica. Marbor does not restart or re-sync the other members.", name, info.Head, memberList, verb)
 	default:
-		return fmt.Sprintf("node %q is part of a multi-host replica declaration that does not resolve%s: the effect of %s its runtime cannot be determined. Fix the declaration in the replica settings first.", name, paren("members disagree on membership or head"), verb)
+		return fmt.Sprintf("node %q is part of a multi-host replica declaration that does not resolve%s: the effect of %s its runtime cannot be determined. Fix the declaration in the replica settings first.", name, unresolvedList, verb)
 	}
 }
 

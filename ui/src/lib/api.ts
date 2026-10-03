@@ -1681,30 +1681,17 @@ export async function clearNodeControl(name: string): Promise<void> {
   if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to clear control driver'); }
 }
 
-// ReplicaInfo is the additive "replica" object the Admin API attaches to a
-// runtime stop/restart rejection (and to success and drain responses) for a
-// node in a multi-host replica. role and head mirror the node list
-// schedulingRole and replicaHead fields.
-export interface ReplicaInfo {
-  role: 'head' | 'worker' | 'unresolved';
-  head?: string;
-  members?: string[];
-  warning?: string;
-}
-
 // RuntimeActionError is thrown by the runtime start/stop/restart calls. status
 // is the HTTP status; code is the server machine-readable code when present
 // (for example "replica_member").
 export class RuntimeActionError extends Error {
   status: number;
   code?: string;
-  replica?: ReplicaInfo;
-  constructor(message: string, status: number, code?: string, replica?: ReplicaInfo) {
+  constructor(message: string, status: number, code?: string) {
     super(message);
     this.name = 'RuntimeActionError';
     this.status = status;
     this.code = code;
-    this.replica = replica;
   }
 }
 
@@ -1714,13 +1701,13 @@ export class RuntimeActionError extends Error {
 // reopen the action and review the impact (the server text is written for API
 // and CLI callers and names flags the dashboard does not have).
 async function runtimeActionFailure(res: Response, fallback: string): Promise<RuntimeActionError> {
-  const j = (await res.json().catch(() => ({}))) as { error?: string; code?: string; replica?: ReplicaInfo };
+  const j = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
   if (j.code === 'replica_member') {
     return new RuntimeActionError(
       'This node is now part of a multi-host replica. Reopen Stop or Restart and review the impact before confirming.',
-      res.status, j.code, j.replica);
+      res.status, j.code);
   }
-  return new RuntimeActionError(j.error || `${fallback} (HTTP ${res.status})`, res.status, j.code, j.replica);
+  return new RuntimeActionError(j.error || `${fallback} (HTTP ${res.status})`, res.status, j.code);
 }
 
 // startNodeRuntime/stopNodeRuntime/restartNodeRuntime dispatch the runtime

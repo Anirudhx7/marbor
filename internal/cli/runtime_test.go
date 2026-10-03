@@ -446,3 +446,18 @@ func TestRun_RuntimeStop_MalformedSuccessBody_NotesAndSucceeds(t *testing.T) {
 		t.Errorf("stderr should say replica detail was unavailable, got %q", stderr.String())
 	}
 }
+
+func TestClient_RuntimeAction_EmptySuccessBody_NilReplicaNoError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	replica, err := NewClient(srv.URL, "tok").RuntimeAction("gpu-0", "stop", true)
+	if err != nil {
+		t.Fatalf("an empty success body must not be an error, got %v", err)
+	}
+	if replica != nil {
+		t.Errorf("an empty success body carries no replica, got %+v", replica)
+	}
+}
