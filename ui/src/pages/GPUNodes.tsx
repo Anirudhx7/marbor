@@ -236,11 +236,15 @@ function AgentBadge({ present, version }: { present?: boolean; version?: string 
 
 // ReplicaImpactNotice shows what a stop/restart/drain does to a multi-host
 // replica inside a confirm dialog. Renders nothing for a standalone node
-// (text is null), so those dialogs are unchanged.
+// (text is null), so those dialogs are unchanged. The confirm button points
+// at it with aria-describedby (REPLICA_NOTICE_ID) so a screen reader reads the
+// impact when focus reaches the action; break-words keeps long node names
+// inside the dialog at 375px.
+const REPLICA_NOTICE_ID = 'replica-impact-notice';
 function ReplicaImpactNotice({ text }: { text: string | null }) {
   if (!text) return null;
   return (
-    <p role="note" className="text-xs rounded-lg border border-amber-500/40 bg-amber-500/10 text-foreground p-3">
+    <p id={REPLICA_NOTICE_ID} role="note" className="text-xs break-words rounded-lg border border-amber-500/40 bg-amber-500/10 text-foreground p-3">
       <span className="font-semibold">Multi-host replica: </span>{text}
     </p>
   );
@@ -250,7 +254,7 @@ function ReplicaImpactNotice({ text }: { text: string | null }) {
 // confirmation modals (same Modal wrapper, two-paragraph body, error block,
 // and Cancel/Confirm button pair) - only title, copy, target node name,
 // confirm handler/label, and the confirm button's color class differ.
-function DrainConfirmModal({ nodeName, title, question, explanation, actionError, onClose, onConfirm, confirmLabel, confirmClassName, children }: {
+function DrainConfirmModal({ nodeName, title, question, explanation, actionError, onClose, onConfirm, confirmLabel, confirmClassName, confirmDescribedBy, children }: {
   nodeName: string | null;
   title: string;
   question: string;
@@ -260,6 +264,7 @@ function DrainConfirmModal({ nodeName, title, question, explanation, actionError
   onConfirm: () => Promise<void>;
   confirmLabel: string;
   confirmClassName: string;
+  confirmDescribedBy?: string;
   children?: ReactNode;
 }) {
   return (
@@ -282,6 +287,7 @@ function DrainConfirmModal({ nodeName, title, question, explanation, actionError
           </button>
           <button
             onClick={onConfirm}
+            aria-describedby={confirmDescribedBy}
             className={confirmClassName}
           >
             {confirmLabel}
@@ -871,6 +877,10 @@ export function GPUNodes() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [nodeToDelete, setNodeToDelete] = useState<string | null>(null);
   const [nodeToDrain, setNodeToDrain] = useState<string | null>(null);
+  // Replica impact copy for the node being drained, captured when the Drain
+  // dialog opens so it cannot change while the dialog is open (the node list
+  // refreshes on a timer).
+  const [drainReplicaNotice, setDrainReplicaNotice] = useState<string | null>(null);
   const [nodeToUndrain, setNodeToUndrain] = useState<string | null>(null);
   // Bounded-drain window entered in the Drain confirm modal. Blank = infinite
   // (today's frozen default). Recorded and round-tripped now so a future rolling-
@@ -1122,7 +1132,11 @@ export function GPUNodes() {
     try {
       // This only runs from the confirm dialog, which has just shown the
       // replica impact copy for a replica member - the acknowledgement the
-      // server requires for stop/restart on one is sent from here only.
+      // server requires for stop/restart on one is sent from here only. The
+      // dialog copy and this acknowledgement both read the same agentNode. A
+      // role change since the last refresh is caught by the server (409
+      // replica_member): the error below asks the operator to reopen the
+      // dialog and review the impact instead of acknowledging unseen.
       const ackReplica = isReplicaMember(agentNode);
       if (action === 'start') await startNodeRuntime(agentNode.name);
       else if (action === 'stop') await stopNodeRuntime(agentNode.name, ackReplica);
@@ -2358,7 +2372,7 @@ export function GPUNodes() {
           [...Array(skeletonNodes)].map((_, i) => <NodeCardSkeleton key={i} />)
         ) : (
           visibleNodes.map((node) => (
-          <NodeCard key={node.id} node={node} pinnedModels={pinnedByNode[node.name] ?? []} replicaWorkers={workersByHead[node.name] ?? []} replicaChips={replicaChips[node.name]} onRemove={(name) => { setActionError(null); setNodeToDelete(name); }} onDrain={(name) => { setActionError(null); setNodeToDrain(name); }} onUndrain={(name) => { setActionError(null); setNodeToUndrain(name); }} onTogglePrewarm={(name, disabled) => { setActionError(null); setPrewarmToToggle({ name, disabled }); }} onEdit={openEditModal} onUnload={(nodeName, model) => { setActionError(null); setModelToUnload({ nodeName, model }); }} onConfigureModel={(modelName, nodeName, runtime) => setConfigTarget({ model: modelName, node: nodeName, runtime })}           onManageAgent={openAgentModal} onGoToReplicaHead={goToReplicaHead} onGoToReplicaMember={goToReplicaMember} isHighlighted={highlightedNodes.has(node.name)} highlightSource={highlightSource} />
+          <NodeCard key={node.id} node={node} pinnedModels={pinnedByNode[node.name] ?? []} replicaWorkers={workersByHead[node.name] ?? []} replicaChips={replicaChips[node.name]} onRemove={(name) => { setActionError(null); setNodeToDelete(name); }} onDrain={(name) => { setActionError(null); setDrainReplicaNotice(replicaImpactCopy(nodes.find(n => n.name === name), 'drain')); setNodeToDrain(name); }} onUndrain={(name) => { setActionError(null); setNodeToUndrain(name); }} onTogglePrewarm={(name, disabled) => { setActionError(null); setPrewarmToToggle({ name, disabled }); }} onEdit={openEditModal} onUnload={(nodeName, model) => { setActionError(null); setModelToUnload({ nodeName, model }); }} onConfigureModel={(modelName, nodeName, runtime) => setConfigTarget({ model: modelName, node: nodeName, runtime })}           onManageAgent={openAgentModal} onGoToReplicaHead={goToReplicaHead} onGoToReplicaMember={goToReplicaMember} isHighlighted={highlightedNodes.has(node.name)} highlightSource={highlightSource} />
           )))}
       </div>
 
@@ -3136,8 +3150,9 @@ export function GPUNodes() {
         }}
         confirmLabel="Drain node"
         confirmClassName="px-4 py-2 bg-amber-600 hover:bg-amber-600/90 text-white font-medium rounded-lg text-sm transition-colors shadow-sm"
+        confirmDescribedBy={drainReplicaNotice ? REPLICA_NOTICE_ID : undefined}
       >
-        <ReplicaImpactNotice text={replicaImpactCopy(nodes.find(n => n.name === nodeToDrain), 'drain')} />
+        <ReplicaImpactNotice text={drainReplicaNotice} />
         {/* Grace-period input disabled until the enforcement engine that reads it
         ships (the future rolling-upgrade/orchestration feature). Uncomment when
         that lands - drainGraceSeconds/setDrainGraceSeconds and the onConfirm/
@@ -3964,6 +3979,7 @@ export function GPUNodes() {
             <button
               onClick={() => runtimeActionConfirm && runRuntimeAction(runtimeActionConfirm)}
               disabled={runtimeActionBusy !== null}
+              aria-describedby={runtimeActionConfirm && runtimeActionConfirm !== 'start' && isReplicaMember(agentNode) ? REPLICA_NOTICE_ID : undefined}
               className={
                 runtimeActionConfirm === 'start'
                   ? "px-4 py-2 bg-success hover:bg-success/90 disabled:opacity-50 disabled:cursor-not-allowed text-success-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"

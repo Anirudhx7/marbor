@@ -2720,7 +2720,7 @@ func (s *Server) handleNodeRuntimeAction(w http.ResponseWriter, r *http.Request,
 	// member needs an explicit acknowledgement. Decided here, before any
 	// agent or capability check, so an unreachable worker is rejected for
 	// being a worker rather than reported as a plain agent failure.
-	replica, proceed := s.guardReplicaRuntimeAction(w, r, nodeName, action)
+	replica, acknowledged, proceed := s.guardReplicaRuntimeAction(w, r, nodeName, replicaAction(action))
 	if !proceed {
 		return
 	}
@@ -2768,7 +2768,7 @@ func (s *Server) handleNodeRuntimeAction(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	s.logSystemChange(r, "runtime_"+action, nodeName, replicaAuditDetail(fmt.Sprintf("Driver: %s, Identifier: %s", ctrl.Driver, ctrl.Identifier), replica, replica != nil && replicaAcknowledged(r)))
+	s.logSystemChange(r, "runtime_"+action, nodeName, replicaAuditDetail(fmt.Sprintf("Driver: %s, Identifier: %s", ctrl.Driver, ctrl.Identifier), replica, acknowledged))
 
 	resp := map[string]interface{}{"ok": true}
 	if replica != nil {
@@ -3859,17 +3859,14 @@ func (s *Server) handleDrainNode(w http.ResponseWriter, r *http.Request) {
 		}
 		grace = *body.GracePeriodSeconds
 	}
-	if _, ok := s.router.NodeURLs()[name]; !ok {
-		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
-		return
-	}
-	// Draining a replica member is never blocked, but the response says what
-	// the drain does (draining a worker has no routing effect).
-	replica := s.replicaInfoFor(name, "drain")
 	if !s.router.DrainNode(name, reason, grace) {
 		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
 		return
 	}
+	// Draining a replica member is never blocked, but the response says what
+	// the drain does (draining a worker has no routing effect). Replica roles
+	// come from the declarations, which a drain does not change.
+	replica := s.replicaInfoFor(name, replicaActionDrain)
 	_ = s.st.SetNodeDrain(name, true, reason, grace)
 	s.logSystemChange(r, "drain_node", name, replicaAuditDetail(reason, replica, false))
 	resp := map[string]any{"node": name, "draining": true, "reason": reason, "grace_period_seconds": grace}

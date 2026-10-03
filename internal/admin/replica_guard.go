@@ -21,9 +21,23 @@ const (
 	acknowledgeReplicaParam = "acknowledge_replica"
 )
 
+// replicaAction is the operation a replica description is for. It selects the
+// warning wording; stop and restart are the guarded ones.
+type replicaAction string
+
+const (
+	replicaActionStop    replicaAction = "stop"
+	replicaActionRestart replicaAction = "restart"
+	replicaActionDrain   replicaAction = "drain"
+)
+
 // replicaInfo describes the multi-host replica a node belongs to, as carried
-// on the guard's 409 and on the success response of a runtime stop/restart or
+// on the guard 409 and on the success response of a runtime stop/restart or
 // a drain. It is nil (and the "replica" key absent) for a standalone node.
+//
+// Role and Head mirror the node list schedulingRole and replicaHead fields
+// (same resolution, same wire strings). Role is always present; Head and
+// Members are omitted when empty (an unresolved member has no head).
 type replicaInfo struct {
 	Role    string   `json:"role"`
 	Head    string   `json:"head,omitempty"`
@@ -35,8 +49,8 @@ type replicaInfo struct {
 // or nil when the node is standalone. roles/heads come from the fleet-wide
 // resolution (router.SchedulingRolesWithHeads); the member list is derived
 // from the same replica declarations and sorted so output is deterministic.
-// The action ("stop", "restart" or "drain") selects the warning wording.
-func describeReplicaMember(name, action string, nodes []*router.NodeState, roles map[string]router.SchedulingRole, heads map[string]string) *replicaInfo {
+// The action selects the warning wording.
+func describeReplicaMember(name string, action replicaAction, nodes []*router.NodeState, roles map[string]router.SchedulingRole, heads map[string]string) *replicaInfo {
 	role := roles[name]
 	if role != router.RoleHead && role != router.RoleWorker && role != router.RoleUnresolved {
 		return nil
@@ -53,13 +67,13 @@ func describeReplicaMember(name, action string, nodes []*router.NodeState, roles
 		}
 	}
 	sort.Strings(info.Members)
-	info.Warning = replicaWarning(name, action, info)
+	info.Warning = replicaWarning(name, action, role, info)
 	return info
 }
 
 // replicaInfoFor resolves the replica description for one node against the
-// router's current fleet.
-func (s *Server) replicaInfoFor(name, action string) *replicaInfo {
+// router current fleet.
+func (s *Server) replicaInfoFor(name string, action replicaAction) *replicaInfo {
 	nodes := s.router.Nodes()
 	roles, heads := s.router.SchedulingRolesWithHeads(nodes)
 	return describeReplicaMember(name, action, nodes, roles, heads)
@@ -67,63 +81,87 @@ func (s *Server) replicaInfoFor(name, action string) *replicaInfo {
 
 // replicaWarning states the topology facts for the action: what the node is
 // in its replica and what the action does to it. It never claims that other
-// members recover on their own.
-func replicaWarning(name, action string, info *replicaInfo) string {
-	members := strings.Join(info.Members, ", ")
-	switch action {
-	case "drain":
-		switch info.Role {
-		case "head":
-			return fmt.Sprintf("node %q is the head of a multi-host replica (members: %s): draining it stops routing new requests to the whole replica.", name, members)
-		case "worker":
+// members recover on their own. The members clause is omitted when the member
+// list is empty rather than printed blank.
+func replicaWarning(name string, action replicaAction, role router.SchedulingRole, info *replicaInfo) string {
+	members := ""
+	if len(info.Members) > 0 {
+		members = "members: " + strings.Join(info.Members, ", ")
+	}
+	// paren renders " (lead; members: x)", " (lead)", " (members: x)" or "".
+	paren := func(lead string) string {
+		switch {
+		case lead != "" && members != "":
+			return " (" + lead + "; " + members + ")"
+		case lead != "":
+			return " (" + lead + ")"
+		case members != "":
+			return " (" + members + ")"
+		}
+		return ""
+	}
+
+	if action == replicaActionDrain {
+		switch role {
+		case router.RoleHead:
+			return fmt.Sprintf("node %q is the head of a multi-host replica%s: draining it stops routing new requests to the whole replica.", name, paren(""))
+		case router.RoleWorker:
 			return fmt.Sprintf("node %q is a worker in the multi-host replica headed by %q: draining a worker has no routing effect, because only the head receives requests. Drain the head %q to drain the replica.", name, info.Head, info.Head)
 		default:
-			return fmt.Sprintf("node %q is part of a multi-host replica declaration that does not resolve (members: %s): its routing role cannot be determined until the declaration is fixed on GPU Nodes.", name, members)
+			return fmt.Sprintf("node %q is part of a multi-host replica declaration that does not resolve%s: its routing role cannot be determined until the declaration is fixed in the replica settings.", name, paren(""))
 		}
+	}
+
+	var verb string
+	switch action {
+	case replicaActionRestart:
+		verb = "restarting"
+	case replicaActionStop:
+		verb = "stopping"
 	default:
-		verb := action
-		if action == "restart" {
-			verb = "restarting"
-		} else if action == "stop" {
-			verb = "stopping"
-		}
-		switch info.Role {
-		case "head":
-			return fmt.Sprintf("node %q is the head of a multi-host replica (members: %s): %s its runtime takes the whole replica offline. Marbor does not restart the other members.", name, members, verb)
-		case "worker":
-			return fmt.Sprintf("node %q is a worker in the multi-host replica headed by %q (members: %s): %s its runtime breaks that replica. Marbor does not restart or re-sync the other members.", name, info.Head, members, verb)
-		default:
-			return fmt.Sprintf("node %q is part of a multi-host replica declaration that does not resolve (members disagree on membership or head; members: %s): the effect of %s its runtime cannot be determined. Fix the declaration on GPU Nodes first.", name, members, verb)
-		}
+		verb = string(action)
+	}
+	switch role {
+	case router.RoleHead:
+		return fmt.Sprintf("node %q is the head of a multi-host replica%s: %s its runtime takes the whole replica offline. Marbor does not restart the other members.", name, paren(""), verb)
+	case router.RoleWorker:
+		return fmt.Sprintf("node %q is a worker in the multi-host replica headed by %q%s: %s its runtime breaks that replica. Marbor does not restart or re-sync the other members.", name, info.Head, paren(""), verb)
+	default:
+		return fmt.Sprintf("node %q is part of a multi-host replica declaration that does not resolve%s: the effect of %s its runtime cannot be determined. Fix the declaration in the replica settings first.", name, paren("members disagree on membership or head"), verb)
 	}
 }
 
 // replicaAcknowledged reports whether the request carries
-// acknowledge_replica=true.
+// acknowledge_replica=true. Only that exact value counts.
 func replicaAcknowledged(r *http.Request) bool {
 	return r.URL.Query().Get(acknowledgeReplicaParam) == "true"
 }
 
 // guardReplicaRuntimeAction enforces the replica acknowledgement for a
 // runtime stop or restart. It returns the replica description (nil for a
-// standalone node or an action that is not guarded) and whether the request
-// may proceed. When it returns false it has already written the 409 response.
-func (s *Server) guardReplicaRuntimeAction(w http.ResponseWriter, r *http.Request, nodeName, action string) (*replicaInfo, bool) {
-	if action != "stop" && action != "restart" {
-		return nil, true
+// standalone node or an action that is not guarded), whether the replica
+// effect was acknowledged on this request (false for a standalone node), and
+// whether the request may proceed. With proceed=false it has already written
+// the 409 response.
+func (s *Server) guardReplicaRuntimeAction(w http.ResponseWriter, r *http.Request, nodeName string, action replicaAction) (info *replicaInfo, acknowledged, proceed bool) {
+	if action != replicaActionStop && action != replicaActionRestart {
+		return nil, false, true
 	}
-	info := s.replicaInfoFor(nodeName, action)
-	if info == nil || replicaAcknowledged(r) {
-		return info, true
+	info = s.replicaInfoFor(nodeName, action)
+	if info == nil {
+		return nil, false, true
+	}
+	if replicaAcknowledged(r) {
+		return info, true, true
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusConflict)
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"error":   info.Warning + " Pass acknowledge_replica=true (CLI: --acknowledge-replica) to proceed.",
+		"error":   info.Warning + " Pass acknowledge_replica=true (CLI: --acknowledge-replica) to proceed; only the exact value acknowledge_replica=true is accepted.",
 		"code":    replicaMemberCode,
 		"replica": info,
 	})
-	return info, false
+	return info, false, false
 }
 
 // replicaAuditDetail extends an audit detail string with the replica role and
@@ -132,9 +170,11 @@ func replicaAuditDetail(detail string, info *replicaInfo, acknowledged bool) str
 	if info == nil {
 		return detail
 	}
-	out := fmt.Sprintf("%s, Replica role: %s", detail, info.Role)
+	// Quoted so a node name containing commas or newlines cannot forge extra
+	// key: value fields in the audit detail.
+	out := fmt.Sprintf("%s, Replica role: %q", detail, info.Role)
 	if info.Head != "" {
-		out += ", Replica head: " + info.Head
+		out += fmt.Sprintf(", Replica head: %q", info.Head)
 	}
 	if acknowledged {
 		out += ", Replica acknowledged: true"

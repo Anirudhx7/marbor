@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 )
@@ -25,7 +26,10 @@ func runRuntimeAction(flags *globalFlags, action, node string, acknowledgeReplic
 	}
 
 	replica, err := client.RuntimeAction(node, action, acknowledgeReplica)
-	if err != nil {
+	if errors.Is(err, ErrReplicaDetailUnavailable) {
+		// The action ran; only the replica detail could not be read.
+		fmt.Fprintf(stderr, "note: %s\n", err)
+	} else if err != nil {
 		return reportError(err, stderr)
 	}
 	printReplicaWarning(stderr, replica)

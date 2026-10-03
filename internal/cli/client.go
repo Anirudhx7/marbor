@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -276,10 +277,19 @@ func (c *Client) RuntimeAction(node, action string, acknowledgeReplica bool) (*R
 	var out struct {
 		Replica *ReplicaInfo `json:"replica"`
 	}
-	// An undecodable body is not a failure: the action already succeeded.
-	_ = json.NewDecoder(resp.Body).Decode(&out)
+	// An undecodable body is not a failure: the action already succeeded. It is
+	// reported as ErrReplicaDetailUnavailable so the caller can say the replica
+	// detail could not be read; an empty body just means there is none.
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil && !errors.Is(err, io.EOF) {
+		return nil, ErrReplicaDetailUnavailable
+	}
 	return out.Replica, nil
 }
+
+// ErrReplicaDetailUnavailable is returned by RuntimeAction, together with a
+// nil ReplicaInfo, when the action succeeded but the response body could not
+// be decoded. It is not a failure of the action.
+var ErrReplicaDetailUnavailable = errors.New("runtime action succeeded, but the response could not be read, so replica details are unavailable")
 
 // ReplicaInfo mirrors the Admin API's "replica" object: the multi-host
 // replica a node belongs to. Absent (nil) for a standalone node.
