@@ -2,6 +2,7 @@ package marboragent
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -108,14 +109,32 @@ func validateCertKeyFlags(cert, key string) error {
 	return nil
 }
 
-// runAgent runs the agent's HTTP server and background scheduler in the
-// foreground. stop is non-nil only when running as a Windows service
-// (svc_windows.go's Execute): closing it cancels the scheduler context and
-// gracefully Shuts down the HTTP server instead of letting the
-// process die mid-flight when the SCM requests a stop.
-func runAgent(args []string, version string, stop <-chan struct{}) {
+// agentFlags is the validated result of parsing the foreground agent's
+// command line.
+type agentFlags struct {
+	port            int
+	refreshInterval time.Duration
+	cert, key       string
+	bind            string
+	allowPlaintext  bool
+	readRuntimeEnv  bool
+	token           string
+}
 
-	fs := flag.NewFlagSet("agent", flag.ExitOnError)
+// flagParseError marks an error from the flag package itself (unknown flag,
+// bad value), as opposed to a startup validation refusal, so runAgent can
+// keep flag's conventional exit code 2 for it.
+type flagParseError struct{ error }
+
+func (e flagParseError) Unwrap() error { return e.error }
+
+// parseAgentFlags parses and validates the foreground agent's command line
+// and environment, returning an error instead of exiting so the startup
+// refusals can be tested. Help output goes to stdout, flag errors and their
+// usage text to stderr. A help request prints usage and returns flag.ErrHelp.
+func parseAgentFlags(args []string, stdout, stderr io.Writer) (agentFlags, error) {
+	fs := flag.NewFlagSet("agent", flag.ContinueOnError)
+	fs.SetOutput(stderr)
 	port := fs.Int("port", 9200, "port to serve /v1/status and /metrics on")
 	refreshInterval := fs.Duration("refresh-interval", defaultRefreshInterval, "how often to re-collect GPU/host telemetry in the background (e.g. 5s, 10s)")
 	certFlag := fs.String("cert", "", "TLS certificate file path; if both --cert and --key are set, serves HTTPS instead of plaintext HTTP - set by \"agent service install\", not normally passed by hand")
@@ -132,46 +151,75 @@ func runAgent(args []string, version string, stop <-chan struct{}) {
 		fs.SetOutput(w)
 		fs.PrintDefaults()
 	}
-	fs.Usage = func() { usage(os.Stderr) }
+	fs.Usage = func() { usage(stderr) }
 
 	// -h/--help must be intercepted before fs.Parse runs, same reasoning as
 	// internal/bench.Run and internal/cli's parseFlags: flag's own usage hook
 	// fires identically for a real bad-flag error and for a help request.
 	for _, a := range args {
 		if a == "-h" || a == "--help" {
-			usage(os.Stdout)
-			return
+			usage(stdout)
+			return agentFlags{}, flag.ErrHelp
 		}
 	}
 	if err := fs.Parse(args); err != nil {
-		winexit.Fatalf("marboragent: %v", err)
+		return agentFlags{}, flagParseError{err}
 	}
 
 	token := os.Getenv("MARBOR_AGENT_SECRET")
 	if token == "" {
-		winexit.Fatal("marboragent: a token is required: set the MARBOR_AGENT_SECRET environment variable")
+		return agentFlags{}, errors.New("a token is required: set the MARBOR_AGENT_SECRET environment variable")
 	}
 	if *refreshInterval <= 0 {
-		winexit.Fatal("marboragent: --refresh-interval must be positive")
+		return agentFlags{}, errors.New("--refresh-interval must be positive")
 	}
-	// B1 AGENT-01: "agent service install" always sets both --cert and --key
-	// or neither (service.Config.args()), and that path is additionally
-	// guarded by validateCertKeyConfig before install. This foreground path
-	// is reachable directly by a hand-typed or scripted command line, where
+	// "agent service install" always sets both --cert and --key or neither
+	// (service.Config.args()), and that path is additionally guarded by
+	// validateCertKeyConfig before install. This foreground path is
+	// reachable directly by a hand-typed or scripted command line, where
 	// exactly one of the two being set is never intentional - it used to
 	// fall through to the plaintext branch below with only a log line, so
 	// the bearer token (which unlocks destructive actions) could silently
 	// traverse the network unencrypted on a partial-flag typo. Fail closed
 	// instead, mirroring validateCertKeyConfig's message.
 	if err := validateCertKeyFlags(*certFlag, *keyFlag); err != nil {
-		winexit.Fatalf("marboragent: %v", err)
+		return agentFlags{}, err
 	}
 	if _, _, err := net.SplitHostPort(*bindFlag); err == nil {
-		winexit.Fatalf("marboragent: --bind takes a host or IP without a port (got %q); the port comes from --port", *bindFlag)
+		return agentFlags{}, fmt.Errorf("--bind takes a host or IP without a port (got %q); the port comes from --port", *bindFlag)
 	}
 	if err := validatePlaintextBind(*certFlag, *keyFlag, *bindFlag, *allowPlaintext); err != nil {
+		return agentFlags{}, err
+	}
+	return agentFlags{
+		port: *port, refreshInterval: *refreshInterval,
+		cert: *certFlag, key: *keyFlag, bind: *bindFlag,
+		allowPlaintext: *allowPlaintext, readRuntimeEnv: *readRuntimeEnv,
+		token: token,
+	}, nil
+}
+
+// runAgent runs the agent's HTTP server and background scheduler in the
+// foreground. stop is non-nil only when running as a Windows service
+// (svc_windows.go's Execute): closing it cancels the scheduler context and
+// gracefully Shuts down the HTTP server instead of letting the
+// process die mid-flight when the SCM requests a stop.
+func runAgent(args []string, version string, stop <-chan struct{}) {
+	af, err := parseAgentFlags(args, os.Stdout, os.Stderr)
+	var parseErr flagParseError
+	switch {
+	case errors.Is(err, flag.ErrHelp):
+		return
+	case errors.As(err, &parseErr):
+		// flag already printed the error and usage; ExitOnError used code 2.
+		winexit.Exit(2)
+	case err != nil:
 		winexit.Fatalf("marboragent: %v", err)
 	}
+	token := af.token
+	certFlag, keyFlag, bindFlag := &af.cert, &af.key, &af.bind
+	port, refreshInterval := &af.port, &af.refreshInterval
+	readRuntimeEnv := &af.readRuntimeEnv
 
 	// Start the HTTP server before building/seeding the scheduler so the
 	// listener binds within Windows SCM's 30-second start timeout (error
