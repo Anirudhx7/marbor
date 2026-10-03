@@ -21,6 +21,7 @@ import {
   ModelVariantFit,
 } from '../lib/api';
 import { startPull, isPullActive, subscribe as subscribePullProgress, getSnapshot as getPullProgressSnapshot } from '../lib/pullProgress';
+import { isDownloadOnlyRuntime, pullOptionsFor, sizeNotCurated as isSizeNotCurated } from '../lib/downloadOnly';
 import { useDemoMode } from '../hooks/useDemoMode';
 import { mockHFModels, mockHFRepoDetails, mockSystemInfo, mockModelCatalogResponse, mockFavorites, pickQuant } from '../lib/mockData';
 import type { CatalogModelFit } from '../types';
@@ -165,6 +166,8 @@ function NodeVramCard({ node }: { node: any }) {
   );
 }
 
+const HF_ROW_CAVEAT = 'Size typed from the Hugging Face repo (approximate); VRAM is an estimate for a typical context. Quantization support depends on the GPU.';
+
 const FIT_REASON_TEXT: Record<string, string> = {
   too_large: 'Too large for this node',
   vram_unknown: 'VRAM or model size unknown',
@@ -205,6 +208,9 @@ function NodeFitList({
   // Same gate as the detail panel's Pull button. Picks only exist on Ollama
   // nodes; unpickable rows get no button at all.
   const canPullHere = !actualRuntime || actualRuntime === 'ollama' || agentPullCapable;
+  // vLLM and TGI rows are a Hugging Face repo, not an Ollama tag: the size is typed
+  // (approximate), and a pull only downloads (the runtime serves one launched model).
+  const hfRuntime = isDownloadOnlyRuntime(actualRuntime);
   const rowGrid = 'sm:grid sm:grid-cols-[minmax(0,1.5fr)_minmax(0,1.6fr)_6.5rem_6rem] sm:items-center sm:gap-3';
 
   const renderRow = (m: CatalogModelFit) => {
@@ -212,6 +218,7 @@ function NodeFitList({
     const isDiskShort = !r.picked && r.reason === 'disk_insufficient';
     const badge = r.picked ? r.fit : r.reason === 'too_large' ? 'red' : r.reason === 'incompatible_runtime' ? 'incompatible' : 'unknown';
     const isPulling = r.picked && pullJobs.some(j => j.node === node.name && j.model === r.tag && isPullActive(j.status));
+    const sizeNotCurated = isSizeNotCurated(hfRuntime, !!r.picked, r.reason, m.variants);
     return (
       <div key={m.name} className={`flex flex-col gap-1.5 text-xs rounded px-2.5 py-2 bg-secondary/50 border border-border/50 ${rowGrid}`}>
         <div className="min-w-0">
@@ -229,13 +236,17 @@ function NodeFitList({
         </div>
         <div className="min-w-0">
           {r.picked ? (
-            <span className="text-[11px] text-muted-foreground block" title="Estimated from the built-in catalog">
+            <span
+              className="text-[11px] text-muted-foreground block"
+              title={hfRuntime ? HF_ROW_CAVEAT : 'Estimated from the built-in catalog'}
+            >
+              {hfRuntime && <span className="block text-[11px] uppercase tracking-wider font-bold">Hugging Face equivalent</span>}
               <span className="font-mono font-semibold text-foreground">{r.quantization}</span> &middot; est. {estGB(r.vram_est_mb)} VRAM
-              <span className="font-mono text-[10px] block truncate" title={r.tag}>{r.tag}</span>
+              <span className="font-mono text-[11px] block truncate" title={r.tag}>{r.tag}</span>
             </span>
           ) : (
             <span className="text-[11px] text-muted-foreground">
-              {FIT_REASON_TEXT[r.reason ?? ''] ?? '-'}
+              {sizeNotCurated ? 'Size not yet curated' : (FIT_REASON_TEXT[r.reason ?? ''] ?? '-')}
               {r.reason === 'too_large' && r.closest_tag ? `; closest: ${r.closest_tag}` : ''}
             </span>
           )}
@@ -305,7 +316,7 @@ function NodeFitList({
         <div className="px-5 pb-4">
           {incompatible ? (
             <p className="text-xs text-muted-foreground">
-              Curated models use Ollama-format tags; browse Hugging Face below for {node.runtime || 'this runtime'}.
+              Curated models are not offered for {node.runtime || 'this runtime'} nodes yet (they use Ollama-format tags); browse Hugging Face below.
             </p>
           ) : vramUnknown ? (
             <p className="text-xs text-muted-foreground">VRAM unknown for this node; fit not shown.</p>
@@ -329,13 +340,18 @@ function NodeFitList({
         {confirmPull && (
           <div className="space-y-4">
             <dl className="text-sm space-y-1.5">
-              <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Tag</dt><dd className="font-mono text-foreground break-all text-right">{confirmPull.recommendation.tag}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-muted-foreground">{hfRuntime ? 'Hugging Face repo' : 'Tag'}</dt><dd className="font-mono text-foreground break-all text-right">{confirmPull.recommendation.tag}</dd></div>
               <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Quantization</dt><dd className="font-mono text-foreground">{confirmPull.recommendation.quantization}</dd></div>
-              <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Download size (estimate)</dt><dd className="text-foreground">~{estGB(confirmPull.recommendation.size_mb)}</dd></div>
+              <div className="flex justify-between gap-3"><dt className="text-muted-foreground">{hfRuntime ? 'Download size (approximate)' : 'Download size (estimate)'}</dt><dd className="text-foreground">~{estGB(confirmPull.recommendation.size_mb)}</dd></div>
               <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Node</dt><dd className="text-foreground">{node.name}</dd></div>
             </dl>
             {confirmPull.recommendation.tight && (
               <p className="text-xs text-amber-600 dark:text-amber-400">This quantization fits with little VRAM headroom (Tight).</p>
+            )}
+            {hfRuntime && (
+              <p className="text-xs text-muted-foreground">
+                Size is approximate; the VRAM shown is an estimate. Pull only downloads the weights. Relaunch the runtime on this node to serve it.
+              </p>
             )}
             <p className="text-xs text-muted-foreground">
               Nothing running is affected. Progress shows in the pull widget, where the download can be cancelled.
@@ -353,7 +369,8 @@ function NodeFitList({
                 onClick={() => {
                   const tag = confirmPull.recommendation.tag;
                   setConfirmPull(null);
-                  startPull(node.name, tag, demoMode, false);
+                  const opts = pullOptionsFor(actualRuntime, false);
+                  startPull(node.name, tag, demoMode, opts.verifyLoad, opts.completionNote);
                 }}
                 className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded bg-primary hover:bg-primary/90 text-primary-foreground cursor-pointer"
               >
@@ -399,6 +416,10 @@ function ModelDetailPanel({
   // search (searchHFModels), never Ollama's own curated library - none of it
   // is vetted for compatibility with this node's installed runtime.
   const [verifyLoad, setVerifyLoad] = useState(true);
+  // vLLM and TGI serve one launched model: a pull only downloads, so the load check
+  // is hidden and off for them, and the finished pull says to relaunch the runtime.
+  const downloadOnly = isDownloadOnlyRuntime(actualRuntime);
+  const pullOpts = pullOptionsFor(actualRuntime, verifyLoad);
   const [vramConfirmVariant, setVramConfirmVariant] = useState<ModelVariantFit | null>(null);
   const pullJobs = useSyncExternalStore(subscribePullProgress, getPullProgressSnapshot);
   // Mirrors the node-identity guard pattern used in GPUNodes.tsx - a slower
@@ -530,7 +551,7 @@ function ModelDetailPanel({
       setVramConfirmVariant(variant);
       return;
     }
-    startPull(nodeName, variant.tag, demoMode, verifyLoad);
+    startPull(nodeName, variant.tag, demoMode, pullOpts.verifyLoad, pullOpts.completionNote);
   };
 
   // The pull-progress widget owns the download UI; this only needs to know
@@ -613,19 +634,25 @@ function ModelDetailPanel({
           </p>
         </div>
 
-        <label className="flex items-start gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={verifyLoad}
-            onChange={(e) => setVerifyLoad(e.target.checked)}
-            className="mt-0.5 accent-primary cursor-pointer"
-          />
-          <span className="text-[10px] text-muted-foreground leading-normal">
-            Verify each pull actually loads before reporting success. This is a community model,
-            not Ollama's own curated library - some architectures download fine but fail to load;
-            this catches that at pull time instead of the first time something tries to use it.
-          </span>
-        </label>
+        {downloadOnly ? (
+          <p className="text-[11px] text-muted-foreground leading-normal">
+            Load check is not available for this runtime; relaunch the runtime to serve the download.
+          </p>
+        ) : (
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={verifyLoad}
+              onChange={(e) => setVerifyLoad(e.target.checked)}
+              className="mt-0.5 accent-primary cursor-pointer"
+            />
+            <span className="text-[11px] text-muted-foreground leading-normal">
+              Verify each pull actually loads before reporting success. This is a community model,
+              not Ollama's own curated library - some architectures download fine but fail to load;
+              this catches that at pull time instead of the first time something tries to use it.
+            </span>
+          </label>
+        )}
 
         {/* Variants */}
         {loading ? (
@@ -775,7 +802,7 @@ function ModelDetailPanel({
               <button
                 onClick={() => {
                   if (nodeName && vramConfirmVariant) {
-                    startPull(nodeName, vramConfirmVariant.tag, demoMode, verifyLoad);
+                    startPull(nodeName, vramConfirmVariant.tag, demoMode, pullOpts.verifyLoad, pullOpts.completionNote);
                   }
                   setVramConfirmVariant(null);
                 }}

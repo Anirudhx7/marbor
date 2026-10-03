@@ -770,7 +770,7 @@ func TestHandleModelCatalog_IncompatibleRuntime(t *testing.T) {
 	defer ollama.Close()
 
 	r := router.New(config.RoutingConfig{Strategy: "warm-first", Fallback: "least-connections", PollIntervalMs: 60000}, []config.NodeConfig{
-		{Name: "vllm-node", URL: ollama.URL, Runtime: "vllm"},
+		{Name: "llamacpp-node", URL: ollama.URL, Runtime: "llamacpp"},
 	}, nil)
 	nodes := r.Nodes()
 	nodes[0].Lock()
@@ -800,7 +800,7 @@ func TestHandleModelCatalog_IncompatibleRuntime(t *testing.T) {
 	for _, m := range resp.Nodes[0].Models {
 		for _, v := range m.Variants {
 			if v.Fit != "incompatible" {
-				t.Errorf("model %q variant %q fit = %q on a vllm node, want incompatible (ample VRAM must never mask a format mismatch)", m.Name, v.Tag, v.Fit)
+				t.Errorf("model %q variant %q fit = %q on a llamacpp node, want incompatible (ample VRAM must never mask a format mismatch)", m.Name, v.Tag, v.Fit)
 			}
 		}
 	}

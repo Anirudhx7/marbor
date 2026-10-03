@@ -11,6 +11,7 @@
 // widget stack at once.
 
 import { normalizePullTag, apiFetch } from './api';
+import { retryArgs } from './downloadOnly';
 
 const BASE = '/admin';
 
@@ -40,6 +41,10 @@ export interface PullProgressState {
   // carried on the job so retryPull can preserve the same choice rather than
   // silently reverting to unverified on a dropped-connection retry.
   verifyLoad: boolean;
+  // completionNote replaces the widget's "Pull complete." text on success - set for
+  // runtimes where a pull only downloads (see DOWNLOAD_ONLY_NOTE). In-memory only:
+  // a job restored after a page reload shows the generic text, which is still true.
+  completionNote: string;
   // simulating records whether THIS job is a simulated/demo pull (build-time
   // VITE_FORCE_DEMO, or the caller's runtime Demo Mode toggle at the moment
   // startPull was called) - cancelPull must branch on this per-job flag, not
@@ -137,12 +142,12 @@ function closeStream(key: string) {
 // merely switched the dashboard into its own demo view.
 const DEMO = import.meta.env.VITE_FORCE_DEMO === 'true';
 
-function runDemoPull(key: string, node: string, model: string, verifyLoad: boolean) {
+function runDemoPull(key: string, node: string, model: string, verifyLoad: boolean, completionNote: string) {
   const total = 4_200_000_000; // plausible fixed size, clearly a demo fixture
   let completed = 0;
   const startedAtMs = Date.now();
   jobs.set(key, {
-    key, node, model, method: 'direct', status: 'downloading', verifyLoad, simulating: true,
+    key, node, model, method: 'direct', status: 'downloading', verifyLoad, completionNote, simulating: true,
     bytesTotal: total, bytesCompleted: 0, error: '',
     startedAtMs, speedBps: 0, lastSampleMs: startedAtMs, lastSampleBytes: 0, staleTicks: 0,
   });
@@ -184,6 +189,8 @@ function runDemoPull(key: string, node: string, model: string, verifyLoad: boole
   setTimeout(step, 400);
 }
 
+export { DOWNLOAD_ONLY_NOTE, isDownloadOnlyRuntime, pullOptionsFor } from './downloadOnly';
+
 // startPull begins tracking a new pull. `simulate` should be the caller's
 // runtime demo-mode flag (useDemoMode()) - passed in explicitly rather than
 // read from here, since this module has no React context of its own.
@@ -191,20 +198,20 @@ function runDemoPull(key: string, node: string, model: string, verifyLoad: boole
 // admin.go's completePull) before the job reports "success" - catches a
 // model whose architecture downloads fine but can't actually be loaded by
 // this node's installed runtime.
-export function startPull(node: string, model: string, simulate: boolean = false, verifyLoad: boolean = false): void {
+export function startPull(node: string, model: string, simulate: boolean = false, verifyLoad: boolean = false, completionNote: string = ''): void {
   const tag = normalizePullTag(model);
   const key = jobKey(node, tag);
   closeStream(key);
   const startedAtMs = Date.now();
   jobs.set(key, {
-    key, node, model: tag, method: '', status: 'downloading', verifyLoad, simulating: DEMO || simulate,
+    key, node, model: tag, method: '', status: 'downloading', verifyLoad, completionNote, simulating: DEMO || simulate,
     bytesTotal: 0, bytesCompleted: 0, error: '',
     startedAtMs, speedBps: 0, lastSampleMs: startedAtMs, lastSampleBytes: 0, staleTicks: 0,
   });
   notify();
 
   if (DEMO || simulate) {
-    runDemoPull(key, node, tag, verifyLoad);
+    runDemoPull(key, node, tag, verifyLoad, completionNote);
     return;
   }
 
@@ -335,7 +342,8 @@ function subscribeToProgress(key: string, node: string, model: string): void {
 export function retryPull(key: string): void {
   const job = jobs.get(key);
   if (!job) return;
-  startPull(job.node, job.model, false, job.verifyLoad);
+  const a = retryArgs(job);
+  startPull(a.node, a.model, false, a.verifyLoad, a.completionNote);
 }
 
 export function cancelPull(key: string): void {
@@ -378,7 +386,7 @@ export function restoreActivePulls(): void {
           // flag now, not inferred from status - a job still 'downloading'
           // that was started with verify_load:true no longer loses the flag
           // on a page refresh.
-          status: (j.status as PullStatus) || 'downloading', verifyLoad: !!j.verify_load,
+          status: (j.status as PullStatus) || 'downloading', verifyLoad: !!j.verify_load, completionNote: '',
           // A restored job always came from the marbor's own server-side
           // bookkeeping (GET /admin/pulls), never a simulated one.
           simulating: false,

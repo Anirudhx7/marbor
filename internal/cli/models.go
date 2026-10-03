@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 )
 
@@ -159,6 +160,24 @@ func runModelsPull(flags *globalFlags, node, model string, stdout, stderr io.Wri
 	}
 
 	fmt.Fprintf(stdout, "%s: pull started for %s\n", node, model)
+	// vLLM and TGI serve one launched model: a pull only downloads the
+	// weights, so say what the operator still has to do. The note goes to
+	// stderr so scripts reading stdout see the same line as before. This is
+	// one bounded lookup (the client has its own request timeout); the pull has
+	// already started, so a failed or empty lookup only warns on stderr and the
+	// command still exits OK.
+	nodes, err := client.Nodes()
+	if err != nil {
+		fmt.Fprintf(stderr, "warning: could not look up the node runtime: %v\n", err)
+		return ExitOK
+	}
+	if i := slices.IndexFunc(nodes, func(n NodeResp) bool { return n.Name == node }); i >= 0 {
+		if rt := nodes[i].Runtime; rt == "vllm" || rt == "tgi" {
+			fmt.Fprintf(stderr, "%s: this only downloads; relaunch the runtime to serve it\n", node)
+		}
+		return ExitOK
+	}
+	fmt.Fprintf(stderr, "warning: node %s not found in the node list; could not check its runtime\n", node)
 	return ExitOK
 }
 
