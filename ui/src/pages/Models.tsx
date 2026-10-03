@@ -623,6 +623,7 @@ export function Models() {
   const [runtimeByNode, setRuntimeByNode] = useState<Record<string, string>>({});
   // vLLM and TGI serve one launched model: a pull only downloads, so the load check is
   // hidden and off for them and the finished pull says to relaunch the runtime.
+  // Never undefined at pull time: the node list and selected node are set together before the modal opens.
   const pullRuntime = pullNodesList.find((n) => n.name === pullSelectedNode)?.runtime;
   const pullDownloadOnly = isDownloadOnlyRuntime(pullRuntime);
   // Resolved replica topology per node name, joined from the same node-list

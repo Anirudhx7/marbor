@@ -1,4 +1,4 @@
-// Run with: node --test scripts/
+// Run with: npm test (needs Node 22.6+ for the type-stripping flag the script passes).
 // Pure-logic tests for the vLLM/TGI "download only" pull behavior. The module
 // under test has no imports and no browser APIs, so Node can load it directly.
 import test from 'node:test';

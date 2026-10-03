@@ -305,7 +305,8 @@ type pullResult struct {
 
 // pullOnNode runs `models pull gpu-0` against a stub server whose node list
 // reports the given runtime for gpu-0 (and ollama for gpu-1). nodesStatus is the
-// HTTP status of the node list (an empty runtime leaves gpu-0 out of the list); extraArgs are appended to the command.
+// HTTP status of the node list (an empty runtime leaves gpu-0 out of the list);
+// extraArgs are appended to the command.
 func pullOnNode(t *testing.T, runtime string, nodesStatus int, extraArgs ...string) pullResult {
 	t.Helper()
 	var lookups atomic.Int32

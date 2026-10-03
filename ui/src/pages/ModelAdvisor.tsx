@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef, useSyncExternalStore, useId } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, useSyncExternalStore } from 'react';
 import { Link } from 'react-router-dom';
 import { Package, Download, Check, Server, Loader2, Cpu, HardDrive, Star, ArrowDown, ExternalLink, X, Settings2, ChevronDown } from 'lucide-react';
 import { SearchInput } from '../components/SearchInput';
@@ -196,8 +196,6 @@ function NodeFitList({
 }) {
   const [open, setOpen] = useState(false);
   const [confirmPull, setConfirmPull] = useState<CatalogModelFit | null>(null);
-  // One description element per list; every Hugging Face row points at it.
-  const caveatId = `${useId()}-hf-caveat`;
   const pullJobs = useSyncExternalStore(subscribePullProgress, getPullProgressSnapshot);
   const models = node.models ?? [];
   if (models.length === 0) return null;
@@ -241,11 +239,10 @@ function NodeFitList({
             <span
               className="text-[11px] text-muted-foreground block"
               title={hfRuntime ? HF_ROW_CAVEAT : 'Estimated from the built-in catalog'}
-              aria-describedby={hfRuntime ? caveatId : undefined}
             >
               {hfRuntime && <span className="block text-[11px] uppercase tracking-wider font-bold">Hugging Face equivalent</span>}
               <span className="font-mono font-semibold text-foreground">{r.quantization}</span> &middot; est. {estGB(r.vram_est_mb)} VRAM
-              <span className="font-mono text-[10px] block truncate" title={r.tag}>{r.tag}</span>
+              <span className="font-mono text-[11px] block truncate" title={r.tag}>{r.tag}</span>
             </span>
           ) : (
             <span className="text-[11px] text-muted-foreground">
@@ -331,7 +328,6 @@ function NodeFitList({
                 <span>Fit</span>
                 <span className="text-right">Action</span>
               </div>
-              {hfRuntime && fitRows.length > 0 && <span id={caveatId} className="sr-only">{HF_ROW_CAVEAT}</span>}
               {fitRows.length > 0 && groupLabel(`Fits (${fitRows.length})`)}
               {fitRows.map(renderRow)}
               {otherRows.length > 0 && groupLabel(`Does not fit (${otherRows.length})`)}
@@ -650,7 +646,7 @@ function ModelDetailPanel({
               onChange={(e) => setVerifyLoad(e.target.checked)}
               className="mt-0.5 accent-primary cursor-pointer"
             />
-            <span className="text-[10px] text-muted-foreground leading-normal">
+            <span className="text-[11px] text-muted-foreground leading-normal">
               Verify each pull actually loads before reporting success. This is a community model,
               not Ollama's own curated library - some architectures download fine but fail to load;
               this catches that at pull time instead of the first time something tries to use it.

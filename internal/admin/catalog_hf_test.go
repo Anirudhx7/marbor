@@ -187,21 +187,19 @@ func TestCatalogHFRepos_Live(t *testing.T) {
 
 // hfNodeEntryWith serves the catalog for a one-node fleet running the given
 // runtime, with Hugging Face access stubbed to fail the test: the catalog list
-// must never leave the process. The package default transport and client are
-// swapped too, so a request that bypasses hfHTTPClient is caught as well;
-// loopback requests (the in-process mock runtime) still go through.
+// must never leave the process. Only hfHTTPClient is swapped: the process-wide
+// default transport is left alone because background goroutines from other
+// tests read it concurrently.
 //
-// It mutates process-global state (http.DefaultTransport, http.DefaultClient and
-// hfHTTPClient), so tests that call it must not run in parallel (no t.Parallel).
+// It mutates process-global state (hfHTTPClient), so tests that call it must not
+// run in parallel (no t.Parallel).
 func hfNodeEntryWith(t *testing.T, runtime string, mutate func(n *router.NodeState)) catalogNodeEntry {
 	t.Helper()
-	origTransport, origDefaultTransport, origDefaultClient := hfHTTPClient.Transport, http.DefaultTransport, http.DefaultClient
 	blocked := &outboundRecorder{}
+	origTransport := hfHTTPClient.Transport
 	hfHTTPClient.Transport = failingRoundTripper{rec: blocked}
-	http.DefaultTransport = failingRoundTripper{rec: blocked, next: origDefaultTransport}
-	http.DefaultClient = &http.Client{Transport: http.DefaultTransport}
 	defer func() {
-		hfHTTPClient.Transport, http.DefaultTransport, http.DefaultClient = origTransport, origDefaultTransport, origDefaultClient
+		hfHTTPClient.Transport = origTransport
 	}()
 	ollama := mockOllamaServer(t)
 	defer ollama.Close()
@@ -234,22 +232,16 @@ type outboundRecorder struct {
 	first atomic.Value // URL string of the first blocked request
 }
 
-// failingRoundTripper blocks and records any outbound request, except loopback
-// ones when next is set (those are delegated to next).
+// failingRoundTripper blocks and records any outbound request.
 type failingRoundTripper struct {
-	rec  *outboundRecorder
-	next http.RoundTripper
+	rec *outboundRecorder
 }
 
 func (f failingRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
-	if f.next != nil {
-		if h := r.URL.Hostname(); h == "127.0.0.1" || h == "localhost" || h == "::1" {
-			return f.next.RoundTrip(r)
-		}
-	}
-	if f.rec.count.Add(1) == 1 {
-		f.rec.first.Store(r.URL.String())
-	}
+	// Record the URL before bumping the count so a reader that sees count > 0
+	// always finds first set.
+	f.rec.first.CompareAndSwap(nil, r.URL.String())
+	f.rec.count.Add(1)
 	return nil, fmt.Errorf("outbound request blocked")
 }
 
