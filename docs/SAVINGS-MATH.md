@@ -195,7 +195,7 @@ Each cloud provider's `cost_per_1k_tokens` (along with `name`, `provider`, and `
 
 ## Audit Trail for Financial Verification
 
-Every routed request is recorded in the SQLite audit trail (when enabled) with:
+Requests that reach proxy completion handling are recorded, best-effort, in the SQLite audit trail (when enabled). Requests rejected earlier (authentication failures, expired keys, rate limits, quota rejections) are not recorded, and entries are dropped when the async write queue is full (see `marbor_audit_dropped_total`), so totals can undercount under heavy load. Each recorded entry carries:
 
 - Request ID (crypto/rand generated)
 - Timestamp
@@ -206,4 +206,4 @@ Every routed request is recorded in the SQLite audit trail (when enabled) with:
 - Calculated cost (saved or spent)
 - HTTP status and latency
 
-This log is the source of truth for financial reconciliation. It can be ingested into any log aggregator (Splunk, Elastic, Datadog) for custom reporting, cost allocation, and audit compliance.
+This log is the best available per-request record for financial reconciliation, but it is not lossless; cross-check against `marbor_audit_dropped_total` before treating gaps as zero usage. It can be ingested into any log aggregator (Splunk, Elastic, Datadog) for custom reporting, cost allocation, and audit compliance.

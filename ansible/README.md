@@ -115,6 +115,10 @@ use `ansible-vault encrypt secrets.vault.yml` (or `--extra-vars` typed
 interactively / injected by your CI secret store) so the password never sits
 in plaintext on disk.
 
+## Agent transport
+
+`install-marbor-agent.yml` installs agents through `marbor-agent service install`, which provisions TLS, so no plaintext opt-in is needed. A foreground `marbor-agent` without `--cert`/`--key` refuses a non-loopback bind unless `--allow-insecure-plaintext` is set; do not use that flag in a playbook.
+
 ## What each `gpu_nodes` entry needs (`register-gpus.yml`)
 
 | Field   | Required? | Default |
