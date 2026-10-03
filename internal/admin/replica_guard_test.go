@@ -83,9 +83,9 @@ func drainReq(t *testing.T, s *Server, node string) *httptest.ResponseRecorder {
 	return w
 }
 
-// runtimeAuditCount counts runtime_* audit rows. The in-memory store is shared
-// across servers in this package, so tests compare against a baseline rather
-// than expecting an empty log.
+// runtimeAuditCount counts runtime_* and drain_node audit rows. The in-memory
+// store is shared across servers in this package, so tests compare against a
+// baseline rather than expecting an empty log.
 func runtimeAuditCount(t *testing.T, s *Server) int {
 	t.Helper()
 	rows, err := s.st.QuerySystemAuditLog(10000)
@@ -94,7 +94,7 @@ func runtimeAuditCount(t *testing.T, s *Server) int {
 	}
 	n := 0
 	for _, r := range rows {
-		if strings.HasPrefix(r.Action, "runtime_") {
+		if strings.HasPrefix(r.Action, "runtime_") || r.Action == "drain_node" {
 			n++
 		}
 	}
@@ -140,48 +140,74 @@ func TestRuntimeAction_StandaloneUnchanged(t *testing.T) {
 // Only the exact value acknowledge_replica=true acknowledges; anything else
 // is still a 409 with zero agent calls and no audit row.
 func TestRuntimeAction_NonTrueAcknowledgeStillRejected(t *testing.T) {
+	targets := []struct{ node, action string }{
+		{"head", "stop"}, {"head", "restart"}, {"worker-a", "stop"}, {"worker-b", "restart"},
+	}
 	for _, q := range []string{"acknowledge_replica=false", "acknowledge_replica=1", "acknowledge_replica=yes", "acknowledge_replica=TRUE", "acknowledge_replica="} {
-		t.Run(q, func(t *testing.T) {
-			s, hits, cleanup := newRuntimeGuardServer(t, true)
-			defer cleanup()
-			auditBefore := runtimeAuditCount(t, s)
-			w := runtimeReq(t, s, "head", "stop", q)
-			if w.Code != http.StatusConflict {
-				t.Fatalf("status %d, want 409: %s", w.Code, w.Body.String())
-			}
-			if msg, _ := decodeBody(t, w)["error"].(string); !strings.Contains(msg, "only the exact value acknowledge_replica=true is accepted") {
-				t.Errorf("409 text should say which value is accepted: %q", msg)
-			}
-			if hits.Load() != 0 {
-				t.Errorf("agent hits = %d, want 0", hits.Load())
-			}
-			if runtimeAuditCount(t, s) != auditBefore {
-				t.Errorf("a rejected request must not write a runtime audit row")
-			}
-		})
+		for _, tg := range targets {
+			t.Run(q+"/"+tg.node+"/"+tg.action, func(t *testing.T) {
+				s, hits, cleanup := newRuntimeGuardServer(t, true)
+				defer cleanup()
+				auditBefore := runtimeAuditCount(t, s)
+				w := runtimeReq(t, s, tg.node, tg.action, q)
+				if w.Code != http.StatusConflict {
+					t.Fatalf("status %d, want 409: %s", w.Code, w.Body.String())
+				}
+				if msg, _ := decodeBody(t, w)["error"].(string); !strings.Contains(msg, "only the exact value acknowledge_replica=true is accepted") {
+					t.Errorf("409 text should say which value is accepted: %q", msg)
+				}
+				if hits.Load() != 0 {
+					t.Errorf("agent hits = %d, want 0", hits.Load())
+				}
+				if runtimeAuditCount(t, s) != auditBefore {
+					t.Errorf("a rejected request must not write a runtime or drain audit row")
+				}
+			})
+		}
+	}
+}
+
+// An unresolved member is rejected the same way for a non-true value.
+func TestRuntimeAction_NonTrueAcknowledgeRejectedForUnresolvedMember(t *testing.T) {
+	s, hits, cleanup := newRuntimeGuardServer(t, false)
+	defer cleanup()
+	patchReplicaPeers(t, s, "head", `{"replica_peers":{"members":["head","worker-a"],"head":"head"}}`)
+	auditBefore := runtimeAuditCount(t, s)
+	w := runtimeReq(t, s, "worker-a", "stop", "acknowledge_replica=yes")
+	if w.Code != http.StatusConflict {
+		t.Fatalf("status %d, want 409: %s", w.Code, w.Body.String())
+	}
+	if hits.Load() != 0 || runtimeAuditCount(t, s) != auditBefore {
+		t.Errorf("a rejected request must make no agent call and write no audit row")
 	}
 }
 
 // An acknowledged stop on a head whose agent fails reports the agent error
 // (502) and records no audit row: the audit log only records actions that ran.
 func TestRuntimeAction_AcknowledgedAgentFailureNotAudited(t *testing.T) {
-	var fail atomic.Bool
-	fail.Store(true)
-	s, hits, cleanup := newRuntimeGuardServerFailing(t, true, &fail)
-	defer cleanup()
-	auditBefore := runtimeAuditCount(t, s)
-	w := runtimeReq(t, s, "head", "stop", "acknowledge_replica=true")
-	if w.Code != http.StatusBadGateway {
-		t.Fatalf("status %d, want 502: %s", w.Code, w.Body.String())
-	}
-	if _, has := decodeBody(t, w)["replica"]; has {
-		t.Errorf("an error response carries no replica object: %s", w.Body.String())
-	}
-	if hits.Load() != 1 {
-		t.Errorf("agent hits = %d, want 1", hits.Load())
-	}
-	if runtimeAuditCount(t, s) != auditBefore {
-		t.Errorf("a failed action must not be audited as done")
+	for _, tg := range []struct{ node, action string }{
+		{"head", "stop"}, {"head", "restart"}, {"worker-a", "stop"}, {"worker-a", "restart"},
+	} {
+		t.Run(tg.node+"/"+tg.action, func(t *testing.T) {
+			var fail atomic.Bool
+			fail.Store(true)
+			s, hits, cleanup := newRuntimeGuardServerFailing(t, true, &fail)
+			defer cleanup()
+			auditBefore := runtimeAuditCount(t, s)
+			w := runtimeReq(t, s, tg.node, tg.action, "acknowledge_replica=true")
+			if w.Code != http.StatusBadGateway {
+				t.Fatalf("status %d, want 502: %s", w.Code, w.Body.String())
+			}
+			if _, has := decodeBody(t, w)["replica"]; has {
+				t.Errorf("an error response carries no replica object: %s", w.Body.String())
+			}
+			if hits.Load() != 1 {
+				t.Errorf("agent hits = %d, want 1", hits.Load())
+			}
+			if runtimeAuditCount(t, s) != auditBefore {
+				t.Errorf("a failed action must not be audited as done")
+			}
+		})
 	}
 }
 
@@ -411,6 +437,16 @@ func TestDrain_UnresolvedMemberWarns(t *testing.T) {
 	if warn, _ := rep["warning"].(string); !strings.Contains(warn, "cannot be determined") {
 		t.Errorf("warning %q should say the role cannot be determined", warn)
 	}
+	rows, err := s.st.QuerySystemAuditLog(1)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("audit rows: %v %v", rows, err)
+	}
+	if rows[0].Action != "drain_node" || rows[0].Target != "worker-a" {
+		t.Errorf("audit action/target = %q/%q", rows[0].Action, rows[0].Target)
+	}
+	if !strings.Contains(rows[0].Details, `Replica role: "unresolved"`) || strings.Contains(rows[0].Details, "Replica head") {
+		t.Errorf("unresolved drain audit detail = %q", rows[0].Details)
+	}
 }
 
 func TestDrain_StandaloneUnchangedAndUnknown404(t *testing.T) {
@@ -422,6 +458,16 @@ func TestDrain_StandaloneUnchangedAndUnknown404(t *testing.T) {
 	}
 	if _, has := decodeBody(t, w)["replica"]; has {
 		t.Errorf("standalone drain must not carry a replica key: %s", w.Body.String())
+	}
+	rows, err := s.st.QuerySystemAuditLog(1)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("audit rows: %v %v", rows, err)
+	}
+	if rows[0].Action != "drain_node" || rows[0].Target != "solo" {
+		t.Errorf("audit action/target = %q/%q", rows[0].Action, rows[0].Target)
+	}
+	if strings.Contains(rows[0].Details, "Replica") || strings.Contains(rows[0].Details, "acknowledged") {
+		t.Errorf("standalone drain audit detail must carry no replica text: %q", rows[0].Details)
 	}
 	if w := drainReq(t, s, "nope"); w.Code != http.StatusNotFound {
 		t.Errorf("unknown node: status %d, want 404", w.Code)
