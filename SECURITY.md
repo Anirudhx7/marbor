@@ -26,6 +26,7 @@ Report privately via [GitHub Security Advisories](https://github.com/Anirudhx7/m
 API keys are generated and managed through the **API Keys** page of the admin dashboard. Each key is a static Bearer token in the `Authorization: Bearer sk-marbor-...` header.
 
 - Keys are matched by **exact string comparison** - substring matching is not used.
+- An API key whose stored `expires_at` cannot be parsed is **rejected** (treated as expired, with a rate-limited server warning naming the key, never its value) and shows as `expired` in the key list. Creating or editing a key rejects a malformed value outright; an empty `expires_at` means no expiry.
 - Key **names** are logged in the audit log and request log. The key value itself is never written to any log file.
 - The request audit log is **best-effort**: it records requests that reach proxy completion handling. Authentication and policy rejections that occur earlier (missing/invalid/expired key, rate limit, quota) are not persisted in it, and entries are dropped when the async write queue is full (`marbor_audit_dropped_total`). Do not rely on it as a lossless security audit trail.
 - Key metadata and usage counters (token totals, quota counters) are persisted in the SQLite database (`marbor.db`).
@@ -49,6 +50,22 @@ marbor does not terminate TLS internally by design. TLS is delegated to a revers
 **For any deployment reachable from outside your local network or VPN, you must place TLS in front of port 11434 and port 8080.** Without TLS, API keys and admin tokens travel in plaintext.
 
 See [docs/PRODUCTION.md](docs/PRODUCTION.md) for a working nginx TLS configuration snippet.
+
+### Default admin login (current behavior and a proposed hardening)
+
+A fresh install creates the well-known `admin` / `admin` account and requires a password change at first login. marbor logs a startup warning on every boot while that password is still active, saying the default login is live, that a change is required, and that the dashboard is plaintext HTTP. It does **not** refuse a non-loopback admin bind and does **not** generate a random first-boot password. Until you change the password, any host that can reach port 8080 can take over the control plane: change it immediately, keep the dashboard on `127.0.0.1` or put TLS in front of it (reverse proxy) for any exposed deployment.
+
+*Proposed, not current behavior:* a generated first-boot password and/or refusing a non-loopback admin bind while the default credential is active. This changes the quickstart and the Docker/demo flow, so it is tracked as a separate item.
+
+### marbor-agent transport
+
+`marbor-agent service install` provisions a TLS certificate automatically, so installed agents serve HTTPS. A foreground `marbor-agent` started without `--cert`/`--key` is plaintext, and the agent's bearer token authorizes destructive operations, so it refuses to start on a non-loopback bind (the default bind is all interfaces) unless you do one of:
+
+- serve TLS: pass both `--cert` and `--key`, or use `marbor-agent service install`;
+- restrict it to the host: `--bind=127.0.0.1`;
+- explicitly accept the risk on a trusted, isolated network: `--allow-insecure-plaintext`.
+
+`--bind` takes a literal IP without a port; hostnames such as `localhost` are not trusted as loopback. Passing only one of `--cert`/`--key` is always refused. An agent service installed before TLS provisioning existed must be re-installed (`marbor-agent service install`) after upgrading, or it will refuse to start. Trust is never inferred from how the agent was deployed.
 
 The metrics port (9090) should not be exposed to untrusted networks. Scrape it from within your monitoring network only.
 

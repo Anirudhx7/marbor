@@ -273,7 +273,7 @@ func runServiceStatus(args []string) {
 	// Print the TLS certificate's fingerprint if one exists, so the
 	// operator can compare it against what the marbor's tls-probe endpoint
 	// shows before confirming a pin. Silent (not a
-	// fatal error) when no cert exists yet - most nodes are plaintext and
+	// fatal error) when no cert exists yet - a service installed before TLS provisioning existed has no cert and
 	// this is a status display, not a requirement.
 	//
 	// Skipped when the service isn't installed: Uninstall never deletes the

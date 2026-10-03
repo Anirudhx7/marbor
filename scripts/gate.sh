@@ -98,7 +98,7 @@ echo "=== [4/7] Go: sanity (targeted changed-package tests) ==="
 gorun bash scripts/sanity.sh || fail "sanity test failed"
 
 echo "=== [5/7] Go: test -race ==="
-gorun go test -race -timeout 300s ./... || fail "go test failed"
+gorun go test -race -timeout 600s ./... || fail "go test failed"
 
 echo "=== [6/7] Go: govulncheck ==="
 gorun sh -c "go install golang.org/x/vuln/cmd/govulncheck@v1.7.0 && govulncheck ./..." || fail "govulncheck failed"

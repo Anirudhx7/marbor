@@ -452,6 +452,8 @@ Set `local_only: true` on an API key (`PATCH /admin/v1/keys/{name}`, or the API 
 
 `marbor-agent` is an optional second binary installed on each GPU node: `install.sh ROLE=agent` for a single host, or the [agent enrollment Ansible playbook](docs/deploy/marbor-agent-enrollment.md) for mass enrollment - one inventory-driven run (`ansible/playbooks/install-marbor-agent.yml`) enrolls and installs the agent on every already-registered node at once, idempotently skipping any that are already enrolled and healthy. It serves `GET /v1/status` and `GET /metrics` on **`:9200`** (default) and is polled by marbor - clients never talk to it, and it contains no control-plane code, so a compromised agent host cannot start the gateway.
 
+A foreground `marbor-agent` without `--cert`/`--key` serves plaintext HTTP and refuses to start on a non-loopback bind unless you pass `--allow-insecure-plaintext` (or bind to loopback with `--bind=127.0.0.1`); `marbor-agent service install` provisions TLS automatically and is unaffected. See [SECURITY.md](SECURITY.md).
+
 One agent covers an entire physical host: multiple runtimes on the same box (e.g. Ollama on `:11434` plus vLLM on `:8000`) share one enrollment instead of needing one per node. Its bearer tokens are scope-tiered (`readonly` / `operator` / `admin`), and its TLS certificate can be pinned TOFU-style for headless enrollment (`marbor nodes confirm-tls`).
 
 The fleet runs without it - remote nodes fall back to operator-declared `vram_total_mb`, always labelled `declared`. What the agent adds:

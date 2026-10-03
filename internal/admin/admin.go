@@ -1722,15 +1722,9 @@ func (s *Server) handleKeys(w http.ResponseWriter, r *http.Request) {
 		if s.auth != nil && !ok {
 			status = "revoked"
 		} else if expires != "" {
-			// Match auth.keyExpired: accept a date (valid through end of day) or
-			// RFC3339, so date-only expiries are labelled correctly (auth already
-			// rejects them; this keeps the UI status in sync).
-			now := time.Now()
-			if t, err := time.Parse("2006-01-02", expires); err == nil {
-				if now.After(t.Add(24 * time.Hour)) {
-					status = "expired"
-				}
-			} else if t, err := time.Parse(time.RFC3339, expires); err == nil && now.After(t) {
+			// Same classification auth enforces; a malformed stored value is
+			// rejected by auth, so it is labelled expired rather than active.
+			if expired, malformed := auth.ExpiryStatus(expires, time.Now()); expired || malformed {
 				status = "expired"
 			}
 		}
@@ -5300,6 +5294,7 @@ const defaultAdminPassword = "admin"
 // password change on first login - no secret is generated or logged.
 func (s *Server) ensureAdminUser() {
 	if count, err := s.st.CountAdminUsers(); err == nil && count > 0 {
+		s.warnIfDefaultAdminCredential()
 		return // already set up
 	}
 	// Migrate from legacy single-admin table if present.
@@ -5341,6 +5336,33 @@ func (s *Server) ensureAdminUser() {
 		return
 	}
 	log.Printf("admin: created default admin account (username: admin); password must be changed on first login")
+	logDefaultAdminCredentialWarning(true)
+}
+
+// warnIfDefaultAdminCredential logs a startup warning when the built-in admin
+// account still accepts the well-known default password, so a restart before the
+// first-login change does not go quiet about it.
+func (s *Server) warnIfDefaultAdminCredential() {
+	u, err := s.st.GetUserByUsername("admin")
+	if err != nil || u.Role != "admin" {
+		return
+	}
+	if verifyPassword(u.PasswordHash, defaultAdminPassword) {
+		logDefaultAdminCredentialWarning(u.MustChangePassword)
+	}
+}
+
+// logDefaultAdminCredentialWarning is the one place the default-credential
+// warning text lives. The dashboard is plain HTTP by design, so the warning
+// covers both the credential and the transport.
+func logDefaultAdminCredentialWarning(mustChange bool) {
+	change := "Change the password now (no first-login change is being forced on this account)."
+	if mustChange {
+		change = "A password change is required at first login before normal administration."
+	}
+	log.Printf("WARNING: the default admin login admin / admin is still active. %s "+
+		"The admin dashboard is served over plaintext HTTP, so any host that can reach it can take over the control plane until the password is changed: "+
+		"change the password immediately, and for any exposed deployment keep the dashboard on 127.0.0.1 or put TLS in front of it (reverse proxy).", change)
 }
 
 // maskKey returns a non-reversible preview of an API key so the list endpoint
@@ -5364,7 +5386,8 @@ func validateExpiresAt(s string) error {
 	var exp time.Time
 	var err error
 	for _, layout := range []string{"2006-01-02", "2006-01-02T15:04", time.RFC3339} {
-		if exp, err = time.Parse(layout, s); err == nil {
+		// Local time, matching how auth.ExpiryStatus reads a value without a zone.
+		if exp, err = time.ParseInLocation(layout, s, time.Local); err == nil {
 			break
 		}
 	}
@@ -5372,7 +5395,7 @@ func validateExpiresAt(s string) error {
 		return fmt.Errorf("expires_at must be YYYY-MM-DD, YYYY-MM-DDTHH:MM, or RFC3339 format")
 	}
 	// Reject an already-past expiry: it would mint/patch a key that can never
-	// authenticate (keyExpired treats it as expired immediately), which is a
+	// authenticate (auth treats it as expired immediately), which is a
 	// silent footgun rather than an intended action.
 	if !exp.After(time.Now()) {
 		return fmt.Errorf("expires_at is in the past")
