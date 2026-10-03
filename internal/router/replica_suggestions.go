@@ -535,6 +535,10 @@ func (c *correlator) vllmGroups(atts []attribution) []candidate {
 	for _, a := range atts {
 		t := a.topo
 		if t.MasterAddr == "" {
+			// A one node launch has no peers to match, so it is not a group.
+			if t.NNodes != nil && *t.NNodes <= 1 {
+				continue
+			}
 			out = append(out, candidate{
 				launcher: a.kind, runtime: "vllm", state: SuggestionIncomplete, head: a.row.Name,
 				members:  []string{a.row.Name},

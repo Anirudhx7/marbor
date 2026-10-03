@@ -607,3 +607,41 @@ func TestFingerprint(t *testing.T) {
 		t.Errorf("state change on the same members must keep the fingerprint: %+v vs %+v", contra, complete)
 	}
 }
+
+func TestCorrelate_VLLMNoMasterAddress(t *testing.T) {
+	single := func(d marboragent.DeploymentReport) (map[string]HostEvidence, []nodeView) {
+		return evMap(hostEv("host-a", "a", []string{"10.0.0.1"}, d)),
+			[]nodeView{testRow("head", "host-a", 8000, "vllm")}
+	}
+	noNNodes := vllmDep(8000, 0, 2, "", 0, false)
+	noNNodes.Topology.NNodes = nil
+	// A one node launch is dropped even when it states a stray node rank,
+	// the same way a one node launch with a master address is dropped.
+	rankOne := vllmDep(8000, 1, 1, "", 0, false)
+
+	tests := []struct {
+		name      string
+		dep       marboragent.DeploymentReport
+		wantCards int
+	}{
+		{name: "single node launch states no master and makes no card", dep: vllmDep(8000, 0, 1, "", 0, false), wantCards: 0},
+		{name: "single node launch with a stray node rank is dropped", dep: rankOne, wantCards: 0},
+		{name: "two node launch without a master stays incomplete", dep: vllmDep(8000, 0, 2, "", 0, false), wantCards: 1},
+		{name: "unknown node count without a master keeps the card", dep: noNNodes, wantCards: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hosts, nodes := single(tt.dep)
+			got, _ := correlate(nodes, hosts)
+			if len(got) != tt.wantCards {
+				t.Fatalf("want %d suggestions, got %+v", tt.wantCards, got)
+			}
+			if tt.wantCards == 1 {
+				s := findSuggestion(t, got, SuggestionIncomplete)
+				if !strings.Contains(strings.Join(s.Missing, " "), "does not state a master address") {
+					t.Errorf("missing text lacks master address note: %+v", s.Missing)
+				}
+			}
+		})
+	}
+}
