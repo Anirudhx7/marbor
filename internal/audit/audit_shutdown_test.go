@@ -130,7 +130,6 @@ func TestPostCloseWarningIsRateLimited(t *testing.T) {
 // Every entry handed to Log while Close runs must end up either in the store
 // or in the drop counter.
 func TestConcurrentLogAndCloseAccountsForEveryEntry(t *testing.T) {
-	t.Skip("entries enqueued after the writer has drained and exited are neither persisted nor counted; skip until the shutdown path accounts for them")
 	const (
 		iterations = 300
 		goroutines = 8
@@ -173,26 +172,152 @@ func TestConcurrentLogAndCloseAccountsForEveryEntry(t *testing.T) {
 	}
 }
 
-// This models an interleaving instead of racing it. Log checks the closed flag
-// and then enqueues. Close can set the flag, let the writer drain an empty
-// queue and exit between those two steps, so the enqueue lands after the
-// writer is gone. Here Close runs to completion, then the flag is reset to
-// look like a Log call that had already passed its closed check, and a single
-// Log is made. The entry must be persisted or counted as a drop.
-func TestLogEnqueueAfterWriterExitIsAccounted(t *testing.T) {
-	t.Skip("entries enqueued after the writer has drained and exited are neither persisted nor counted; skip until the shutdown path accounts for them")
+// Close must wait for a Log call that is between its closed check and its
+// send. The test stands in for that Log call by holding the lifecycle read
+// lock itself: Close cannot return while the lock is held, and an entry sent
+// before the lock is released must be persisted by the drain.
+func TestCloseWaitsForInFlightEnqueue(t *testing.T) {
 	cs := &countingStore{}
 	l := New(cs, true)
 	l.logf = func(string, ...any) {}
-	l.Close()
-	l.closed.Store(false)
 
-	l.Log(Entry{RequestID: "straggler"})
+	l.mu.RLock()
+	closeReturned := make(chan struct{})
+	go func() {
+		defer close(closeReturned)
+		l.Close()
+	}()
 
-	persisted := cs.n.Load()
-	dropped := int64(l.Dropped())
-	if persisted+dropped != 1 {
-		t.Fatalf("submitted=1 persisted=%d dropped=%d: entry enqueued after the writer exited is neither persisted nor counted",
-			persisted, dropped)
+	select {
+	case <-closeReturned:
+		l.mu.RUnlock()
+		t.Fatal("Close returned while an enqueue was still in flight")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	l.writes <- store.AuditEntry{RequestID: "in-flight"}
+	l.mu.RUnlock()
+
+	select {
+	case <-closeReturned:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close did not return after the in-flight enqueue finished")
+	}
+	if got := cs.n.Load(); got != 1 {
+		t.Fatalf("persisted = %d, want 1: the entry accepted before Close must be drained", got)
+	}
+	if got := l.Dropped(); got != 0 {
+		t.Fatalf("Dropped() = %d, want 0", got)
+	}
+}
+
+// While Close waits for a slow store write, request goroutines must not be
+// held up: Log returns promptly and counts a post-Close drop.
+func TestLogDoesNotBlockWhileCloseDrains(t *testing.T) {
+	bs := &blockingStore{entered: make(chan struct{}), release: make(chan struct{})}
+	cs := &countingBehindBlock{blockingStore: bs}
+	l := New(cs, true)
+	l.logf = func(string, ...any) {}
+
+	l.Log(Entry{RequestID: "queued"})
+	<-bs.entered // the writer is now stuck inside the store
+
+	closeReturned := make(chan struct{})
+	go func() {
+		defer close(closeReturned)
+		l.Close()
+	}()
+	deadline := time.Now().Add(5 * time.Second)
+	for !l.closed.Load() {
+		if time.Now().After(deadline) {
+			close(bs.release)
+			t.Fatal("Close never marked the logger closed")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	const late = 50
+	logged := make(chan struct{})
+	go func() {
+		defer close(logged)
+		for i := 0; i < late; i++ {
+			l.Log(Entry{RequestID: "late"})
+		}
+	}()
+	select {
+	case <-logged:
+	case <-time.After(2 * time.Second):
+		close(bs.release)
+		t.Fatal("Log blocked while Close was waiting for the writer")
+	}
+	select {
+	case <-closeReturned:
+		t.Fatal("Close returned before the stuck store write finished")
+	default:
+	}
+
+	close(bs.release)
+	select {
+	case <-closeReturned:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close did not return after the store was released")
+	}
+	if got := cs.n.Load(); got != 1 {
+		t.Fatalf("persisted = %d, want 1", got)
+	}
+	if got := l.Dropped(); got != late {
+		t.Fatalf("Dropped() = %d, want %d", got, late)
+	}
+}
+
+// reentrantStore calls Log from inside AppendAuditLog, after Close has begun.
+type reentrantStore struct {
+	store.NopStore
+	logger  atomic.Pointer[Logger]
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (r *reentrantStore) AppendAuditLog(store.AuditEntry) error {
+	r.once.Do(func() {
+		close(r.entered)
+		<-r.release
+		r.logger.Load().Log(Entry{RequestID: "from-store"})
+	})
+	return nil
+}
+
+func TestStoreCallingLogDuringDrainDoesNotDeadlock(t *testing.T) {
+	rs := &reentrantStore{entered: make(chan struct{}), release: make(chan struct{})}
+	l := New(rs, true)
+	l.logf = func(string, ...any) {}
+	rs.logger.Store(l)
+
+	l.Log(Entry{RequestID: "first"})
+	<-rs.entered
+
+	closeReturned := make(chan struct{})
+	go func() {
+		defer close(closeReturned)
+		l.Close()
+	}()
+	deadline := time.Now().Add(5 * time.Second)
+	for !l.closed.Load() {
+		if time.Now().After(deadline) {
+			close(rs.release)
+			t.Fatal("Close never marked the logger closed")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	close(rs.release)
+
+	select {
+	case <-closeReturned:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close deadlocked when the store called Log during the drain")
+	}
+	if got := l.Dropped(); got != 1 {
+		t.Fatalf("Dropped() = %d, want 1 (the Log call made after Close began)", got)
 	}
 }
