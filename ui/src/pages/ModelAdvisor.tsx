@@ -23,7 +23,7 @@ import {
 import { startPull, isPullActive, subscribe as subscribePullProgress, getSnapshot as getPullProgressSnapshot } from '../lib/pullProgress';
 import { isDownloadOnlyRuntime, pullOptionsFor, sizeNotCurated as isSizeNotCurated } from '../lib/downloadOnly';
 import { useDemoMode } from '../hooks/useDemoMode';
-import { mockHFModels, mockHFSafetensorsModels, mockSafetensorsRepo, mockHFRepoDetails, mockSystemInfo, mockModelCatalogResponse, mockFavorites, pickQuant } from '../lib/mockData';
+import { mockHFModels, mockHFSafetensorsModels, mockSafetensorsDetails,mockHFRepoDetails, mockSystemInfo, mockModelCatalogResponse, mockFavorites, pickQuant } from '../lib/mockData';
 import type { CatalogModelFit } from '../types';
 import { readLastModelCount, writeLastModelCount, readLastNodeCount } from '../lib/nodeCount';
 import { CustomDatePicker } from '../components/DateTimePicker';
@@ -459,15 +459,11 @@ function ModelDetailPanel({
 
   const fetchDetails = useCallback(async (len: number) => {
     if (demoMode) {
-      const safetensors = isGGUFRuntime(nodeRuntime) ? undefined : mockSafetensorsRepo(model.id);
-      const mock = safetensors
-        ? {
-            // A safetensors runtime loads the whole repo as one unit: a single variant,
-            // sized and fitted like the server does (weights x1.2 plus 0.2 MiB per token
-            // of context, against this node's GPU memory).
-            variants: [{ tag: model.id, quantization: safetensors.quantization, size_mb: safetensors.size_mb, recommended: true, downloaded: false, vram_est_mb: 0, fit: 'unknown' as const }],
-          } as any
-        : mockHFRepoDetails[model.id];
+      // A safetensors runtime loads the whole repo as one unit: a single variant,
+      // sized and fitted below like the server does (weights x1.2 plus 0.2 MiB per
+      // token of context, against this node's GPU memory).
+      const safetensors = isGGUFRuntime(nodeRuntime) ? undefined : mockSafetensorsDetails(model.id);
+      const mock: any = safetensors ?? mockHFRepoDetails[model.id];
       const diskFreeGB = mock?.disk_free_gb ?? 500;
       const diskFit = (sizeMB: number): 'ok' | 'insufficient' | 'unknown' =>
         sizeMB / 1024 > diskFreeGB ? 'insufficient' : 'ok';

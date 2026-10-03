@@ -1276,6 +1276,7 @@ const mockModelCatalogBase: ModelCatalogResponse = {
       disk_free_gb: 15,
       disk_total_gb: 2000,
       disk_known: true,
+      capabilities: ['status', 'models.pull', 'models.list', 'runtime.health_check'],
       gpu_count_unknown: true,
       models: [],
     },
@@ -1400,22 +1401,64 @@ export const mockModelCatalogResponse: ModelCatalogResponse = {
   nodes: mockModelCatalogBase.nodes.map(n => ({ ...n, models: mockNodeModels(mockModelCatalogBase, n) })),
 };
 
-// What a vLLM, TGI or MLX node browses instead of GGUF repos: the full-precision
-// safetensors repos from MOCK_HF_REPOS (uncurated sizes left out), each one a
-// single variant sized like the server does it (weights x1.2 plus the context).
-export const mockHFSafetensorsModels = Object.values(MOCK_HF_REPOS)
-  .filter(r => r.size_mb > 0)
-  .map((r, i) => ({
-    id: r.repo,
-    downloads: 410000 - i * 62000,
-    likes: 2100 - i * 310,
-    tags: ['text-generation', 'safetensors', 'conversational'],
-    lastModified: '2026-06-20T08:00:00Z',
-    pipeline_tag: 'text-generation',
-  }));
+// What a vLLM, TGI or MLX node browses instead of GGUF repos: the same model
+// families as the GGUF list, as full-precision safetensors repos. Each repo is a
+// single variant (the server loads the whole repo as one unit), sized in MiB from
+// the repo's BF16 weights. The four repos in MOCK_HF_REPOS take their size from
+// there so the "What fits" table and this list never disagree. Spread on purpose
+// across a 24 GB node: fits, tight, too large, a model whose declared context is
+// below the slider's range, and one repo that does not fit the node's disk.
+interface SafetensorsRepo {
+  id: string; downloads: number; likes: number; tags: string[]; lastModified: string;
+  pipeline_tag: string; size_mb: number;
+  // Declared max context from the repo's config.json (derived), or absent (estimated).
+  declared_max_context?: number;
+  // Demo-only: a node disk reading small enough to show the No Disk Space state.
+  disk_free_gb?: number;
+}
 
-export function mockSafetensorsRepo(repoId: string): { size_mb: number; quantization: string } | undefined {
-  return Object.values(MOCK_HF_REPOS).find(r => r.repo === repoId && r.size_mb > 0);
+const repoSize = (repo: string) => Object.values(MOCK_HF_REPOS).find(r => r.repo === repo)?.size_mb ?? 0;
+
+const MOCK_SAFETENSORS_REPOS: SafetensorsRepo[] = [
+  { id: 'deepseek-ai/DeepSeek-R1-Distill-Qwen-7B', downloads: 410000, likes: 2100, tags: ['text-generation', 'safetensors', 'deepseek', 'reasoning'], lastModified: '2026-06-18T09:15:00Z', pipeline_tag: 'text-generation', size_mb: repoSize('deepseek-ai/DeepSeek-R1-Distill-Qwen-7B'), declared_max_context: 131072 },
+  { id: 'deepseek-ai/DeepSeek-R1-Distill-Llama-8B', downloads: 362000, likes: 2140, tags: ['text-generation', 'safetensors', 'deepseek', 'reasoning'], lastModified: '2026-06-19T07:45:00Z', pipeline_tag: 'text-generation', size_mb: 15316, declared_max_context: 131072 },
+  { id: 'meta-llama/Llama-3.2-3B-Instruct', downloads: 1450000, likes: 1620, tags: ['text-generation', 'safetensors', 'llama-3.2', 'conversational'], lastModified: '2026-06-15T18:30:00Z', pipeline_tag: 'text-generation', size_mb: 6131, declared_max_context: 131072 },
+  { id: 'meta-llama/Llama-3.2-1B-Instruct', downloads: 980000, likes: 1180, tags: ['text-generation', 'safetensors', 'llama-3.2', 'conversational'], lastModified: '2026-06-14T12:00:00Z', pipeline_tag: 'text-generation', size_mb: 2357, declared_max_context: 131072 },
+  { id: 'Qwen/Qwen2.5-Coder-7B-Instruct', downloads: 520000, likes: 1205, tags: ['text-generation', 'safetensors', 'qwen', 'coding'], lastModified: '2026-06-16T10:20:00Z', pipeline_tag: 'text-generation', size_mb: 14500, declared_max_context: 32768 },
+  { id: 'mistralai/Mistral-7B-Instruct-v0.3', downloads: 489000, likes: 1420, tags: ['text-generation', 'safetensors', 'mistral', 'general'], lastModified: '2026-06-08T08:30:00Z', pipeline_tag: 'text-generation', size_mb: 13825, declared_max_context: 32768 },
+  { id: 'google/gemma-2-9b-it', downloads: 275000, likes: 930, tags: ['text-generation', 'safetensors', 'gemma', 'instruction'], lastModified: '2026-06-10T16:45:00Z', pipeline_tag: 'text-generation', size_mb: 17622, declared_max_context: 8192 },
+  { id: 'google/gemma-2-2b-it', downloads: 310400, likes: 720, tags: ['text-generation', 'safetensors', 'gemma', 'edge'], lastModified: '2026-06-12T11:15:00Z', pipeline_tag: 'text-generation', size_mb: 4988, declared_max_context: 8192 },
+  { id: 'microsoft/Phi-3.5-mini-instruct', downloads: 254100, likes: 812, tags: ['text-generation', 'safetensors', 'phi-3.5', 'lightweight'], lastModified: '2026-06-11T14:50:00Z', pipeline_tag: 'text-generation', size_mb: 7286, declared_max_context: 131072 },
+  { id: 'Qwen/Qwen2.5-14B-Instruct', downloads: 348000, likes: 1790, tags: ['text-generation', 'safetensors', 'qwen', 'general'], lastModified: '2026-06-17T13:05:00Z', pipeline_tag: 'text-generation', size_mb: repoSize('Qwen/Qwen2.5-14B-Instruct'), declared_max_context: 32768 },
+  { id: 'meta-llama/Llama-3.2-11B-Vision-Instruct', downloads: 167200, likes: 1098, tags: ['image-text-to-text', 'safetensors', 'llama-3.2', 'vision'], lastModified: '2026-06-17T15:20:00Z', pipeline_tag: 'image-text-to-text', size_mb: 20300, declared_max_context: 131072, disk_free_gb: 16 },
+  { id: 'deepseek-ai/DeepSeek-R1-Distill-Qwen-32B', downloads: 286000, likes: 1480, tags: ['text-generation', 'safetensors', 'deepseek', 'reasoning'], lastModified: '2026-06-18T11:40:00Z', pipeline_tag: 'text-generation', size_mb: repoSize('deepseek-ai/DeepSeek-R1-Distill-Qwen-32B') },
+  { id: 'deepseek-ai/DeepSeek-R1-Distill-Llama-70B', downloads: 224000, likes: 1170, tags: ['text-generation', 'safetensors', 'deepseek', 'reasoning'], lastModified: '2026-06-18T12:10:00Z', pipeline_tag: 'text-generation', size_mb: repoSize('deepseek-ai/DeepSeek-R1-Distill-Llama-70B') },
+];
+
+export const mockHFSafetensorsModels = MOCK_SAFETENSORS_REPOS.map(
+  ({ size_mb: _s, declared_max_context: _c, disk_free_gb: _d, ...model }) => model,
+);
+
+// The repo-details shape for a safetensors repo: one variant; vram_est_mb and fit
+// are placeholders the panel recomputes from the slider and the node's GPU memory.
+export function mockSafetensorsDetails(repoId: string) {
+  const repo = MOCK_SAFETENSORS_REPOS.find(r => r.id === repoId);
+  if (!repo) return undefined;
+  return {
+    id: repo.id,
+    downloads: repo.downloads,
+    likes: repo.likes,
+    tags: repo.tags,
+    last_modified: repo.lastModified,
+    disk_free_gb: repo.disk_free_gb,
+    variants: [{
+      tag: repo.id, quantization: 'BF16', size_mb: repo.size_mb, vram_est_mb: 0, fit: 'unknown',
+      recommended: true, downloaded: false,
+      context_feasibility: repo.declared_max_context
+        ? { confidence: 'derived', requested_ctx: 8192, declared_max_context: repo.declared_max_context, exceeds_declared_max: false }
+        : { confidence: 'estimated', requested_ctx: 8192 },
+    }],
+  };
 }
 
 export const mockFavorites = [
