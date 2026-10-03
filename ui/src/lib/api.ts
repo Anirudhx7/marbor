@@ -517,6 +517,7 @@ export async function removeNode(name: string) {
 }
 
 export async function drainNode(name: string, graceSeconds?: number) {
+  if (DEMO) return demoDelay(undefined);
   const body = graceSeconds !== undefined ? JSON.stringify({ grace_period_seconds: graceSeconds }) : undefined;
   const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/drain`, {
     method: 'POST',
@@ -1652,6 +1653,13 @@ export interface NodeControlStatus {
 }
 
 export async function getNodeControl(name: string): Promise<NodeControlStatus> {
+  if (DEMO) return demoDelay<NodeControlStatus>({
+    node: name,
+    configured: true,
+    driver: 'systemd',
+    identifier: 'ollama.service',
+    discovered: { driver: 'systemd', identifier: 'ollama.service', evidence: ['unit ollama.service found', 'unit active'] },
+  });
   const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/control`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch node control status');
   return res.json();
@@ -1680,6 +1688,7 @@ export async function clearNodeControl(name: string): Promise<void> {
 // Admin API returns "Runtime control unavailable: no control driver
 // configured" (422) otherwise, surfaced here as a thrown error.
 export async function startNodeRuntime(name: string): Promise<void> {
+  if (DEMO) return demoDelay(undefined);
   const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/runtime/start`, {
     method: 'POST',
     headers: authHeaders(),
@@ -1687,16 +1696,22 @@ export async function startNodeRuntime(name: string): Promise<void> {
   if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to start runtime'); }
 }
 
-export async function stopNodeRuntime(name: string): Promise<void> {
-  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/runtime/stop`, {
+// stop/restart on a multi-host replica head, worker or unresolved member are
+// rejected (409, code replica_member) unless acknowledged. The UI passes
+// acknowledgeReplica only from its confirm dialog, after the dialog has told
+// the operator what the action does to the replica.
+export async function stopNodeRuntime(name: string, acknowledgeReplica = false): Promise<void> {
+  if (DEMO) return demoDelay(undefined);
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/runtime/stop${acknowledgeReplica ? '?acknowledge_replica=true' : ''}`, {
     method: 'POST',
     headers: authHeaders(),
   });
   if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to stop runtime'); }
 }
 
-export async function restartNodeRuntime(name: string): Promise<void> {
-  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/runtime/restart`, {
+export async function restartNodeRuntime(name: string, acknowledgeReplica = false): Promise<void> {
+  if (DEMO) return demoDelay(undefined);
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/runtime/restart${acknowledgeReplica ? '?acknowledge_replica=true' : ''}`, {
     method: 'POST',
     headers: authHeaders(),
   });

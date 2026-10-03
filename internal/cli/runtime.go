@@ -12,24 +12,52 @@ import (
 // missing capability), ExitServerError for an agent/network failure,
 // ExitAuthError for a 401/403 - never a silent ExitOK for an action that
 // didn't happen (the same honest-data principle extended to CLI exit codes).
-func runRuntimeAction(flags *globalFlags, action, node string, stdout, stderr io.Writer) int {
+//
+// A stop or restart on a multi-host replica head, worker or unresolved member
+// is rejected by the server unless acknowledgeReplica is set (the
+// --acknowledge-replica flag); the rejection message is printed as the error
+// and exits ExitUserError. When the action does run on a replica member, the
+// replica warning is printed to stderr so the effect is on record.
+func runRuntimeAction(flags *globalFlags, action, node string, acknowledgeReplica bool, stdout, stderr io.Writer) int {
 	client, err := authenticatedClient(flags)
 	if err != nil {
 		return reportError(err, stderr)
 	}
 
-	if err := client.RuntimeAction(node, action); err != nil {
+	replica, err := client.RuntimeAction(node, action, acknowledgeReplica)
+	if err != nil {
 		return reportError(err, stderr)
 	}
+	printReplicaWarning(stderr, replica)
 
-	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, map[string]interface{}{
-		"ok": true, "node": node, "action": action,
-	}); handled {
+	result := map[string]interface{}{"ok": true, "node": node, "action": action}
+	if replica != nil {
+		result["replica"] = replica
+	}
+	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, result); handled {
 		return code
 	}
 
 	fmt.Fprintf(stdout, "%s: runtime %s ok\n", node, action)
 	return ExitOK
+}
+
+// acknowledgeReplicaFlag is the opt-in that lets "runtime stop" and "runtime
+// restart" run on a multi-host replica head, worker or unresolved member.
+var acknowledgeReplicaFlag = FlagSpec{
+	Name:  "acknowledge-replica",
+	Kind:  FlagBool,
+	Usage: "proceed when the node is part of a multi-host replica (stopping any member breaks the replica)",
+}
+
+// printReplicaWarning writes the server's replica warning to stderr, so it
+// never pollutes piped stdout or --json output. A nil replica or an empty
+// warning prints nothing.
+func printReplicaWarning(stderr io.Writer, replica *ReplicaInfo) {
+	if replica == nil || replica.Warning == "" {
+		return
+	}
+	fmt.Fprintf(stderr, "warning: %s\n", replica.Warning)
 }
 
 // runRuntimeLogs implements `marbor runtime logs <node> [--lines=N]` - POST
@@ -74,6 +102,8 @@ func runRuntimeDrain(flags *globalFlags, node, reason string, gracePeriod int, s
 	if err != nil {
 		return reportError(err, stderr)
 	}
+
+	printReplicaWarning(stderr, result.Replica)
 
 	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, result); handled {
 		return code

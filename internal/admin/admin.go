@@ -2716,6 +2716,15 @@ func (s *Server) handleNodeRuntimeAction(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
+	// A stop or restart on a multi-host replica head, worker or unresolved
+	// member needs an explicit acknowledgement. Decided here, before any
+	// agent or capability check, so an unreachable worker is rejected for
+	// being a worker rather than reported as a plain agent failure.
+	replica, proceed := s.guardReplicaRuntimeAction(w, r, nodeName, action)
+	if !proceed {
+		return
+	}
+
 	// This dispatches to the node's Marbor Agent, not to the runtime itself
 	// (start/stop/restart are only meaningful because the runtime may
 	// legitimately be down right now) - gate on agent reachability, never
@@ -2759,10 +2768,14 @@ func (s *Server) handleNodeRuntimeAction(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	s.logSystemChange(r, "runtime_"+action, nodeName, fmt.Sprintf("Driver: %s, Identifier: %s", ctrl.Driver, ctrl.Identifier))
+	s.logSystemChange(r, "runtime_"+action, nodeName, replicaAuditDetail(fmt.Sprintf("Driver: %s, Identifier: %s", ctrl.Driver, ctrl.Identifier), replica, replica != nil && replicaAcknowledged(r)))
 
+	resp := map[string]interface{}{"ok": true}
+	if replica != nil {
+		resp["replica"] = replica
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"ok": true})
+	json.NewEncoder(w).Encode(resp)
 }
 
 // runtimeActionViaAgent dispatches action ("start"/"stop"/"restart") to
@@ -3846,14 +3859,25 @@ func (s *Server) handleDrainNode(w http.ResponseWriter, r *http.Request) {
 		}
 		grace = *body.GracePeriodSeconds
 	}
+	if _, ok := s.router.NodeURLs()[name]; !ok {
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
+		return
+	}
+	// Draining a replica member is never blocked, but the response says what
+	// the drain does (draining a worker has no routing effect).
+	replica := s.replicaInfoFor(name, "drain")
 	if !s.router.DrainNode(name, reason, grace) {
 		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
 		return
 	}
 	_ = s.st.SetNodeDrain(name, true, reason, grace)
-	s.logSystemChange(r, "drain_node", name, reason)
+	s.logSystemChange(r, "drain_node", name, replicaAuditDetail(reason, replica, false))
+	resp := map[string]any{"node": name, "draining": true, "reason": reason, "grace_period_seconds": grace}
+	if replica != nil {
+		resp["replica"] = replica
+	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{"node": name, "draining": true, "reason": reason, "grace_period_seconds": grace})
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 func (s *Server) handleUndrainNode(w http.ResponseWriter, r *http.Request) {
