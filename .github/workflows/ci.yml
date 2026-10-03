@@ -63,7 +63,7 @@ jobs:
   # Go compiles against the committed internal/admin/web embed, not ui/dist.
   go-checks:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -123,9 +123,10 @@ jobs:
         # -race catches concurrent map/mutex bugs (shared state in auth, router, admin).
         # Timeout guards against hangs in integration tests. internal/admin alone already
         # runs ~120s under -race (many NewServer-per-test integration tests), so 120s left
-        # no real margin - bumped to 300s to absorb normal CI runner variance without
-        # weakening the hang-detection this timeout exists for.
-        run: go test -race -timeout 300s ./...
+        # no real margin - bumped to 300s, then to 600s once the package total
+        # reached ~300s on CI and the limit killed a passing run mid-test. Still
+        # tight enough to catch a real hang.
+        run: go test -race -timeout 600s ./...
 
       - name: Docs drift check (man pages, docs/cli.md, README CLI table)
         # cmd/gen-docs derives docs/man/*.1, docs/cli.md, and README.md's CLI

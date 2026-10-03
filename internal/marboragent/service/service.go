@@ -37,8 +37,8 @@ type Config struct {
 	// entirely and the agent falls back to its own built-in default.
 	RefreshInterval time.Duration
 	// CertPath/KeyPath are the agent's TLS certificate/key file paths.
-	// Both empty means "run plaintext" (default, matches every install that
-	// predates TLS support unchanged). Set by each platform's Install right before
+	// Both empty means plaintext, which the agent now refuses on a non-loopback
+	// bind, so every platform Install sets both (never left empty in practice). Set by each platform's Install right before
 	// calling args() below, after EnsureAgentCert has confirmed the files
 	// exist - never populated any other way, so a service definition never
 	// points at a cert/key pair that doesn't actually exist on disk. Not

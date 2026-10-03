@@ -52,9 +52,9 @@ packages=$(echo "$changed_files" | xargs -n1 dirname | sort -u | awk '{ if ($0 =
 echo "Sanity: testing $(echo "$packages" | wc -l | tr -d ' ') changed package(s) (base: $base):"
 echo "$packages"
 
-# 300s: matches the full regression step's timeout (ci.yml/gate.sh). Verified
+# 600s: matches the full regression step's timeout (ci.yml/gate.sh). Verified
 # empirically that 200s is NOT enough margin for internal/admin alone under
 # -race on a real run (timed out at exactly 200s) - use the same budget as
 # regression rather than re-deriving a smaller one that keeps proving wrong.
 # shellcheck disable=SC2086
-go test -race -timeout 300s $packages
+go test -race -timeout 600s $packages

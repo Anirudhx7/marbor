@@ -82,6 +82,17 @@ func adminDashboardURL(bindAddress string) string {
 	return fmt.Sprintf("http://%s:%s", host, port)
 }
 
+// adminBindIsLoopback reports whether the admin bind address is a literal
+// loopback IP; an empty host (all interfaces) or a hostname is not.
+func adminBindIsLoopback(bindAddress string) bool {
+	host, _, err := net.SplitHostPort(bindAddress)
+	if err != nil {
+		host = bindAddress
+	}
+	ip := net.ParseIP(strings.Trim(host, "[]"))
+	return ip != nil && ip.IsLoopback()
+}
+
 // printStartupBanner prints a one-time onboarding summary when the database
 // has no nodes or API keys yet - there is no config.yaml to point at
 // anymore, so the dashboard is the only setup path.
@@ -96,7 +107,13 @@ func printStartupBanner(cfg *config.Config, dbPath string) {
 	fmt.Printf("  Point your apps at:  http://localhost:%d\n", cfg.Proxy.Port)
 	fmt.Println()
 	fmt.Printf("  Dashboard:           %s\n", adminDashboardURL(cfg.Admin.BindAddress))
-	fmt.Println("  Dashboard login:     admin / admin (you'll be asked to set a new password on first login)")
+	fmt.Println("  Dashboard login:     admin / admin (a password change is required at first login)")
+	if !adminBindIsLoopback(cfg.Admin.BindAddress) {
+		fmt.Println("  WARNING:             while that default login is active, and since the dashboard is plaintext HTTP,")
+		fmt.Println("                       anyone who can reach it can take over the control plane.")
+		fmt.Println("                       Change the password immediately; for any exposed deployment keep")
+		fmt.Println("                       the dashboard on 127.0.0.1 or put TLS (a reverse proxy) in front of it.")
+	}
 	fmt.Println()
 	fmt.Println("  Add your first GPU node and API key from the dashboard - or run")
 	fmt.Println("  install.sh's network probe to discover and add them automatically.")

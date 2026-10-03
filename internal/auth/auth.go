@@ -6,8 +6,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -61,6 +63,11 @@ type Middleware struct {
 	enabled bool
 	keys    map[string]*keyState
 	byName  map[string]*keyState
+
+	// expiryWarned remembers when each key last logged a malformed-expiry
+	// warning (key name -> time.Time), so a bad value warns once a minute
+	// instead of once per request.
+	expiryWarned sync.Map
 }
 
 type keyState struct {
@@ -470,6 +477,7 @@ func (m *Middleware) RevokeKey(name string) {
 	}
 	delete(m.keys, hashToken(ks.key))
 	delete(m.byName, name)
+	m.expiryWarned.Delete(name)
 }
 
 // KeyUsdCaps returns the live (possibly patched) per-key cloud-spend caps for
@@ -608,7 +616,11 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 		modelsList := ks.models
 		ks.mu.RUnlock()
 
-		if keyExpired(expiresAt, time.Now()) {
+		expired, malformed := ExpiryStatus(expiresAt, time.Now())
+		if malformed {
+			m.warnMalformedExpiry(ks.name)
+		}
+		if expired || malformed {
 			w.Header().Set("WWW-Authenticate", `Bearer realm="marbor"`)
 			writeAuthError(w, http.StatusUnauthorized, "api key has expired", "authentication_error", "api_key_expired")
 			return
@@ -659,21 +671,44 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 	})
 }
 
-// keyExpired reports whether an API key's expires_at has passed. Empty means no
-// expiry. Accepts a date ("2006-01-02", valid through the end of that day) or a
-// full RFC3339 timestamp. An unparseable value is treated as non-expiring so a
-// config typo never silently locks out a working key (it is validated at load).
-func keyExpired(expiresAt string, now time.Time) bool {
+// expiryWarnInterval bounds how often a key with a malformed expires_at logs
+// its warning.
+const expiryWarnInterval = time.Minute
+
+// warnMalformedExpiry logs, at most once per expiryWarnInterval per key, that a
+// key is being rejected because its persisted expires_at cannot be parsed. Only
+// the key name is logged, never the key value.
+func (m *Middleware) warnMalformedExpiry(name string) {
+	now := time.Now()
+	if last, ok := m.expiryWarned.Load(name); ok && now.Sub(last.(time.Time)) < expiryWarnInterval {
+		return
+	}
+	m.expiryWarned.Store(name, now)
+	log.Printf("auth: rejecting API key %q: its stored expires_at is malformed and is treated as expired; fix it with PATCH /admin/keys/%s (expires_at)", name, url.PathEscape(name))
+}
+
+// ExpiryStatus classifies an API key's expires_at. Empty means no expiry
+// (neither expired nor malformed). A bare date ("2006-01-02") is valid through
+// the end of that day, a datetime-local value ("2006-01-02T15:04") is read in
+// now's location, and an RFC3339 timestamp is exact. Any other non-empty value
+// is malformed: callers must treat it as expired, never as non-expiring, so a
+// corrupted or hand-edited value cannot extend a credential indefinitely.
+// Create and update reject malformed values up front (admin.validateExpiresAt);
+// this covers values already persisted.
+func ExpiryStatus(expiresAt string, now time.Time) (expired, malformed bool) {
 	if expiresAt == "" {
-		return false
+		return false, false
 	}
 	if t, err := time.ParseInLocation("2006-01-02", expiresAt, now.Location()); err == nil {
-		return now.After(t.Add(24 * time.Hour))
+		return now.After(t.AddDate(0, 0, 1)), false
+	}
+	if t, err := time.ParseInLocation("2006-01-02T15:04", expiresAt, now.Location()); err == nil {
+		return now.After(t), false
 	}
 	if t, err := time.Parse(time.RFC3339, expiresAt); err == nil {
-		return now.After(t)
+		return now.After(t), false
 	}
-	return false
+	return false, true
 }
 
 func KeyNameFromContext(ctx context.Context) string {

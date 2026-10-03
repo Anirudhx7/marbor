@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Anirudhx7/marbor/internal/winexit"
@@ -57,6 +60,42 @@ func Run(args []string, version string) {
 	runAgent(args, version, nil)
 }
 
+// validatePlaintextBind refuses to serve plaintext HTTP on a non-loopback bind
+// unless the operator opted in explicitly. TLS (both cert and key) always
+// passes, and plaintext on a loopback bind passes because the bearer token
+// never leaves the host. An empty bind means all interfaces, which is
+// non-loopback. Trust is never inferred from deployment mode: the only way
+// to run plaintext on a reachable address is allowPlaintext.
+func validatePlaintextBind(cert, key, bind string, allowPlaintext bool) error {
+	if cert != "" && key != "" {
+		return nil
+	}
+	if isLoopbackBind(bind) || allowPlaintext {
+		return nil
+	}
+	shown := bind
+	if shown == "" {
+		shown = "all interfaces"
+	}
+	return fmt.Errorf("refusing to serve plaintext HTTP on %s: the bearer token, which unlocks destructive actions, would cross the network unencrypted. "+
+		"Fix one of: serve TLS (--cert=<file> --key=<file>, or run \"marbor-agent service install\" which provisions a certificate automatically); "+
+		"bind to a loopback IP (--bind=127.0.0.1); or, on a trusted isolated network only, pass --allow-insecure-plaintext", shown)
+}
+
+// isLoopbackBind reports whether bind is a literal loopback IP (127.0.0.0/8 or
+// ::1). An empty bind (all interfaces), a hostname, or any other address is not
+// loopback.
+func isLoopbackBind(bind string) bool {
+	host := strings.Trim(bind, "[]")
+	if host == "" {
+		return false
+	}
+	// Only literal IPs count: a hostname such as "localhost" is resolved by the
+	// OS and could map somewhere reachable, so it never earns plaintext trust.
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
 // validateCertKeyFlags rejects a foreground --cert/--key pair where exactly
 // one is set. Mirrors service.validateCertKeyConfig's install-time check for
 // the foreground code path (B1 AGENT-01) - both empty is the documented
@@ -81,6 +120,8 @@ func runAgent(args []string, version string, stop <-chan struct{}) {
 	refreshInterval := fs.Duration("refresh-interval", defaultRefreshInterval, "how often to re-collect GPU/host telemetry in the background (e.g. 5s, 10s)")
 	certFlag := fs.String("cert", "", "TLS certificate file path; if both --cert and --key are set, serves HTTPS instead of plaintext HTTP - set by \"agent service install\", not normally passed by hand")
 	keyFlag := fs.String("key", "", "TLS private key file path, paired with --cert")
+	bindFlag := fs.String("bind", "", "address to listen on (default: all interfaces); use 127.0.0.1 or ::1 to restrict the agent to this host")
+	allowPlaintext := fs.Bool("allow-insecure-plaintext", false, "permit plaintext HTTP on a non-loopback bind; without --cert/--key the bearer token, which unlocks destructive actions, crosses the network unencrypted - only for a trusted, isolated network")
 	readRuntimeEnv := fs.Bool("read-runtime-env", os.Getenv("MARBOR_AGENT_READ_RUNTIME_ENV") == "1", "read each inference runtime process's own environment to learn which GPUs it was pointed at (only the GPU visibility variables and llama.cpp's LLAMA_ARG_RPC are extracted, nothing else is kept); needs the same user or root; off by default (or set MARBOR_AGENT_READ_RUNTIME_ENV=1); does not gate the docker socket path, which separately reads a container's configured environment through docker inspect with the same allowlist")
 	usage := func(w io.Writer) {
 		fmt.Fprintf(w, "marbor-agent - Marbor Agent: node-local execution point for the marbor\n\n")
@@ -125,6 +166,12 @@ func runAgent(args []string, version string, stop <-chan struct{}) {
 	if err := validateCertKeyFlags(*certFlag, *keyFlag); err != nil {
 		winexit.Fatalf("marboragent: %v", err)
 	}
+	if _, _, err := net.SplitHostPort(*bindFlag); err == nil {
+		winexit.Fatalf("marboragent: --bind takes a host or IP without a port (got %q); the port comes from --port", *bindFlag)
+	}
+	if err := validatePlaintextBind(*certFlag, *keyFlag, *bindFlag, *allowPlaintext); err != nil {
+		winexit.Fatalf("marboragent: %v", err)
+	}
 
 	// Start the HTTP server before building/seeding the scheduler so the
 	// listener binds within Windows SCM's 30-second start timeout (error
@@ -138,7 +185,7 @@ func runAgent(args []string, version string, stop <-chan struct{}) {
 	// GPU/Host/Runtime blocks until the Scheduler is wired up and Seed has
 	// run. The marbor poller treats nil blocks as "not yet collected."
 	srv := &Server{Token: token, Version: version}
-	addr := fmt.Sprintf(":%d", *port)
+	addr := net.JoinHostPort(*bindFlag, strconv.Itoa(*port))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	// Build, seed, and refresh the scheduler entirely in the background so
@@ -195,7 +242,9 @@ func runAgent(args []string, version string, stop <-chan struct{}) {
 	}
 
 	log.Printf("marbor-agent %s listening on %s (GET /v1/status, GET /metrics, refreshed every %s)", version, addr, *refreshInterval)
-	log.Printf("WARNING: marbor-agent is serving plaintext HTTP (no --cert/--key configured) - the bearer token, which unlocks destructive actions, will traverse the network unencrypted. Run \"agent service install\" to provision TLS automatically.")
+	if !isLoopbackBind(*bindFlag) {
+		log.Printf("WARNING: marbor-agent is serving plaintext HTTP on a non-loopback address, allowed by --allow-insecure-plaintext - the bearer token, which unlocks destructive actions, will traverse the network unencrypted. Run \"marbor-agent service install\" to provision TLS automatically.")
+	}
 	if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		winexit.Fatalf("marboragent: %v", err)
 	}

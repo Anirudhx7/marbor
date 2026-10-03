@@ -18,11 +18,16 @@ var ErrNodeNotRegistered = errors.New("store: node is not registered")
 // ErrUserNotFound is returned by GetUserByUsername / GetUserByID when no row matches.
 var ErrUserNotFound = errors.New("store: user not found")
 
-// AdminCreds holds the dashboard administrator's login credentials.
+// AdminCreds holds the dashboard administrator's login credentials from the
+// legacy single-admin table. Legacy only: fresh installs and every password
+// set or reset today live in the users table as bcrypt hashes. Rows written
+// by old versions hold hex(sha256 iterated over salt+":"+password) in
+// PasswordHash; the login path verifies bcrypt only, so such a hash can never
+// authenticate and the account must be reset.
 type AdminCreds struct {
 	Username     string
-	PasswordHash string // hex(sha256 iterated over salt+":"+password)
-	Salt         string // 32 random bytes as hex
+	PasswordHash string // legacy hex(sha256 iterated over salt+":"+password) or bcrypt, see above
+	Salt         string // 32 random bytes as hex (legacy)
 }
 
 // Store is the persistence interface. NopStore{} is the no-op implementation

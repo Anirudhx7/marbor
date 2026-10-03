@@ -37,7 +37,7 @@ With multiple vLLM or Ollama nodes, a naive load balancer (nginx round-robin) se
 
 ### 3. No visibility, no control
 
-A bare vLLM or Ollama deployment has no auth, no rate limits, no metrics, no request log. Anyone on the network can use your GPU, and you can't see who used what or what cloud fallback cost you. marbor adds per-key auth with rate limits and model allow-lists, a live dashboard, Prometheus metrics, a Grafana dashboard, webhooks, audit logging, and a marbor agent for remote telemetry, operations, and maintenance.
+A bare vLLM or Ollama deployment has no auth, no rate limits, no metrics, no request log. Anyone on the network can use your GPU, and you can't see who used what or what cloud fallback cost you. marbor adds per-key auth with rate limits and model allow-lists, a live dashboard, Prometheus metrics, a Grafana dashboard, webhooks, best-effort request audit logging, and a marbor agent for remote telemetry, operations, and maintenance.
 
 **Who feels this:** the platform engineer told "make AI work for the whole team" with on-prem GPUs and an OpenAI bill to justify.
 
