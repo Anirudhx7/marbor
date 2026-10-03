@@ -81,11 +81,11 @@ type Middleware struct {
 }
 
 // malformedExpiry identifies one malformed stored expiry for de-duplication.
-// The raw value is kept only in memory as a map key; it is never logged or
-// passed to the hook.
+// Only a SHA-256 digest of the value is kept, so the raw string is never
+// retained, logged or passed to the hook.
 type malformedExpiry struct {
-	name  string
-	value string
+	name   string
+	digest string
 }
 
 type keyState struct {
@@ -444,11 +444,19 @@ func (m *Middleware) AddKey(k config.KeyConfig) {
 // start fresh (old token stops working immediately). Removed keys stop
 // accepting requests after the swap.
 func (m *Middleware) Reload(cfg config.AuthConfig) {
+	// The audit hook runs after every lock is released.
+	m.reportMalformedExpiries(m.swapKeys(cfg))
+}
+
+// swapKeys installs the new key set under m.mu (released by defer, so a panic
+// cannot leave it held) and returns the malformed expiries it saw.
+func (m *Middleware) swapKeys(cfg config.AuthConfig) []malformedExpiry {
 	newKeys := make(map[string]*keyState, len(cfg.Keys))
 	newByName := make(map[string]*keyState, len(cfg.Keys))
 
 	var found []malformedExpiry
 	m.mu.Lock()
+	defer m.mu.Unlock()
 	oldByName := m.byName
 
 	for _, k := range cfg.Keys {
@@ -495,9 +503,7 @@ func (m *Middleware) Reload(cfg config.AuthConfig) {
 	m.enabled = cfg.IsEnabled()
 	m.keys = newKeys
 	m.byName = newByName
-	m.mu.Unlock()
-	// The audit hook runs after every lock is released.
-	m.reportMalformedExpiries(found)
+	return found
 }
 
 func (m *Middleware) RevokeKey(name string) {
@@ -715,7 +721,7 @@ const ExpiryAuditDetails = "The stored expiry for this API key is malformed, so 
 // non-empty value ExpiryStatus cannot parse.
 func collectMalformed(found []malformedExpiry, name, expiresAt string) []malformedExpiry {
 	if _, malformed := ExpiryStatus(expiresAt, time.Now()); malformed {
-		return append(found, malformedExpiry{name: name, value: expiresAt})
+		return append(found, malformedExpiry{name: name, digest: hashToken(expiresAt)})
 	}
 	return found
 }

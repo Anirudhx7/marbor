@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -134,6 +135,13 @@ func TestMalformedExpiryRequestReturns401(t *testing.T) {
 	if n := len(rec.snapshot()); n != 1 {
 		t.Fatalf("events after 5 requests = %d, want 1 (none per request)", n)
 	}
+	logged := buf.String()
+	if strings.Contains(logged, "sk-secret-value") || strings.Contains(logged, "next tuesday") {
+		t.Fatalf("log output leaks the key or the malformed value: %q", logged)
+	}
+	if !strings.Contains(logged, `"bad"`) {
+		t.Fatalf("log output %q does not name the rejected key", logged)
+	}
 }
 
 func TestMalformedExpiryAuditEventNamesKeyNotValue(t *testing.T) {
@@ -163,9 +171,9 @@ func TestMalformedExpiryHookNotCalledUnderLock(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		var calls int
+		var calls atomic.Int32
 		mw.SetExpiryAuditHook(func(name string) {
-			calls++
+			calls.Add(1)
 			// Each of these needs a Middleware lock; a held lock would deadlock.
 			ExpiryStatus("oops", time.Now())
 			mw.KeyStats(name)
@@ -177,6 +185,9 @@ func TestMalformedExpiryHookNotCalledUnderLock(t *testing.T) {
 		mw.AddKey(keyWith("bad3", "sk-bad3", "oops3"))
 		v := "oops4"
 		mw.PatchKey("bad3", KeyPatch{ExpiresAt: &v})
+		if got := calls.Load(); got != 3 {
+			t.Errorf("hook calls = %d, want 3 (bad, bad2, bad3)", got)
+		}
 	}()
 	select {
 	case <-done:
