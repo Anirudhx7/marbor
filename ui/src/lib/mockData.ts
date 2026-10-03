@@ -1352,14 +1352,14 @@ export function pickQuant(cands: PickCandidate[]): QuantRecommendation {
 // the demo list always agrees with the pick rule above.
 const MOCK_DOWNLOADED: Record<string, string[]> = { 'gpu-node-01': ['llama3.3:8b', 'deepseek-r1:7b'] };
 
-// Keep in sync with the server table (internal/admin/catalog_hf.go): same repos,
-// sizes, dtype and fit rule.
 // Hugging Face equivalents a vLLM or TGI node offers instead of the Ollama
 // variants: one full-precision repo per mapped model, size in MiB typed from
 // the repo (0 = not curated yet, shown as "-"). Mirrors the server's static
 // table for the demo's models; qwen3:8b stands in for a model added to the
 // table before its size is known. Fit uses the server rule: the largest single
 // GPU, safetensors weights x1.2 plus an 8192-token context at 0.2 MiB per token.
+// Keep in sync with the server table (internal/admin/catalog_hf.go): same repos,
+// sizes, dtype and fit rule.
 const MOCK_HF_REPOS: Record<string, { repo: string; size_mb: number; quantization: string }> = {
   'deepseek-r1:7b': { repo: 'deepseek-ai/DeepSeek-R1-Distill-Qwen-7B', size_mb: 14525, quantization: 'BF16' },
   'qwen2.5:14b': { repo: 'Qwen/Qwen2.5-14B-Instruct', size_mb: 28171, quantization: 'BF16' },

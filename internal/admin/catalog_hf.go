@@ -21,6 +21,16 @@ type catalogHFRepo struct {
 // facts.
 const hfListContextTokens = 8192
 
+// hfUnknownSizeDiskFit is the disk verdict for a Hugging Face row with no
+// curated size. Free space can rule a download out ("insufficient") but can
+// never confirm it will fit, so the helper's "ok" is reported as "unknown".
+func hfUnknownSizeDiskFit(diskFreeGB, diskTotalGB float64, agentPresent bool) string {
+	if fit := classifyUnknownSizeDiskFit(diskFreeGB, diskTotalGB, agentPresent); fit != "ok" {
+		return fit
+	}
+	return "unknown"
+}
+
 // catalogHFRepos maps a catalogModels Name to its Hugging Face equivalent.
 // A model absent here (and present in catalogHFUnmapped) keeps showing as
 // another format on vLLM and TGI nodes.
@@ -30,8 +40,8 @@ const hfListContextTokens = 8192
 // plus the presence of safetensors weights). Licence text is not a criterion.
 // A repo that is gated is unmapped with reason "gated", whatever its family. A
 // model whose repo was not checked is unmapped with reason "unverified" until a
-// curated edit maps it (the Mistral and Mixtral instruct repos report not gated
-// but are left out until someone confirms the choice of repo).
+// curated edit maps it. Mistral and Mixtral are "not yet mapped" this way: their
+// instruct repos report not gated, but the choice of repo is not yet curated.
 var catalogHFRepos = map[string]catalogHFRepo{
 	"qwen2.5:7b":        {Repo: "Qwen/Qwen2.5-7B-Instruct", SizeMB: 14525, Quant: "BF16"},
 	"qwen2.5:14b":       {Repo: "Qwen/Qwen2.5-14B-Instruct", SizeMB: 28171, Quant: "BF16"},
@@ -50,7 +60,9 @@ var catalogHFRepos = map[string]catalogHFRepo{
 
 // catalogHFUnmapped lists every catalog model without a Hugging Face
 // equivalent, with the reason. Every catalogModels Name is in exactly one of
-// catalogHFRepos and catalogHFUnmapped.
+// catalogHFRepos and catalogHFUnmapped (catalogHFRepo.Quant must also be BF16
+// or FP16); catalog_hf_test.go enforces both, so an edit that breaks either
+// fails the build's tests.
 var catalogHFUnmapped = map[string]string{
 	"llama3.2:3b":       "gated",
 	"llama3.2:1b":       "gated",

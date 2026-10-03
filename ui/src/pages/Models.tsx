@@ -623,7 +623,8 @@ export function Models() {
   const [runtimeByNode, setRuntimeByNode] = useState<Record<string, string>>({});
   // vLLM and TGI serve one launched model: a pull only downloads, so the load check is
   // hidden and off for them and the finished pull says to relaunch the runtime.
-  const pullDownloadOnly = isDownloadOnlyRuntime(pullNodesList.find((n) => n.name === pullSelectedNode)?.runtime);
+  const pullRuntime = pullNodesList.find((n) => n.name === pullSelectedNode)?.runtime;
+  const pullDownloadOnly = isDownloadOnlyRuntime(pullRuntime);
   // Resolved replica topology per node name, joined from the same node-list
   // fetch above. Lets the waste/shard math below tell one sharded instance
   // (a resolved head + its workers) apart from genuinely duplicated warm
@@ -698,7 +699,7 @@ export function Models() {
   const handleGeneralPull = () => {
     const trimmedModel = pullModelName.trim();
     if (!trimmedModel || !pullSelectedNode) return;
-    const opts = pullOptionsFor(pullNodesList.find((n) => n.name === pullSelectedNode)?.runtime, pullVerifyLoad);
+    const opts = pullOptionsFor(pullRuntime, pullVerifyLoad);
     startPull(pullSelectedNode, trimmedModel, demoMode, opts.verifyLoad, opts.completionNote);
     setPullModelName('');
     setIsPullModalOpen(false);

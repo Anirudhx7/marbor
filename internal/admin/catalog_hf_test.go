@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -189,11 +190,15 @@ func TestCatalogHFRepos_Live(t *testing.T) {
 // must never leave the process. The package default transport and client are
 // swapped too, so a request that bypasses hfHTTPClient is caught as well;
 // loopback requests (the in-process mock runtime) still go through.
+//
+// It mutates process-global state (http.DefaultTransport, http.DefaultClient and
+// hfHTTPClient), so tests that call it must not run in parallel (no t.Parallel).
 func hfNodeEntryWith(t *testing.T, runtime string, mutate func(n *router.NodeState)) catalogNodeEntry {
 	t.Helper()
 	origTransport, origDefaultTransport, origDefaultClient := hfHTTPClient.Transport, http.DefaultTransport, http.DefaultClient
-	hfHTTPClient.Transport = failingRoundTripper{t: t}
-	http.DefaultTransport = failingRoundTripper{t: t, next: origDefaultTransport}
+	blocked := &outboundRecorder{}
+	hfHTTPClient.Transport = failingRoundTripper{rec: blocked}
+	http.DefaultTransport = failingRoundTripper{rec: blocked, next: origDefaultTransport}
 	http.DefaultClient = &http.Client{Transport: http.DefaultTransport}
 	defer func() {
 		hfHTTPClient.Transport, http.DefaultTransport, http.DefaultClient = origTransport, origDefaultTransport, origDefaultClient
@@ -205,7 +210,11 @@ func hfNodeEntryWith(t *testing.T, runtime string, mutate func(n *router.NodeSta
 			mutate(n)
 		}
 	})
-	return catalogFor(t, s).Nodes[0]
+	entry := catalogFor(t, s).Nodes[0]
+	if n := blocked.count.Load(); n > 0 {
+		t.Errorf("catalog handler made %d outbound request(s), first to %v", n, blocked.first.Load())
+	}
+	return entry
 }
 
 // hfNodeEntry is hfNodeEntryWith for a node with the given declared VRAM.
@@ -217,10 +226,18 @@ func hfNodeEntry(t *testing.T, runtime string, vramMB int64) catalogNodeEntry {
 	})
 }
 
-// failingRoundTripper fails the test on any outbound request, except loopback
+// outboundRecorder records blocked outbound requests. The transport can be
+// called from goroutines that outlive the test body, so it must not touch
+// testing.T; the test reads the recorder after the handler returns.
+type outboundRecorder struct {
+	count atomic.Int32
+	first atomic.Value // URL string of the first blocked request
+}
+
+// failingRoundTripper blocks and records any outbound request, except loopback
 // ones when next is set (those are delegated to next).
 type failingRoundTripper struct {
-	t    *testing.T
+	rec  *outboundRecorder
 	next http.RoundTripper
 }
 
@@ -230,11 +247,15 @@ func (f failingRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) 
 			return f.next.RoundTrip(r)
 		}
 	}
-	f.t.Errorf("catalog handler made an outbound request to %s", r.URL)
+	if f.rec.count.Add(1) == 1 {
+		f.rec.first.Store(r.URL.String())
+	}
 	return nil, fmt.Errorf("outbound request blocked")
 }
 
-// withHFSize sets the table size of one mapped model for the test.
+// withHFSize sets the table size of one mapped model for the test. It mutates
+// the package-level catalogHFRepos, so tests that call it must not run in
+// parallel (no t.Parallel).
 func withHFSize(t *testing.T, name string, sizeMB int64) {
 	t.Helper()
 	orig := catalogHFRepos[name]
@@ -378,21 +399,12 @@ func TestHandleModelCatalog_OllamaRowsUnchanged(t *testing.T) {
 	}
 }
 
-func TestHandleModelCatalog_HFEstimateMatchesFeasibility(t *testing.T) {
-	n := hfNodeEntry(t, "vllm", 80*1024)
-	e := catalogHFRepos["qwen2.5:14b"]
-	v := modelFor(t, n, "qwen2.5:14b").Variants[0]
-	est, fit, _ := computeContextFeasibility(e.SizeMB, hfListContextTokens, safetensorsOverheadMult, safetensorsPerTokenMBFallback, n.VRAMTotalBytes, n.VRAMSource, nil, "")
-	if v.VRAMEstMB != est/(1024*1024) || v.Fit != fit {
-		t.Errorf("list row = vram %d fit %q, want %d %q from computeContextFeasibility", v.VRAMEstMB, v.Fit, est/(1024*1024), fit)
-	}
-}
-
 // TestHandleModelCatalog_HFEstimateGolden pins absolute numbers, derived by hand
 // rather than through the production helpers: qwen2.5:7b is 14525 MiB of weights;
 // the estimate is weights x 1.2 (17430) plus 8192 context tokens x 0.2 MiB
 // (1638.4) = 19068.4, truncated to 19068 MiB. On an 80 GiB (81920 MiB) node that
-// is about 23%, green.
+// is about 23%, green. The 8192-token context constant is pinned here by the
+// 19068 figure, so changing hfListContextTokens fails this test.
 func TestHandleModelCatalog_HFEstimateGolden(t *testing.T) {
 	n := hfNodeEntry(t, "vllm", 80*1024)
 	v := modelFor(t, n, "qwen2.5:7b").Variants[0]
@@ -439,7 +451,7 @@ func TestHandleModelCatalog_HFSizeUnknownCases(t *testing.T) {
 		{"tgi no disk telemetry", "tgi", declared80, "unknown"},
 		{"vllm unknown size on a nearly full disk is not ok", "vllm", withDisk(2, 100), "insufficient"},
 		{"tgi unknown size on a nearly full disk is not ok", "tgi", withDisk(2, 100), "insufficient"},
-		{"vllm unknown size with ample disk", "vllm", withDisk(500, 1000), "ok"},
+		{"vllm unknown size with ample disk is still unknown, never ok", "vllm", withDisk(500, 1000), "unknown"},
 		{"unknown VRAM and unknown size", "vllm", func(n *router.NodeState) {}, "unknown"},
 	}
 	for _, tc := range tests {

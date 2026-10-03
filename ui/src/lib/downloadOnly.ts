@@ -28,12 +28,24 @@ export function completionText(completionNote: string | undefined): string {
 }
 
 // sizeNotCurated is true for a vLLM/TGI row that cannot be sized because its
-// Hugging Face repo has no curated size (missing or zero first variant size).
+// Hugging Face repo has a variant with no curated size (missing or zero size on
+// the first variant). A row with no variants at all says nothing about sizing.
 export function sizeNotCurated(
   downloadOnly: boolean,
   picked: boolean,
   reason: string | undefined,
   variants: { size_mb?: number }[] | undefined,
 ): boolean {
-  return downloadOnly && !picked && reason === 'vram_unknown' && !variants?.[0]?.size_mb;
+  return downloadOnly && !picked && reason === 'vram_unknown' && (variants?.length ?? 0) >= 1 && !variants?.[0]?.size_mb;
+}
+
+// retryArgs maps a finished pull job to the arguments of a fresh pull, so a retry
+// keeps the original verify choice and completion note.
+export function retryArgs(job: { node: string; model: string; verifyLoad: boolean; completionNote?: string }): {
+  node: string;
+  model: string;
+  verifyLoad: boolean;
+  completionNote: string;
+} {
+  return { node: job.node, model: job.model, verifyLoad: job.verifyLoad, completionNote: job.completionNote ?? '' };
 }

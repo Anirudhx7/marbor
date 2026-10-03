@@ -11,6 +11,7 @@
 // widget stack at once.
 
 import { normalizePullTag, apiFetch } from './api';
+import { retryArgs } from './downloadOnly';
 
 const BASE = '/admin';
 
@@ -341,7 +342,8 @@ function subscribeToProgress(key: string, node: string, model: string): void {
 export function retryPull(key: string): void {
   const job = jobs.get(key);
   if (!job) return;
-  startPull(job.node, job.model, false, job.verifyLoad, job.completionNote);
+  const a = retryArgs(job);
+  startPull(a.node, a.model, false, a.verifyLoad, a.completionNote);
 }
 
 export function cancelPull(key: string): void {

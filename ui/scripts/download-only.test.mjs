@@ -10,6 +10,7 @@ import {
   pullOptionsFor,
   completionText,
   sizeNotCurated,
+  retryArgs,
 } from '../src/lib/downloadOnly.ts';
 
 test('vllm and tgi are download-only, everything else is not', () => {
@@ -39,13 +40,24 @@ test('the widget falls back to "Pull complete." when there is no note', () => {
   assert.equal(completionText(DOWNLOAD_ONLY_NOTE), DOWNLOAD_ONLY_NOTE);
 });
 
-test('sizeNotCurated: only an unpicked vram_unknown vllm/tgi row with a missing or zero size', () => {
+test('sizeNotCurated: only an unpicked vram_unknown vllm/tgi row with a missing or zero first-variant size (no variants is not a curation gap)', () => {
   assert.equal(sizeNotCurated(true, false, 'vram_unknown', [{ size_mb: 0 }]), true);
-  assert.equal(sizeNotCurated(true, false, 'vram_unknown', []), true);
-  assert.equal(sizeNotCurated(true, false, 'vram_unknown', undefined), true);
+  assert.equal(sizeNotCurated(true, false, 'vram_unknown', []), false);
+  assert.equal(sizeNotCurated(true, false, 'vram_unknown', undefined), false);
   assert.equal(sizeNotCurated(true, false, 'vram_unknown', [{}]), true);
   assert.equal(sizeNotCurated(true, false, 'vram_unknown', [{ size_mb: 14525 }]), false);
   assert.equal(sizeNotCurated(true, false, 'too_large', [{ size_mb: 0 }]), false);
   assert.equal(sizeNotCurated(true, true, 'vram_unknown', [{ size_mb: 0 }]), false);
   assert.equal(sizeNotCurated(false, false, 'vram_unknown', [{ size_mb: 0 }]), false);
+});
+
+test('retryArgs carries node, model, verify choice and completion note through', () => {
+  assert.deepEqual(
+    retryArgs({ node: 'gpu1', model: 'org/model', verifyLoad: false, completionNote: DOWNLOAD_ONLY_NOTE }),
+    { node: 'gpu1', model: 'org/model', verifyLoad: false, completionNote: DOWNLOAD_ONLY_NOTE },
+  );
+  assert.deepEqual(
+    retryArgs({ node: 'gpu2', model: 'llama3', verifyLoad: true }),
+    { node: 'gpu2', model: 'llama3', verifyLoad: true, completionNote: '' },
+  );
 });

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -304,10 +305,10 @@ type pullResult struct {
 
 // pullOnNode runs `models pull gpu-0` against a stub server whose node list
 // reports the given runtime for gpu-0 (and ollama for gpu-1). nodesStatus is the
-// HTTP status of the node list; extraArgs are appended to the command.
+// HTTP status of the node list (an empty runtime leaves gpu-0 out of the list); extraArgs are appended to the command.
 func pullOnNode(t *testing.T, runtime string, nodesStatus int, extraArgs ...string) pullResult {
 	t.Helper()
-	var lookups int
+	var lookups atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
@@ -315,10 +316,14 @@ func pullOnNode(t *testing.T, runtime string, nodesStatus int, extraArgs ...stri
 			w.WriteHeader(http.StatusAccepted)
 			w.Write([]byte(`{"ok":true,"node":"gpu-0","model":"Qwen/Qwen2.5-7B-Instruct"}`))
 		case "/admin/v1/nodes":
-			lookups++
+			lookups.Add(1)
 			if nodesStatus != http.StatusOK {
 				w.WriteHeader(nodesStatus)
 				w.Write([]byte(`{"error":"boom"}`))
+				return
+			}
+			if runtime == "" { // gpu-0 absent from the node list
+				w.Write([]byte(`[{"name":"gpu-1","runtime":"ollama"}]`))
 				return
 			}
 			w.Write([]byte(`[{"name":"gpu-1","runtime":"ollama"},{"name":"gpu-0","runtime":"` + runtime + `"}]`))
@@ -335,7 +340,7 @@ func pullOnNode(t *testing.T, runtime string, nodesStatus int, extraArgs ...stri
 	if code := Run(args, &stdout, &stderr); code != ExitOK {
 		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
 	}
-	return pullResult{stdout.String(), stderr.String(), lookups}
+	return pullResult{stdout.String(), stderr.String(), int(lookups.Load())}
 }
 
 const plainPullLine = "gpu-0: pull started for Qwen/Qwen2.5-7B-Instruct\n"
@@ -371,6 +376,16 @@ func TestRun_ModelsPull_NodeLookupFailureWarnsOnStderr(t *testing.T) {
 	}
 	if !strings.Contains(got.stderr, "warning: could not look up the node runtime") {
 		t.Errorf("stderr = %q, want a lookup warning, not silence", got.stderr)
+	}
+}
+
+func TestRun_ModelsPull_NodeMissingFromListWarnsOnStderr(t *testing.T) {
+	got := pullOnNode(t, "", http.StatusOK)
+	if got.stdout != plainPullLine {
+		t.Errorf("stdout = %q, want the plain started line", got.stdout)
+	}
+	if !strings.Contains(got.stderr, "warning: node gpu-0 not found") {
+		t.Errorf("stderr = %q, want a not-found warning, not silence", got.stderr)
 	}
 }
 

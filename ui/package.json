@@ -9,7 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "demo:crawl": "node scripts/demo-crawl.mjs",
-    "test": "node --test scripts/download-only.test.mjs"
+    "test": "node --experimental-strip-types --test scripts/download-only.test.mjs"
   },
   "overrides": {
     "typescript-eslint": {

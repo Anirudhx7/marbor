@@ -176,6 +176,12 @@ jobs:
         working-directory: ./ui
         run: npm run build
 
+      - name: Test UI
+        # Pure-logic node tests (download-only pull helpers). The test script passes
+        # --experimental-strip-types so .ts imports load on Node 22.6 and newer.
+        working-directory: ./ui
+        run: npm test
+
       - name: Build demo mode (GitHub Pages regression check)
         working-directory: ./ui
         run: npm run build

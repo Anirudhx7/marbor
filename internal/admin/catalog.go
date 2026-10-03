@@ -813,17 +813,14 @@ func (s *Server) handleModelCatalog(w http.ResponseWriter, r *http.Request) {
 			}
 			variants := make([]catalogVariantFit, 0, len(src))
 			for _, v := range src {
-				var fit, diskFit string
-				if hfMapped {
-					fit = hfFit
-					if v.SizeMB <= 0 {
-						// No curated size: nothing to compare with free space.
-						diskFit = classifyUnknownSizeDiskFit(diskFreeGB, diskTotalGB, agentPresent)
-					}
-				} else {
+				fit := hfFit
+				if !hfMapped {
 					fit = classifyFit(v.VRAMEstMB*1024*1024, vramTotalBytes, vramSource)
 				}
-				if diskFit == "" {
+				var diskFit string
+				if hfMapped && v.SizeMB <= 0 {
+					diskFit = hfUnknownSizeDiskFit(diskFreeGB, diskTotalGB, agentPresent)
+				} else {
 					diskFit = classifyDiskFit(v.SizeMB, diskFreeGB, diskTotalGB, agentPresent)
 				}
 				// "incompatible" overrides any capacity-based verdict: a
