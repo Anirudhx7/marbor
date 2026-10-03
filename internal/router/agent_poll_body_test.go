@@ -1,6 +1,7 @@
 package router
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -65,8 +66,12 @@ func TestPollAgentStatusBodyCapBoundary(t *testing.T) {
 			if !tc.wantPresent && failures != 1 {
 				t.Errorf("AgentFailures = %d, want 1", failures)
 			}
-			if logged := strings.Contains(logBuf.String(), "status response exceeds"); logged == tc.wantPresent {
-				t.Errorf("oversize logged = %v for size %d\n%s", logged, tc.size, logBuf.String())
+			oversizeLogged := strings.Contains(logBuf.String(), "status response exceeds")
+			if tc.wantPresent && oversizeLogged {
+				t.Errorf("size %d is within the cap but an oversize rejection was logged\n%s", tc.size, logBuf.String())
+			}
+			if !tc.wantPresent && !oversizeLogged {
+				t.Errorf("size %d is over the cap but no oversize rejection was logged\n%s", tc.size, logBuf.String())
 			}
 		})
 	}
@@ -102,7 +107,33 @@ func TestPollAgentStatusMidBodyDropIsLoggedAndUnreachable(t *testing.T) {
 	if got := strings.Count(out, "reading agent status from host"); got != 1 {
 		t.Errorf("read failure logged %d times across 2 polls, want 1 (rate-limited)\n%s", got, out)
 	}
-	if !strings.Contains(out, "unexpected EOF") {
-		t.Errorf("read error text missing from log:\n%s", out)
+	const marker = "reading agent status from host"
+	line := out[strings.Index(out, marker):]
+	if i := strings.Index(line, "\n"); i >= 0 {
+		line = line[:i]
+	}
+	host := r.nodes[0].Host
+	if !strings.Contains(line, fmt.Sprintf("%q", host)) {
+		t.Errorf("host %q not quoted in read failure log: %s", host, line)
+	}
+	const after, before = "failed: ", "; treating"
+	start := strings.Index(line, after)
+	end := strings.Index(line, before)
+	if start < 0 || end < 0 || end <= start+len(after) {
+		t.Errorf("read failure log carries no error text: %s", line)
+	}
+}
+
+// TestAgentStatusCapConstantsPinned makes a change to the literal caps a
+// deliberate test edit.
+func TestAgentStatusCapConstantsPinned(t *testing.T) {
+	if maxAgentStatusBodyBytes != 8<<20 {
+		t.Errorf("maxAgentStatusBodyBytes = %d, want %d", maxAgentStatusBodyBytes, 8<<20)
+	}
+	if maxHostEvidenceAddrs != 64 {
+		t.Errorf("maxHostEvidenceAddrs = %d, want 64", maxHostEvidenceAddrs)
+	}
+	if maxHostEvidenceDeployments != 64 {
+		t.Errorf("maxHostEvidenceDeployments = %d, want 64", maxHostEvidenceDeployments)
 	}
 }

@@ -13,7 +13,9 @@ import (
 )
 
 // captureLog redirects the standard logger into a buffer for the test and
-// restores the previous writer when the test ends.
+// restores the previous writer when the test ends. The buffer is not
+// synchronised: read it only after the code under test has finished (for
+// example after the poll's wg.Wait).
 func captureLog(t *testing.T) *bytes.Buffer {
 	t.Helper()
 	var buf bytes.Buffer
