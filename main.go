@@ -556,6 +556,11 @@ func main() {
 		log.Printf("WARNING: could not load API keys from store: %v", err)
 	}
 
+	// Record a system-audit event for any key whose stored expiry is malformed.
+	// Wired after the keys above are loaded; setting the hook also reports keys
+	// already loaded.
+	wireExpiryAudit(authMw, st)
+
 	// Loud, unmissable warning when the proxy is running without authentication.
 	if !cfg.Auth.IsEnabled() {
 		log.Printf("WARNING: ================================================================")
