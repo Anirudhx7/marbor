@@ -626,6 +626,10 @@ type Router struct {
 	// r.mu or a node lock. See host_evidence.go.
 	hostEvidenceMu sync.RWMutex
 	hostEvidence   map[string]HostEvidence
+	// evidenceLogAt remembers when a rate-limited agent-evidence warning last
+	// fired per key, so a persistent condition logs once per interval, not per
+	// poll. Guarded by hostEvidenceMu.
+	evidenceLogAt map[string]time.Time
 	// nodeControl holds the per-node accepted ControlDriver config,
 	// guarded by r.mu same as marborAgents. Absent (or Configured: false)
 	// means lifecycle actions must return the "no control driver

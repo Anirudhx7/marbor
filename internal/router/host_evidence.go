@@ -9,9 +9,23 @@ package router
 // with a node lock or the router lock.
 
 import (
+	"log"
 	"time"
 
 	"github.com/Anirudhx7/marbor/internal/marboragent"
+)
+
+const (
+	// maxHostEvidenceAddrs and maxHostEvidenceDeployments bound how much of one
+	// host's report is retained. They sit far above any realistic host (a few
+	// interfaces, a handful of runtimes); only a runaway or hostile agent
+	// reaches them.
+	maxHostEvidenceAddrs       = 64
+	maxHostEvidenceDeployments = 64
+
+	// evidenceLogInterval is the minimum gap between repeats of the same
+	// per-host evidence warning.
+	evidenceLogInterval = 10 * time.Minute
 )
 
 // HostEvidence is one agent's latest host-level report. Host is the same key
@@ -31,6 +45,14 @@ type HostEvidence struct {
 // API tests) can seed evidence without running a real agent poll; production
 // code reaches it through the poll alone.
 func (r *Router) RecordHostEvidence(ev HostEvidence) {
+	if len(ev.Addrs) > maxHostEvidenceAddrs || len(ev.Deployments) > maxHostEvidenceDeployments {
+		if r.allowEvidenceLog("truncate:" + ev.Host) {
+			log.Printf("router: agent on host %q reported %d addresses and %d deployments; retaining the first %d and %d, so replica detection may miss groups on this host",
+				ev.Host, len(ev.Addrs), len(ev.Deployments), maxHostEvidenceAddrs, maxHostEvidenceDeployments)
+		}
+		ev.Addrs = ev.Addrs[:min(len(ev.Addrs), maxHostEvidenceAddrs)]
+		ev.Deployments = ev.Deployments[:min(len(ev.Deployments), maxHostEvidenceDeployments)]
+	}
 	cp := HostEvidence{
 		Host:         ev.Host,
 		Hostname:     ev.Hostname,
@@ -45,6 +67,22 @@ func (r *Router) RecordHostEvidence(ev HostEvidence) {
 	}
 	r.hostEvidence[ev.Host] = cp
 	r.hostEvidenceMu.Unlock()
+}
+
+// allowEvidenceLog reports whether the warning for key may be logged now, and
+// if so records the time. A key logs at most once per evidenceLogInterval.
+func (r *Router) allowEvidenceLog(key string) bool {
+	now := time.Now()
+	r.hostEvidenceMu.Lock()
+	defer r.hostEvidenceMu.Unlock()
+	if r.evidenceLogAt == nil {
+		r.evidenceLogAt = make(map[string]time.Time)
+	}
+	if last, ok := r.evidenceLogAt[key]; ok && now.Sub(last) < evidenceLogInterval {
+		return false
+	}
+	r.evidenceLogAt[key] = now
+	return true
 }
 
 // DropHostEvidence forgets the snapshot for host. Exported for the same
