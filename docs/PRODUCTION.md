@@ -292,7 +292,7 @@ The three per-request SQLite writes above (audit log, request log, hourly/model 
 each goes through a bounded 5000-slot buffered channel with drop-on-full, not the request
 goroutine (`internal/audit/audit.go`, `internal/admin/admin.go`). Under sustained load, this
 design absorbs a burst without adding request latency until a queue actually fills, at which
-point new entries for that table are dropped rather than blocking requests. Audit drops are counted in the `marbor_audit_dropped_total` Prometheus counter and reported in a warning log line at most every 30 seconds, carrying the cumulative dropped count. The audit log is best-effort: it covers requests that reach proxy completion handling, not authentication or policy rejections (missing/invalid/expired key, rate limit, quota), which are not persisted in it.
+point new entries for that table are dropped rather than blocking requests. Audit drops are counted in the `marbor_audit_dropped_total` Prometheus counter and reported in a warning log line at most every 30 seconds, carrying the cumulative dropped count. The `/metrics` endpoint exists only when metrics are enabled (the `metrics_enabled` setting, off by default, with the port and bind address configurable in Settings; the bind address defaults to loopback), so enable it before relying on the counter. The audit log is best-effort: it covers requests that reach proxy completion handling, not authentication or policy rejections (missing/invalid/expired key, rate limit, quota), which are not persisted in it.
 
 _Originally measured 2026-08-13 with `bench/loadtest` (see `bench/README.md`) against a single
 marbor process, a single `cmd/mocknode` backend (warm model, `LATENCY_MS=20`), on a Windows dev
