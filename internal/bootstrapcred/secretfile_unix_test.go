@@ -12,8 +12,8 @@ import (
 
 func TestWriteNew_ModeIsExplicitUnderAnyUmask(t *testing.T) {
 	for _, umask := range []int{0o000, 0o277, 0o077} {
-		old := syscall.Umask(umask)
 		path := filepath.Join(t.TempDir(), FileName)
+		old := syscall.Umask(umask)
 
 		err := WriteNew(path, "secret-value-123")
 		syscall.Umask(old)

@@ -98,12 +98,22 @@ func (s *Server) reconcileMarkerFromFile() (bool, error) {
 	if errors.Is(err, bootstrapcred.ErrEmptySecretFile) {
 		return false, nil // nothing to preserve; the empty file is removed as stale
 	}
-	if err != nil {
-		return false, err
+	users, listErr := s.st.ListUsers()
+	if listErr != nil {
+		return false, fmt.Errorf("could not list users: %w", listErr)
 	}
-	users, err := s.st.ListUsers()
 	if err != nil {
-		return false, fmt.Errorf("could not list users: %w", err)
+		// An unsafe file cannot be trusted as a credential. When an admin is
+		// still on the public default password the file is not what protects
+		// that account, so it is just stale and gets removed; otherwise the
+		// flow fails closed.
+		for _, u := range users {
+			if u.Role == "admin" && u.Status == "active" && verifyPassword(u.PasswordHash, defaultAdminPassword) {
+				log.Printf("WARNING: ignoring %s: %v", path, err)
+				return false, nil
+			}
+		}
+		return false, err
 	}
 	for _, u := range users {
 		if u.Role != "admin" || u.Status != "active" || !u.MustChangePassword || !verifyPassword(u.PasswordHash, password) {
