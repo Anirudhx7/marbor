@@ -1399,6 +1399,29 @@ func (c *Client) PredictiveDecisions() ([]PredictiveDecision, error) {
 	return wrapper.Decisions, nil
 }
 
+// PrefixLocalityStats mirrors the shape returned by GET /admin/prefix-locality/stats.
+// HitRate is the server's own hit/(hit+miss) fraction, 0 when nothing was counted.
+type PrefixLocalityStats struct {
+	Enabled bool    `json:"enabled"`
+	Hits    uint64  `json:"hits"`
+	Misses  uint64  `json:"misses"`
+	HitRate float64 `json:"hit_rate"`
+}
+
+// PrefixLocalityStats calls GET /admin/prefix-locality/stats.
+func (c *Client) PrefixLocalityStats() (*PrefixLocalityStats, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/prefix-locality/stats", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var stats PrefixLocalityStats
+	if err := json.NewDecoder(resp.Body).Decode(&stats); err != nil {
+		return nil, serverErrorf("could not parse prefix-locality stats response: %v", err)
+	}
+	return &stats, nil
+}
+
 // RequestEntry mirrors handleRequests' response entry shape (GET
 // /admin/requests) - the dashboard's request log, newest first.
 type RequestEntry struct {

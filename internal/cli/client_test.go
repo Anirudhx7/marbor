@@ -231,3 +231,59 @@ func TestClient_Models_ServerError(t *testing.T) {
 		t.Fatalf("expected ExitServerError, got %v", err)
 	}
 }
+
+func TestClient_PrefixLocalityStats(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		if r.URL.Path != "/admin/prefix-locality/stats" {
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+		if r.Header.Get("Authorization") != "Bearer abc123" {
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte(`{"error":"unauthorized"}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"enabled":true,"hits":142,"misses":58,"hit_rate":0.71}`))
+	}))
+	defer srv.Close()
+
+	stats, err := NewClient(srv.URL, "abc123").PrefixLocalityStats()
+	if err != nil {
+		t.Fatalf("PrefixLocalityStats() error: %v", err)
+	}
+	if !stats.Enabled || stats.Hits != 142 || stats.Misses != 58 || stats.HitRate != 0.71 {
+		t.Fatalf("unexpected stats: %+v", stats)
+	}
+}
+
+func TestClient_PrefixLocalityStats_DisabledZeroCounts(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"enabled":false,"hits":0,"misses":0,"hit_rate":0}`))
+	}))
+	defer srv.Close()
+
+	stats, err := NewClient(srv.URL, "abc123").PrefixLocalityStats()
+	if err != nil {
+		t.Fatalf("PrefixLocalityStats() error: %v", err)
+	}
+	if stats.Enabled || stats.Hits != 0 || stats.Misses != 0 || stats.HitRate != 0 {
+		t.Fatalf("unexpected stats: %+v", stats)
+	}
+}
+
+func TestClient_PrefixLocalityStats_MalformedJSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{not json`))
+	}))
+	defer srv.Close()
+
+	_, err := NewClient(srv.URL, "abc123").PrefixLocalityStats()
+	cliErr, ok := err.(*CLIError)
+	if !ok || cliErr.Code != ExitServerError {
+		t.Fatalf("expected ExitServerError for a malformed response, got %v", err)
+	}
+}

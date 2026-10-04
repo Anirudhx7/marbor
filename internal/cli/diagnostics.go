@@ -3,7 +3,8 @@ package cli
 // diagnostics.go - pull triage (`marbor pulls`, `marbor models pull-progress/cancel-pull`),
 // predictive/warmup/system-info/config-reload helpers (`marbor warmup
 // status/predictive/ping`, `marbor system-info`, `marbor predictive
-// decisions`, `marbor config reload`), and `marbor users pending-count`.
+// decisions`, `marbor config reload`), `marbor prefix-locality stats`, and
+// `marbor users pending-count`.
 // All had full UI coverage but no CLI.
 
 import (
@@ -164,6 +165,34 @@ func runPredictiveDecisions(flags *globalFlags, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return ExitServerError
 	}
+	return ExitOK
+}
+
+// runPrefixLocalityStats implements `marbor prefix-locality stats` - the
+// router's prefix-locality hit and miss counters, the same numbers the
+// Warmup page card shows. The hit rate is printed from the server's value;
+// with no counted requests it is n/a rather than a made-up ratio.
+func runPrefixLocalityStats(flags *globalFlags, stdout, stderr io.Writer) int {
+	client, err := authenticatedClient(flags)
+	if err != nil {
+		return reportError(err, stderr)
+	}
+	stats, err := client.PrefixLocalityStats()
+	if err != nil {
+		return reportError(err, stderr)
+	}
+	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, stats); handled {
+		return code
+	}
+	rate := "n/a (no requests yet)"
+	if stats.Hits+stats.Misses > 0 {
+		rate = fmt.Sprintf("%.1f%%", stats.HitRate*100)
+	}
+	line := fmt.Sprintf("enabled=%v hits=%d misses=%d hit_rate=%s", stats.Enabled, stats.Hits, stats.Misses, rate)
+	if !stats.Enabled && stats.Hits+stats.Misses > 0 {
+		line += " (feature currently disabled; counts are from earlier use)"
+	}
+	fmt.Fprintln(stdout, line)
 	return ExitOK
 }
 
