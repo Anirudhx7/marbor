@@ -244,3 +244,25 @@ func TestRun_NodesSuggestions_NeedsID(t *testing.T) {
 		}
 	}
 }
+
+func TestRun_NodesSuggestionsDismissRestore_ServerRefusalIsNonzeroExit(t *testing.T) {
+	const msg = "could not read the saved replica_suggestions_dismissed setting; nothing was changed"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"error":"` + msg + `"}`))
+	}))
+	t.Cleanup(srv.Close)
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
+	for _, verb := range []string{"dismiss", "restore"} {
+		var stdout, stderr bytes.Buffer
+		code := Run([]string{"nodes", "suggestions", verb, "aaaaaaaaaaaaaaaa", "--server", srv.URL}, &stdout, &stderr)
+		if code == ExitOK {
+			t.Errorf("%s: exit 0 on a 500", verb)
+		}
+		if !strings.Contains(stderr.String(), "nothing was changed") {
+			t.Errorf("%s: stderr lacks the server message: %s", verb, stderr.String())
+		}
+	}
+}

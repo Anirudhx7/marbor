@@ -55,7 +55,14 @@ func (l *suggLab) confirm(fp, body string) *httptest.ResponseRecorder {
 	return l.do(http.MethodPost, "/admin/replica-suggestions/"+fp+"/confirm", body)
 }
 
-func (l *suggLab) dismissedRaw() []string { return l.s.loadDismissedSuggestions() }
+func (l *suggLab) dismissedRaw() []string {
+	l.t.Helper()
+	list, err := l.s.loadDismissedSuggestions()
+	if err != nil {
+		l.t.Fatalf("loadDismissedSuggestions: %v", err)
+	}
+	return list
+}
 
 func adoptBody(snapshot string) string {
 	return `{"adopt":true,"declaredSnapshot":` + snapshot + `}`
