@@ -105,11 +105,14 @@ func (s *Server) reconcileMarkerFromFile() (bool, error) {
 	if err != nil {
 		// An unsafe file cannot be trusted as a credential. When an admin is
 		// still on the public default password the file is not what protects
-		// that account, so it is just stale and gets removed; otherwise the
-		// flow fails closed.
+		// that account, so it is treated as stale and removed; otherwise the
+		// flow fails closed. Limitation: if a second admin also still holds a
+		// generated first-boot password, that password cannot be recovered
+		// from the unsafe file either; that admin stays protected by its forced
+		// password change but loses crash recovery for the file.
 		for _, u := range users {
 			if u.Role == "admin" && u.Status == "active" && verifyPassword(u.PasswordHash, defaultAdminPassword) {
-				log.Printf("WARNING: ignoring %s: %v", path, err)
+				log.Printf("WARNING: %s is unsafe and will be removed as stale: %v", path, err)
 				return false, nil
 			}
 		}

@@ -189,6 +189,29 @@ func TestBoot_StaleGeneratedFileBesideUpgradedMarkerIsRemoved(t *testing.T) {
 	}
 }
 
+// With no marker and no admin on the public default password, an unsafe
+// generated password file still fails the flow closed: nothing proves the file
+// is stale, and its permissions mean it may have been read.
+func TestBoot_UnsafeFileWithoutDefaultPasswordAdminFailsClosed(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permission bits are not meaningful on Windows")
+	}
+	e := newBootEnv(t)
+	e.addAdmin(t, "admin", "Already-Changed-Passw0rd", false, 0)
+	if err := bootstrapcred.WriteNew(e.pwFile(), "some-generated-secret-value"); err != nil {
+		t.Fatalf("WriteNew: %v", err)
+	}
+	if err := os.Chmod(e.pwFile(), 0o666); err != nil {
+		t.Fatal(err)
+	}
+
+	s := e.boot(nil)
+
+	if s.boot.err == nil {
+		t.Error("an unsafe password file with no default-password admin must fail closed")
+	}
+}
+
 // Concurrent refreshes and health reads never observe a torn pending/source pair.
 func TestBoot_PendingSnapshotIsConsistentUnderRace(t *testing.T) {
 	e := newBootEnv(t)
