@@ -275,6 +275,53 @@ func TestClient_PrefixLocalityStats_DisabledZeroCounts(t *testing.T) {
 	}
 }
 
+func prefixLocalityBodyClient(t *testing.T, status int, body string) *Client {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(status)
+		w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	return NewClient(srv.URL, "abc123")
+}
+
+func TestClient_PrefixLocalityStats_ErrorCodes(t *testing.T) {
+	cases := []struct {
+		name   string
+		status int
+		body   string
+		want   int
+	}{
+		{"forbidden", 403, `{"error":"forbidden"}`, ExitAuthError},
+		{"not found", 404, `{"error":"nope"}`, ExitServerError},
+		{"server error", 500, `{"error":"boom"}`, ExitServerError},
+		{"empty body", 200, ``, ExitServerError},
+		{"empty object", 200, `{}`, ExitServerError},
+		{"missing misses", 200, `{"enabled":true,"hits":5,"hit_rate":1}`, ExitServerError},
+		{"missing hits", 200, `{"enabled":true,"misses":5,"hit_rate":0}`, ExitServerError},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := prefixLocalityBodyClient(t, tc.status, tc.body).PrefixLocalityStats()
+			cliErr, ok := err.(*CLIError)
+			if !ok || cliErr.Code != tc.want {
+				t.Fatalf("expected code %d, got %v", tc.want, err)
+			}
+		})
+	}
+}
+
+func TestClient_PrefixLocalityStats_TransportError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	url := srv.URL
+	srv.Close()
+	_, err := NewClient(url, "abc123").PrefixLocalityStats()
+	cliErr, ok := err.(*CLIError)
+	if !ok || cliErr.Code != ExitServerError {
+		t.Fatalf("expected ExitServerError for an unreachable server, got %v", err)
+	}
+}
+
 func TestClient_PrefixLocalityStats_MalformedJSON(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{not json`))

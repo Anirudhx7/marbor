@@ -13,8 +13,14 @@ import (
 func prefixLocalityServer(t *testing.T, status int, body string) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
 		if r.URL.Path != "/admin/prefix-locality/stats" {
 			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer tok" {
+			t.Errorf("expected Authorization %q, got %q", "Bearer tok", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
@@ -76,7 +82,13 @@ func TestRun_PrefixLocalityStats_DisabledWithCountsNotes(t *testing.T) {
 
 func TestRun_PrefixLocalityStats_DisabledNoCountsNoNote(t *testing.T) {
 	srv := prefixLocalityServer(t, 200, `{"enabled":false,"hits":0,"misses":0,"hit_rate":0}`)
-	_, out, _ := runPrefixLocality(t, srv)
+	code, out, errOut := runPrefixLocality(t, srv)
+	if code != ExitOK {
+		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, errOut)
+	}
+	if !strings.Contains(out, "enabled=false") || !strings.Contains(out, "n/a") {
+		t.Errorf("expected enabled=false and n/a, got %q", out)
+	}
 	if strings.Contains(out, "currently disabled") {
 		t.Errorf("no note expected when there are no counts, got %q", out)
 	}
@@ -102,6 +114,101 @@ func TestRun_PrefixLocalityStats_JSON(t *testing.T) {
 	}
 	if got["hit_rate"] != float64(0) {
 		t.Errorf("hit_rate must pass through as 0, got %v", got["hit_rate"])
+	}
+}
+
+func TestRun_PrefixLocalityStats_JSONLargeCountsExact(t *testing.T) {
+	srv := prefixLocalityServer(t, 200, `{"enabled":true,"hits":18446744073709551615,"misses":1,"hit_rate":0.5}`)
+	code, out, errOut := runPrefixLocality(t, srv, "--json")
+	if code != ExitOK {
+		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, errOut)
+	}
+	var got struct {
+		Enabled bool    `json:"enabled"`
+		Hits    uint64  `json:"hits"`
+		Misses  uint64  `json:"misses"`
+		HitRate float64 `json:"hit_rate"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("output is not JSON: %v (%q)", err, out)
+	}
+	if !got.Enabled || got.Hits != 18446744073709551615 || got.Misses != 1 || got.HitRate != 0.5 {
+		t.Errorf("values not preserved exactly: %+v", got)
+	}
+}
+
+func TestRun_PrefixLocalityStats_RateFormatting(t *testing.T) {
+	cases := []struct {
+		name, body, want string
+	}{
+		{"rounds", `{"enabled":true,"hits":7149,"misses":2851,"hit_rate":0.7149}`, "hit_rate=71.5%"},
+		{"full", `{"enabled":true,"hits":4,"misses":0,"hit_rate":1.0}`, "hit_rate=100.0%"},
+		{"no counts ignores server rate", `{"enabled":true,"hits":0,"misses":0,"hit_rate":0.9}`, "hit_rate=n/a"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := prefixLocalityServer(t, 200, tc.body)
+			code, out, errOut := runPrefixLocality(t, srv)
+			if code != ExitOK {
+				t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, errOut)
+			}
+			if !strings.Contains(out, tc.want) {
+				t.Errorf("expected %q in %q", tc.want, out)
+			}
+		})
+	}
+}
+
+func TestRun_PrefixLocalityStats_ServerFailures(t *testing.T) {
+	cases := []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{"500", 500, `{"error":"boom"}`},
+		{"empty 200 body", 200, ``},
+		{"empty object", 200, `{}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := prefixLocalityServer(t, tc.status, tc.body)
+			code, out, errOut := runPrefixLocality(t, srv)
+			if code != ExitServerError {
+				t.Fatalf("expected exit %d, got %d", ExitServerError, code)
+			}
+			if strings.TrimSpace(errOut) == "" {
+				t.Error("expected a message on stderr")
+			}
+			if strings.TrimSpace(out) != "" {
+				t.Errorf("expected empty stdout, got %q", out)
+			}
+		})
+	}
+}
+
+func TestRun_PrefixLocalityStats_Unreachable(t *testing.T) {
+	srv := prefixLocalityServer(t, 200, `{}`)
+	srv.Close()
+	code, _, errOut := runPrefixLocality(t, srv)
+	if code != ExitServerError {
+		t.Fatalf("expected exit %d, got %d", ExitServerError, code)
+	}
+	if strings.TrimSpace(errOut) == "" {
+		t.Error("expected a message on stderr")
+	}
+}
+
+func TestRun_PrefixLocalityStats_NoSession(t *testing.T) {
+	t.Setenv("MARBOR_USERNAME", "")
+	t.Setenv("MARBOR_PASSWORD", "")
+	withTempConfigDir(t)
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"prefix-locality", "stats", "--server", "http://127.0.0.1:1"}, &stdout, &stderr)
+	if code != ExitUserError {
+		t.Fatalf("expected exit %d (missing session is a user error), got %d", ExitUserError, code)
+	}
+	if !strings.Contains(stderr.String(), "authentication required") {
+		t.Errorf("expected an authentication hint, got %q", stderr.String())
 	}
 }
 
@@ -132,7 +239,7 @@ func TestRegistry_PrefixLocalityStatsCommand(t *testing.T) {
 			stats = s
 		}
 	}
-	if stats == nil || !stats.NeedsAuth {
-		t.Fatal("prefix-locality stats missing or not auth-gated")
+	if stats == nil || stats.Run == nil || !stats.NeedsAuth {
+		t.Fatal("prefix-locality stats missing, not runnable, or not auth-gated")
 	}
 }

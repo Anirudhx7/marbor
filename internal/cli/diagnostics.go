@@ -184,12 +184,13 @@ func runPrefixLocalityStats(flags *globalFlags, stdout, stderr io.Writer) int {
 	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, stats); handled {
 		return code
 	}
+	counted := stats.Hits > 0 || stats.Misses > 0
 	rate := "n/a (no requests yet)"
-	if stats.Hits+stats.Misses > 0 {
+	if counted {
 		rate = fmt.Sprintf("%.1f%%", stats.HitRate*100)
 	}
 	line := fmt.Sprintf("enabled=%v hits=%d misses=%d hit_rate=%s", stats.Enabled, stats.Hits, stats.Misses, rate)
-	if !stats.Enabled && stats.Hits+stats.Misses > 0 {
+	if !stats.Enabled && counted {
 		line += " (feature currently disabled; counts are from earlier use)"
 	}
 	fmt.Fprintln(stdout, line)

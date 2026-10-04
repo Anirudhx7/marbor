@@ -1415,9 +1415,26 @@ func (c *Client) PrefixLocalityStats() (*PrefixLocalityStats, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	var stats PrefixLocalityStats
-	if err := json.NewDecoder(resp.Body).Decode(&stats); err != nil {
+	// Pointer fields so a body missing the counters is an error, not a
+	// fabricated all-zero reading.
+	var wire struct {
+		Enabled *bool    `json:"enabled"`
+		Hits    *uint64  `json:"hits"`
+		Misses  *uint64  `json:"misses"`
+		HitRate *float64 `json:"hit_rate"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&wire); err != nil {
 		return nil, serverErrorf("could not parse prefix-locality stats response: %v", err)
+	}
+	if wire.Hits == nil || wire.Misses == nil {
+		return nil, serverErrorf("prefix-locality stats response is missing hits or misses")
+	}
+	stats := PrefixLocalityStats{Hits: *wire.Hits, Misses: *wire.Misses}
+	if wire.Enabled != nil {
+		stats.Enabled = *wire.Enabled
+	}
+	if wire.HitRate != nil {
+		stats.HitRate = *wire.HitRate
 	}
 	return &stats, nil
 }
