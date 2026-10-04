@@ -517,6 +517,7 @@ export async function removeNode(name: string) {
 }
 
 export async function drainNode(name: string, graceSeconds?: number) {
+  if (DEMO) return demoDelay(undefined);
   const body = graceSeconds !== undefined ? JSON.stringify({ grace_period_seconds: graceSeconds }) : undefined;
   const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/drain`, {
     method: 'POST',
@@ -1652,6 +1653,13 @@ export interface NodeControlStatus {
 }
 
 export async function getNodeControl(name: string): Promise<NodeControlStatus> {
+  if (DEMO) return demoDelay<NodeControlStatus>({
+    node: name,
+    configured: true,
+    driver: 'systemd',
+    identifier: 'ollama.service',
+    discovered: { driver: 'systemd', identifier: 'ollama.service', evidence: ['unit ollama.service found', 'unit active'] },
+  });
   const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/control`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch node control status');
   return res.json();
@@ -1674,33 +1682,69 @@ export async function clearNodeControl(name: string): Promise<void> {
   if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to clear control driver'); }
 }
 
+// RuntimeActionError is thrown by the runtime start/stop/restart calls. status
+// is the HTTP status; code is the server machine-readable code when present
+// (for example "replica_member").
+export class RuntimeActionError extends Error {
+  status: number;
+  code?: string;
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = 'RuntimeActionError';
+    this.status = status;
+    this.code = code;
+  }
+}
+
+// runtimeActionFailure builds the typed error for a non-2xx runtime action
+// response. A replica_member rejection means the node became part of a
+// multi-host replica after the dialog was opened, so the operator is asked to
+// reopen the action and review the impact (the server text is written for API
+// and CLI callers and names flags the dashboard does not have).
+async function runtimeActionFailure(res: Response, fallback: string): Promise<RuntimeActionError> {
+  const j = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
+  if (j.code === 'replica_member') {
+    return new RuntimeActionError(
+      'This node is now part of a multi-host replica. Reopen Stop or Restart and review the impact before confirming.',
+      res.status, j.code);
+  }
+  return new RuntimeActionError(j.error || `${fallback} (HTTP ${res.status})`, res.status, j.code);
+}
+
 // startNodeRuntime/stopNodeRuntime/restartNodeRuntime dispatch the runtime
 // control step's runtime.start/runtime.stop/runtime.restart capability - only meaningful
 // once a control driver is configured (controlStatus.configured); the
 // Admin API returns "Runtime control unavailable: no control driver
 // configured" (422) otherwise, surfaced here as a thrown error.
 export async function startNodeRuntime(name: string): Promise<void> {
+  if (DEMO) return demoDelay(undefined);
   const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/runtime/start`, {
     method: 'POST',
     headers: authHeaders(),
   });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to start runtime'); }
+  if (!res.ok) throw await runtimeActionFailure(res, 'Failed to start runtime');
 }
 
-export async function stopNodeRuntime(name: string): Promise<void> {
-  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/runtime/stop`, {
+// stop/restart on a multi-host replica head, worker or unresolved member are
+// rejected (409, code replica_member) unless acknowledged. The UI passes
+// acknowledgeReplica only from its confirm dialog, after the dialog has told
+// the operator what the action does to the replica.
+export async function stopNodeRuntime(name: string, acknowledgeReplica = false): Promise<void> {
+  if (DEMO) return demoDelay(undefined);
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/runtime/stop${acknowledgeReplica ? '?acknowledge_replica=true' : ''}`, {
     method: 'POST',
     headers: authHeaders(),
   });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to stop runtime'); }
+  if (!res.ok) throw await runtimeActionFailure(res, 'Failed to stop runtime');
 }
 
-export async function restartNodeRuntime(name: string): Promise<void> {
-  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/runtime/restart`, {
+export async function restartNodeRuntime(name: string, acknowledgeReplica = false): Promise<void> {
+  if (DEMO) return demoDelay(undefined);
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/runtime/restart${acknowledgeReplica ? '?acknowledge_replica=true' : ''}`, {
     method: 'POST',
     headers: authHeaders(),
   });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to restart runtime'); }
+  if (!res.ok) throw await runtimeActionFailure(res, 'Failed to restart runtime');
 }
 
 // getNodeRuntimeLogs fetches a point-in-time snapshot of recent log lines

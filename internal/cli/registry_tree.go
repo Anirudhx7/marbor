@@ -443,19 +443,28 @@ func buildRoot() *Command {
 				Long: "\"start|stop|restart\" requires the target node to have an operator-accepted " +
 					"control driver (see \"node control accept\") - a node with none configured " +
 					"returns an error rather than guessing one.\n\n" +
+					"\"stop|restart\" on the head, a worker, or an unresolved member of a multi-host " +
+					"replica is rejected unless --acknowledge-replica is passed: stopping any member " +
+					"breaks the replica, and marbor does not restart the other members. " +
+					"\"drain\" on a replica member is allowed and prints what it does: draining a " +
+					"worker has no routing effect, draining the head drains the replica.\n\n" +
 					"\"logs\" is a point-in-time snapshot, not a live tail. A node whose control " +
 					"driver has no real log source (e.g. a bare PID-file process with no supervisor) " +
 					"returns a clear \"not supported\" error.",
 				Sub: []*Command{
 					{Name: "start", Short: "start the node's inference runtime process", NeedsAuth: true, Args: []ArgSpec{{Name: "node"}}, Run: func(ctx *RunCtx) int {
-						return runRuntimeAction(ctx.Flags, ctx.Cmd.Name, ctx.Args[0], ctx.Stdout, ctx.Stderr)
+						return runRuntimeAction(ctx.Flags, ctx.Cmd.Name, ctx.Args[0], false, ctx.Stdout, ctx.Stderr)
 					}},
-					{Name: "stop", Short: "stop the node's inference runtime process", NeedsAuth: true, Args: []ArgSpec{{Name: "node"}}, Run: func(ctx *RunCtx) int {
-						return runRuntimeAction(ctx.Flags, ctx.Cmd.Name, ctx.Args[0], ctx.Stdout, ctx.Stderr)
-					}},
-					{Name: "restart", Short: "restart the node's inference runtime process", NeedsAuth: true, Args: []ArgSpec{{Name: "node"}}, Run: func(ctx *RunCtx) int {
-						return runRuntimeAction(ctx.Flags, ctx.Cmd.Name, ctx.Args[0], ctx.Stdout, ctx.Stderr)
-					}},
+					{Name: "stop", Short: "stop the node's inference runtime process", NeedsAuth: true, Args: []ArgSpec{{Name: "node"}},
+						Flags: []FlagSpec{acknowledgeReplicaFlag},
+						Run: func(ctx *RunCtx) int {
+							return runRuntimeAction(ctx.Flags, ctx.Cmd.Name, ctx.Args[0], ctx.Bool("acknowledge-replica"), ctx.Stdout, ctx.Stderr)
+						}},
+					{Name: "restart", Short: "restart the node's inference runtime process", NeedsAuth: true, Args: []ArgSpec{{Name: "node"}},
+						Flags: []FlagSpec{acknowledgeReplicaFlag},
+						Run: func(ctx *RunCtx) int {
+							return runRuntimeAction(ctx.Flags, ctx.Cmd.Name, ctx.Args[0], ctx.Bool("acknowledge-replica"), ctx.Stdout, ctx.Stderr)
+						}},
 					{
 						Name:      "logs",
 						Short:     "fetch recent log lines from the node's runtime process",
