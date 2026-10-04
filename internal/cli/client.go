@@ -1426,13 +1426,10 @@ func (c *Client) PrefixLocalityStats() (*PrefixLocalityStats, error) {
 	if err := json.NewDecoder(resp.Body).Decode(&wire); err != nil {
 		return nil, serverErrorf("could not parse prefix-locality stats response: %v", err)
 	}
-	if wire.Hits == nil || wire.Misses == nil {
-		return nil, serverErrorf("prefix-locality stats response is missing hits or misses")
+	if wire.Enabled == nil || wire.Hits == nil || wire.Misses == nil {
+		return nil, serverErrorf("prefix-locality stats response is missing enabled, hits or misses")
 	}
-	stats := PrefixLocalityStats{Hits: *wire.Hits, Misses: *wire.Misses}
-	if wire.Enabled != nil {
-		stats.Enabled = *wire.Enabled
-	}
+	stats := PrefixLocalityStats{Enabled: *wire.Enabled, Hits: *wire.Hits, Misses: *wire.Misses}
 	if wire.HitRate != nil {
 		stats.HitRate = *wire.HitRate
 	}

@@ -292,12 +292,14 @@ func TestClient_PrefixLocalityStats_ErrorCodes(t *testing.T) {
 		body   string
 		want   int
 	}{
+		{"unauthorized", 401, `{"error":"unauthorized"}`, ExitAuthError},
 		{"forbidden", 403, `{"error":"forbidden"}`, ExitAuthError},
 		{"not found", 404, `{"error":"nope"}`, ExitServerError},
 		{"server error", 500, `{"error":"boom"}`, ExitServerError},
 		{"empty body", 200, ``, ExitServerError},
 		{"empty object", 200, `{}`, ExitServerError},
 		{"missing misses", 200, `{"enabled":true,"hits":5,"hit_rate":1}`, ExitServerError},
+		{"missing enabled", 200, `{"hits":5,"misses":5,"hit_rate":0.5}`, ExitServerError},
 		{"missing hits", 200, `{"enabled":true,"misses":5,"hit_rate":0}`, ExitServerError},
 	}
 	for _, tc := range cases {
