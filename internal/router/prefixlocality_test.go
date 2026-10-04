@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"math"
 	"path/filepath"
 	"strconv"
 	"sync"
@@ -450,6 +451,40 @@ func TestPrefixLocality_DisabledFeatureNeverRecordsOrLooksUp(t *testing.T) {
 	}
 }
 
+// TestSetPrefixLocality_AppliesLive pins the live-toggle contract: a settings
+// change after New() must take effect on the next lookup/record without a
+// restart, in both directions, and the weight must be re-read per decision.
+func TestSetPrefixLocality_AppliesLive(t *testing.T) {
+	r := New(config.RoutingConfig{Strategy: "warm-first"}, nil, nil) // starts disabled
+	ctx := ctxWithKey("key-a")
+	body := []byte(`{"messages":[{"role":"user","content":"hello"}]}`)
+
+	if key, _ := r.PrefixLocalityLookup(ctx, "model-x", body); key != "" {
+		t.Fatalf("disabled at boot: lookup key = %q, want empty", key)
+	}
+
+	r.SetPrefixLocality(true, 7)
+	if !r.PrefixLocalityEnabled() {
+		t.Fatal("PrefixLocalityEnabled() = false after SetPrefixLocality(true)")
+	}
+	key, _ := r.PrefixLocalityLookup(ctx, "model-x", body)
+	if key == "" {
+		t.Fatal("live-enabled: lookup returned no record key")
+	}
+	r.RecordPrefixLocality(key, "node-a", true)
+	if r.prefixStore.len() != 1 {
+		t.Fatalf("live-enabled: store len = %d, want 1", r.prefixStore.len())
+	}
+	if got := math.Float64frombits(r.prefixLocalityWeight.Load()); got != 7 {
+		t.Errorf("weight = %v, want 7", got)
+	}
+
+	r.SetPrefixLocality(false, 7)
+	if key, hint := r.PrefixLocalityLookup(ctx, "model-x", body); key != "" || hint != "" {
+		t.Errorf("live-disabled: lookup = (%q, %q), want empty", key, hint)
+	}
+}
+
 // TestSeedPrefixLocalityFromStore_TTLAndValidNodeFilter covers
 // seedPrefixLocalityFromStore's boot-reseed path (previously untested end
 // to end): a fresh, valid-node row must be seeded and found by a real
@@ -493,10 +528,10 @@ func TestSeedPrefixLocalityFromStore_TTLAndValidNodeFilter(t *testing.T) {
 	}
 
 	r := &Router{
-		nodes:                 []*NodeState{{Name: "node-live", Healthy: true}},
-		prefixStore:           newPrefixLocalityStore(),
-		prefixLocalityEnabled: true,
+		nodes:       []*NodeState{{Name: "node-live", Healthy: true}},
+		prefixStore: newPrefixLocalityStore(),
 	}
+	r.prefixLocalityEnabled.Store(true)
 	r.SetStore(st) // triggers seedPrefixLocalityFromStore internally
 
 	if node, hit := r.prefixStore.lookup(freshHash); !hit || node != "node-live" {

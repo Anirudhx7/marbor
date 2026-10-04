@@ -39,6 +39,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"log"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -354,9 +355,23 @@ func (s *prefixLocalityStore) len() int {
 }
 
 // PrefixLocalityEnabled reports whether the rolling-prefix-locality scoring
-// signal is active. Immutable after New() - see the Router field comment.
+// signal is active. Reflects the latest SetPrefixLocality call.
 func (r *Router) PrefixLocalityEnabled() bool {
-	return r.prefixLocalityEnabled
+	return r.prefixLocalityEnabled.Load()
+}
+
+// SetPrefixLocality applies a settings-page change to live routing. The
+// caller validates weight (config.Validate keeps it in [0, 15)). Turning the
+// signal on after boot reseeds the in-memory store from SQLite, same as a
+// boot with the setting already enabled; turning it off leaves recorded
+// state in place (it ages out by TTL) since lookups and records no-op while
+// disabled.
+func (r *Router) SetPrefixLocality(enabled bool, weight float64) {
+	r.prefixLocalityWeight.Store(math.Float64bits(weight))
+	was := r.prefixLocalityEnabled.Swap(enabled)
+	if enabled && !was {
+		r.seedPrefixLocalityFromStore()
+	}
 }
 
 // PrefixLocalityStats reports cumulative hit/miss counts for the dashboard
@@ -376,7 +391,7 @@ func (r *Router) PrefixLocalityStats() (hits, misses uint64) {
 // straight through to RecordPrefixLocality, which no-ops on an empty key.
 // Never touches SQLite - the in-memory store is the sole runtime authority.
 func (r *Router) PrefixLocalityLookup(ctx context.Context, model string, body []byte) (recordKey, preferredNode string) {
-	if !r.prefixLocalityEnabled {
+	if !r.prefixLocalityEnabled.Load() {
 		return "", ""
 	}
 	seq, ok := canonicalSequence(body)
@@ -422,7 +437,7 @@ func (r *Router) PrefixLocalityLookup(ctx context.Context, model string, body []
 // place locality state is ever written - never at candidate selection,
 // backend start, response headers, or first token.
 func (r *Router) RecordPrefixLocality(key, nodeName string, success bool) {
-	if !r.prefixLocalityEnabled || !success || key == "" || nodeName == "" {
+	if !r.prefixLocalityEnabled.Load() || !success || key == "" || nodeName == "" {
 		return
 	}
 	r.prefixStore.set(key, nodeName)
@@ -447,7 +462,7 @@ func (r *Router) RecordPrefixLocality(key, nodeName string, success bool) {
 // "starts with an empty map", never a boot failure - locality is a soft
 // optimization, not a correctness dependency.
 func (r *Router) seedPrefixLocalityFromStore() {
-	if !r.prefixLocalityEnabled {
+	if !r.prefixLocalityEnabled.Load() {
 		return
 	}
 	st := r.warmStore()

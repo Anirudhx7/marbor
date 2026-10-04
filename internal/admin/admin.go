@@ -5953,6 +5953,7 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	s.router.SetTimezone(incoming.Timezone)
 	s.router.SetLiteLLM(incoming.LiteLLM)
 	s.router.SetContextWindows(incoming.ContextWindows)
+	s.router.SetPrefixLocality(incoming.Routing.PrefixLocalityEnabled, incoming.Routing.PrefixLocalityWeight)
 	// Per-user display timezone (so one user's change doesn't affect others'
 	// wall-clock rendering via handleSettings's per-user override above).
 	// We still persist the global "timezone" for the fleet-wide scheduler
