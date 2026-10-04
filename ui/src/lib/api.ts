@@ -1518,6 +1518,7 @@ export async function fetchSystemAuditFiltered(f: SystemAuditFilter = {}): Promi
       { time: iso(180), username: 'admin', action: 'add_key', target: 'marketing-team', details: 'RateLimit: 50, DailyLimit: 500, MonthlyLimit: 10000, DailyUsdCap: 50.00, MonthlyUsdCap: 200.00, Models: []', source_ip: '192.168.1.5' },
       { time: iso(200), username: 'admin', action: 'create_schedule', target: 'sched-1724170000000000001', details: 'Action: warmup, Node: gpu-node-01, At: 08:30, Models: [llama3.3:8b], Enabled: true', source_ip: '192.168.1.5' },
       // Older hours/days to make date presets meaningful
+      { time: iso(150), username: 'system', action: 'api_key_expiry_malformed', target: 'legacy-key', details: 'The stored expiry for this API key is malformed, so the key is rejected until the expiry is corrected.', source_ip: '' },
       { time: isoHours(3), username: 'system', action: 'scheduled_warmup', target: 'gpu-node-01', details: 'Schedule sched-1724170000000000001: action=warmup node=gpu-node-01 models=[llama3.3:8b] status=ok', source_ip: '' },
       { time: isoHours(8), username: 'admin', action: 'patch_schedule', target: 'sched-1724170000000000001', details: 'Action: warmup, Node: gpu-node-01, At: 09:00, Models: [qwen2.5:7b], Enabled: true', source_ip: '192.168.1.5' },
       { time: isoHours(20), username: 'admin', action: 'runtime_stop', target: 'gpu-node-03', details: 'Driver: docker', source_ip: '192.168.1.5' },

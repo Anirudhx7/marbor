@@ -68,6 +68,24 @@ type Middleware struct {
 	// warning (key name -> time.Time), so a bad value warns once a minute
 	// instead of once per request.
 	expiryWarned sync.Map
+
+	// expiryMu guards expiryHook and expiryAudited. It is a leaf lock: it is
+	// never held while calling the hook or while taking m.mu or a keyState lock.
+	expiryMu sync.Mutex
+	// expiryHook, when set, is told once per key name and malformed value that a
+	// stored expires_at cannot be parsed. See SetExpiryAuditHook.
+	expiryHook func(keyName string)
+	// expiryAudited remembers which (key name, malformed value) pairs were already
+	// reported, for the life of the process.
+	expiryAudited map[malformedExpiry]struct{}
+}
+
+// malformedExpiry identifies one malformed stored expiry for de-duplication.
+// Only a SHA-256 digest of the value is kept, so the raw string is never
+// retained, logged or passed to the hook.
+type malformedExpiry struct {
+	name   string
+	digest string
 }
 
 type keyState struct {
@@ -341,12 +359,20 @@ type KeyPatch struct {
 // PatchKey updates mutable fields of an existing key without rotating it.
 // Counters and the key token itself are preserved. Returns false if not found.
 func (m *Middleware) PatchKey(name string, patch KeyPatch) bool {
+	ok, found := m.patchKey(name, patch)
+	// The audit hook runs after every lock is released.
+	m.reportMalformedExpiries(found)
+	return ok
+}
+
+func (m *Middleware) patchKey(name string, patch KeyPatch) (bool, []malformedExpiry) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	ks, ok := m.byName[name]
 	if !ok {
-		return false
+		return false, nil
 	}
+	var found []malformedExpiry
 	ks.mu.Lock()
 	if patch.RateLimit != nil {
 		ks.rateLimit = *patch.RateLimit
@@ -369,6 +395,7 @@ func (m *Middleware) PatchKey(name string, patch KeyPatch) bool {
 	}
 	if patch.ExpiresAt != nil {
 		ks.expiresAt = *patch.ExpiresAt
+		found = collectMalformed(found, name, ks.expiresAt)
 	}
 	if patch.LocalOnly != nil {
 		ks.localOnly = *patch.LocalOnly
@@ -377,7 +404,7 @@ func (m *Middleware) PatchKey(name string, patch KeyPatch) bool {
 		ks.allowLocalDegradation = *patch.AllowLocalDegradation
 	}
 	ks.mu.Unlock()
-	return true
+	return true, found
 }
 
 func (m *Middleware) AddKey(k config.KeyConfig) {
@@ -408,6 +435,7 @@ func (m *Middleware) AddKey(k config.KeyConfig) {
 	m.keys[hashToken(k.Key)] = ks
 	m.byName[k.Name] = ks
 	m.mu.Unlock()
+	m.reportMalformedExpiries(collectMalformed(nil, k.Name, k.ExpiresAt))
 }
 
 // Reload atomically replaces the key set from a new config. Keys whose name
@@ -416,14 +444,23 @@ func (m *Middleware) AddKey(k config.KeyConfig) {
 // start fresh (old token stops working immediately). Removed keys stop
 // accepting requests after the swap.
 func (m *Middleware) Reload(cfg config.AuthConfig) {
+	// The audit hook runs after every lock is released.
+	m.reportMalformedExpiries(m.swapKeys(cfg))
+}
+
+// swapKeys installs the new key set under m.mu (released by defer, so a panic
+// cannot leave it held) and returns the malformed expiries it saw.
+func (m *Middleware) swapKeys(cfg config.AuthConfig) []malformedExpiry {
 	newKeys := make(map[string]*keyState, len(cfg.Keys))
 	newByName := make(map[string]*keyState, len(cfg.Keys))
 
+	var found []malformedExpiry
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	oldByName := m.byName
 
 	for _, k := range cfg.Keys {
+		found = collectMalformed(found, k.Name, k.ExpiresAt)
 		existing, sameName := oldByName[k.Name]
 		if sameName && existing.key == k.Key {
 			// Same key value - preserve counter, update policy fields.
@@ -466,6 +503,7 @@ func (m *Middleware) Reload(cfg config.AuthConfig) {
 	m.enabled = cfg.IsEnabled()
 	m.keys = newKeys
 	m.byName = newByName
+	return found
 }
 
 func (m *Middleware) RevokeKey(name string) {
@@ -669,6 +707,77 @@ func (m *Middleware) Handler(next http.Handler) http.Handler {
 		ctx = context.WithValue(ctx, AllowedModelsContextKey, modelsList)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// ExpiryAuditAction is the system-audit action recorded when a key's stored
+// expiry is found to be malformed.
+const ExpiryAuditAction = "api_key_expiry_malformed"
+
+// ExpiryAuditDetails is the plain-language detail for that audit event. It names
+// no key value and no raw expiry string.
+const ExpiryAuditDetails = "The stored expiry for this API key is malformed, so the key is rejected until the expiry is corrected."
+
+// collectMalformed appends (name, expiresAt) to found when expiresAt is a
+// non-empty value ExpiryStatus cannot parse.
+func collectMalformed(found []malformedExpiry, name, expiresAt string) []malformedExpiry {
+	if _, malformed := ExpiryStatus(expiresAt, time.Now()); malformed {
+		return append(found, malformedExpiry{name: name, digest: hashToken(expiresAt)})
+	}
+	return found
+}
+
+// SetExpiryAuditHook registers fn to be called with the key name the first time
+// a given key carries a given malformed stored expires_at, whether found at
+// load, on Reload, AddKey or PatchKey. Setting the hook also scans the keys
+// already loaded, so a malformed expiry present before the hook was wired is
+// reported too. Each (key name, malformed value) pair is reported at most once
+// per process; a new malformed value for the same key is reported again. fn is
+// never called per request and never while a Middleware lock is held, so it may
+// call back into the Middleware. The hook receives only the key name. A nil fn
+// disables reporting.
+func (m *Middleware) SetExpiryAuditHook(fn func(keyName string)) {
+	m.expiryMu.Lock()
+	m.expiryHook = fn
+	m.expiryMu.Unlock()
+	if fn == nil {
+		return
+	}
+	var found []malformedExpiry
+	m.mu.RLock()
+	for name, ks := range m.byName {
+		ks.mu.RLock()
+		found = collectMalformed(found, name, ks.expiresAt)
+		ks.mu.RUnlock()
+	}
+	m.mu.RUnlock()
+	m.reportMalformedExpiries(found)
+}
+
+// reportMalformedExpiries invokes the audit hook for each entry not yet
+// reported. Callers must hold no Middleware or keyState lock.
+func (m *Middleware) reportMalformedExpiries(found []malformedExpiry) {
+	if len(found) == 0 {
+		return
+	}
+	m.expiryMu.Lock()
+	hook := m.expiryHook
+	var fresh []string
+	if hook != nil {
+		if m.expiryAudited == nil {
+			m.expiryAudited = make(map[malformedExpiry]struct{})
+		}
+		for _, f := range found {
+			if _, seen := m.expiryAudited[f]; seen {
+				continue
+			}
+			m.expiryAudited[f] = struct{}{}
+			fresh = append(fresh, f.name)
+		}
+	}
+	m.expiryMu.Unlock()
+	for _, name := range fresh {
+		hook(name)
+	}
 }
 
 // expiryWarnInterval bounds how often a key with a malformed expires_at logs
