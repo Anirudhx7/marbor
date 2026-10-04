@@ -12,16 +12,17 @@
 # Usage (all env vars optional except MODEL - see below):
 #   MODEL=llama3.2:3b-q4_k_m ./bench/preflight.sh
 #
-# ADMIN_USERNAME/ADMIN_PASSWORD default to admin/admin (the demo-mode and
-# most-common first-admin-account default) - override if your account uses
-# something else. NODE_NAME is auto-detected when marbor has exactly one
-# node; set it explicitly if you have more than one.
+# ADMIN_PASSWORD is required: a real install has no default admin password
+# (a fresh database gets a generated one). Use the password you set after the
+# first login, or ADMIN_PASSWORD=admin against the public demo stack only.
+# ADMIN_USERNAME defaults to admin. NODE_NAME is auto-detected when marbor has
+# exactly one node; set it explicitly if you have more than one.
 set -uo pipefail
 
 : "${MARBOR_URL:=${MESH_URL:-http://localhost:11434}}"
 : "${ADMIN_URL:=http://localhost:8080}"
 : "${ADMIN_USERNAME:=admin}"
-: "${ADMIN_PASSWORD:=admin}"
+: "${ADMIN_PASSWORD:?ADMIN_PASSWORD is required (the password of an admin-role account; there is no default)}"
 : "${MODEL:?MODEL is required (exact tag, e.g. llama3.2:3b-q4_k_m)}"
 
 fail() { echo "PREFLIGHT FAILED: $*" >&2; exit 1; }

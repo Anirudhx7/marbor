@@ -96,7 +96,7 @@ func adminBindIsLoopback(bindAddress string) bool {
 // printStartupBanner prints a one-time onboarding summary when the database
 // has no nodes or API keys yet - there is no config.yaml to point at
 // anymore, so the dashboard is the only setup path.
-func printStartupBanner(cfg *config.Config, dbPath string) {
+func printStartupBanner(cfg *config.Config, dbPath, loginHint string) {
 	line := "================================================================"
 	fmt.Println()
 	fmt.Println(line)
@@ -107,12 +107,12 @@ func printStartupBanner(cfg *config.Config, dbPath string) {
 	fmt.Printf("  Point your apps at:  http://localhost:%d\n", cfg.Proxy.Port)
 	fmt.Println()
 	fmt.Printf("  Dashboard:           %s\n", adminDashboardURL(cfg.Admin.BindAddress))
-	fmt.Println("  Dashboard login:     admin / admin (a password change is required at first login)")
+	fmt.Printf("  Dashboard login:     %s\n", loginHint)
 	if !adminBindIsLoopback(cfg.Admin.BindAddress) {
-		fmt.Println("  WARNING:             while that default login is active, and since the dashboard is plaintext HTTP,")
-		fmt.Println("                       anyone who can reach it can take over the control plane.")
-		fmt.Println("                       Change the password immediately; for any exposed deployment keep")
-		fmt.Println("                       the dashboard on 127.0.0.1 or put TLS (a reverse proxy) in front of it.")
+		fmt.Println("  WARNING:             the dashboard is plaintext HTTP: anyone who can reach it can try to log in.")
+		fmt.Println("                       While the initial password is unchanged, a non-loopback dashboard is not")
+		fmt.Println("                       started. For any exposed deployment keep the dashboard on 127.0.0.1 or")
+		fmt.Println("                       put TLS (a reverse proxy) in front of it.")
 	}
 	fmt.Println()
 	fmt.Println("  Add your first GPU node and API key from the dashboard - or run")
@@ -494,6 +494,7 @@ func main() {
 	// Apply every persisted setting before anything below reads cfg, since
 	// this is now the only configuration source (no config.yaml).
 	applyPersistedSettings(cfg, st)
+	adminBindOverride, adminBindStored := applyAdminBindEnv(cfg)
 	// Re-validate after the overlay: Validate() above only checked the
 	// built-in defaults - a hand-edited or stale-version DB row must not
 	// flow into a running server unchecked.
@@ -808,10 +809,6 @@ func main() {
 		log.Printf("WARNING: could not load routing rules from store: %v", err)
 	}
 
-	if nodeCount == 0 && keyCount == 0 {
-		printStartupBanner(cfg, dbPath)
-	}
-
 	// Periodically flush usage counters so a restart preserves quota/usage
 	// state (crash loses at most one interval).
 	usageFlushDone := make(chan struct{})
@@ -834,7 +831,11 @@ func main() {
 	auditLog := audit.New(st, cfg.Audit.Enabled)
 	defer auditLog.Close()
 
-	adminSrv := admin.NewServer(r, authMw, *cfg, st)
+	adminSrv := admin.NewServerWithBootstrap(r, authMw, *cfg, st, admin.BootstrapOptions{DataDir: dataDirOf(dbPath)})
+	adminSrv.SetAdminBindOverride(adminBindOverride, adminBindStored)
+	if nodeCount == 0 && keyCount == 0 {
+		printStartupBanner(cfg, dbPath, adminSrv.BootstrapLoginHint())
+	}
 	adminSrv.SetAuditLogger(auditLog)
 	adminSrv.SetVersion(Version)
 	if err := adminSrv.LoadFromStore(); err != nil {
@@ -903,12 +904,7 @@ func main() {
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
-	go func() {
-		log.Printf("Admin dashboard listening on %s", cfg.Admin.BindAddress)
-		if err := adminHttpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Admin server error: %v", err)
-		}
-	}()
+	go serveAdmin(adminHttpSrv, adminSrv, cfg.Admin.BindAddress)
 
 	go func() {
 		log.Printf("Proxy listening on :%d", cfg.Proxy.Port)

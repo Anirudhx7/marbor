@@ -1,5 +1,5 @@
 import { useState, FormEvent } from 'react';
-import { changePassword, clearSession } from '../lib/api';
+import { changePassword, clearSession, passwordPolicyError, MIN_PASSWORD_LENGTH } from '../lib/api';
 import type { SessionData } from '../types';
 
 interface UserPortalProps {
@@ -27,8 +27,9 @@ export function UserPortal({ session, onLogout }: UserPortalProps) {
       setPwError('Passwords do not match');
       return;
     }
-    if (newPw.length < 8) {
-      setPwError('Password must be at least 8 characters');
+    const policyError = passwordPolicyError(newPw);
+    if (policyError) {
+      setPwError(policyError);
       return;
     }
     setLoading(true);
@@ -129,7 +130,7 @@ export function UserPortal({ session, onLogout }: UserPortalProps) {
               />
               <input
                 type="password"
-                placeholder="New password (min 8 chars)"
+                placeholder={`New password (min ${MIN_PASSWORD_LENGTH} chars)`}
                 value={newPw}
                 onChange={e => setNewPw(e.target.value)}
                 autoComplete="new-password"

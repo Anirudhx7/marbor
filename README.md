@@ -62,7 +62,7 @@ Experience the complete gateway and monitoring stack locally in 5 minutes using 
    This spins up `marbor`, two mock Ollama backend nodes, Prometheus, and Grafana, then runs a 20-request benchmark to generate live telemetry.
 
 2. **Access the dashboards**:
-   * **Marbor Dashboard**: [http://localhost:8080](http://localhost:8080) (Credentials: `admin` / `admin`)
+   * **Marbor Dashboard**: [http://localhost:8080](http://localhost:8080) (demo stack only; credentials: `admin` / `admin`)
    * **Grafana Telemetry**: [http://localhost:3000](http://localhost:3000) (Pre-configured dashboard included)
 
 3. **Run a manual benchmark**:
@@ -123,7 +123,7 @@ docker compose up -d                                                        # ga
 docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d # gateway + Prometheus + Grafana
 ```
 This starts:
-* **Marbor** ([http://localhost:8080](http://localhost:8080)): Main gateway container.
+* **Marbor** ([http://localhost:8080](http://localhost:8080)): Main gateway container. The container binds the admin dashboard to all interfaces, so while the initial admin password is unchanged the dashboard is refused (the proxy and metrics keep running). Either supply the initial password up front with a Docker secret and `MARBOR_ADMIN_PASSWORD_FILE` (see [SECURITY.md](SECURITY.md#default-admin-login)), or read the generated one with `docker compose exec marbor cat /data/initial-admin-password` and restart once with `MARBOR_ADMIN_BIND_ADDRESS=127.0.0.1:8080` to log in over `docker compose exec` or host networking and change it. Nothing in this repo's compose files sets a password or disables this check.
 * **Prometheus** (with the monitoring overlay): Automatically scraping the Marbor metrics endpoint.
 * **Grafana** (with the monitoring overlay, [http://localhost:3000](http://localhost:3000)): Pre-provisioned with the official [Marbor dashboard](grafana/marbor.json).
 
@@ -325,7 +325,11 @@ There is no config file. Marbor is DB-first: everything lives in `marbor.db` (SQ
 ```bash
 ./marbor              # or --db /path/to/marbor.db to pick the database location
 ```
-The binary opens (or creates) `marbor.db`, starts blank-slate, and prints a banner pointing you at the dashboard. Log in at `http://localhost:8080` with `admin` / `admin` - you'll be forced to set a new password on first login.
+The binary opens (or creates) `marbor.db`, starts blank-slate, and prints a banner pointing you at the dashboard. A fresh install does not create `admin` / `admin`. It creates the user `admin` with a random password, written once to `initial-admin-password` (owner-only, mode 0600) next to `marbor.db`; the banner prints that path, never the password. Read the file, log in, and you are forced to set a new password on first login; the file is deleted after the change.
+
+While the initial password is unchanged, the admin dashboard starts only on a loopback address. With the default bind (`:8080`, all interfaces) it is refused, and the proxy and metrics listeners keep running. To get in, restart on loopback with `MARBOR_ADMIN_BIND_ADDRESS=127.0.0.1:8080 ./marbor` (an environment-only override, never saved), log in locally or through an SSH tunnel, change the password, then restart without the override. The installer does this for you on a first install.
+
+To choose the initial password yourself (Docker, Ansible, Terraform), set `MARBOR_ADMIN_PASSWORD_FILE` to the path of a file that contains it (preferred; works with a Docker secret) or `MARBOR_ADMIN_PASSWORD` (weaker: visible in `docker inspect` and process listings). Either is read only when the first administrator is created. Details and the full threat model: [SECURITY.md](SECURITY.md#default-admin-login).
 
 **Secrets at rest:** cloud provider API keys, marbor-issued API keys, the LiteLLM key, HuggingFace token, and webhook secret are encrypted in `marbor.db` with AES-256-GCM. The encryption key lives in `marbor.db.key`, generated next to the database on first boot (0600 permissions) - back it up alongside `marbor.db`, since losing it means re-entering those secrets. To supply your own key instead (e.g. from a secrets manager), set `MARBOR_ENCRYPTION_KEY` to a base64-encoded 32-byte value before starting the binary; `marbor.db.key` is not created when this is set. Upgrading from an older version that stored these fields as plaintext encrypts them automatically on first boot - no manual migration step.
 

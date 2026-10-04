@@ -8,7 +8,11 @@
 # subnet for running GPU nodes (Ollama, vLLM, TGI, llama.cpp) and lets you
 # pick which ones to seed into marbor.db interactively. Everything else (API
 # keys, ports, routing, HA, webhooks, ...) is configured from the dashboard
-# after boot - log in with admin/admin and set a new password.
+# after boot. A fresh install no longer creates admin/admin: it creates the
+# user "admin" with a random password stored in the owner-only file
+# initial-admin-password next to marbor.db (removed after the first password
+# change). A first install starts the dashboard on 127.0.0.1 only; see the
+# summary printed at the end of the install for how to expose it safely.
 #
 # Modes (opt in via env vars):
 #   START=1    start marbor in the background (nohup) after install
@@ -644,6 +648,12 @@ setup_systemd_service() {
   RUN_USER="${SERVICE_USER:-$(id -un)}"
   BIN_PATH="$INSTALL_DIR/$BIN_NAME"
 
+  UNIT_ENV_LINE=""
+  if needs_loopback_admin; then
+    UNIT_ENV_LINE="Environment=MARBOR_ADMIN_BIND_ADDRESS=127.0.0.1:8080
+"
+  fi
+
   UNIT_CONTENT="[Unit]
 Description=marbor
 After=network-online.target
@@ -653,7 +663,7 @@ Wants=network-online.target
 Type=simple
 User=${RUN_USER}
 WorkingDirectory="${WORKDIR}"
-ExecStart="${BIN_PATH}" --db "${DB_PATH}"
+${UNIT_ENV_LINE}ExecStart="${BIN_PATH}" --db "${DB_PATH}"
 Restart=on-failure
 RestartSec=2
 StandardOutput=append:"${WORKDIR}/marbor.log"
@@ -691,7 +701,8 @@ WantedBy=multi-user.target
     echo "marbor installed as a systemd service and running!"
     echo "--------------------------------------------------------"
     echo "  Proxy Endpoint:   http://localhost:11434"
-    echo "  Admin Dashboard:  http://localhost:8080  (login: admin / admin)"
+    echo "  Admin Dashboard:  http://localhost:8080"
+    print_first_login_help
     echo "  Metrics:          http://localhost:9090/metrics"
     echo "  Unit file:        $UNIT_PATH"
     echo "  Logs:             journalctl -u marbor -f  (also ${WORKDIR}/marbor.log)"
@@ -752,6 +763,41 @@ wait_for_http() {
   return 1
 }
 
+# True when this host still needs the dashboard pinned to loopback: a first
+# install (no database yet) or one whose generated initial password file has
+# not been consumed. The override is the MARBOR_ADMIN_BIND_ADDRESS environment
+# variable, read at startup and never saved to the database; remove it from the
+# unit file (or the start command) once the password is changed to restore the
+# stored bind address. The installer never sets a password or the insecure-admin
+# escape hatch.
+needs_loopback_admin() {
+  [ "$FRESH_DB" = true ] && return 0
+  [ -f "$(dirname "$DB_PATH")/initial-admin-password" ] && return 0
+  return 1
+}
+
+# First-login summary. Names a file path and environment variables only, never
+# a password.
+print_first_login_help() {
+  PW_FILE="$(dirname "$DB_PATH")/initial-admin-password"
+  if [ -f "$PW_FILE" ]; then
+    echo "  Admin login:      user 'admin', initial password in: $PW_FILE"
+    echo "                    (read it with: cat $PW_FILE ; the file is removed after you change the password)"
+  else
+    echo "  Admin login:      your existing administrator account. A database that still has the"
+    echo "                    old default admin/admin password keeps working for this release only: change it now."
+  fi
+  if needs_loopback_admin; then
+    echo "  Dashboard bind:   127.0.0.1 only while the initial password is unchanged (MARBOR_ADMIN_BIND_ADDRESS)."
+    echo "                    From another machine use: ssh -L 8080:localhost:8080 <user>@<this-host>"
+  fi
+  echo "  Managed installs: set MARBOR_ADMIN_PASSWORD_FILE=<path to a file holding the password> (preferred)"
+  echo "                    or MARBOR_ADMIN_PASSWORD=<password> (weaker: visible to process listings) before the"
+  echo "                    first start to choose the initial password instead of generating one."
+  echo "  Locked out:       restart with MARBOR_ADMIN_BIND_ADDRESS=127.0.0.1:8080, log in, change the password,"
+  echo "                    then remove the override. See SECURITY.md."
+}
+
 # Real post-install verification: the three listeners the binary starts.
 # Never fails the install - this is diagnostics for the operator. Ports
 # reflect marbor's built-in defaults (11434/8080/9090); if you changed
@@ -777,6 +823,10 @@ run_health_checks() {
 }
 
 DB_PATH="${MARBOR_DB_PATH:-$(pwd)/marbor.db}"
+
+# Decided before the wizard below can create the database file.
+FRESH_DB=false
+[ -f "$DB_PATH" ] || FRESH_DB=true
 
 # Node discovery + seeding wizard: only runs when we're about to start the
 # daemon against a fresh database (marbor.db doesn't exist yet), so re-running
@@ -912,6 +962,10 @@ fi
 
 echo ""
 echo "Starting marbor in the background..."
+if needs_loopback_admin; then
+  MARBOR_ADMIN_BIND_ADDRESS="127.0.0.1:8080"
+  export MARBOR_ADMIN_BIND_ADDRESS
+fi
 nohup "$INSTALL_DIR/$BIN_NAME" --db "$DB_PATH" > marbor.log 2>&1 &
 PID=$!
 echo "$PID" > "$PIDFILE"
@@ -922,7 +976,8 @@ if kill -0 $PID >/dev/null 2>&1; then
   echo "marbor successfully started (PID: $PID)!"
   echo "--------------------------------------------------------"
   echo "  Proxy Endpoint:   http://localhost:11434"
-  echo "  Admin Dashboard:  http://localhost:8080  (login: admin / admin)"
+  echo "  Admin Dashboard:  http://localhost:8080"
+  print_first_login_help
   echo "  Metrics:          http://localhost:9090/metrics"
   echo "  Logs:             marbor.log"
   echo "  Database:         ${DB_PATH}"
