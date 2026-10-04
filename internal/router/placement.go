@@ -627,13 +627,14 @@ func (r *Router) scoreComponents(n *NodeState, model, preferredNode string) []Sc
 	// is enabled (see scoreComponents' doc comment on disabled-feature
 	// parity); weight is bounded well below inverse_queue_depth (15) and
 	// warm_model_resident (50) so it can never flip either decision.
-	if r.prefixLocalityEnabled {
+	if r.prefixLocalityEnabled.Load() {
+		weight := math.Float64frombits(r.prefixLocalityWeight.Load())
 		match := 0.0
 		if preferredNode != "" && n.Name == preferredNode {
 			match = 1.0
 		}
 		components = append(components, ScoreComponent{
-			Name: "prefix_match", Raw: match, Weight: r.prefixLocalityWeight, Value: match * r.prefixLocalityWeight,
+			Name: "prefix_match", Raw: match, Weight: weight, Value: match * weight,
 			Phase: PhaseLocality,
 		})
 	}

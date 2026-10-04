@@ -71,9 +71,9 @@ var errorLeakExceptions = map[string]bool{
 	"internal/admin/admin.go:2767": true,
 	"internal/admin/admin.go:2900": true,
 	"internal/admin/admin.go:3501": true,
-	"internal/admin/admin.go:7670": true,
-	"internal/admin/admin.go:7970": true,
-	"internal/admin/admin.go:8333": true,
+	"internal/admin/admin.go:7671": true,
+	"internal/admin/admin.go:7971": true,
+	"internal/admin/admin.go:8334": true,
 	"internal/admin/admin.go:3517": true,
 	"internal/admin/admin.go:3521": true,
 	"internal/admin/admin.go:4102": true,
@@ -82,8 +82,8 @@ var errorLeakExceptions = map[string]bool{
 	"internal/admin/admin.go:5647": true,
 	"internal/admin/admin.go:5781": true,
 	"internal/admin/admin.go:5925": true,
-	"internal/admin/admin.go:8752": true,
-	"internal/admin/admin.go:8864": true,
+	"internal/admin/admin.go:8753": true,
+	"internal/admin/admin.go:8865": true,
 }
 
 // adminGoFiles returns the repo root and every non-test .go file tracked

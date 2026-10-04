@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -484,15 +485,23 @@ type Router struct {
 	// for both the poll path and every admin/eviction action-path call site.
 	// Built once in New(), never mutated after - safe to read without a
 	// lock.
-	tlsTransport   *http.Transport
-	mu             sync.RWMutex
-	roundRobin     uint32
-	rules          []config.RoutingRule
-	clouds         []config.CloudProvider
-	liteLLM        config.LiteLLMConfig
-	dockerCfg      config.DockerConfig
-	webhookCfg     config.WebhookConfig
-	discoveredURLs map[string]struct{} // URLs added via Docker discovery
+	tlsTransport *http.Transport
+	// nodeLifecycleMu serializes AddNode and RemoveNode against each other so
+	// RemoveNode's per-node-state sweep (run after r.mu is released, under
+	// each state map's own mutex, keyed by node name) can never delete state
+	// that a same-name re-added node wrote in the window. It is the outermost
+	// router lock: always taken before r.mu, never while holding it. Because
+	// RemoveNode holds it across its final warm-state SQLite delete, an
+	// AddNode (including Docker discovery) can wait on that write.
+	nodeLifecycleMu sync.Mutex
+	mu              sync.RWMutex
+	roundRobin      uint32
+	rules           []config.RoutingRule
+	clouds          []config.CloudProvider
+	liteLLM         config.LiteLLMConfig
+	dockerCfg       config.DockerConfig
+	webhookCfg      config.WebhookConfig
+	discoveredURLs  map[string]struct{} // URLs added via Docker discovery
 	// prevHealthy tracks the last known health state per node name for
 	// transition detection (healthy -> unhealthy and back).
 	prevHealthy map[string]bool
@@ -722,15 +731,15 @@ type Router struct {
 	// only - see prefixlocality.go). prefixStore is the SOLE runtime
 	// authority for lookups; SQLite is restart-continuity persistence only,
 	// written best-effort and asynchronously, never consulted on the routing
-	// hot path. prefixLocalityEnabled/Weight are immutable after New() (same
-	// convention as sessionAffinity: settings-page changes persist to SQLite
-	// and apply on next restart via main.go's applyPersistedSettings, not
-	// live) so they are read without a lock. prefixStore owns its own
-	// independent mutex (see prefixLocalityStore), separate from both
-	// r.mu and affinityMu since it is an unrelated subsystem.
+	// hot path. prefixLocalityEnabled/Weight are atomics so a settings-page
+	// change (SetPrefixLocality) applies to live routing immediately while
+	// the hot path still reads them without a lock; the weight is a float64
+	// stored as its bit pattern. prefixStore owns its own independent mutex
+	// (see prefixLocalityStore), separate from both r.mu and affinityMu
+	// since it is an unrelated subsystem.
 	prefixStore           *prefixLocalityStore
-	prefixLocalityEnabled bool
-	prefixLocalityWeight  float64
+	prefixLocalityEnabled atomic.Bool
+	prefixLocalityWeight  atomic.Uint64
 }
 
 // NodeWarmup is the per-node runtime warmup setting: whether proactive warmup is
@@ -882,9 +891,9 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 		lastAccuracyLogAt:        time.Now(),
 		lastTimeOfDayPrewarmHour: -1,
 		prefixStore:              newPrefixLocalityStore(),
-		prefixLocalityEnabled:    cfg.PrefixLocalityEnabled,
-		prefixLocalityWeight:     cfg.PrefixLocalityWeight,
 	}
+	r.prefixLocalityEnabled.Store(cfg.PrefixLocalityEnabled)
+	r.prefixLocalityWeight.Store(math.Float64bits(cfg.PrefixLocalityWeight))
 	r.SetModelAliases(cfg.ModelAliases)
 	rr = r
 	return r
@@ -1425,7 +1434,7 @@ func (r *Router) Start(ctx context.Context) {
 			// is at or below prefix locality's own TTL/2 target (5m for the
 			// fixed 10m TTL), so entries are never retained past their TTL
 			// by more than one extra tick in the worst case.
-			if r.prefixLocalityEnabled {
+			if r.prefixLocalityEnabled.Load() {
 				safeRun("sweepPrefixLocality", r.prefixStore.sweep)
 			}
 		case <-warmupTickerC:
@@ -1505,6 +1514,8 @@ func (r *Router) AddNode(n config.NodeConfig) bool {
 	// DrainNode/UndrainNode), so nesting existingByName.mu.Lock() inside this
 	// r.mu.Lock() below matches the established ordering.
 	normURL := config.NormalizeNodeURL(n.URL)
+	r.nodeLifecycleMu.Lock()
+	defer r.nodeLifecycleMu.Unlock()
 	r.mu.Lock()
 	var existingByName *NodeState
 	for _, existing := range r.nodes {
@@ -1604,6 +1615,11 @@ func (r *Router) AddNode(n config.NodeConfig) bool {
 }
 
 func (r *Router) RemoveNode(name string) {
+	// Held for the whole function, including the post-r.mu sweeps below, so a
+	// same-name AddNode cannot interleave and have its fresh per-node state
+	// swept away (see nodeLifecycleMu).
+	r.nodeLifecycleMu.Lock()
+	defer r.nodeLifecycleMu.Unlock()
 	r.mu.Lock()
 	var urlToRemove, hostRemoved string
 	for i, n := range r.nodes {
