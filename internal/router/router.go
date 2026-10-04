@@ -490,7 +490,9 @@ type Router struct {
 	// RemoveNode's per-node-state sweep (run after r.mu is released, under
 	// each state map's own mutex, keyed by node name) can never delete state
 	// that a same-name re-added node wrote in the window. It is the outermost
-	// router lock: always taken before r.mu, never while holding it.
+	// router lock: always taken before r.mu, never while holding it. Because
+	// RemoveNode holds it across its final warm-state SQLite delete, an
+	// AddNode (including Docker discovery) can wait on that write.
 	nodeLifecycleMu sync.Mutex
 	mu              sync.RWMutex
 	roundRobin      uint32

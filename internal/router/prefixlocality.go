@@ -287,6 +287,24 @@ func (s *prefixLocalityStore) recordHitOrMiss(hit bool) {
 func (s *prefixLocalityStore) set(key, node string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.setLocked(key, node)
+}
+
+// setIfAbsent records key -> node only when key has no entry yet, reporting
+// whether it did. Used when reseeding from SQLite so an older persisted row
+// never overwrites (or refreshes the TTL of) an entry already recorded in
+// memory, and so the newest of several rows for one key wins.
+func (s *prefixLocalityStore) setIfAbsent(key, node string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.entries[key]; exists {
+		return false
+	}
+	s.setLocked(key, node)
+	return true
+}
+
+func (s *prefixLocalityStore) setLocked(key, node string) {
 	if _, exists := s.entries[key]; !exists && len(s.entries) >= prefixLocalityMaxEntries {
 		s.evictOldestLocked()
 	}
@@ -500,7 +518,9 @@ func (r *Router) seedPrefixLocalityFromStore() {
 		if !valid[row.NodeName] {
 			continue // node removed/renamed since this was recorded
 		}
-		r.prefixStore.set(row.PrefixHash, row.NodeName)
+		if !r.prefixStore.setIfAbsent(row.PrefixHash, row.NodeName) {
+			continue // fresher in-memory entry, or a newer row for this key already seeded
+		}
 		seeded++
 		if seeded >= prefixLocalityMaxEntries {
 			break

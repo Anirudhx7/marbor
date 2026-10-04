@@ -18,6 +18,9 @@ func TestRemoveNodeSweepBlocksSameNameAddNode(t *testing.T) {
 	const nodeURL = "http://10.0.0.5:11434"
 
 	r := New(config.RoutingConfig{}, []config.NodeConfig{{Name: nodeName, URL: nodeURL}}, nil)
+	// AddNode below starts a one-shot poll of the (unreachable) node; remove
+	// the node again at the end so nothing keeps targeting it.
+	t.Cleanup(func() { r.RemoveNode(nodeName) })
 	r.lruMu.Lock()
 	r.lastUsed[modelKey(nodeName, "llama3")] = time.Now()
 

@@ -492,6 +492,56 @@ func TestSetPrefixLocality_AppliesLive(t *testing.T) {
 // dropped, and a row naming a node no longer in the fleet must be dropped -
 // exactly the two guards seedPrefixLocalityFromStore's own doc comment
 // describes.
+func TestSetPrefixLocality_LiveEnableReseedsOnceWithoutOverwriting(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "prefix-live-reseed.db"))
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(func() { st.Close() })
+
+	hash := prefixHashKey(prefixDomain(ctxWithKey("key-a")), "model-x", "seq")
+	now := time.Now()
+	// Older row for node-old, newer row for node-new: newest must win.
+	if err := st.AppendPrefixLocality(hash, "node-old", now.Add(-5*time.Minute)); err != nil {
+		t.Fatalf("AppendPrefixLocality: %v", err)
+	}
+	if err := st.AppendPrefixLocality(hash, "node-new", now.Add(-time.Minute)); err != nil {
+		t.Fatalf("AppendPrefixLocality: %v", err)
+	}
+	otherHash := prefixHashKey(prefixDomain(ctxWithKey("key-a")), "model-x", "seq-other")
+	if err := st.AppendPrefixLocality(otherHash, "node-old", now.Add(-time.Minute)); err != nil {
+		t.Fatalf("AppendPrefixLocality: %v", err)
+	}
+
+	r := &Router{
+		nodes:       []*NodeState{{Name: "node-old", Healthy: true}, {Name: "node-new", Healthy: true}},
+		prefixStore: newPrefixLocalityStore(),
+	}
+	r.SetStore(st) // disabled: seeds nothing
+	if r.prefixStore.len() != 0 {
+		t.Fatalf("disabled router must not seed, len=%d", r.prefixStore.len())
+	}
+	// Fresher in-memory entry recorded before the live enable must survive it.
+	r.prefixStore.set(otherHash, "node-new")
+
+	r.SetPrefixLocality(true, 5)
+	if node, hit := r.prefixStore.lookup(hash); !hit || node != "node-new" {
+		t.Errorf("live enable: lookup(hash) = (%q, %v), want (\"node-new\", true) - newest row must win", node, hit)
+	}
+	if node, _ := r.prefixStore.lookup(otherHash); node != "node-new" {
+		t.Errorf("live enable overwrote a fresher in-memory entry: node = %q, want \"node-new\"", node)
+	}
+
+	// A weight-only change must not reseed: drop an entry and confirm it stays gone.
+	r.prefixStore.mu.Lock()
+	delete(r.prefixStore.entries, hash)
+	r.prefixStore.mu.Unlock()
+	r.SetPrefixLocality(true, 6)
+	if _, hit := r.prefixStore.lookup(hash); hit {
+		t.Error("weight-only SetPrefixLocality reseeded the store")
+	}
+}
+
 func TestSeedPrefixLocalityFromStore_TTLAndValidNodeFilter(t *testing.T) {
 	st, err := store.Open(filepath.Join(t.TempDir(), "prefix-reseed.db"))
 	if err != nil {
