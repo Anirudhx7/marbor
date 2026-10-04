@@ -161,8 +161,8 @@ var ErrReplicaMemberMissing = errors.New("replica member is no longer registered
 // take the admin node-patch mutex first, so they never overlap an apply. A
 // config reload (SyncNodes) does not take that mutex: if it removes or
 // replaces a node it waits on the router lock until the apply finishes, and
-// while it waits new routing readers wait behind it. The cost is bounded by one
-// store transaction, which is bounded by the store's busy timeout. A caller
+// while it waits new routing readers wait behind it. The cost is one store
+// transaction, in which each lock wait is bounded by the store's busy timeout. A caller
 // outside the admin API must not rely on RemoveNode or UpdateNodeURL running
 // concurrently with an apply.
 func (r *Router) ApplyReplicaPeersBatch(assign map[string]store.ReplicaPeers, persist func(map[string]store.ReplicaPeers) error) error {
