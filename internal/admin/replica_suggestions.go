@@ -184,7 +184,19 @@ func (s *Server) loadDismissedSuggestions() ([]string, error) {
 	if err := json.Unmarshal([]byte(raw), &list); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", replicaSuggestionsDismissedKey, err)
 	}
+	for _, e := range list {
+		if fp, _ := splitDismissal(e); e == "" || fp == "" {
+			return nil, fmt.Errorf("parse %s: empty entry", replicaSuggestionsDismissedKey)
+		}
+	}
 	return list, nil
+}
+
+// failDismissedList logs why the dismissal list could not be read and answers
+// with the operator-facing message.
+func (s *Server) failDismissedList(w http.ResponseWriter, r *http.Request, err error) {
+	log.Printf("admin: replica suggestions %s %s: %v", r.Method, r.URL.Path, err)
+	writeJSONError(w, http.StatusInternalServerError, dismissedListUnreadableMsg)
 }
 
 // dismissedListUnreadableMsg is what a client sees when the saved dismissal
@@ -236,8 +248,7 @@ func (s *Server) handleReplicaSuggestions(w http.ResponseWriter, r *http.Request
 	list, err := s.loadDismissedSuggestions()
 	s.replicaSuggestMu.Unlock()
 	if err != nil {
-		log.Printf("admin: replica suggestions: %v", err)
-		writeJSONError(w, http.StatusInternalServerError, dismissedListUnreadableMsg)
+		s.failDismissedList(w, r, err)
 		return
 	}
 	dismissed := dismissedStates(list)
@@ -585,8 +596,7 @@ func (s *Server) setSuggestionDismissed(w http.ResponseWriter, r *http.Request, 
 	defer s.replicaSuggestMu.Unlock()
 	list, err := s.loadDismissedSuggestions()
 	if err != nil {
-		log.Printf("admin: replica suggestions: %v", err)
-		writeJSONError(w, http.StatusInternalServerError, dismissedListUnreadableMsg)
+		s.failDismissedList(w, r, err)
 		return
 	}
 	next := make([]string, 0, len(list)+1)

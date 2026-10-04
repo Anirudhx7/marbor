@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -577,6 +578,10 @@ func TestReplicaSuggestions_DismissRestoreRefuseWhenListUnreadable(t *testing.T)
 		{"corrupt json", nil, "{not json"},
 		{"object instead of list", nil, `{"a":1}`},
 		{"list of non-strings", nil, `[1,2]`},
+		{"empty object", nil, `{}`},
+		{"trailing garbage", nil, `[]x`},
+		{"null entry", nil, `[null]`},
+		{"null entry after a valid one", nil, `["a",null]`},
 	}
 	for _, tc := range cases {
 		for _, method := range []string{http.MethodPost, http.MethodDelete} {
@@ -611,12 +616,16 @@ func TestReplicaSuggestions_DismissRestoreRefuseWhenListUnreadable(t *testing.T)
 func TestReplicaSuggestions_ListFailsWhenDismissedListUnreadable(t *testing.T) {
 	t.Run("read error", func(t *testing.T) {
 		l := newSuggLab(t, func(st store.Store) store.Store { return dismissedReadFailStore{st} })
+		l.seedDismissed(seededDismissals)
 		rec := l.do(http.MethodGet, "/admin/replica-suggestions", "")
 		if rec.Code != http.StatusInternalServerError {
 			t.Fatalf("status %d body %s", rec.Code, rec.Body.String())
 		}
 		if !strings.Contains(rec.Body.String(), replicaSuggestionsDismissedKey) || strings.Contains(rec.Body.String(), "secret-disk-path") {
 			t.Errorf("body %s", rec.Body.String())
+		}
+		if got, _ := l.rawDismissed(); got != seededDismissals {
+			t.Errorf("a read must not rewrite the stored value, got %q", got)
 		}
 	})
 	t.Run("corrupt json", func(t *testing.T) {
@@ -642,6 +651,7 @@ func TestReplicaSuggestions_DismissedListReadableForms(t *testing.T) {
 		{"empty string", "", true, 0},
 		{"null", "null", true, 0},
 		{"empty list", "[]", true, 0},
+		{"whitespace only", "   ", true, 0},
 		{"valid list", seededDismissals, true, 2},
 	}
 	for _, tc := range cases {
@@ -665,7 +675,24 @@ func TestReplicaSuggestions_DismissedListReadableForms(t *testing.T) {
 			if err != nil || len(after) != tc.wantList+1 || !containsString(after, "cccccccccccccccc") {
 				t.Errorf("after dismiss: %v err %v", after, err)
 			}
+			if tc.stored == seededDismissals {
+				want := []string{"aaaaaaaaaaaaaaaa:complete", "bbbbbbbbbbbbbbbb"}
+				if len(after) < len(want) || !reflect.DeepEqual(after[:len(want)], want) {
+					t.Errorf("seeded entries did not survive the dismiss: %v", after)
+				}
+			}
 		})
+	}
+}
+
+func TestReplicaSuggestions_RestoreWithStoredNullWritesNothing(t *testing.T) {
+	l := newSuggLab(t, nil)
+	l.seedDismissed("null")
+	if rec := l.do(http.MethodDelete, "/admin/replica-suggestions/aaaaaaaaaaaaaaaa/dismiss", ""); rec.Code != http.StatusOK {
+		t.Fatalf("status %d body %s", rec.Code, rec.Body.String())
+	}
+	if got, _ := l.rawDismissed(); got != "null" {
+		t.Errorf("restore of a non-dismissed fingerprint rewrote the stored value: %q", got)
 	}
 }
 
