@@ -30,7 +30,7 @@ func TestEnsureAdminUser_DefaultCredentials(t *testing.T) {
 	t.Cleanup(func() { st.Close() })
 
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{}, nil)
-	_ = NewServer(r, nil, config.Config{}, st) // ensureAdminUser runs in NewServer
+	_ = NewServerWithBootstrap(r, nil, config.Config{}, st, BootstrapOptions{DataDir: filepath.Dir(tmpDB), Getenv: envFrom(nil)}) // ensureAdminUser runs in the constructor
 
 	user, err := st.GetUserByUsername("admin")
 	if err != nil {
@@ -39,8 +39,8 @@ func TestEnsureAdminUser_DefaultCredentials(t *testing.T) {
 	if !user.MustChangePassword {
 		t.Error("fresh admin account must have MustChangePassword = true")
 	}
-	if !verifyPassword(user.PasswordHash, defaultAdminPassword) {
-		t.Error("fresh admin account password does not verify against the documented default")
+	if verifyPassword(user.PasswordHash, defaultAdminPassword) {
+		t.Error("fresh admin account must not accept the public default password")
 	}
 }
 
@@ -56,9 +56,9 @@ func TestLogin_SetsHttpOnlyCookie_NoTokenInBody(t *testing.T) {
 	t.Cleanup(func() { st.Close() })
 
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{}, nil)
-	s := NewServer(r, nil, config.Config{}, st)
+	s := NewServerWithBootstrap(r, nil, config.Config{}, st, testBootstrapOptions(t))
 
-	body := bytes.NewReader([]byte(`{"username":"admin","password":"admin"}`))
+	body := bytes.NewReader([]byte(`{"username":"admin","password":"` + testBootstrapPassword + `"}`))
 	req := httptest.NewRequest(http.MethodPost, "/admin/login", body)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -107,10 +107,10 @@ func TestLogout_ClearsCookieAndInvalidatesSession(t *testing.T) {
 	t.Cleanup(func() { st.Close() })
 
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{}, nil)
-	s := NewServer(r, nil, config.Config{}, st)
+	s := NewServerWithBootstrap(r, nil, config.Config{}, st, testBootstrapOptions(t))
 
 	loginReq := httptest.NewRequest(http.MethodPost, "/admin/login",
-		bytes.NewReader([]byte(`{"username":"admin","password":"admin"}`)))
+		bytes.NewReader([]byte(`{"username":"admin","password":"`+testBootstrapPassword+`"}`)))
 	loginReq.Header.Set("Content-Type", "application/json")
 	loginRec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(loginRec, loginReq)

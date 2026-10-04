@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { KeyRound } from 'lucide-react';
-import { changePassword, saveSession, skipPasswordChangeThisSession } from '../lib/api';
+import { changePassword, saveSession, skipPasswordChangeThisSession, passwordPolicyError, MIN_PASSWORD_LENGTH } from '../lib/api';
 import type { SessionData } from '../types';
 
 interface Props {
@@ -19,7 +19,8 @@ export function ForceChangePassword({ session, onSuccess }: Props) {
     e.preventDefault();
     if (!newPw) { setError('New password is required'); return; }
     if (newPw !== confirmPw) { setError('Passwords do not match'); return; }
-    if (newPw.length < 8) { setError('Password must be at least 8 characters'); return; }
+    const policyError = passwordPolicyError(newPw);
+    if (policyError) { setError(policyError); return; }
     setSaving(true);
     setError(null);
     try {
@@ -90,7 +91,7 @@ export function ForceChangePassword({ session, onSuccess }: Props) {
           </div>
 
           <p className="text-xs text-muted-foreground mb-4">
-            Your account requires a password change. Choose a strong password to continue.
+            Your account requires a password change. Choose a strong password of at least {MIN_PASSWORD_LENGTH} characters to continue.
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -103,7 +104,7 @@ export function ForceChangePassword({ session, onSuccess }: Props) {
                 autoFocus
                 autoComplete="new-password"
                 className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
-                placeholder="Min. 8 characters"
+                placeholder={`Min. ${MIN_PASSWORD_LENGTH} characters`}
               />
             </div>
             <div>

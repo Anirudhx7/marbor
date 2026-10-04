@@ -137,6 +137,12 @@ services:
         condition: service_healthy
 
     command: sh -c "cp /demo/marbor.demo.db /root/marbor.db && exec ./marbor"
+    environment:
+      # Explicit demo flag: this stack ships the public admin/admin login on a
+      # seeded database, which a real deployment must never do. Without this
+      # flag the admin dashboard is refused on the container's non-loopback
+      # bind. Never copy this setting into a production compose file.
+      MARBOR_DEMO_MODE: "true"
     volumes:
       - ./marbor.demo.db:/demo/marbor.demo.db:ro
     ports:

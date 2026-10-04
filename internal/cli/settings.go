@@ -47,11 +47,19 @@ func runSettingsSet(flags *globalFlags, filePath string, stdout, stderr io.Write
 	if err != nil {
 		return reportError(err, stderr)
 	}
-	if err := client.UpdateSettings(json.RawMessage(body)); err != nil {
+	warnings, err := client.UpdateSettings(json.RawMessage(body))
+	if err != nil {
 		return reportError(err, stderr)
 	}
-	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, map[string]interface{}{"ok": true}); handled {
+	result := map[string]interface{}{"ok": true}
+	if len(warnings) > 0 {
+		result["warnings"] = warnings
+	}
+	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, result); handled {
 		return code
+	}
+	for _, w := range warnings {
+		fmt.Fprintf(stderr, "warning: %s\n", w)
 	}
 	fmt.Fprintln(stdout, "settings updated")
 	return ExitOK

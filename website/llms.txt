@@ -23,7 +23,7 @@ The control plane for self-hosted AI inference - a GPU-aware scheduler and OpenA
 - Docker auto-discovery: scans the Docker socket for Ollama containers and auto-registers them
 - Optional marbor-agent companion binary on each GPU node (default port :9200): live remote telemetry, model pulls with HuggingFace token injection, and runtime start/stop/restart/logs via accepted control drivers
 - DB-first configuration: every setting lives in marbor.db (SQLite), managed via the admin dashboard or /admin/v1 REST API - no config file
-- Zero-config first run: opens/creates marbor.db and prints a banner pointing at the admin dashboard (admin/admin login, forced password change)
+- Zero-config first run: opens/creates marbor.db and prints a banner pointing at the admin dashboard (a fresh install generates the admin password into an owner-only file next to marbor.db and forces a change at first login)
 
 ## Install
 
@@ -40,7 +40,7 @@ Docker: `docker run -p 11434:11434 -p 8080:8080 ghcr.io/anirudhx7/marbor:latest`
 ```
 ./marbor
 # Opens (or creates) marbor.db and starts blank-slate
-# Admin dashboard: http://localhost:8080 (admin/admin, forced password change on first login)
+# Admin dashboard: http://localhost:8080 (user admin; initial password in initial-admin-password next to marbor.db, forced change on first login)
 # Create a client API key from the API Keys page or POST /admin/v1/keys, then:
 
 export OPENAI_BASE_URL=http://localhost:11434/v1

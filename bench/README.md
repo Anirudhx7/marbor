@@ -131,8 +131,8 @@ cold first request).
   healthy, with the model you want to test already pulled on it
 - `bash`, `curl`, and `python3` on PATH
 - `bench/ttft` built (see "Build the benchmark tool" above)
-- An admin account (default `admin`/`admin`) and a client API key from that
-  marbor instance
+- An admin account (a real install has no default password; use the one you set
+  at first login) and a client API key from that marbor instance
 - Real GPU hardware, not the demo/mock stack - see the honesty caveat above
 
 ### `bench/preflight.sh` - run this first
@@ -144,17 +144,17 @@ that the model safely fits under 80% of the node's VRAM.
 
 marbor is fully DB-based (`marbor.db`) - there's no config file to read a
 token from. Admin auth is the same session login the dashboard uses: an
-admin-role account's username and password (`admin`/`admin` in demo mode;
-otherwise whatever account you created via the dashboard's user setup).
+admin-role account's username and password (`admin`/`admin` only against the
+public demo stack; otherwise the password you set at first login).
 
 **Single-node setup - just set `MODEL` and go:**
 
 ```bash
-MODEL="llama3.2:3b-q4_k_m" ./bench/preflight.sh
+MODEL="llama3.2:3b-q4_k_m" ADMIN_PASSWORD="<your admin password>" ./bench/preflight.sh
 ```
 
-`ADMIN_USERNAME`/`ADMIN_PASSWORD` default to `admin`/`admin`, and `NODE_NAME`
-is auto-detected when marbor has exactly one node. Only `MODEL` (the exact
+`ADMIN_PASSWORD` is required (there is no default), `ADMIN_USERNAME` defaults to
+`admin`, and `NODE_NAME` is auto-detected when marbor has exactly one node. Only `MODEL` (the exact
 tag you're about to benchmark) can't be guessed - the script won't silently
 pick a model for you, since a wrong guess would produce misleading numbers.
 
@@ -206,12 +206,12 @@ sample is a genuine cold load, not just the first one in a batch.
 **Single-node setup - just set `MODEL` and `API_KEY`:**
 
 ```bash
-MODEL="llama3.2:3b-q4_k_m" API_KEY="<a valid client API key>" ./bench/cold-loop.sh 10
+MODEL="llama3.2:3b-q4_k_m" API_KEY="<a valid client API key>" ADMIN_PASSWORD="<your admin password>" ./bench/cold-loop.sh 10
 ```
 
-Same defaults/auto-detection as `preflight.sh` above (`admin`/`admin`,
-auto-detected `NODE_NAME`). `MODEL` and `API_KEY` are the two things that
-can't be guessed for you.
+Same defaults/auto-detection as `preflight.sh` above (`admin` username,
+auto-detected `NODE_NAME`). `MODEL`, `API_KEY` and `ADMIN_PASSWORD` are the
+things that can't be guessed for you.
 
 **Full form** (multi-node marbor or non-default admin account):
 

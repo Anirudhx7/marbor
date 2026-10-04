@@ -1,5 +1,6 @@
-import { useState, FormEvent } from 'react';
-import { login, userLogin, saveSession } from '../lib/api';
+import { useEffect, useState, FormEvent } from 'react';
+import { login, userLogin, saveSession, fetchBootstrapPasswordStatus } from '../lib/api';
+import type { BootstrapPasswordStatus } from '../lib/api';
 import { forcedDemo } from '../hooks/useDemoMode';
 import type { SessionData } from '../types';
 
@@ -8,11 +9,54 @@ interface LoginProps {
   mode?: 'admin' | 'user';
 }
 
+// InitialPasswordHelp says how to sign in for the first time, by where the
+// pending password comes from. It never shows a password.
+function InitialPasswordHelp({ source }: { source: BootstrapPasswordStatus['source'] }) {
+  if (source === 'file') {
+    return (
+      <p className="mt-1">
+        Sign in with the generated password in the file{' '}
+        <span className="font-mono text-foreground">initial-admin-password</span> next to the database. You will be
+        asked to set a new password, and the file is then deleted.
+      </p>
+    );
+  }
+  if (source === 'supplied') {
+    return (
+      <p className="mt-1">
+        Sign in with the password you configured when marbor was first started. You will be asked to set a new password.
+      </p>
+    );
+  }
+  if (source === 'default') {
+    return (
+      <p className="mt-1">
+        This account is still on the default admin credentials. Sign in with them and change the password now.
+      </p>
+    );
+  }
+  return (
+    <p className="mt-1">
+      Sign in with the initial admin password for this installation. You will be asked to set a new password.
+    </p>
+  );
+}
+
 export function Login({ onSuccess, mode = 'admin' }: LoginProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [initialPassword, setInitialPassword] = useState<BootstrapPasswordStatus | null>(null);
+
+  // Admin sign-in only: tell the operator where a first-boot password comes
+  // from while it is still unchanged. The notice carries no secret.
+  useEffect(() => {
+    if (mode !== 'admin') return;
+    let active = true;
+    fetchBootstrapPasswordStatus().then(s => { if (active) setInitialPassword(s.pending ? s : null); });
+    return () => { active = false; };
+  }, [mode]);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -69,6 +113,13 @@ export function Login({ onSuccess, mode = 'admin' }: LoginProps) {
               {mode === 'user' ? 'Sign in to the user portal' : 'Sign in to the admin dashboard'}
             </p>
           </div>
+
+          {mode === 'admin' && initialPassword && (
+            <div role="note" className="mb-5 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2.5 text-xs text-muted-foreground break-words">
+              <p className="font-medium text-foreground">Initial admin password still active</p>
+              <InitialPasswordHelp source={initialPassword.source} />
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>

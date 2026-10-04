@@ -46,7 +46,11 @@ authenticate once and save the session locally (recommended)
 Authenticates once and saves the resulting session to a local file (0600,
 under the OS user config dir) so other commands can omit --username/
 --password afterward. Run without --username/--password in a terminal to
-be prompted interactively (password input is not echoed).
+be prompted interactively (password input is not echoed). A fresh install
+has no default password: its initial password is the one you supplied at
+first boot, or a generated one in the file initial-admin-password next to
+marbor.db, and "marbor status" reports while an initial password is still
+unchanged.
 
 ### `logout`
 

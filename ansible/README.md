@@ -110,6 +110,14 @@ least:
 marbor_admin_password: "<your admin password>"
 ```
 
+`marbor_admin_password` is the password you set at first login: a fresh marbor
+install has no default admin password (it generates one into
+`initial-admin-password` next to `marbor.db`, or reads `MARBOR_ADMIN_PASSWORD_FILE`
+at first boot) and forces a change, so complete that first login before running
+these playbooks. If you provision marbor itself with Ansible, pass the initial
+password as a file path (`MARBOR_ADMIN_PASSWORD_FILE`), not as a command-line
+argument.
+
 Never hardcode `marbor_admin_password` in a plain file committed anywhere -
 use `ansible-vault encrypt secrets.vault.yml` (or `--extra-vars` typed
 interactively / injected by your CI secret store) so the password never sits

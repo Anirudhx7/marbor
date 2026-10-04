@@ -113,6 +113,12 @@ services:
         condition: service_healthy
 
     command: sh -c "base64 -d /demo/marbor.demo.db.b64 > /root/marbor.db && exec ./marbor"
+    environment:
+      # Explicit demo flag: this stack ships the public admin/admin login on a
+      # seeded database, which a real deployment must never do. Without this
+      # flag the admin dashboard is refused on the container's non-loopback
+      # bind. Never copy this setting into a production compose file.
+      MARBOR_DEMO_MODE: "true"
     configs:
       - source: demo_marbor_db
         target: /demo/marbor.demo.db.b64
