@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -223,7 +224,10 @@ func (c *Client) doRequestBody(method, path string, body interface{}) (*http.Res
 		// just needs to configure something first.
 		defer resp.Body.Close()
 		return nil, userErrorf("%s", readErrorMessage(resp.Body))
-	case resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusNotImplemented:
+	case resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusNotImplemented || resp.StatusCode == http.StatusConflict:
+		// 409 is a rejection the operator can act on (for example a runtime
+		// stop on a replica member that needs --acknowledge-replica), not a
+		// server fault.
 		defer resp.Body.Close()
 		return nil, userErrorf("%s", readErrorMessage(resp.Body))
 	case resp.StatusCode >= 400:
@@ -255,14 +259,45 @@ func (c *Client) Logout() error {
 // RuntimeAction calls POST /admin/nodes/{name}/runtime/{action} (action is
 // "start", "stop", or "restart") - the CLI's first mutating command,
 // mirroring the Admin API's own dispatch-to-agent contract exactly (no
-// business logic lives in the CLI - Law #6).
-func (c *Client) RuntimeAction(node, action string) error {
-	resp, err := c.doRequestBody(http.MethodPost, "/admin/nodes/"+urlPathEscape(node)+"/runtime/"+action, nil)
+// business logic lives in the CLI). acknowledgeReplica sends
+// acknowledge_replica=true, which the server requires for a stop or restart
+// on a multi-host replica head, worker or unresolved member. The returned
+// ReplicaInfo is nil for a standalone node.
+func (c *Client) RuntimeAction(node, action string, acknowledgeReplica bool) (*ReplicaInfo, error) {
+	path := "/admin/nodes/" + urlPathEscape(node) + "/runtime/" + action
+	if acknowledgeReplica {
+		path += "?acknowledge_replica=true"
+	}
+	resp, err := c.doRequestBody(http.MethodPost, path, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer resp.Body.Close()
-	return nil
+
+	var out struct {
+		Replica *ReplicaInfo `json:"replica"`
+	}
+	// An undecodable body is not a failure: the action already succeeded. It is
+	// reported as ErrReplicaDetailUnavailable so the caller can say the replica
+	// detail could not be read; an empty body just means there is none.
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil && !errors.Is(err, io.EOF) {
+		return nil, ErrReplicaDetailUnavailable
+	}
+	return out.Replica, nil
+}
+
+// ErrReplicaDetailUnavailable is returned by RuntimeAction, together with a
+// nil ReplicaInfo, when the action succeeded but the response body could not
+// be decoded. It is not a failure of the action.
+var ErrReplicaDetailUnavailable = errors.New("runtime action succeeded, but the response could not be read, so replica details are unavailable")
+
+// ReplicaInfo mirrors the Admin API's "replica" object: the multi-host
+// replica a node belongs to. Absent (nil) for a standalone node.
+type ReplicaInfo struct {
+	Role    string   `json:"role"`
+	Head    string   `json:"head,omitempty"`
+	Members []string `json:"members,omitempty"`
+	Warning string   `json:"warning,omitempty"`
 }
 
 // RuntimeLogs calls POST /admin/nodes/{name}/runtime/logs?lines=N - a pure
@@ -503,6 +538,9 @@ type DrainResult struct {
 	Draining           bool   `json:"draining"`
 	Reason             string `json:"reason,omitempty"`
 	GracePeriodSeconds int    `json:"grace_period_seconds,omitempty"`
+	// Replica is set when the drained node is a multi-host replica head,
+	// worker or unresolved member; its Warning states what the drain does.
+	Replica *ReplicaInfo `json:"replica,omitempty"`
 }
 
 // DrainNode calls POST /admin/nodes/{name}/drain - marks a node as draining

@@ -271,3 +271,193 @@ func TestRun_RuntimeAction_Unauthorized_ExitAuthError(t *testing.T) {
 		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitAuthError, code, stderr.String())
 	}
 }
+
+const replicaConflictBody = `{"error":"node \"gpu-1\" is a worker in the multi-host replica headed by \"gpu-0\" (members: gpu-0, gpu-1): stopping its runtime breaks that replica. Marbor does not restart or re-sync the other members. Pass acknowledge_replica=true (CLI: --acknowledge-replica) to proceed.","code":"replica_member","replica":{"role":"worker","head":"gpu-0","members":["gpu-0","gpu-1"]}}`
+
+func TestRun_RuntimeStop_ReplicaMemberRejected_ExitUserError(t *testing.T) {
+	var gotQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		w.Write([]byte(replicaConflictBody))
+	}))
+	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"runtime", "stop", "gpu-1", "--server", srv.URL}, &stdout, &stderr)
+	if code != ExitUserError {
+		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitUserError, code, stderr.String())
+	}
+	if gotQuery != "" {
+		t.Errorf("without the flag no acknowledgement may be sent, got query %q", gotQuery)
+	}
+	if !strings.Contains(stderr.String(), "--acknowledge-replica") || !strings.Contains(stderr.String(), "headed by") {
+		t.Errorf("stderr should carry the server's replica message and flag hint, got %q", stderr.String())
+	}
+}
+
+func TestRun_RuntimeRestart_AcknowledgeReplica_SendsAckAndWarns(t *testing.T) {
+	var gotQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"ok":true,"replica":{"role":"head","head":"gpu-0","members":["gpu-0","gpu-1"],"warning":"node \"gpu-0\" is the head of a multi-host replica"}}`))
+	}))
+	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"runtime", "restart", "gpu-0", "--acknowledge-replica", "--server", srv.URL, "--json"}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
+	}
+	if gotQuery != "acknowledge_replica=true" {
+		t.Errorf("expected acknowledge_replica=true, got %q", gotQuery)
+	}
+	if !strings.Contains(stderr.String(), "warning: node \"gpu-0\" is the head") {
+		t.Errorf("replica warning should print to stderr, got %q", stderr.String())
+	}
+	if strings.Contains(stdout.String(), "warning:") {
+		t.Errorf("warning must not pollute stdout: %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), `"replica"`) || !strings.Contains(stdout.String(), `"role": "head"`) {
+		t.Errorf("--json output should include the replica object, got %s", stdout.String())
+	}
+}
+
+func TestRun_RuntimeStop_Standalone_NoReplicaOutput(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"runtime", "stop", "gpu-0", "--server", srv.URL, "--json"}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
+	}
+	if stderr.Len() != 0 || strings.Contains(stdout.String(), "replica") {
+		t.Errorf("standalone output must be unchanged, stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+}
+
+func TestRun_RuntimeDrain_ReplicaWarning(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"node":"gpu-1","draining":true,"reason":"manual","replica":{"role":"worker","head":"gpu-0","members":["gpu-0","gpu-1"],"warning":"draining a worker has no routing effect"}}`))
+	}))
+	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"runtime", "drain", "gpu-1", "--server", srv.URL}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "no routing effect") {
+		t.Errorf("drain warning should print to stderr, got %q", stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "gpu-1: draining") {
+		t.Errorf("normal drain output must still print, got %q", stdout.String())
+	}
+}
+
+func TestRun_RuntimeStop_AcknowledgeReplica_SendsAck(t *testing.T) {
+	var gotQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"runtime", "stop", "gpu-1", "--acknowledge-replica", "--server", srv.URL}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
+	}
+	if gotQuery != "acknowledge_replica=true" {
+		t.Errorf("stop with the flag should send the acknowledgement, got %q", gotQuery)
+	}
+}
+
+func TestRun_RuntimeStart_HasNoAcknowledgeReplicaFlag(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("start with an unknown flag must not reach the server: %s", r.URL)
+	}))
+	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"runtime", "start", "gpu-1", "--acknowledge-replica", "--server", srv.URL}, &stdout, &stderr)
+	if code != ExitUserError {
+		t.Fatalf("expected exit %d for an unknown flag on start, got %d (stderr: %s)", ExitUserError, code, stderr.String())
+	}
+}
+
+func TestRun_RuntimeRestart_ReplicaWarning_TextMode(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"ok":true,"replica":{"role":"head","head":"gpu-0","warning":"takes the whole replica offline"}}`))
+	}))
+	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"runtime", "restart", "gpu-0", "--acknowledge-replica", "--server", srv.URL}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "warning: takes the whole replica offline") {
+		t.Errorf("text mode should print the replica warning to stderr, got %q", stderr.String())
+	}
+	if strings.Contains(stdout.String(), "warning") || strings.Contains(stdout.String(), "replica") {
+		t.Errorf("warning must not pollute stdout: %q", stdout.String())
+	}
+}
+
+func TestRun_RuntimeStop_MalformedSuccessBody_NotesAndSucceeds(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"ok":true,"replica":`))
+	}))
+	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"runtime", "stop", "gpu-1", "--acknowledge-replica", "--server", srv.URL}, &stdout, &stderr)
+	if code != ExitOK {
+		t.Fatalf("a malformed success body must not fail the action: exit %d (stderr: %s)", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "replica details are unavailable") {
+		t.Errorf("stderr should say replica detail was unavailable, got %q", stderr.String())
+	}
+}
+
+func TestClient_RuntimeAction_EmptySuccessBody_NilReplicaNoError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	replica, err := NewClient(srv.URL, "tok").RuntimeAction("gpu-0", "stop", true)
+	if err != nil {
+		t.Fatalf("an empty success body must not be an error, got %v", err)
+	}
+	if replica != nil {
+		t.Errorf("an empty success body carries no replica, got %+v", replica)
+	}
+}
