@@ -184,9 +184,11 @@ func (s *Server) loadDismissedSuggestions() ([]string, error) {
 	if err := json.Unmarshal([]byte(raw), &list); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", replicaSuggestionsDismissedKey, err)
 	}
-	for _, e := range list {
-		if fp, _ := splitDismissal(e); e == "" || fp == "" {
-			return nil, fmt.Errorf("parse %s: empty entry", replicaSuggestionsDismissedKey)
+	// A JSON null element decodes to an empty string, so an empty fingerprint
+	// also catches [null] and entries with nothing before the state suffix.
+	for i, e := range list {
+		if fp, _ := splitDismissal(e); fp == "" {
+			return nil, fmt.Errorf("parse %s: entry %d is empty", replicaSuggestionsDismissedKey, i)
 		}
 	}
 	return list, nil
@@ -613,7 +615,7 @@ func (s *Server) setSuggestionDismissed(w http.ResponseWriter, r *http.Request, 
 	}
 	if dismiss || len(next) != len(list) {
 		if err := store.SetJSONSetting(s.st, replicaSuggestionsDismissedKey, next); err != nil {
-			log.Printf("admin: persist dismissed replica suggestions: %v", err)
+			log.Printf("admin: replica suggestions %s %s: persist dismissed list: %v", r.Method, r.URL.Path, err)
 			writeJSONError(w, http.StatusInternalServerError, "could not save the dismissal")
 			return
 		}

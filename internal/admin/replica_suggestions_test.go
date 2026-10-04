@@ -581,6 +581,7 @@ func TestReplicaSuggestions_DismissRestoreRefuseWhenListUnreadable(t *testing.T)
 		{"empty object", nil, `{}`},
 		{"trailing garbage", nil, `[]x`},
 		{"null entry", nil, `[null]`},
+		{"empty fingerprint", nil, `[":complete"]`},
 		{"null entry after a valid one", nil, `["a",null]`},
 	}
 	for _, tc := range cases {
@@ -676,7 +677,10 @@ func TestReplicaSuggestions_DismissedListReadableForms(t *testing.T) {
 				t.Errorf("after dismiss: %v err %v", after, err)
 			}
 			if tc.stored == seededDismissals {
-				want := []string{"aaaaaaaaaaaaaaaa:complete", "bbbbbbbbbbbbbbbb"}
+				var want []string
+				if err := json.Unmarshal([]byte(seededDismissals), &want); err != nil {
+					t.Fatal(err)
+				}
 				if len(after) < len(want) || !reflect.DeepEqual(after[:len(want)], want) {
 					t.Errorf("seeded entries did not survive the dismiss: %v", after)
 				}
@@ -692,6 +696,17 @@ func TestReplicaSuggestions_RestoreWithStoredNullWritesNothing(t *testing.T) {
 		t.Fatalf("status %d body %s", rec.Code, rec.Body.String())
 	}
 	if got, _ := l.rawDismissed(); got != "null" {
+		t.Errorf("restore of a non-dismissed fingerprint rewrote the stored value: %q", got)
+	}
+}
+
+func TestReplicaSuggestions_RestoreWithStoredEmptyListWritesNothing(t *testing.T) {
+	l := newSuggLab(t, nil)
+	l.seedDismissed("[]")
+	if rec := l.do(http.MethodDelete, "/admin/replica-suggestions/aaaaaaaaaaaaaaaa/dismiss", ""); rec.Code != http.StatusOK {
+		t.Fatalf("status %d body %s", rec.Code, rec.Body.String())
+	}
+	if got, _ := l.rawDismissed(); got != "[]" {
 		t.Errorf("restore of a non-dismissed fingerprint rewrote the stored value: %q", got)
 	}
 }
