@@ -12,10 +12,12 @@ package router
 // package.
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -26,6 +28,12 @@ import (
 
 	"github.com/Anirudhx7/marbor/internal/marboragent"
 )
+
+// maxAgentStatusBodyBytes caps how much of one agent status response is read.
+// A real report is a few KiB to a few hundred KiB; the cap sits far above that
+// and exists so a runaway or hostile agent cannot make the router buffer an
+// unbounded body. Over the cap the poll counts as failed.
+const maxAgentStatusBodyBytes = 8 << 20
 
 // derivePrefixCacheHitRate converts this poll's raw cumulative prefix-cache
 // counters into a 0-100% rate against n's previous poll, then updates n's
@@ -182,8 +190,24 @@ func (r *Router) pollAgentHost(host string, cfg MarborAgentConfig, members []*No
 		return
 	}
 
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxAgentStatusBodyBytes+1))
+	if err != nil {
+		if r.allowHostLog("read:" + host) {
+			log.Printf("router: reading agent status from host %q failed: %v; treating the agent as unreachable", host, err)
+		}
+	} else if len(body) > maxAgentStatusBodyBytes {
+		if r.allowHostLog("oversize:" + host) {
+			log.Printf("router: agent status response exceeds %d bytes on host %q; treating the agent as unreachable", maxAgentStatusBodyBytes, host)
+		}
+		err = errors.New("agent status response too large")
+	}
 	var t marboragent.Telemetry
-	if err := json.NewDecoder(resp.Body).Decode(&t); err != nil {
+	if err == nil {
+		// Default decoding on purpose: fields this binary does not know are
+		// ignored so a newer agent keeps working.
+		err = json.NewDecoder(bytes.NewReader(body)).Decode(&t)
+	}
+	if err != nil {
 		for _, n := range members {
 			r.setAgentTLSMismatch(n, false)
 			r.agentUnreachable(n)

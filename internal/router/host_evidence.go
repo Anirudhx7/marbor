@@ -9,10 +9,28 @@ package router
 // with a node lock or the router lock.
 
 import (
+	"log"
+	"strings"
 	"time"
 
 	"github.com/Anirudhx7/marbor/internal/marboragent"
 )
+
+const (
+	// maxHostEvidenceAddrs and maxHostEvidenceDeployments bound how much of one
+	// host's report is retained. They sit far above any realistic host (a few
+	// interfaces, a handful of runtimes); only a runaway or hostile agent
+	// reaches them.
+	maxHostEvidenceAddrs       = 64
+	maxHostEvidenceDeployments = 64
+
+	// hostLogInterval is the minimum gap between repeats of the same
+	// per-host agent warning.
+	hostLogInterval = 10 * time.Minute
+)
+
+// hostLogKeyPrefixes lists every rate-limit key prefix; a key is prefix+host.
+var hostLogKeyPrefixes = []string{"truncate:", "oversize:", "read:"}
 
 // HostEvidence is one agent's latest host-level report. Host is the same key
 // pollAgentHosts groups nodes by (the raw NodeState.Host string).
@@ -31,6 +49,14 @@ type HostEvidence struct {
 // API tests) can seed evidence without running a real agent poll; production
 // code reaches it through the poll alone.
 func (r *Router) RecordHostEvidence(ev HostEvidence) {
+	if len(ev.Addrs) > maxHostEvidenceAddrs || len(ev.Deployments) > maxHostEvidenceDeployments {
+		if r.allowHostLog("truncate:" + ev.Host) {
+			log.Printf("router: agent on host %q reported %d addresses and %d deployments; retaining the first %d and %d, so replica detection may miss groups on this host",
+				ev.Host, len(ev.Addrs), len(ev.Deployments), maxHostEvidenceAddrs, maxHostEvidenceDeployments)
+		}
+		ev.Addrs = ev.Addrs[:min(len(ev.Addrs), maxHostEvidenceAddrs)]
+		ev.Deployments = ev.Deployments[:min(len(ev.Deployments), maxHostEvidenceDeployments)]
+	}
 	cp := HostEvidence{
 		Host:         ev.Host,
 		Hostname:     ev.Hostname,
@@ -47,11 +73,32 @@ func (r *Router) RecordHostEvidence(ev HostEvidence) {
 	r.hostEvidenceMu.Unlock()
 }
 
+// allowHostLog reports whether the warning for key may be logged now, and
+// if so records the time. A key logs at most once per hostLogInterval. The
+// rate-limit map shares hostEvidenceMu on purpose: the critical section is a
+// single map lookup and write, so a separate mutex would add nothing.
+func (r *Router) allowHostLog(key string) bool {
+	now := time.Now()
+	r.hostEvidenceMu.Lock()
+	defer r.hostEvidenceMu.Unlock()
+	if r.hostLogAt == nil {
+		r.hostLogAt = make(map[string]time.Time)
+	}
+	if last, ok := r.hostLogAt[key]; ok && now.Sub(last) < hostLogInterval {
+		return false
+	}
+	r.hostLogAt[key] = now
+	return true
+}
+
 // DropHostEvidence forgets the snapshot for host. Exported for the same
 // cross-package test reason as RecordHostEvidence.
 func (r *Router) DropHostEvidence(host string) {
 	r.hostEvidenceMu.Lock()
 	delete(r.hostEvidence, host)
+	for _, prefix := range hostLogKeyPrefixes {
+		delete(r.hostLogAt, prefix+host)
+	}
 	r.hostEvidenceMu.Unlock()
 }
 
@@ -63,6 +110,15 @@ func (r *Router) dropHostEvidenceNotIn(keep map[string][]*NodeState) {
 	for host := range r.hostEvidence {
 		if _, ok := keep[host]; !ok {
 			delete(r.hostEvidence, host)
+		}
+	}
+	for key := range r.hostLogAt {
+		for _, prefix := range hostLogKeyPrefixes {
+			if host, ok := strings.CutPrefix(key, prefix); ok {
+				if _, kept := keep[host]; !kept {
+					delete(r.hostLogAt, key)
+				}
+			}
 		}
 	}
 	r.hostEvidenceMu.Unlock()

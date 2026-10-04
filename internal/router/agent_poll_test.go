@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
-	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -521,10 +520,7 @@ func TestPollAgentTelemetryNewerProtocolVersionLoggedOnce(t *testing.T) {
 	}, nil)
 	r.SetMarborAgent(r.nodes[0].Host, true, agentPort, "tok", "http")
 
-	var logBuf bytes.Buffer
-	oldOutput := log.Writer()
-	log.SetOutput(&logBuf)
-	defer log.SetOutput(oldOutput)
+	logBuf := captureLog(t)
 
 	r.pollAgentHosts()
 	r.pollAgentHosts()
@@ -750,10 +746,7 @@ func TestAgentProtocolWarned_ContinuityWarnsOnceAcrossDownUpCycle(t *testing.T) 
 	}, nil)
 	r.SetMarborAgent(r.nodes[0].Host, true, agentPort, "tok", "http")
 
-	var logBuf bytes.Buffer
-	oldOutput := log.Writer()
-	log.SetOutput(&logBuf)
-	defer log.SetOutput(oldOutput)
+	logBuf := captureLog(t)
 
 	// First success: warning latches and logs once.
 	r.pollAgentHosts()
@@ -921,5 +914,71 @@ func TestAgentStale_DistinguishesConfiguredDownFromNeverConfigured(t *testing.T)
 	r.pollAgentHosts()
 	if stale("gpu-0") {
 		t.Error("AgentStale = true after the agent was disabled, want false (deliberately agentless, not down)")
+	}
+}
+
+// TestPollAgentTelemetryOversizeBodyIsUnreachable proves a status response
+// larger than the body cap is treated as a failed poll (agent unreachable),
+// never decoded: a valid JSON object followed by padding past the cap must not
+// sneak through on the strength of its valid prefix.
+func TestPollAgentTelemetryOversizeBodyIsUnreachable(t *testing.T) {
+	psSrv := nodePSServer()
+	defer psSrv.Close()
+
+	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(paddedStatusBody(maxAgentStatusBodyBytes + 1024))
+	}))
+	defer agentSrv.Close()
+	agentPort := mustPort(t, agentSrv.URL)
+
+	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
+		{Name: "gpu-0", URL: psSrv.URL},
+	}, nil)
+	r.SetMarborAgent(r.nodes[0].Host, true, agentPort, "tok", "http")
+
+	logBuf := captureLog(t)
+
+	r.pollAgentHosts()
+	r.pollAgentHosts()
+
+	r.nodes[0].mu.RLock()
+	defer r.nodes[0].mu.RUnlock()
+	if r.nodes[0].AgentPresent {
+		t.Error("AgentPresent = true, want false for an oversize status body")
+	}
+	if r.nodes[0].AgentFailures != 2 {
+		t.Errorf("AgentFailures = %d, want 2 (each oversize poll is a failed poll)", r.nodes[0].AgentFailures)
+	}
+	if got := strings.Count(logBuf.String(), "status response exceeds"); got != 1 {
+		t.Errorf("oversize log appeared %d times across 2 polls, want 1 (rate-limited)\n%s", got, logBuf.String())
+	}
+}
+
+// TestPollAgentTelemetryUnderCapBodyWithUnknownFieldsDecodes proves the cap
+// does not break the forward-compat contract: a body well under the cap with
+// fields this binary does not know still decodes and counts as reachable.
+func TestPollAgentTelemetryUnderCapBodyWithUnknownFieldsDecodes(t *testing.T) {
+	psSrv := nodePSServer()
+	defer psSrv.Close()
+
+	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"agent": {"version": "v9.0.0", "protocol_version": 1, "future": 1}, "unknown_block": {"a": [1,2,3]}}`))
+		_, _ = w.Write(bytes.Repeat([]byte(" "), 64*1024))
+	}))
+	defer agentSrv.Close()
+	agentPort := mustPort(t, agentSrv.URL)
+
+	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
+		{Name: "gpu-0", URL: psSrv.URL},
+	}, nil)
+	r.SetMarborAgent(r.nodes[0].Host, true, agentPort, "tok", "http")
+	r.pollAgentHosts()
+
+	r.nodes[0].mu.RLock()
+	defer r.nodes[0].mu.RUnlock()
+	if !r.nodes[0].AgentPresent || r.nodes[0].AgentVersion != "v9.0.0" {
+		t.Errorf("AgentPresent=%v AgentVersion=%q, want true/v9.0.0", r.nodes[0].AgentPresent, r.nodes[0].AgentVersion)
 	}
 }

@@ -60,7 +60,11 @@ func GetFloatSetting(st Store, key string, def float64) float64 {
 // invalid JSON.
 func GetJSONSetting[T any](st Store, key string, dst *T) {
 	v, err := st.GetSetting(key)
-	if err != nil || v == "" {
+	if err != nil {
+		log.Printf("store: GetJSONSetting(%q): read failed: %v", key, err)
+		return
+	}
+	if v == "" {
 		return
 	}
 	var tmp T
