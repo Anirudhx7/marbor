@@ -118,6 +118,11 @@ else
   "$cli_bin" status --server "http://localhost:8080" >/dev/null \
     || fail "marbor status against live demo stack failed"
 
+  # The demo stack runs with MARBOR_DEMO_MODE=true on a seeded database whose
+  # public admin/admin account is the demo login by design, so these flags use
+  # it. A real install never has that password: a fresh database gets a
+  # generated one, and MARBOR_ADMIN_PASSWORD is only read when the first
+  # administrator is created, never for an existing database like this one.
   nodes_json=$("$cli_bin" nodes --server "http://localhost:8080" --username admin --password admin --json) \
     || fail "marbor nodes against live demo stack failed"
   models_json=$("$cli_bin" models --server "http://localhost:8080" --username admin --password admin --json) \
