@@ -199,7 +199,7 @@ Client Application (Agent / RAG / Copilot)
 | **Observability** | Prometheus metrics | 21 production metrics: request throughput and TTFT, latency percentiles, active connections, token counts, cache hit/miss, retry rates, cloud fallback frequency, local model degradation, quota rejections, request queue depth/timeouts, warmup pings and residency, schedule fires, model evictions, prewarming accuracy, panic recovery, dropped audit entries, node health. |
 | | Grafana dashboard | Included JSON ([`grafana/marbor.json`](grafana/marbor.json)). One-click import. Request throughput and error rate, latency percentiles, warm-routing hit ratio, connections per node, tokens/s by key. |
 | | Structured logging | `--log-format json` for Loki, Datadog, Fluentd, Splunk. Per-request access log with key name, model, node, status, latency, request ID. |
-| | Audit trail | Append-only, best-effort audit trail persisted in SQLite (`audit_log`), with crypto/rand request IDs. Records requests that reach proxy completion handling. Authentication and policy rejections that happen earlier (missing or invalid key, expired key, rate limit, quota) are not persisted in it, and entries are dropped when the async write queue is full (counted in `marbor_audit_dropped_total`). Not a lossless security audit trail. |
+| | Audit trail | Best-effort audit trail persisted in SQLite (`audit_log`) and pruned by the configured retention period (see the audit log section of SECURITY.md), with crypto/rand request IDs. Records requests that reach proxy completion handling. Authentication and policy rejections that happen earlier (missing or invalid key, expired key, rate limit, quota) are not persisted in it, and entries are dropped when the async write queue is full (counted in `marbor_audit_dropped_total`). Not a lossless security audit trail. |
 | | Webhook alerts | `node_down`/`node_up` and `agent_down`/`agent_up` (marbor agent reachability) events with HMAC-SHA256 signatures. PagerDuty/OpsGenie/Slack-ready. |
 | **Resilience** | Automatic retry/failover | Dead node before first byte triggers retry on alternate healthy nodes → cloud → 502. Transparent to the client. |
 | | Request queue | Configurable `queue_max_depth` and `queue_timeout_ms`. Traffic spikes queue and drain rather than immediately 502-ing. |
@@ -748,7 +748,7 @@ Import [`grafana/marbor.json`](grafana/marbor.json) into Grafana and point its P
 
 ### Structured Logging
 
-`--log-format json` emits slog JSON objects that Loki, Datadog, Fluentd, and Splunk parse natively. Every request logged with: key name (never the key value), model, target node, HTTP status, latency, request ID.
+`--log-format json` emits slog JSON objects that Loki, Datadog, Fluentd, and Splunk parse natively. Every request that is proxied to a node or a cloud provider is logged with: key name (never the key value), model, target node, HTTP status, latency, request ID. Requests rejected earlier (missing or invalid key, rate limit, quota) are not written to this log.
 
 ---
 

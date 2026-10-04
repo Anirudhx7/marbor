@@ -82,6 +82,7 @@ The metrics port (9090) should not be exposed to untrusted networks. Scrape it f
 | Model name, node, status, latency | ✓ audit log |
 | Cloud provider used | ✓ audit log (`cloud: true`) |
 | Request ID (`X-Request-ID`) | ✓ audit log |
+| Source IP | Admin login and admin-change trail (`system_audit_log`) only. Per-request client IPs are held in memory for recent-request views and are not written to the audit log, request log or access log. |
 
 Operators should treat the following as potentially sensitive when forwarding logs to external systems (Loki, Datadog, Splunk and similar), because each can carry tenant, project or workload identity:
 
@@ -90,7 +91,7 @@ Operators should treat the following as potentially sensitive when forwarding lo
 - **Node names, cloud provider identifiers and source IP addresses** - infrastructure topology and client location.
 - **Request IDs** - random, safe on their own, but they correlate entries across systems.
 
-marbor does not currently hash or redact key names in logs. Choose key names accordingly, and apply retention to forwarded copies the same way the `audit_retention_days` setting does for the local audit log.
+marbor does not currently hash or redact any of these fields (key names, model names and aliases, node names, cloud provider names, source IPs, request IDs) in logs. Choose key names accordingly, and apply retention to forwarded copies the same way the `audit_retention_days` setting does for the local audit log.
 
 The audit log is stored directly in SQLite (`marbor.db`). Enable it via the admin Settings dashboard. Old audit entries are pruned automatically based on your configured retention period.
 
