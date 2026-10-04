@@ -1122,7 +1122,7 @@ export function SettingsPage() {
             </div>
             <div>
               <h3 className="text-sm font-semibold text-foreground">Advanced routing</h3>
-              <p className="text-xs font-medium text-muted-foreground">Timeouts, retries, session affinity, and queueing - takes effect on next restart</p>
+              <p className="text-xs font-medium text-muted-foreground">Timeouts, retries, session affinity, and queueing take effect on next restart; prefix locality applies immediately</p>
             </div>
           </div>
 

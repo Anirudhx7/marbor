@@ -106,6 +106,38 @@ func TestUpdateSettings_PersistsNewConfigYAMLEliminationFields(t *testing.T) {
 	}
 }
 
+// TestUpdateSettings_PrefixLocalityAppliesToLiveRouter guards against the
+// toggle persisting to the settings table and s.cfg but never reaching the
+// running router (it used to take effect only after a restart).
+func TestUpdateSettings_PrefixLocalityAppliesToLiveRouter(t *testing.T) {
+	s := newRealStoreTestServer(t)
+	if s.router.PrefixLocalityEnabled() {
+		t.Fatal("precondition: prefix locality must start disabled")
+	}
+
+	put := func(enabled bool, weight float64) {
+		t.Helper()
+		var cfg config.Config
+		cfg.Routing.PrefixLocalityEnabled = enabled
+		cfg.Routing.PrefixLocalityWeight = weight
+		body, _ := json.Marshal(cfg)
+		rec := httptest.NewRecorder()
+		s.handleUpdateSettings(rec, httptest.NewRequest(http.MethodPut, "/admin/settings", bytes.NewReader(body)))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("update status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+		}
+	}
+
+	put(true, 8)
+	if !s.router.PrefixLocalityEnabled() {
+		t.Error("router still reports prefix locality disabled after enabling via PUT /admin/settings")
+	}
+	put(false, 8)
+	if s.router.PrefixLocalityEnabled() {
+		t.Error("router still reports prefix locality enabled after disabling via PUT /admin/settings")
+	}
+}
+
 // TestUpdateSettings_WebhookSecretMaskNotPersisted verifies that echoing back
 // the masked "***" placeholder (an operator who didn't touch the secret
 // field) does not overwrite the real stored webhook secret - mirrors the
