@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -224,5 +225,157 @@ func TestStartupRaisesPendingDefaultAdminToSkipCap(t *testing.T) {
 		if u.SkipPasswordCount != w.skip || u.MustChangePassword != w.mustCh {
 			t.Errorf("%s: skip=%d mustChange=%v, want skip=%d mustChange=%v", name, u.SkipPasswordCount, u.MustChangePassword, w.skip, w.mustCh)
 		}
+	}
+}
+
+func TestChangePasswordEnforcesMinimumLength(t *testing.T) {
+	s := newRealStoreTestServer(t)
+	cookie := sessionCookieFrom(t, loginAs(t, s, "admin", "admin"))
+
+	rec := doWithCookie(s, http.MethodPost, "/admin/change-password", `{"new_password":"short77"}`, cookie)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "password must be at least 8 characters") {
+		t.Errorf("7-character password: status = %d body = %s, want 400 with the length message", rec.Code, rec.Body.String())
+	}
+	if u, _ := s.st.GetUserByUsername("admin"); !u.MustChangePassword {
+		t.Error("a rejected change must leave the change pending")
+	}
+	rec = doWithCookie(s, http.MethodPost, "/admin/change-password", `{"new_password":"exactly8"}`, cookie)
+	if rec.Code != http.StatusOK {
+		t.Errorf("8-character password: status = %d body = %s, want 200", rec.Code, rec.Body.String())
+	}
+}
+
+// Two forced changes racing on the same account: exactly one is accepted and
+// the stored password is the winner's.
+func TestConcurrentForcedPasswordChangeHasOneWinner(t *testing.T) {
+	s := newTempPasswordServer(t, true, 0)
+	const n = 8
+	cookie := sessionCookieFrom(t, loginAs(t, s, "ops", "Temp-Pass-9"))
+
+	type result struct {
+		pass string
+		code int
+	}
+	results := make(chan result, n)
+	start := make(chan struct{})
+	for i := 0; i < n; i++ {
+		pass := "Racing-Pass-" + string(rune('A'+i))
+		go func() {
+			<-start
+			rec := doWithCookie(s, http.MethodPost, "/admin/change-password", `{"new_password":"`+pass+`"}`, cookie)
+			results <- result{pass, rec.Code}
+		}()
+	}
+	close(start)
+	winners := []string{}
+	for i := 0; i < n; i++ {
+		if r := <-results; r.code == http.StatusOK {
+			winners = append(winners, r.pass)
+		}
+	}
+	if len(winners) != 1 {
+		t.Fatalf("accepted changes = %v, want exactly one", winners)
+	}
+	u, err := s.st.GetUserByUsername("ops")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !verifyPassword(u.PasswordHash, winners[0]) {
+		t.Errorf("stored password does not match the accepted change %q", winners[0])
+	}
+	if u.MustChangePassword {
+		t.Error("change flag still set after an accepted change")
+	}
+}
+
+func TestStartupSkipCapEndsExistingSessions(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "revoke.db"))
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(func() { st.Close() })
+	defHash, _ := hashPassword(defaultAdminPassword)
+	id, err := st.CreateUser(store.User{
+		Username: "pending", Role: "admin", Status: "active", PasswordHash: defHash,
+		MustChangePassword: true, CreatedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.CreateUserSession(store.UserSession{
+		Token: "old-skippable-session", UserID: id, Role: "admin", Username: "pending",
+		ExpiresAt: time.Now().Add(time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{}, nil)
+	NewServer(r, nil, config.Config{}, st)
+
+	if _, found, _ := st.GetUserSession("old-skippable-session"); found {
+		t.Error("a session from before the skip cap was applied is still valid")
+	}
+}
+
+func TestSkipWithNoChangePendingIsRejected(t *testing.T) {
+	s := newTempPasswordServer(t, false, 0)
+	cookie := sessionCookieFrom(t, loginAs(t, s, "ops", "Temp-Pass-9"))
+	rec := doWithCookie(s, http.MethodPost, "/admin/skip-password-change", "", cookie)
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "no_password_change_pending") {
+		t.Errorf("skip with nothing pending: status = %d body = %s, want 409", rec.Code, rec.Body.String())
+	}
+	if u, _ := s.st.GetUserByUsername("ops"); u.SkipPasswordCount != 0 {
+		t.Errorf("SkipPasswordCount = %d, want 0", u.SkipPasswordCount)
+	}
+}
+
+// An admin-issued temporary password starts with a fresh skip allowance.
+func TestResetPasswordRestoresSkipAllowance(t *testing.T) {
+	s := newTempPasswordServer(t, false, 0)
+	hash, _ := hashPassword("Root-Pass-77")
+	if _, err := s.st.CreateUser(store.User{
+		Username: "capped", Role: "admin", Status: "active", PasswordHash: hash,
+		MustChangePassword: true, SkipPasswordCount: maxSkipPasswordChanges, CreatedAt: time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	target, _ := s.st.GetUserByUsername("capped")
+	cookie := sessionCookieFrom(t, loginAs(t, s, "ops", "Temp-Pass-9"))
+
+	rec := doWithCookie(s, http.MethodPost, "/admin/v1/users/"+strconv.FormatInt(target.ID, 10)+"/reset-password", "", cookie)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("reset: status = %d body = %s", rec.Code, rec.Body.String())
+	}
+	got, _ := s.st.GetUserByUsername("capped")
+	if got.SkipPasswordCount != 0 || !got.MustChangePassword {
+		t.Errorf("after reset: skip=%d mustChange=%v, want 0/true", got.SkipPasswordCount, got.MustChangePassword)
+	}
+}
+
+// The legacy single-credential change applies the same new-password rules.
+func TestLegacyChangePasswordAppliesNewPasswordRules(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "legacy-rules.db"))
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(func() { st.Close() })
+	hash, _ := hashPassword("Legacy-Pass-1")
+	if err := st.SetAdminCreds(store.AdminCreds{Username: "legacy", PasswordHash: hash}); err != nil {
+		t.Fatal(err)
+	}
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{}, nil)
+	s := NewServer(r, nil, config.Config{}, st)
+
+	for name, newPass := range map[string]string{"default": "admin", "short": "abc1234", "same": "Legacy-Pass-1", "empty": ""} {
+		rec := httptest.NewRecorder()
+		s.handleChangePasswordLegacy(rec, "Legacy-Pass-1", newPass)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: status = %d body = %s, want 400", name, rec.Code, rec.Body.String())
+		}
+	}
+	rec := httptest.NewRecorder()
+	s.handleChangePasswordLegacy(rec, "Legacy-Pass-1", "Legacy-Pass-2")
+	if rec.Code != http.StatusOK {
+		t.Errorf("valid change: status = %d body = %s, want 200", rec.Code, rec.Body.String())
 	}
 }

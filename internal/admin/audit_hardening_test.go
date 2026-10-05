@@ -312,11 +312,10 @@ func logLeaksDefaultPassword(logs string) bool {
 	return false
 }
 
-// If creating the recovered account fails, nothing is left behind: the
-// skip cap is part of the single insert, so no skippable default login can
-// exist.
-// Nothing may be left on the default password, no second default admin may appear, and
-// neither the default password nor the legacy hash may be logged.
+// If creating the recovered account fails, nothing is left behind: the skip
+// cap is part of the single insert, so no skippable default login can exist.
+// Nothing may be left on the default password, no second default admin may
+// appear, and neither the default password nor the legacy hash may be logged.
 func TestLegacyRecoveryCreateFailureLeavesNoSkippableAccount(t *testing.T) {
 	st, err := store.Open(filepath.Join(t.TempDir(), "legacy-skipcap.db"))
 	if err != nil {

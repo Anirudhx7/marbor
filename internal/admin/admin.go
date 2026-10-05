@@ -4760,19 +4760,9 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if req.NewPassword == "" {
+	if msg := newPasswordProblem(req.NewPassword, user.PasswordHash); msg != "" {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(`{"error":"new_password required"}`))
-		return
-	}
-	if req.NewPassword == defaultAdminPassword {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(`{"error":"the new password cannot be the default password"}`))
-		return
-	}
-	if verifyPassword(user.PasswordHash, req.NewPassword) {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(`{"error":"the new password must differ from the current password"}`))
+		json.NewEncoder(w).Encode(map[string]string{"error": msg})
 		return
 	}
 	// Computed before the update: was this the first change away from the
@@ -4785,13 +4775,17 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"error":"could not hash password"}`))
 		return
 	}
-	user.PasswordHash = newHash
-	user.Salt = ""
-	user.MustChangePassword = false
-	user.SkipPasswordCount = 0
-	if err := s.st.UpdateUser(user); err != nil {
+	// The write only succeeds if the stored hash is still the one that was
+	// checked above, so two concurrent changes cannot both be accepted.
+	changed, err := s.st.ChangeUserPassword(user.ID, user.PasswordHash, newHash)
+	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(`{"error":"could not save credentials"}`))
+		return
+	}
+	if !changed {
+		w.WriteHeader(http.StatusConflict)
+		w.Write([]byte(`{"error":"password was changed by another request, try again"}`))
 		return
 	}
 	if firstChange {
@@ -4821,20 +4815,43 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// maxSkipPasswordChanges caps how many times the forced-password-change
-// screen can be dismissed (Grafana-style "Skip for now") before the account
-// must actually change its password. Without a cap, an admin/admin install
-// could stay on the public default password indefinitely - the cap forces
-// resolution while still allowing a few "not right now" dismissals.
+// maxSkipPasswordChanges is the number of dismissals after which the
+// forced-password-change screen can no longer be skipped. The built-in admin
+// account and any admin still on the default password start at this cap, so
+// the first-login change is never skippable for them; the cap only matters
+// for other accounts (for example one holding an admin-issued temporary
+// password), which may dismiss the screen a few times.
 const maxSkipPasswordChanges = 3
 
-// handleSkipPasswordChange lets an admin dismiss the forced-password-change
-// screen for this session only, without touching the user's
-// MustChangePassword flag in the users table - so the next fresh login
+// minPasswordLength is the shortest password the server accepts.
+const minPasswordLength = 8
+
+// newPasswordProblem returns a static, user-facing message when newPass is not
+// acceptable as a new password, or "" when it is. currentHash is the stored
+// hash of the password being replaced.
+func newPasswordProblem(newPass, currentHash string) string {
+	switch {
+	case newPass == "":
+		return "new_password required"
+	case newPass == defaultAdminPassword:
+		return "the new password cannot be the default password"
+	case len(newPass) < minPasswordLength:
+		return "password must be at least 8 characters"
+	case verifyPassword(currentHash, newPass):
+		return "the new password must differ from the current password"
+	}
+	return ""
+}
+
+// handleSkipPasswordChange lets an account that is allowed to skip dismiss the
+// forced-password-change screen for this session only, without touching the
+// user's MustChangePassword flag in the users table - so the next fresh login
 // still forces the prompt again. Each dismissal increments a persistent
-// per-user counter; once maxSkipPasswordChanges is reached, skipping is
-// refused and the caller must actually change the password. Reachable only
-// via the same must-change-password bypass list as change-password/logout.
+// per-user counter; once maxSkipPasswordChanges is reached (always the case for
+// the default admin login), skipping is refused and the caller must actually
+// change the password. A call with no password change pending is rejected.
+// Reachable only via the same must-change-password bypass list as
+// change-password/logout.
 func (s *Server) handleSkipPasswordChange(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	username, _ := r.Context().Value(ctxKeyUsername).(string)
@@ -4842,6 +4859,11 @@ func (s *Server) handleSkipPasswordChange(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(`{"error":"user not found"}`))
+		return
+	}
+	if !user.MustChangePassword {
+		w.WriteHeader(http.StatusConflict)
+		w.Write([]byte(`{"error":"no_password_change_pending"}`))
 		return
 	}
 	if user.SkipPasswordCount >= maxSkipPasswordChanges {
@@ -4877,6 +4899,10 @@ func (s *Server) handleSkipPasswordChange(w http.ResponseWriter, r *http.Request
 	})
 }
 
+// handleChangePasswordLegacy changes the single legacy admin credential for a
+// caller that has no session username (for example the demo session). Normal
+// session logins never reach it. It applies the same new-password rules as the
+// per-user path.
 func (s *Server) handleChangePasswordLegacy(w http.ResponseWriter, currentPass, newPass string) {
 	creds, err := s.st.GetAdminCreds()
 	if err != nil {
@@ -4887,6 +4913,11 @@ func (s *Server) handleChangePasswordLegacy(w http.ResponseWriter, currentPass, 
 	if !verifyPassword(creds.PasswordHash, currentPass) {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(`{"error":"wrong current password"}`))
+		return
+	}
+	if msg := newPasswordProblem(newPass, creds.PasswordHash); msg != "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": msg})
 		return
 	}
 	newHash, err := hashPassword(newPass)
@@ -5267,6 +5298,8 @@ func (s *Server) handleResetUserPassword(w http.ResponseWriter, r *http.Request)
 	user.PasswordHash = hash
 	user.Salt = ""
 	user.MustChangePassword = true
+	// A fresh temporary password starts with a fresh skip allowance.
+	user.SkipPasswordCount = 0
 	if err := s.st.UpdateUser(user); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -5451,6 +5484,11 @@ func (s *Server) warnIfDefaultAdminCredential() {
 			if err := s.st.UpdateUser(u); err != nil {
 				log.Printf("WARNING: could not make the first-login password change mandatory for %q: %v", u.Username, err)
 			} else {
+				// A session minted while skipping was still allowed would
+				// otherwise stay valid for its full lifetime, so end it.
+				if err := s.st.DeleteUserSessionsByUserID(u.ID); err != nil {
+					log.Printf("WARNING: could not end existing sessions for %q: %v", u.Username, err)
+				}
 				log.Printf("admin: first-login password change for %q can no longer be skipped", u.Username)
 			}
 		}

@@ -1299,7 +1299,7 @@ Requires authentication - see the root README's CLI auth section, or run `marbor
 
 #### `skip-password-change`
 
-dismiss the forced-password-change prompt for this session only
+dismiss the forced-password-change prompt (not available for the default admin login)
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 

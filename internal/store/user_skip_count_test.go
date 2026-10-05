@@ -38,3 +38,42 @@ func TestCreateUserPersistsSkipPasswordCount(t *testing.T) {
 		t.Fatal("MustChangePassword = false, want true")
 	}
 }
+
+// TestChangeUserPasswordOnlyWinsOnMatchingHash guards the compare-and-swap that
+// keeps two concurrent password changes from both being accepted.
+func TestChangeUserPasswordOnlyWinsOnMatchingHash(t *testing.T) {
+	st, err := Open(filepath.Join(t.TempDir(), "cas.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer st.Close()
+
+	id, err := st.CreateUser(User{
+		Username: "cas", Role: "admin", Status: "active", PasswordHash: "old",
+		MustChangePassword: true, SkipPasswordCount: 2, CreatedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+
+	ok, err := st.ChangeUserPassword(id, "stale", "first")
+	if err != nil || ok {
+		t.Fatalf("change with a stale hash: ok=%v err=%v, want false/nil", ok, err)
+	}
+	ok, err = st.ChangeUserPassword(id, "old", "first")
+	if err != nil || !ok {
+		t.Fatalf("change with the current hash: ok=%v err=%v, want true/nil", ok, err)
+	}
+	ok, err = st.ChangeUserPassword(id, "old", "second")
+	if err != nil || ok {
+		t.Fatalf("second change from the same old hash: ok=%v err=%v, want false/nil", ok, err)
+	}
+
+	got, err := st.GetUserByID(id)
+	if err != nil {
+		t.Fatalf("GetUserByID: %v", err)
+	}
+	if got.PasswordHash != "first" || got.MustChangePassword || got.SkipPasswordCount != 0 {
+		t.Fatalf("after change: hash=%q mustChange=%v skip=%d, want first/false/0", got.PasswordHash, got.MustChangePassword, got.SkipPasswordCount)
+	}
+}

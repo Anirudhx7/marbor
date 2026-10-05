@@ -1477,7 +1477,7 @@ func buildRoot() *Command {
 					},
 					{
 						Name:      "skip-password-change",
-						Short:     "dismiss the forced-password-change prompt for this session only",
+						Short:     "dismiss the forced-password-change prompt (not available for the default admin login)",
 						NeedsAuth: true,
 						Run:       func(ctx *RunCtx) int { return runUsersSkipPasswordChange(ctx.Flags, ctx.Stdout, ctx.Stderr) },
 					},

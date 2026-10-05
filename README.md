@@ -646,7 +646,7 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor users delete <id>` | delete a user (requires auth) |
 | `marbor users pending-count` | show the number of users awaiting approval (requires auth) |
 | `marbor users change-password` | change your own password (interactive, masked prompts) (requires auth) |
-| `marbor users skip-password-change` | dismiss the forced-password-change prompt for this session only (requires auth; not available for the default `admin` / `admin` login, whose first change cannot be skipped) |
+| `marbor users skip-password-change` | dismiss the forced-password-change prompt (not available for the default admin login) (requires auth) |
 | `marbor completion <shell>` | generate a shell completion script (bash, zsh, or fish) (hidden from `--help`; see `docs/cli.md`) |
 <!-- END CLI TABLE -->
 
