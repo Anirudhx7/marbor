@@ -11,7 +11,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/Anirudhx7/marbor/internal/auth"
 	"github.com/Anirudhx7/marbor/internal/config"
@@ -239,16 +238,6 @@ func TestDefaultAdminCredentialWarning(t *testing.T) {
 	t.Cleanup(func() { st.Close() })
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{}, nil)
 
-	// An install created before the generated first-boot password: the
-	// administrator is still on the public default.
-	seedHash, err := hashPassword(defaultAdminPassword)
-	if err != nil {
-		t.Fatalf("hashPassword: %v", err)
-	}
-	if _, err := st.CreateUser(store.User{Username: "admin", Role: "admin", Status: "active", PasswordHash: seedHash, MustChangePassword: true, CreatedAt: time.Now()}); err != nil {
-		t.Fatalf("CreateUser: %v", err)
-	}
-
 	buf := captureLog(t)
 	NewServer(r, nil, config.Config{}, st)
 	for _, want := range []string{`"admin" / "admin"`, "password change is required", "plaintext HTTP", "TLS"} {
@@ -323,12 +312,11 @@ func logLeaksDefaultPassword(logs string) bool {
 	return false
 }
 
-// The recovered account is created with its skip cap in one write, so a failed
-// create leaves no account at all (never one with a skippable forced change)
-// and no pending marker. Nothing may be left on the default password, no second
-// default admin may appear, and neither the default password nor the legacy
-// hash may be logged.
-func TestLegacyRecoveryCreateFailureLeavesNoAccountOrMarker(t *testing.T) {
+// If creating the recovered account fails, nothing is left behind: the skip
+// cap is part of the single insert, so no skippable default login can exist.
+// Nothing may be left on the default password, no second default admin may
+// appear, and neither the default password nor the legacy hash may be logged.
+func TestLegacyRecoveryCreateFailureLeavesNoSkippableAccount(t *testing.T) {
 	st, err := store.Open(filepath.Join(t.TempDir(), "legacy-skipcap.db"))
 	if err != nil {
 		t.Fatalf("store.Open: %v", err)
@@ -344,9 +332,6 @@ func TestLegacyRecoveryCreateFailureLeavesNoAccountOrMarker(t *testing.T) {
 
 	if _, err := st.GetUserByUsername("legacyadmin"); err == nil {
 		t.Error("recovered user row exists after the create failed")
-	}
-	if m, err := s.loadMarker(); err != nil || m != nil {
-		t.Errorf("pending marker = %+v (err %v) after a failed create, want none", m, err)
 	}
 	if _, err := st.GetUserByUsername("admin"); err == nil {
 		t.Error("a default admin user was created after the failed recovery")

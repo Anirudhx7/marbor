@@ -14,15 +14,6 @@ services:
       - marbor-backups:/backups
     environment:
       - MARBOR_DB_PATH=/data/marbor.db
-      # First boot generates the admin password into /data/initial-admin-password
-      # (read it with `docker compose exec marbor cat /data/initial-admin-password`).
-      # While that password is unchanged the admin dashboard is not started on
-      # this container's all-interfaces bind; the proxy and metrics keep
-      # running. To choose the password up front, mount a Docker secret and set
-      # MARBOR_ADMIN_PASSWORD_FILE to its path; for the first login over
-      # loopback set MARBOR_ADMIN_BIND_ADDRESS=127.0.0.1:8080 and remove it
-      # after the password is changed. Nothing here sets a password or the
-      # insecure-admin escape hatch. See docs/PRODUCTION.md and SECURITY.md.
       # Scheduled backups (configurable from the Settings dashboard) go
       # to a SEPARATE named volume from marbor-data on purpose: a `docker
       # volume rm marbor-data` (or `docker-compose down -v`) then still leaves
@@ -34,14 +25,8 @@ services:
     # it back up with the swapped-in database. Also just good practice for
     # any other unexpected exit.
     restart: unless-stopped
-    # While the initial admin password is unchanged the admin dashboard is
-    # deliberately not served on this container's all-interfaces bind, so the
-    # admin /health route REFUSES the connection. Only then does the check fall
-    # back to the always-on proxy port (any HTTP answer there means it is up). A
-    # degraded admin that answers 503, or any other admin failure, stays
-    # unhealthy. Uses only busybox wget (nc -z is not guaranteed in the image).
     healthcheck:
-      test: ["CMD-SHELL", "o=$$(wget -qO /dev/null http://localhost:8080/health 2>&1) && exit 0; case $$o in *refused*) o=$$(wget -qO /dev/null http://localhost:11434/ 2>&1) && exit 0; case $$o in *'server returned error'*) exit 0;; esac;; esac; exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3

@@ -169,6 +169,17 @@ type Store interface {
 	GetUserByID(id int64) (User, error)
 	ListUsers() ([]User, error)
 	UpdateUser(u User) error
+	// ChangeUserPassword replaces a user's password hash only if the stored
+	// hash still equals oldHash, and clears the forced-change flag and the skip
+	// counter in the same statement. It reports false (and no error) when the
+	// stored hash no longer matches, so two concurrent changes cannot both win.
+	ChangeUserPassword(id int64, oldHash, newHash string) (bool, error)
+	// IncrementSkipCount adds one to a user's skip counter in a single statement,
+	// only while a password change is still pending and the counter is below
+	// limit. It reports false (and no error) when either condition no longer
+	// holds, and never rewrites any other column, so it cannot undo a
+	// concurrent password change.
+	IncrementSkipCount(id int64, limit int) (bool, error)
 	DeleteUser(id int64) error
 	SoftDeleteUser(id int64, deletedBy string) error
 	CountAdminUsers() (int, error)
@@ -830,17 +841,21 @@ func (NopStore) QuerySystemAuditLog(_ int) ([]SystemAuditEntry, error)     { ret
 func (NopStore) QuerySystemAuditLogFiltered(_ SystemAuditFilter) ([]SystemAuditEntry, error) {
 	return nil, nil
 }
-func (NopStore) GetAdminCreds() (AdminCreds, error)                 { return AdminCreds{}, ErrNoAdminCreds }
-func (NopStore) SetAdminCreds(_ AdminCreds) error                   { return nil }
-func (NopStore) CreateSession(_ string, _ time.Time) error          { return nil }
-func (NopStore) ValidateSession(_ string) (bool, error)             { return false, nil }
-func (NopStore) DeleteSession(_ string) error                       { return nil }
-func (NopStore) PruneExpiredSessions() error                        { return nil }
-func (NopStore) CreateUser(_ User) (int64, error)                   { return 0, nil }
-func (NopStore) GetUserByUsername(_ string) (User, error)           { return User{}, ErrUserNotFound }
-func (NopStore) GetUserByID(_ int64) (User, error)                  { return User{}, ErrUserNotFound }
-func (NopStore) ListUsers() ([]User, error)                         { return nil, nil }
-func (NopStore) UpdateUser(_ User) error                            { return nil }
+func (NopStore) GetAdminCreds() (AdminCreds, error)        { return AdminCreds{}, ErrNoAdminCreds }
+func (NopStore) SetAdminCreds(_ AdminCreds) error          { return nil }
+func (NopStore) CreateSession(_ string, _ time.Time) error { return nil }
+func (NopStore) ValidateSession(_ string) (bool, error)    { return false, nil }
+func (NopStore) DeleteSession(_ string) error              { return nil }
+func (NopStore) PruneExpiredSessions() error               { return nil }
+func (NopStore) CreateUser(_ User) (int64, error)          { return 0, nil }
+func (NopStore) GetUserByUsername(_ string) (User, error)  { return User{}, ErrUserNotFound }
+func (NopStore) GetUserByID(_ int64) (User, error)         { return User{}, ErrUserNotFound }
+func (NopStore) ListUsers() ([]User, error)                { return nil, nil }
+func (NopStore) UpdateUser(_ User) error                   { return nil }
+func (NopStore) ChangeUserPassword(_ int64, _, _ string) (bool, error) {
+	return false, nil
+}
+func (NopStore) IncrementSkipCount(_ int64, _ int) (bool, error)    { return false, nil }
 func (NopStore) DeleteUser(_ int64) error                           { return nil }
 func (NopStore) SoftDeleteUser(_ int64, _ string) error             { return nil }
 func (NopStore) CountAdminUsers() (int, error)                      { return 0, nil }

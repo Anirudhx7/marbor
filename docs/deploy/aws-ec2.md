@@ -66,17 +66,13 @@ WantedBy=multi-user.target
 sudo systemctl daemon-reload && sudo systemctl enable --now marbor
 ```
 
-First boot creates a blank-slate `/opt/marbor.db` and a user `admin` with a random
-password, written once to `/opt/initial-admin-password` (mode 0600, next to the
-database; read it with `sudo cat`). There is no `admin`/`admin` on a fresh install.
-While that initial password is unchanged the admin dashboard does not start on a
-non-loopback bind, so add `Environment=MARBOR_ADMIN_BIND_ADDRESS=127.0.0.1:8080`
-to the `[Service]` section above (or choose the password yourself with
-`Environment=MARBOR_ADMIN_PASSWORD_FILE=<path to a file holding it>`, read when the
-first administrator is created), restart, and reach the dashboard through the SSH
-tunnel below. Log in, set the new password (forced at first login), then, from
-**Settings**, set `admin.bind_address` to `127.0.0.1:8080` and drop the override
-line. Add your GPU nodes from the **GPU Nodes** page and an API key from
+First boot creates a blank-slate `/opt/marbor.db`. Log in at `http://<marbor>:8080`
+as `admin` / `admin`. You are required to set a new password immediately and
+that first-login change cannot be skipped; until then the dashboard (plain
+HTTP) accepts the default login from anyone who can reach it, so do this right
+after install. Then,
+from **Settings**, set `admin.bind_address` to `127.0.0.1:8080` (restart
+required). Add your GPU nodes from the **GPU Nodes** page and an API key from
 **API Keys** - or run `install.sh`'s network-discovery wizard against your VPC
 beforehand to seed the nodes automatically.
 
@@ -85,7 +81,7 @@ beforehand to seed the nodes automatically.
 - **Endpoint `:11434`** - open only to your app servers / SG, never `0.0.0.0/0`.
 - **Admin `:8080`** - keep on `127.0.0.1` and reach it via SSH tunnel
   (`ssh -L 8080:localhost:8080 ...`), or a private SG. Login is username/password
-  (bcrypt-hashed; a fresh install generates the first password and forces a change at first login);
+  (bcrypt-hashed, default `admin`/`admin` on first run - change it immediately);
   a successful login issues an `HttpOnly` session cookie, which is what's sensitive here.
 - **Node `:11434`** - open only from the marbor box's SG, not the internet.
 - Terminate TLS at an ALB or nginx in front of the control plane; the binary speaks plain HTTP.

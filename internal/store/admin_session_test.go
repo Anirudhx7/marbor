@@ -144,25 +144,3 @@ func TestSession_ExpiredIsRejectedAndPruned(t *testing.T) {
 		t.Fatal("ValidateSession must accept the re-created session post-prune")
 	}
 }
-
-// CreateUser stores the skip counter it is given, so a first-boot administrator
-// can be created already unskippable in one write.
-func TestCreateUser_PersistsSkipPasswordCount(t *testing.T) {
-	st := newTestStoreForSessions(t)
-
-	_, err := st.CreateUser(User{
-		Username: "admin", Role: "admin", Status: "active", PasswordHash: "hash",
-		MustChangePassword: true, SkipPasswordCount: 3, CreatedAt: time.Now(),
-	})
-	if err != nil {
-		t.Fatalf("CreateUser: %v", err)
-	}
-
-	got, err := st.GetUserByUsername("admin")
-	if err != nil {
-		t.Fatalf("GetUserByUsername: %v", err)
-	}
-	if got.SkipPasswordCount != 3 {
-		t.Errorf("SkipPasswordCount = %d, want 3", got.SkipPasswordCount)
-	}
-}

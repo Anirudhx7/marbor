@@ -5,6 +5,8 @@ export interface LoginResponse {
   role: string;
   username: string;
   must_change_password: boolean;
+  // Additive: absent from an older server, which the UI treats as not skippable.
+  can_skip_password_change?: boolean;
   expires_at: string;
 }
 
@@ -12,6 +14,8 @@ export interface SessionData {
   role: string;
   username: string;
   mustChangePassword: boolean;
+  // Whether the forced-change screen may offer "Skip for now". Defaults to false.
+  canSkipPasswordChange: boolean;
 }
 
 export interface UserRecord {

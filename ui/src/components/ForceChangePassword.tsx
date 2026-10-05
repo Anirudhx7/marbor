@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { KeyRound } from 'lucide-react';
-import { changePassword, saveSession, skipPasswordChangeThisSession, passwordPolicyError, MIN_PASSWORD_LENGTH } from '../lib/api';
+import { changePassword, saveSession, skipPasswordChangeThisSession } from '../lib/api';
 import type { SessionData } from '../types';
 
 interface Props {
@@ -14,22 +14,26 @@ export function ForceChangePassword({ session, onSuccess }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [skipLimitReached, setSkipLimitReached] = useState(false);
+  // An account on the default password cannot skip; the server is the real
+  // gate, this only avoids offering a button that would fail.
+  const canSkip = session.canSkipPasswordChange && !skipLimitReached;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!newPw) { setError('New password is required'); return; }
     if (newPw !== confirmPw) { setError('Passwords do not match'); return; }
-    const policyError = passwordPolicyError(newPw);
-    if (policyError) { setError(policyError); return; }
+    if ([...newPw].length < 8) { setError('Password must be at least 8 characters'); return; }
+    if (newPw === 'admin') { setError('The new password cannot be the default password'); return; }
     setSaving(true);
     setError(null);
     try {
       await changePassword('', newPw);
-      const updated: SessionData = { ...session, mustChangePassword: false };
+      const updated: SessionData = { ...session, mustChangePassword: false, canSkipPasswordChange: false };
       saveSession({
         role: updated.role,
         username: updated.username,
         must_change_password: false,
+        can_skip_password_change: false,
         expires_at: '',
       });
       onSuccess(updated);
@@ -51,15 +55,18 @@ export function ForceChangePassword({ session, onSuccess }: Props) {
     setError(null);
     try {
       await skipPasswordChangeThisSession();
-      onSuccess({ ...session, mustChangePassword: false });
-    } catch (err: any) {
+      onSuccess({ ...session, mustChangePassword: false, canSkipPasswordChange: false });
+    } catch (e) {
+      const err = e as Error & { code?: string };
       // Match on the structured code, not a copy of the server's message
       // string - and only ever render that server-provided message for the
       // one error on this explicit allowlist; any other error gets a
       // generic fallback instead of showing a raw backend error verbatim.
-      if (err?.code === 'skip_limit_reached') {
+      if (err.code === 'skip_limit_reached') {
         setError(err.message || 'Skip limit reached - you must set a new password to continue.');
         setSkipLimitReached(true);
+      } else if (err.code === 'no_password_change_pending') {
+        setError('This password change is no longer pending. Sign in again.');
       } else {
         setError('Failed to skip password change. Please try again.');
       }
@@ -85,13 +92,15 @@ export function ForceChangePassword({ session, onSuccess }: Props) {
               <KeyRound className="w-5 h-5 text-amber-600 dark:text-amber-400" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-foreground">Set new password</h2>
+              <h2 className="text-sm font-semibold text-foreground">{session.canSkipPasswordChange ? 'Set new password' : 'Set a new password'}</h2>
               <p className="text-xs text-muted-foreground">Required before continuing</p>
             </div>
           </div>
 
           <p className="text-xs text-muted-foreground mb-4">
-            Your account requires a password change. Choose a strong password of at least {MIN_PASSWORD_LENGTH} characters to continue.
+            {session.canSkipPasswordChange
+              ? 'Your account requires a password change. Choose a strong password to continue.'
+              : 'This account is using the default password. Set a new password to continue.'}
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -104,7 +113,7 @@ export function ForceChangePassword({ session, onSuccess }: Props) {
                 autoFocus
                 autoComplete="new-password"
                 className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
-                placeholder={`Min. ${MIN_PASSWORD_LENGTH} characters`}
+                placeholder="Min. 8 characters"
               />
             </div>
             <div>
@@ -131,7 +140,7 @@ export function ForceChangePassword({ session, onSuccess }: Props) {
               {saving ? 'Saving...' : 'Set Password & Continue'}
             </button>
 
-            {!skipLimitReached && (
+            {canSkip && (
               <button
                 type="button"
                 onClick={handleSkip}

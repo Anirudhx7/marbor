@@ -1,5 +1,5 @@
 import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, CloudProviderInput, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, QuantRecommendation, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry, ModelConfig, LocalModel, BenchmarkRun, BackupFileInfo, SpillCounterRow, RoutingDecision, ModelAlias } from '../types';
-import { mockCloudProviders, mockSavings, mockReplicaSuggestions, mockBootstrapPasswordStatus } from './mockData';
+import { mockCloudProviders, mockSavings, mockReplicaSuggestions } from './mockData';
 import { sameDeclared } from './replicaGroups';
 
 const BASE = '/admin';
@@ -49,6 +49,7 @@ export function saveSession(data: LoginResponse): void {
   localStorage.setItem('sessionRole', data.role);
   localStorage.setItem('sessionUsername', data.username);
   localStorage.setItem('sessionMustChangePassword', String(data.must_change_password));
+  localStorage.setItem('sessionCanSkipPasswordChange', String(data.can_skip_password_change === true));
 }
 
 export function loadSession(): SessionData | null {
@@ -58,6 +59,7 @@ export function loadSession(): SessionData | null {
     role: localStorage.getItem('sessionRole') ?? 'admin',
     username,
     mustChangePassword: localStorage.getItem('sessionMustChangePassword') === 'true',
+    canSkipPasswordChange: localStorage.getItem('sessionCanSkipPasswordChange') === 'true',
   };
 }
 
@@ -65,6 +67,7 @@ export function clearSession(): void {
   localStorage.removeItem('sessionRole');
   localStorage.removeItem('sessionUsername');
   localStorage.removeItem('sessionMustChangePassword');
+  localStorage.removeItem('sessionCanSkipPasswordChange');
 }
 
 // Called from ForceChangePassword's "Skip for now" - reissues the session
@@ -77,8 +80,10 @@ export async function skipPasswordChangeThisSession(): Promise<void> {
   const r = await apiFetch('/skip-password-change', { method: 'POST' });
   if (!r.ok) {
     let message = 'Failed to skip password change';
+    let code: string | undefined;
     try {
       const body = await r.json();
+      if (typeof body?.error === 'string') code = body.error;
       if (r.status === 403 && body?.error === 'skip_limit_reached') {
         message = 'Skip limit reached - you must set a new password to continue.';
       } else if (body?.error) {
@@ -87,7 +92,9 @@ export async function skipPasswordChangeThisSession(): Promise<void> {
     } catch {
       // ignore parse failure, use default message
     }
-    throw new Error(message);
+    // The server error code rides on the Error so callers can branch on it
+    // (skip_limit_reached, no_password_change_pending) without matching text.
+    throw Object.assign(new Error(message), { code });
   }
   localStorage.setItem('sessionMustChangePassword', 'false');
 }
@@ -153,21 +160,6 @@ export async function changePassword(currentPassword: string, newPassword: strin
     throw new Error((j as any).error || 'Failed to change password');
   }
   return r.json();
-}
-
-// The server rejects a new admin password shorter than this many characters or
-// equal to the public default "admin" (passwordPolicyMessage on the server). The
-// client check mirrors it so the operator hears about it before the round trip;
-// the server stays the authority.
-export const MIN_PASSWORD_LENGTH = 12;
-
-// passwordPolicyError returns the reason a new password would be refused, or null
-// when it is acceptable. It counts characters (code points), not UTF-16 units.
-export function passwordPolicyError(password: string): string | null {
-  if (password === 'admin' || [...password].length < MIN_PASSWORD_LENGTH) {
-    return `Password must be at least ${MIN_PASSWORD_LENGTH} characters and must not be "admin"`;
-  }
-  return null;
 }
 
 // --- User management ---
@@ -1024,14 +1016,10 @@ export async function fetchRequestExplain(id: string): Promise<RoutingDecision> 
   return res.json();
 }
 
-// updateSettings saves the settings and returns any warnings the server attached
-// to an accepted save (for example an admin bind address that would lock the
-// operator out after a restart while the initial admin password is unchanged).
-// A plain save returns an empty list.
-export async function updateSettings(data: Record<string, unknown>): Promise<string[]> {
+export async function updateSettings(data: Record<string, unknown>) {
   if (DEMO) {
     localStorage.setItem('demo_settings', JSON.stringify(data));
-    return [];
+    return;
   }
   const res = await apiFetch(`${BASE}/settings`, {
     method: 'PUT',
@@ -1039,10 +1027,6 @@ export async function updateSettings(data: Record<string, unknown>): Promise<str
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error('Failed to update settings');
-  // The body is empty on a plain save and {"warnings":[...]} otherwise.
-  const body = await res.json().catch(() => null);
-  const warnings = body?.warnings;
-  return Array.isArray(warnings) ? warnings.filter((w: unknown): w is string => typeof w === 'string') : [];
 }
 
 export async function fetchAnalytics(): Promise<Analytics> {
@@ -1276,39 +1260,6 @@ export async function fetchHealth(): Promise<{ version: string; proxy_port: numb
   const res = await fetch('/health');
   if (!res.ok) throw new Error('health check failed');
   return res.json();
-}
-
-// Where a pending initial admin password comes from: a generated one in the
-// data directory ('file'), one the operator configured ('supplied'), or the
-// public default ('default'). 'unknown' covers an older server that reports no
-// source.
-export type BootstrapPasswordSource = 'file' | 'supplied' | 'default' | 'unknown';
-
-export interface BootstrapPasswordStatus {
-  pending: boolean;
-  source: BootstrapPasswordSource;
-}
-
-const NOT_PENDING: BootstrapPasswordStatus = { pending: false, source: 'unknown' };
-
-// fetchBootstrapPasswordStatus reports whether the first-boot administrator
-// still has its initial password and where that password comes from (GET
-// /health, unauthenticated, loopback callers only, no secret in the response).
-// Any failure reads as "not pending": the notice is a hint, and a health probe
-// that fails must never block or alter the login form.
-export async function fetchBootstrapPasswordStatus(): Promise<BootstrapPasswordStatus> {
-  if (DEMO) return mockBootstrapPasswordStatus;
-  try {
-    // /health answers 503 with a valid body while degraded, so the body is
-    // parsed regardless of the status.
-    const res = await fetch('/health');
-    const body = await res.json();
-    if (body?.bootstrap_password_pending !== true) return NOT_PENDING;
-    const src = body?.bootstrap_password_source;
-    return { pending: true, source: src === 'file' || src === 'supplied' || src === 'default' ? src : 'unknown' };
-  } catch {
-    return NOT_PENDING;
-  }
 }
 
 export interface SystemInfo {
