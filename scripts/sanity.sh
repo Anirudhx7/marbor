@@ -57,4 +57,4 @@ echo "$packages"
 # -race on a real run (timed out at exactly 200s) - use the same budget as
 # regression rather than re-deriving a smaller one that keeps proving wrong.
 # shellcheck disable=SC2086
-go test -race -timeout 600s $packages
+go test -race -timeout 900s $packages
