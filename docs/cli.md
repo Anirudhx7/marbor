@@ -1046,6 +1046,20 @@ show recent predictive prewarm decisions
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
+### `prefix-locality`
+
+show prefix-locality routing hit and miss counts
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).
+
+#### `stats`
+
+show prefix-locality routing hit and miss counts
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
 ### `system-info`
 
 show control-plane host system info and per-node GPU summary

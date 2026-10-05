@@ -28,6 +28,7 @@ Commands:
   pulls             list every active model pull job across the fleet
   warmup            global warmup engine status and manual controls
   predictive        show recent predictive prewarm decisions
+  prefix-locality   show prefix-locality routing hit and miss counts
   system-info       show control-plane host system info and per-node GPU summary
   config            control-plane configuration operations
   settings          get/set the full control-plane config

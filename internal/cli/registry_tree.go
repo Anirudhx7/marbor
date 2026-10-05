@@ -1206,6 +1206,20 @@ func buildRoot() *Command {
 				},
 			},
 			{
+				Name:      "prefix-locality",
+				Short:     "show prefix-locality routing hit and miss counts",
+				NeedsAuth: true,
+				Footer:    authFlags,
+				Sub: []*Command{
+					{
+						Name:      "stats",
+						Short:     "show prefix-locality routing hit and miss counts",
+						NeedsAuth: true,
+						Run:       func(ctx *RunCtx) int { return runPrefixLocalityStats(ctx.Flags, ctx.Stdout, ctx.Stderr) },
+					},
+				},
+			},
+			{
 				Name:      "system-info",
 				Short:     "show control-plane host system info and per-node GPU summary",
 				NeedsAuth: true,

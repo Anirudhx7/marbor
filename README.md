@@ -620,6 +620,8 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor warmup ping` | manually trigger a warmup cycle now (requires auth) |
 | `marbor predictive` | show recent predictive prewarm decisions (requires auth) |
 | `marbor predictive decisions` | show recent predictive prewarm decisions (requires auth) |
+| `marbor prefix-locality` | show prefix-locality routing hit and miss counts (requires auth) |
+| `marbor prefix-locality stats` | show prefix-locality routing hit and miss counts (requires auth) |
 | `marbor system-info` | show control-plane host system info and per-node GPU summary (requires auth) |
 | `marbor config` | control-plane configuration operations |
 | `marbor config reload` | re-sync live router/auth state from SQLite (requires auth) |
