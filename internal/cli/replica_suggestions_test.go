@@ -244,3 +244,52 @@ func TestRun_NodesSuggestions_NeedsID(t *testing.T) {
 		}
 	}
 }
+
+func TestRun_NodesSuggestionsDismissRestore_ServerRefusalIsNonzeroExit(t *testing.T) {
+	const msg = "could not read the saved replica_suggestions_dismissed setting; nothing was changed"
+	var mu sync.Mutex
+	var seen []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		seen = append(seen, r.Method+" "+r.URL.Path)
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"error":"` + msg + `"}`))
+	}))
+	t.Cleanup(srv.Close)
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
+	cases := []struct {
+		args []string
+		want string
+	}{
+		{[]string{"suggestions", "dismiss", "aaaaaaaaaaaaaaaa"}, "POST /admin/v1/replica-suggestions/aaaaaaaaaaaaaaaa/dismiss"},
+		{[]string{"suggestions", "restore", "aaaaaaaaaaaaaaaa"}, "DELETE /admin/v1/replica-suggestions/aaaaaaaaaaaaaaaa/dismiss"},
+		{[]string{"suggestions"}, "GET /admin/v1/replica-suggestions"},
+	}
+	for _, tc := range cases {
+		name := strings.Join(tc.args, " ")
+		t.Run(name, func(t *testing.T) {
+			mu.Lock()
+			seen = nil
+			mu.Unlock()
+			var stdout, stderr bytes.Buffer
+			code := Run(append(append([]string{"nodes"}, tc.args...), "--server", srv.URL), &stdout, &stderr)
+			if code != ExitServerError {
+				t.Errorf("exit %d on a 500, want %d", code, ExitServerError)
+			}
+			if !strings.Contains(stderr.String(), "nothing was changed") {
+				t.Errorf("stderr lacks the server message: %s", stderr.String())
+			}
+			if stdout.Len() != 0 {
+				t.Errorf("stdout must be empty on failure: %q", stdout.String())
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if len(seen) != 1 || seen[0] != tc.want {
+				t.Errorf("requests %v, want exactly [%s]", seen, tc.want)
+			}
+		})
+	}
+}

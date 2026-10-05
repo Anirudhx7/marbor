@@ -23,6 +23,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Bench scripts need an admin password.** `bench/preflight.sh` and `bench/cold-loop.sh` no longer default `ADMIN_PASSWORD` to `admin`; set it to your admin password (`admin` only against the public demo stack).
 - **The demo stacks set `MARBOR_DEMO_MODE=true`.** `docker-compose.demo.yml` and `docker-compose.demo.standalone.yml` keep the public `admin` / `admin` login on their seeded database.
 
+### Fixed
+- **Dismissing or restoring a replica suggestion no longer erases your other dismissals when the saved list cannot be read.** Previously a failed read was treated as "no dismissals", so the next dismiss or restore overwrote the stored list with just the new entry (or an empty one). Now, if the saved `replica_suggestions_dismissed` setting cannot be read or is not a valid list, dismiss and restore fail with a `500` error that names the setting and says nothing was changed, and the stored value is left untouched. This includes restoring a suggestion that was not dismissed, which used to return success and now errors on a failed read. Listing suggestions (`GET /admin/replica-suggestions`, `marbor nodes suggestions`) also returns the error instead of silently showing no dismissals. A missing, empty or `null` saved value is still treated as an empty list. If the stored value is corrupt, delete the `replica_suggestions_dismissed` row from the `settings` table in the marbor database and retry; the setting is not editable through the settings API.
+
 ## [0.24.0] - 2026-10-04
 
 ### Added
