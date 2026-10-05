@@ -68,16 +68,16 @@ var rawErrRefPattern = regexp.MustCompile(`\berr\b`)
 // leak found by this test should be fixed by routing through
 // writeServerError/writeCorrelatedError, not exempted.
 var errorLeakExceptions = map[string]bool{
-	"internal/admin/admin.go:2774": true,
-	"internal/admin/admin.go:2907": true,
-	"internal/admin/admin.go:3508": true,
+	"internal/admin/admin.go:2773": true,
+	"internal/admin/admin.go:2906": true,
+	"internal/admin/admin.go:3507": true,
 	"internal/admin/admin.go:7793": true,
 	"internal/admin/admin.go:8093": true,
 	"internal/admin/admin.go:8456": true,
-	"internal/admin/admin.go:3524": true,
-	"internal/admin/admin.go:3528": true,
-	"internal/admin/admin.go:4109": true,
-	"internal/admin/admin.go:4121": true,
+	"internal/admin/admin.go:3523": true,
+	"internal/admin/admin.go:3527": true,
+	"internal/admin/admin.go:4108": true,
+	"internal/admin/admin.go:4120": true,
 	"internal/admin/admin.go:5635": true,
 	"internal/admin/admin.go:5769": true,
 	"internal/admin/admin.go:5903": true,

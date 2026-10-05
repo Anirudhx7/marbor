@@ -1417,8 +1417,7 @@ func (s *Server) sessionAuth(next http.HandlerFunc) http.HandlerFunc {
 						return
 					}
 				}
-				r = r.WithContext(context.WithValue(r.Context(), ctxKeyUsername, session.Username))
-				r = r.WithContext(context.WithValue(r.Context(), ctxKeyMustChangePassword, session.MustChangePassword))
+				r = r.WithContext(context.WithValue(context.WithValue(r.Context(), ctxKeyUsername, session.Username), ctxKeyMustChangePassword, session.MustChangePassword))
 				next(w, r)
 				return
 			}
@@ -1472,9 +1471,9 @@ func (s *Server) adminAuth(next http.HandlerFunc) http.HandlerFunc {
 				return
 			}
 		}
-		r = r.WithContext(context.WithValue(r.Context(), ctxKeyUsername, session.Username))
-		r = r.WithContext(context.WithValue(r.Context(), ctxKeyUserID, session.UserID))
-		r = r.WithContext(context.WithValue(r.Context(), ctxKeyMustChangePassword, session.MustChangePassword))
+		ctx := context.WithValue(r.Context(), ctxKeyUsername, session.Username)
+		ctx = context.WithValue(ctx, ctxKeyUserID, session.UserID)
+		r = r.WithContext(context.WithValue(ctx, ctxKeyMustChangePassword, session.MustChangePassword))
 		next(w, r)
 	}
 }
@@ -4759,7 +4758,8 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	// still pending. A normal session, including one minted by "Skip for now"
 	// while the stored flag is still set, must prove the current password.
 	forced, _ := r.Context().Value(ctxKeyMustChangePassword).(bool)
-	if !(forced && user.MustChangePassword) {
+	waiveCurrent := forced && user.MustChangePassword
+	if !waiveCurrent {
 		if req.CurrentPassword == "" {
 			w.WriteHeader(http.StatusBadRequest)
 			w.Write([]byte(`{"error":"current_password required"}`))
