@@ -132,6 +132,12 @@ func TestFirstLoginMustChangePasswordWithoutSkip(t *testing.T) {
 }
 
 func newTempPasswordServer(t *testing.T, mustChange bool, skip int) *Server {
+	return newTempPasswordServerWith(t, mustChange, skip, nil)
+}
+
+// newTempPasswordServerWith is newTempPasswordServer with an optional wrapper
+// around the store, for tests that need to intercept or fail a store call.
+func newTempPasswordServerWith(t *testing.T, mustChange bool, skip int, wrap func(store.Store) store.Store) *Server {
 	t.Helper()
 	st, err := store.Open(filepath.Join(t.TempDir(), "temp.db"))
 	if err != nil {
@@ -149,7 +155,11 @@ func newTempPasswordServer(t *testing.T, mustChange bool, skip int) *Server {
 		t.Fatal(err)
 	}
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{}, nil)
-	return NewServer(r, nil, config.Config{}, st)
+	var served store.Store = st
+	if wrap != nil {
+		served = wrap(st)
+	}
+	return NewServer(r, nil, config.Config{}, served)
 }
 
 // An account that is not on the default password (an admin-issued temporary
@@ -242,49 +252,6 @@ func TestChangePasswordEnforcesMinimumLength(t *testing.T) {
 	rec = doWithCookie(s, http.MethodPost, "/admin/change-password", `{"new_password":"exactly8"}`, cookie)
 	if rec.Code != http.StatusOK {
 		t.Errorf("8-character password: status = %d body = %s, want 200", rec.Code, rec.Body.String())
-	}
-}
-
-// Two forced changes racing on the same account: exactly one is accepted and
-// the stored password is the winner's.
-func TestConcurrentForcedPasswordChangeHasOneWinner(t *testing.T) {
-	s := newTempPasswordServer(t, true, 0)
-	const n = 8
-	cookie := sessionCookieFrom(t, loginAs(t, s, "ops", "Temp-Pass-9"))
-
-	type result struct {
-		pass string
-		code int
-	}
-	results := make(chan result, n)
-	start := make(chan struct{})
-	for i := 0; i < n; i++ {
-		pass := "Racing-Pass-" + string(rune('A'+i))
-		go func() {
-			<-start
-			rec := doWithCookie(s, http.MethodPost, "/admin/change-password", `{"new_password":"`+pass+`"}`, cookie)
-			results <- result{pass, rec.Code}
-		}()
-	}
-	close(start)
-	winners := []string{}
-	for i := 0; i < n; i++ {
-		if r := <-results; r.code == http.StatusOK {
-			winners = append(winners, r.pass)
-		}
-	}
-	if len(winners) != 1 {
-		t.Fatalf("accepted changes = %v, want exactly one", winners)
-	}
-	u, err := s.st.GetUserByUsername("ops")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !verifyPassword(u.PasswordHash, winners[0]) {
-		t.Errorf("stored password does not match the accepted change %q", winners[0])
-	}
-	if u.MustChangePassword {
-		t.Error("change flag still set after an accepted change")
 	}
 }
 

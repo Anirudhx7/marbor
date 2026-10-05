@@ -174,6 +174,12 @@ type Store interface {
 	// counter in the same statement. It reports false (and no error) when the
 	// stored hash no longer matches, so two concurrent changes cannot both win.
 	ChangeUserPassword(id int64, oldHash, newHash string) (bool, error)
+	// IncrementSkipCount adds one to a user's skip counter in a single statement,
+	// only while a password change is still pending and the counter is below
+	// limit. It reports false (and no error) when either condition no longer
+	// holds, and never rewrites any other column, so it cannot undo a
+	// concurrent password change.
+	IncrementSkipCount(id int64, limit int) (bool, error)
 	DeleteUser(id int64) error
 	SoftDeleteUser(id int64, deletedBy string) error
 	CountAdminUsers() (int, error)
@@ -849,6 +855,7 @@ func (NopStore) UpdateUser(_ User) error                   { return nil }
 func (NopStore) ChangeUserPassword(_ int64, _, _ string) (bool, error) {
 	return false, nil
 }
+func (NopStore) IncrementSkipCount(_ int64, _ int) (bool, error)    { return false, nil }
 func (NopStore) DeleteUser(_ int64) error                           { return nil }
 func (NopStore) SoftDeleteUser(_ int64, _ string) error             { return nil }
 func (NopStore) CountAdminUsers() (int, error)                      { return 0, nil }

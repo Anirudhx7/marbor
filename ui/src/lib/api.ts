@@ -80,8 +80,10 @@ export async function skipPasswordChangeThisSession(): Promise<void> {
   const r = await apiFetch('/skip-password-change', { method: 'POST' });
   if (!r.ok) {
     let message = 'Failed to skip password change';
+    let code: string | undefined;
     try {
       const body = await r.json();
+      if (typeof body?.error === 'string') code = body.error;
       if (r.status === 403 && body?.error === 'skip_limit_reached') {
         message = 'Skip limit reached - you must set a new password to continue.';
       } else if (body?.error) {
@@ -90,7 +92,9 @@ export async function skipPasswordChangeThisSession(): Promise<void> {
     } catch {
       // ignore parse failure, use default message
     }
-    throw new Error(message);
+    // The server error code rides on the Error so callers can branch on it
+    // (skip_limit_reached, no_password_change_pending) without matching text.
+    throw Object.assign(new Error(message), { code });
   }
   localStorage.setItem('sessionMustChangePassword', 'false');
 }

@@ -2451,6 +2451,22 @@ func (s *sqliteStore) ChangeUserPassword(id int64, oldHash, newHash string) (boo
 	return n == 1, nil
 }
 
+func (s *sqliteStore) IncrementSkipCount(id int64, limit int) (bool, error) {
+	res, err := s.db.Exec(
+		`UPDATE users SET skip_password_count=skip_password_count+1
+		 WHERE id=? AND must_change_password=1 AND skip_password_count<?`,
+		id, limit,
+	)
+	if err != nil {
+		return false, fmt.Errorf("store: IncrementSkipCount: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("store: IncrementSkipCount: %w", err)
+	}
+	return n == 1, nil
+}
+
 func (s *sqliteStore) DeleteUser(id int64) error {
 	_, err := s.db.Exec(`DELETE FROM users WHERE id=?`, id)
 	if err != nil {

@@ -32,6 +32,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"golang.org/x/crypto/bcrypt"
 
@@ -4792,35 +4793,53 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		log.Printf("admin: initial password for %q was changed from %s", user.Username, clientIP(r))
 	}
 
-	// Invalidate all sessions for this user and issue a fresh one.
-	_ = s.st.DeleteUserSessionsByUserID(user.ID)
+	// Invalidate all sessions for this user and issue a fresh one. The new
+	// password is already saved at this point, so a failure here is reported
+	// as such: the caller can simply sign in again with the new password.
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		writeServerError(w, r, err)
+		s.writePasswordChangedSessionError(w, r, user.Username, err)
+		return
+	}
+	if err := s.st.DeleteUserSessionsByUserID(user.ID); err != nil {
+		s.writePasswordChangedSessionError(w, r, user.Username, err)
 		return
 	}
 	newToken := hex.EncodeToString(b)
 	expiry := time.Now().Add(30 * 24 * time.Hour)
-	_ = s.st.CreateUserSession(store.UserSession{
+	if err := s.st.CreateUserSession(store.UserSession{
 		Token:              newToken,
 		UserID:             user.ID,
 		Role:               user.Role,
 		Username:           user.Username,
 		MustChangePassword: false,
 		ExpiresAt:          expiry,
-	})
+	}); err != nil {
+		s.writePasswordChangedSessionError(w, r, user.Username, err)
+		return
+	}
 	setSessionCookie(w, r, newToken, expiry)
 	json.NewEncoder(w).Encode(map[string]string{
 		"expires_at": expiry.Format(time.RFC3339),
 	})
 }
 
+// writePasswordChangedSessionError answers a change-password request whose
+// password was saved but whose follow-up session handling failed. The cause is
+// logged server-side only (never the password); the client gets a static
+// message telling it to sign in again.
+func (s *Server) writePasswordChangedSessionError(w http.ResponseWriter, r *http.Request, username string, err error) {
+	log.Printf("admin: password for %q was changed but the new session could not be issued (%s %s): %v", username, r.Method, r.URL.Path, err)
+	w.WriteHeader(http.StatusInternalServerError)
+	w.Write([]byte(`{"error":"password changed; please sign in again"}`))
+}
+
 // maxSkipPasswordChanges is the number of dismissals after which the
-// forced-password-change screen can no longer be skipped. The built-in admin
-// account and any admin still on the default password start at this cap, so
-// the first-login change is never skippable for them; the cap only matters
-// for other accounts (for example one holding an admin-issued temporary
-// password), which may dismiss the screen a few times.
+// forced-password-change screen can no longer be skipped. Only an admin on the
+// default password with a change pending (and accounts recovered from the
+// legacy credential) start at this cap, so the first-login change is never
+// skippable for them. After an admin reset, an account gets a fresh allowance
+// on its temporary password and may dismiss the screen a few times.
 const maxSkipPasswordChanges = 3
 
 // minPasswordLength is the shortest password the server accepts.
@@ -4835,8 +4854,8 @@ func newPasswordProblem(newPass, currentHash string) string {
 		return "new_password required"
 	case newPass == defaultAdminPassword:
 		return "the new password cannot be the default password"
-	case len(newPass) < minPasswordLength:
-		return "password must be at least 8 characters"
+	case utf8.RuneCountInString(newPass) < minPasswordLength:
+		return fmt.Sprintf("password must be at least %d characters", minPasswordLength)
 	case verifyPassword(currentHash, newPass):
 		return "the new password must differ from the current password"
 	}
@@ -4871,10 +4890,29 @@ func (s *Server) handleSkipPasswordChange(w http.ResponseWriter, r *http.Request
 		w.Write([]byte(`{"error":"skip_limit_reached","message":"password must be changed - skip limit reached"}`))
 		return
 	}
-	user.SkipPasswordCount++
-	if err := s.st.UpdateUser(user); err != nil {
+	// A single conditional UPDATE, so a password change that lands between the
+	// read above and this write is never overwritten.
+	bumped, err := s.st.IncrementSkipCount(user.ID, maxSkipPasswordChanges)
+	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(`{"error":"could not update user"}`))
+		return
+	}
+	if !bumped {
+		// Lost a race: re-read to report why, exactly as the checks above would.
+		fresh, err := s.st.GetUserByUsername(username)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(`{"error":"user not found"}`))
+			return
+		}
+		if !fresh.MustChangePassword {
+			w.WriteHeader(http.StatusConflict)
+			w.Write([]byte(`{"error":"no_password_change_pending"}`))
+			return
+		}
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(`{"error":"skip_limit_reached","message":"password must be changed - skip limit reached"}`))
 		return
 	}
 	_ = s.st.DeleteUserSessionsByUserID(user.ID)
@@ -4902,7 +4940,8 @@ func (s *Server) handleSkipPasswordChange(w http.ResponseWriter, r *http.Request
 // handleChangePasswordLegacy changes the single legacy admin credential for a
 // caller that has no session username (for example the demo session). Normal
 // session logins never reach it. It applies the same new-password rules as the
-// per-user path.
+// per-user path. It has no compare-and-swap because it guards a single legacy
+// credential (demo or empty-username callers only), not per-user accounts.
 func (s *Server) handleChangePasswordLegacy(w http.ResponseWriter, currentPass, newPass string) {
 	creds, err := s.st.GetAdminCreds()
 	if err != nil {
