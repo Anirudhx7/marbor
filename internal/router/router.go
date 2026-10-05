@@ -308,6 +308,8 @@ type NodeState struct {
 	// for admin API serialization; the marbor's own routing/placement fields
 	// above (VRAMTotalMB etc.) stay the single-value aggregate they always
 	// were, unaffected by this addition.
+	// AgentGPUCount is static identity (how many devices), not a live reading,
+	// so an oversize status reply leaves it in place.
 	AgentGPUCount int
 	AgentGPUs     []marboragent.GPUInfo
 	DriverVersion string
