@@ -53,6 +53,10 @@ type ctxKey string
 const ctxKeyUsername ctxKey = "username"
 const ctxKeyUserID ctxKey = "user_id"
 
+// ctxKeyMustChangePassword carries whether the calling session is a forced
+// password-change session. Absent means false.
+const ctxKeyMustChangePassword ctxKey = "must_change_password"
+
 // sessionCookieName is the httpOnly cookie holding the admin session token.
 // The token itself never reaches client-side JS or localStorage - only this
 // cookie carries it, and only the server reads it back.
@@ -1414,6 +1418,7 @@ func (s *Server) sessionAuth(next http.HandlerFunc) http.HandlerFunc {
 					}
 				}
 				r = r.WithContext(context.WithValue(r.Context(), ctxKeyUsername, session.Username))
+				r = r.WithContext(context.WithValue(r.Context(), ctxKeyMustChangePassword, session.MustChangePassword))
 				next(w, r)
 				return
 			}
@@ -1469,6 +1474,7 @@ func (s *Server) adminAuth(next http.HandlerFunc) http.HandlerFunc {
 		}
 		r = r.WithContext(context.WithValue(r.Context(), ctxKeyUsername, session.Username))
 		r = r.WithContext(context.WithValue(r.Context(), ctxKeyUserID, session.UserID))
+		r = r.WithContext(context.WithValue(r.Context(), ctxKeyMustChangePassword, session.MustChangePassword))
 		next(w, r)
 	}
 }
@@ -4748,8 +4754,12 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Skip current-password check on forced change (first-login flow).
-	if !user.MustChangePassword {
+	// The current-password check is waived only for a forced-change session
+	// (first login or an admin-issued temporary password) while the change is
+	// still pending. A normal session, including one minted by "Skip for now"
+	// while the stored flag is still set, must prove the current password.
+	forced, _ := r.Context().Value(ctxKeyMustChangePassword).(bool)
+	if !(forced && user.MustChangePassword) {
 		if req.CurrentPassword == "" {
 			w.WriteHeader(http.StatusBadRequest)
 			w.Write([]byte(`{"error":"current_password required"}`))
