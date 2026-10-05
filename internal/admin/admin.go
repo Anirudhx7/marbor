@@ -32,6 +32,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"golang.org/x/crypto/bcrypt"
 
@@ -179,7 +180,6 @@ type Server struct {
 	auditLog       *audit.Logger
 	st             store.Store // never nil; NopStore when persistence disabled
 	demoMode       bool        // when true, login accepts admin/admin without DB
-	boot           bootstrapState
 	loginLimiter   *loginRateLimiter
 	resetPwLimiter *loginRateLimiter // 3/hour per IP on admin-triggered password resets
 	logChan        chan store.RequestRecord
@@ -762,16 +762,6 @@ type keyResp struct {
 }
 
 func NewServer(r *router.Router, a *auth.Middleware, cfg config.Config, st ...store.Store) *Server {
-	var stImpl store.Store
-	if len(st) > 0 {
-		stImpl = st[0]
-	}
-	return NewServerWithBootstrap(r, a, cfg, stImpl, BootstrapOptions{})
-}
-
-// NewServerWithBootstrap is NewServer with the first-boot credential settings
-// (data directory for the generated password file, environment source).
-func NewServerWithBootstrap(r *router.Router, a *auth.Middleware, cfg config.Config, stIn store.Store, boot BootstrapOptions) *Server {
 	// Mirror config.Validate()'s default so servers constructed from a zero
 	// config (tests, embedded use) still value local tokens at a real rate.
 	refRate := cfg.Savings.ReferenceCostPer1K
@@ -779,11 +769,10 @@ func NewServerWithBootstrap(r *router.Router, a *auth.Middleware, cfg config.Con
 		refRate = 0.002
 	}
 	var stImpl store.Store = store.NopStore{}
-	if stIn != nil {
-		stImpl = stIn
+	if len(st) > 0 && st[0] != nil {
+		stImpl = st[0]
 	}
 	s := &Server{
-		boot:           newBootstrapState(boot),
 		router:         r,
 		auth:           a,
 		cfg:            cfg,
@@ -802,7 +791,6 @@ func NewServerWithBootstrap(r *router.Router, a *auth.Middleware, cfg config.Con
 		enrollCodes:    make(map[string]enrollmentCode),
 	}
 	s.ensureAdminUser()
-	s.scrubSuppliedSecret(boot.Getenv == nil)
 	s.logWg.Add(1)
 	go s.startAsyncLogger()
 	return s
@@ -4717,7 +4705,9 @@ func (s *Server) handleLoginForRole(w http.ResponseWriter, r *http.Request, requ
 		"role":                 user.Role,
 		"username":             user.Username,
 		"must_change_password": user.MustChangePassword,
-		"expires_at":           expiry.Format(time.RFC3339),
+		// Lets the UI hide the skip option for an account that cannot skip.
+		"can_skip_password_change": user.SkipPasswordCount < maxSkipPasswordChanges,
+		"expires_at":               expiry.Format(time.RFC3339),
 	})
 }
 
@@ -4771,21 +4761,14 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if req.NewPassword == "" {
+	if msg := newPasswordProblem(req.NewPassword, user.PasswordHash); msg != "" {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(`{"error":"new_password required"}`))
+		json.NewEncoder(w).Encode(map[string]string{"error": msg})
 		return
 	}
-	if msg := passwordPolicyMessage(req.NewPassword); msg != "" {
-		writeJSONError(w, http.StatusBadRequest, msg)
-		return
-	}
-	// The new password must differ from the one in force: on the forced first
-	// change that is the generated or supplied initial password.
-	if verifyPassword(user.PasswordHash, req.NewPassword) {
-		writeJSONError(w, http.StatusBadRequest, "the new password must be different from the current password")
-		return
-	}
+	// Computed before the update: was this the first change away from the
+	// public default credential?
+	firstChange := user.MustChangePassword && verifyPassword(user.PasswordHash, defaultAdminPassword)
 
 	newHash, err := hashPassword(req.NewPassword)
 	if err != nil {
@@ -4793,61 +4776,122 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"error":"could not hash password"}`))
 		return
 	}
-	user.PasswordHash = newHash
-	user.Salt = ""
-	user.MustChangePassword = false
-	user.SkipPasswordCount = 0
-	if err := s.st.UpdateUser(user); err != nil {
+	// The write only succeeds if the stored hash is still the one that was
+	// checked above, so two concurrent changes cannot both be accepted.
+	changed, err := s.st.ChangeUserPassword(user.ID, user.PasswordHash, newHash)
+	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(`{"error":"could not save credentials"}`))
 		return
 	}
-	s.onPasswordChanged(user.Username)
+	if !changed {
+		w.WriteHeader(http.StatusConflict)
+		w.Write([]byte(`{"error":"password was changed by another request, try again"}`))
+		return
+	}
+	if firstChange {
+		log.Printf("admin: initial password for %q was changed from %s", user.Username, clientIP(r))
+	}
 
-	// Invalidate all sessions for this user and issue a fresh one.
-	_ = s.st.DeleteUserSessionsByUserID(user.ID)
+	// Invalidate all sessions for this user and issue a fresh one. The new
+	// password is already saved at this point, so a failure here is reported
+	// as such: the caller can simply sign in again with the new password.
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		writeServerError(w, r, err)
+		s.writePasswordChangedSessionError(w, r, user.Username, err)
+		return
+	}
+	if err := s.st.DeleteUserSessionsByUserID(user.ID); err != nil {
+		s.writePasswordChangedSessionError(w, r, user.Username, err)
 		return
 	}
 	newToken := hex.EncodeToString(b)
 	expiry := time.Now().Add(30 * 24 * time.Hour)
-	_ = s.st.CreateUserSession(store.UserSession{
+	if err := s.st.CreateUserSession(store.UserSession{
 		Token:              newToken,
 		UserID:             user.ID,
 		Role:               user.Role,
 		Username:           user.Username,
 		MustChangePassword: false,
 		ExpiresAt:          expiry,
-	})
+	}); err != nil {
+		s.writePasswordChangedSessionError(w, r, user.Username, err)
+		return
+	}
 	setSessionCookie(w, r, newToken, expiry)
 	json.NewEncoder(w).Encode(map[string]string{
 		"expires_at": expiry.Format(time.RFC3339),
 	})
 }
 
-// maxSkipPasswordChanges caps how many times the forced-password-change
-// screen can be dismissed (Grafana-style "Skip for now") before the account
-// must actually change its password. Without a cap, an admin/admin install
-// could stay on the public default password indefinitely - the cap forces
-// resolution while still allowing a few "not right now" dismissals.
+// writePasswordChangedSessionError answers a change-password request whose
+// password was saved but whose follow-up session handling failed. The cause is
+// logged server-side only (never the password); the client gets a static
+// message telling it to sign in again.
+func (s *Server) writePasswordChangedSessionError(w http.ResponseWriter, r *http.Request, username string, err error) {
+	log.Printf("admin: password for %q was changed but the new session could not be issued (%s %s): %v", username, r.Method, r.URL.Path, err)
+	w.WriteHeader(http.StatusInternalServerError)
+	w.Write([]byte(`{"error":"password changed; please sign in again"}`))
+}
+
+// writeSkipSessionError answers a skip request whose dismissal was recorded but
+// whose follow-up session handling failed. Cause is logged server-side only; the
+// client gets a static message telling it to sign in again.
+func (s *Server) writeSkipSessionError(w http.ResponseWriter, r *http.Request, username string, err error) {
+	log.Printf("admin: skip for %q was recorded but the new session could not be issued (%s %s): %v", username, r.Method, r.URL.Path, err)
+	w.WriteHeader(http.StatusInternalServerError)
+	w.Write([]byte(`{"error":"skip recorded; please sign in again"}`))
+}
+
+// maxSkipPasswordChanges is the number of dismissals after which the
+// forced-password-change screen can no longer be skipped. Only an admin on the
+// default password with a change pending (and accounts recovered from the
+// legacy credential) start at this cap, so the first-login change is never
+// skippable for them. After an admin reset, an account gets a fresh allowance
+// on its temporary password and may dismiss the screen a few times.
 const maxSkipPasswordChanges = 3
 
-// handleSkipPasswordChange lets an admin dismiss the forced-password-change
-// screen for this session only, without touching the user's
-// MustChangePassword flag in the users table - so the next fresh login
+// minPasswordLength is the shortest password the server accepts.
+const minPasswordLength = 8
+
+// newPasswordProblem returns a static, user-facing message when newPass is not
+// acceptable as a new password, or "" when it is. currentHash is the stored
+// hash of the password being replaced.
+func newPasswordProblem(newPass, currentHash string) string {
+	switch {
+	case newPass == "":
+		return "new_password required"
+	case newPass == defaultAdminPassword:
+		return "the new password cannot be the default password"
+	case utf8.RuneCountInString(newPass) < minPasswordLength:
+		return fmt.Sprintf("password must be at least %d characters", minPasswordLength)
+	case verifyPassword(currentHash, newPass):
+		return "the new password must differ from the current password"
+	}
+	return ""
+}
+
+// handleSkipPasswordChange lets an account that is allowed to skip dismiss the
+// forced-password-change screen for this session only, without touching the
+// user's MustChangePassword flag in the users table - so the next fresh login
 // still forces the prompt again. Each dismissal increments a persistent
-// per-user counter; once maxSkipPasswordChanges is reached, skipping is
-// refused and the caller must actually change the password. Reachable only
-// via the same must-change-password bypass list as change-password/logout.
+// per-user counter; once maxSkipPasswordChanges is reached (always the case for
+// the default admin login), skipping is refused and the caller must actually
+// change the password. A call with no password change pending is rejected.
+// Reachable only via the same must-change-password bypass list as
+// change-password/logout.
 func (s *Server) handleSkipPasswordChange(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	username, _ := r.Context().Value(ctxKeyUsername).(string)
 	user, err := s.st.GetUserByUsername(username)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"error":"user not found"}`))
+		w.Write([]byte(`{"error":"could not load user"}`))
+		return
+	}
+	if !user.MustChangePassword {
+		w.WriteHeader(http.StatusConflict)
+		w.Write([]byte(`{"error":"no_password_change_pending"}`))
 		return
 	}
 	if user.SkipPasswordCount >= maxSkipPasswordChanges {
@@ -4855,39 +4899,65 @@ func (s *Server) handleSkipPasswordChange(w http.ResponseWriter, r *http.Request
 		w.Write([]byte(`{"error":"skip_limit_reached","message":"password must be changed - skip limit reached"}`))
 		return
 	}
-	user.SkipPasswordCount++
-	if err := s.st.UpdateUser(user); err != nil {
+	// A single conditional UPDATE, so a password change that lands between the
+	// read above and this write is never overwritten.
+	bumped, err := s.st.IncrementSkipCount(user.ID, maxSkipPasswordChanges)
+	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(`{"error":"could not update user"}`))
 		return
 	}
-	_ = s.st.DeleteUserSessionsByUserID(user.ID)
+	if !bumped {
+		// Lost a race: re-read to report why, exactly as the checks above would.
+		fresh, err := s.st.GetUserByUsername(username)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(`{"error":"could not load user"}`))
+			return
+		}
+		if !fresh.MustChangePassword {
+			w.WriteHeader(http.StatusConflict)
+			w.Write([]byte(`{"error":"no_password_change_pending"}`))
+			return
+		}
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(`{"error":"skip_limit_reached","message":"password must be changed - skip limit reached"}`))
+		return
+	}
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		writeServerError(w, r, err)
+		s.writeSkipSessionError(w, r, user.Username, err)
+		return
+	}
+	if err := s.st.DeleteUserSessionsByUserID(user.ID); err != nil {
+		s.writeSkipSessionError(w, r, user.Username, err)
 		return
 	}
 	newToken := hex.EncodeToString(b)
 	expiry := time.Now().Add(30 * 24 * time.Hour)
-	_ = s.st.CreateUserSession(store.UserSession{
+	if err := s.st.CreateUserSession(store.UserSession{
 		Token:              newToken,
 		UserID:             user.ID,
 		Role:               user.Role,
 		Username:           user.Username,
 		MustChangePassword: false,
 		ExpiresAt:          expiry,
-	})
+	}); err != nil {
+		s.writeSkipSessionError(w, r, user.Username, err)
+		return
+	}
 	setSessionCookie(w, r, newToken, expiry)
 	json.NewEncoder(w).Encode(map[string]string{
 		"expires_at": expiry.Format(time.RFC3339),
 	})
 }
 
+// handleChangePasswordLegacy changes the single legacy admin credential for a
+// caller that has no session username (for example the demo session). Normal
+// session logins never reach it. It applies the same new-password rules as the
+// per-user path. It has no compare-and-swap because it guards a single legacy
+// credential (demo or empty-username callers only), not per-user accounts.
 func (s *Server) handleChangePasswordLegacy(w http.ResponseWriter, currentPass, newPass string) {
-	if msg := passwordPolicyMessage(newPass); msg != "" {
-		writeJSONError(w, http.StatusBadRequest, msg)
-		return
-	}
 	creds, err := s.st.GetAdminCreds()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -4897,6 +4967,11 @@ func (s *Server) handleChangePasswordLegacy(w http.ResponseWriter, currentPass, 
 	if !verifyPassword(creds.PasswordHash, currentPass) {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(`{"error":"wrong current password"}`))
+		return
+	}
+	if msg := newPasswordProblem(newPass, creds.PasswordHash); msg != "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": msg})
 		return
 	}
 	newHash, err := hashPassword(newPass)
@@ -5084,7 +5159,6 @@ func (s *Server) handleApproveUser(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"error":"failed to update user"}`))
 		return
 	}
-	s.onUserAccessChanged()
 	s.logSystemChange(r, "approve_user", user.Username, fmt.Sprintf("APIKeyName: %s", req.APIKeyName))
 	w.Header().Set("Content-Type", "application/json")
 	type approveResp struct {
@@ -5123,7 +5197,6 @@ func (s *Server) handleSuspendUser(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"error":"failed to suspend user"}`))
 		return
 	}
-	s.onUserAccessChanged()
 	_ = s.st.DeleteUserSessionsByUserID(id)
 	if user.APIKeyName != "" {
 		if s.auth != nil {
@@ -5173,7 +5246,6 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"error":"failed to delete user"}`))
 		return
 	}
-	s.onUserAccessChanged()
 	if user.APIKeyName != "" {
 		if s.auth != nil {
 			s.auth.RevokeKey(user.APIKeyName)
@@ -5234,7 +5306,6 @@ func (s *Server) handlePatchUser(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"error":"failed to update user"}`))
 		return
 	}
-	s.onUserAccessChanged()
 	s.logSystemChange(r, "patch_user", user.Username, fmt.Sprintf("RoleChanged: %v, EmailChanged: %v", req.Role != "", req.Email != ""))
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(user)
@@ -5281,13 +5352,14 @@ func (s *Server) handleResetUserPassword(w http.ResponseWriter, r *http.Request)
 	user.PasswordHash = hash
 	user.Salt = ""
 	user.MustChangePassword = true
+	// A fresh temporary password starts with a fresh skip allowance.
+	user.SkipPasswordCount = 0
 	if err := s.st.UpdateUser(user); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(`{"error":"failed to reset password"}`))
 		return
 	}
-	s.onPasswordChanged(user.Username)
 	if s.resetPwLimiter != nil {
 		s.resetPwLimiter.recordSuccess(ip)
 	}
@@ -5337,11 +5409,97 @@ func generatePassword(length int) string {
 
 // defaultAdminPassword is the well-known first-run admin password (same
 // pattern as Grafana's default admin/admin). It is never logged or printed -
-// it's public knowledge. It is used only to recover a legacy admin whose old
-// hash can no longer log in, and to detect installs still on the factory
-// password; a fresh install never uses it. MustChangePassword forces a change
-// before the account can be used for anything beyond the change-password endpoint.
+// it's public knowledge, documented in the startup banner and README, and
+// MustChangePassword forces an unskippable change before the account can be
+// used for anything beyond the change-password endpoint.
 const defaultAdminPassword = "admin"
+
+// ensureAdminUser sets up the initial admin in the users table on first run.
+// If the legacy admin_credentials table has data, it migrates that row: a
+// bcrypt hash is carried over as is, while a hash the bcrypt-only login cannot
+// verify (the old iterated SHA-256 form) is replaced by the documented default
+// password with a forced change, keeping the legacy username, so the account is
+// recoverable instead of permanently locked out.
+// On a completely fresh install it creates admin/admin and forces a
+// password change on first login - no secret is generated or logged.
+func (s *Server) ensureAdminUser() {
+	if count, err := s.st.CountAdminUsers(); err == nil && count > 0 {
+		s.warnIfDefaultAdminCredential()
+		return // already set up
+	}
+	// Migrate from legacy single-admin table if present.
+	if has, _ := s.st.HasAdminCredentials(); has {
+		if uname, hash, salt, err := s.st.GetLegacyAdminCreds(); err == nil {
+			uname = strings.TrimSpace(uname)
+			if uname == "" {
+				uname = "admin"
+			}
+			migrated := store.User{
+				Username:           uname,
+				Role:               "admin",
+				Status:             "active",
+				PasswordHash:       hash,
+				Salt:               salt,
+				MustChangePassword: false,
+				CreatedAt:          time.Now(),
+			}
+			usable := isBcryptHash(hash)
+			if !usable {
+				// Never copy the unusable hash: it can never authenticate.
+				newHash, hashErr := hashPassword(defaultAdminPassword)
+				if hashErr != nil {
+					log.Printf("admin: could not hash recovery password for legacy admin %q: %v", uname, hashErr)
+					return
+				}
+				migrated.PasswordHash = newHash
+				migrated.Salt = ""
+				migrated.MustChangePassword = true
+				// The account sits on the public default password until the
+				// real administrator changes it, so skipping the forced change
+				// must not be possible: it would hand any host that can reach
+				// the dashboard a full-privilege session. The cap is part of
+				// the single insert, so a crash cannot leave it skippable.
+				migrated.SkipPasswordCount = maxSkipPasswordChanges
+			}
+			if _, err2 := s.st.CreateUser(migrated); err2 != nil {
+				// Do not fall through to the fresh-install branch: that would
+				// create a second admin on the default password and hide the
+				// real account from the operator.
+				log.Printf("admin: could not migrate legacy admin %q to the users table: %v", uname, err2)
+				return
+			}
+			if usable {
+				log.Printf("admin: migrated legacy credentials to users table (username: %q)", uname)
+			} else {
+				logLegacyAdminRecoveryWarning(uname)
+			}
+			return
+		}
+	}
+	// Fresh install: well-known default, forced and unskippable change on
+	// first login. The skip cap is part of the single insert, so a crash can
+	// never leave a skippable default account.
+	hash, hashErr := hashPassword(defaultAdminPassword)
+	if hashErr != nil {
+		log.Printf("admin: could not hash initial admin password: %v", hashErr)
+		return
+	}
+	if _, err := s.st.CreateUser(store.User{
+		Username:           "admin",
+		Role:               "admin",
+		Status:             "active",
+		PasswordHash:       hash,
+		Salt:               "",
+		MustChangePassword: true,
+		SkipPasswordCount:  maxSkipPasswordChanges,
+		CreatedAt:          time.Now(),
+	}); err != nil {
+		log.Printf("admin: could not persist admin user: %v", err)
+		return
+	}
+	log.Printf("admin: created default admin account (username: admin); password must be changed on first login")
+	logDefaultAdminCredentialWarning("admin", true)
+}
 
 // isBcryptHash reports whether hash is a well-formed bcrypt hash, i.e. one the
 // login path (bcrypt-only) can possibly verify.
@@ -5358,6 +5516,38 @@ func logLegacyAdminRecoveryWarning(username string) {
 		"The account was recreated with the documented default password and a forced password change. "+
 		"Log in as %q immediately and set a new password; until then anyone who can reach the dashboard (plaintext HTTP) can log in as this administrator.",
 		username, username)
+}
+
+// warnIfDefaultAdminCredential logs a startup warning when the built-in admin
+// account still accepts the well-known default password, so a restart before the
+// first-login change does not go quiet about it. An admin that is still on the
+// default password with the change pending is also raised to the skip cap, so
+// an install that predates the unskippable first login cannot be dismissed
+// past the forced change. Accounts without the pending change are untouched.
+func (s *Server) warnIfDefaultAdminCredential() {
+	users, err := s.st.ListUsers()
+	if err != nil {
+		return
+	}
+	for _, u := range users {
+		if u.Role != "admin" || u.Status != "active" || !verifyPassword(u.PasswordHash, defaultAdminPassword) {
+			continue
+		}
+		if u.MustChangePassword && u.SkipPasswordCount < maxSkipPasswordChanges {
+			u.SkipPasswordCount = maxSkipPasswordChanges
+			if err := s.st.UpdateUser(u); err != nil {
+				log.Printf("WARNING: could not make the first-login password change mandatory for %q: %v", u.Username, err)
+			} else {
+				// A session minted while skipping was still allowed would
+				// otherwise stay valid for its full lifetime, so end it.
+				if err := s.st.DeleteUserSessionsByUserID(u.ID); err != nil {
+					log.Printf("WARNING: could not end existing sessions for %q: %v", u.Username, err)
+				}
+				log.Printf("admin: first-login password change for %q can no longer be skipped", u.Username)
+			}
+		}
+		logDefaultAdminCredentialWarning(u.Username, u.MustChangePassword)
+	}
 }
 
 // logDefaultAdminCredentialWarning is the one place the default-credential
@@ -5771,23 +5961,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	s.backupMu.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
-	// Admin.BindAddress in cfg is the STORED value. When the environment forces
-	// a different bind for this process, the override is reported beside it as
-	// read-only status so clients can show it without echoing it back into the
-	// saved setting.
-	json.NewEncoder(w).Encode(settingsResponse{
-		Config:                   cfg,
-		AdminBindOverride:        s.boot.bindOverride != "",
-		AdminBindOverrideAddress: s.boot.bindOverride,
-	})
-}
-
-// settingsResponse is the GET /admin/settings body: the stored configuration
-// plus read-only status that is never accepted back on PUT.
-type settingsResponse struct {
-	config.Config
-	AdminBindOverride        bool   `json:"admin_bind_override"`
-	AdminBindOverrideAddress string `json:"admin_bind_override_address,omitempty"`
+	json.NewEncoder(w).Encode(cfg)
 }
 
 func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
@@ -6019,16 +6193,6 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	// Settings now persist to SQLite routing_rules/runtime_nodes/runtime_keys
 	// tables on each mutation. Scalar settings migration to the settings table
 	// completes in Phase 2. config.SaveConfig removed (audit findings #2, #10).
-	//
-	// The body stays empty unless the save needs a heads-up; then it is
-	// {"warnings":[...]} so existing clients that ignore the body are unaffected.
-	if warning := s.adminBindWarning(incoming.Admin.BindAddress); warning != "" {
-		log.Printf("WARNING: %s", warning)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string][]string{"warnings": {warning}})
-		return
-	}
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -9166,7 +9330,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	if status == "degraded" {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}
-	body := map[string]interface{}{
+	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":         status,
 		"version":        s.version,
 		"proxy_port":     proxyPort,
@@ -9175,19 +9339,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 			"total":   total,
 			"healthy": healthy,
 		},
-	}
-	// Only a direct loopback client (the host itself or an SSH tunnel to it,
-	// with no proxy header) is told about the first-boot credential; a remote
-	// or relayed caller sees no such field. The source names where the password
-	// is ("file", "supplied" or "default"), never the password.
-	if isLoopbackClient(r) {
-		pending := s.BootstrapPasswordPending()
-		body["bootstrap_password_pending"] = pending
-		if src := s.BootstrapPasswordSource(); pending && src != "" {
-			body["bootstrap_password_source"] = string(src)
-		}
-	}
-	json.NewEncoder(w).Encode(body)
+	})
 }
 
 func safeModelInfoSlice(slice []router.ModelInfo) []router.ModelInfo {

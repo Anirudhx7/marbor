@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Save, Check, Terminal, Shield, Activity, MonitorPlay, RefreshCw, KeyRound, DollarSign, Sliders, Lock, Container, Webhook, Network, Flame, Ruler, Plus, Trash2, Gauge, HardDrive, Download } from 'lucide-react';
 import { Modal } from '../components/Modal';
 import { defaultSettings, mockModelCatalog } from '../lib/mockData';
-import { fetchSettings, updateSettings, reloadFromStore, changePassword, passwordPolicyError, triggerBackupNow, fetchBackupList, restoreBackup, uploadBackup, fetchModels } from '../lib/api';
+import { fetchSettings, updateSettings, reloadFromStore, changePassword, triggerBackupNow, fetchBackupList, restoreBackup, uploadBackup, fetchModels } from '../lib/api';
 import type { Settings, BackupFileInfo } from '../types';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import { useCurrency, CURRENCY_PRESETS } from '../hooks/useCurrency';
@@ -132,9 +132,6 @@ export function SettingsPage() {
     if (settings !== lastLoadedSettingsRef.current) dirtyRef.current = true;
   }, [settings]);
   const [saved, setSaved] = useState(false);
-  // Warnings the server attached to an accepted save (for example a bind that
-  // would lock the operator out after a restart). Cleared by the next save.
-  const [saveWarnings, setSaveWarnings] = useState<string[]>([]);
   const [reloaded, setReloaded] = useState(false);
   const [reloading, setReloading] = useState(false);
   const [reloadConfirmOpen, setReloadConfirmOpen] = useState(false);
@@ -372,7 +369,6 @@ export function SettingsPage() {
   }, [demoMode, location.pathname]);
 
   const handleSave = async () => {
-    setSaveWarnings([]);
     if (settings.prometheusEnabled && !isValidBindAddress(settings.prometheusBindAddress)) {
       setError('Metrics bind address must be a valid host:port (e.g. 127.0.0.1:9090).');
       return;
@@ -440,7 +436,7 @@ export function SettingsPage() {
         },
       };
 
-      setSaveWarnings(await updateSettings(payload));
+      await updateSettings(payload);
       window.dispatchEvent(new Event('marbor-settings-change'));
       // Wake TimezoneProvider instantly so Activity/etc re-render without waiting
       // for the 15s poll (instant re-render is a required behavior here).
@@ -492,16 +488,10 @@ export function SettingsPage() {
       setCredError('Current password is required');
       return;
     }
-    const policyError = credNewPw ? passwordPolicyError(credNewPw) : null;
-    if (policyError) {
-      setCredError(policyError);
-      return;
-    }
     setCredSaving(true);
     setCredError(null);
     try {
       await changePassword(credCurrentPw, credNewPw || '');
-      setSaveWarnings([]);
       setCredSaved(true);
       setCredCurrentPw('');
       setCredNewPw('');
@@ -566,12 +556,6 @@ export function SettingsPage() {
       {error && (
         <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-sm font-medium">
           {error}
-        </div>
-      )}
-
-      {saveWarnings.length > 0 && (
-        <div role="alert" className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-700 dark:text-amber-300 text-sm font-medium space-y-1 break-words">
-          {saveWarnings.map((w, i) => <p key={i}>{w}</p>)}
         </div>
       )}
 

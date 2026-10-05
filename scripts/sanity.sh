@@ -49,6 +49,14 @@ fi
 # A root-level file's dirname is "." - go test needs that exact form, not "./.".
 packages=$(echo "$changed_files" | xargs -n1 dirname | sort -u | awk '{ if ($0 == ".") print "."; else print "./" $0 }')
 
+# A change that deletes a whole package leaves a changed path with no directory
+# behind it, and `go test` on it fails setup. Only test packages that still exist.
+packages=$(echo "$packages" | while read -r p; do [ -d "$p" ] && echo "$p"; done || true)
+if [ -z "$packages" ]; then
+  echo "Sanity: every changed package was deleted - skipping (nothing left to test)."
+  exit 0
+fi
+
 echo "Sanity: testing $(echo "$packages" | wc -l | tr -d ' ') changed package(s) (base: $base):"
 echo "$packages"
 

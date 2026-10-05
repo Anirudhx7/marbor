@@ -81,11 +81,7 @@ func buildRoot() *Command {
 				Long: "Authenticates once and saves the resulting session to a local file (0600,\n" +
 					"under the OS user config dir) so other commands can omit --username/\n" +
 					"--password afterward. Run without --username/--password in a terminal to\n" +
-					"be prompted interactively (password input is not echoed). A fresh install\n" +
-					"has no default password: its initial password is the one you supplied at\n" +
-					"first boot, or a generated one in the file initial-admin-password next to\n" +
-					"marbor.db, and \"marbor status\" reports while an initial password is still\n" +
-					"unchanged.",
+					"be prompted interactively (password input is not echoed).",
 				Run: func(ctx *RunCtx) int { return runLogin(ctx.Flags, ctx.Stdout, ctx.Stderr) },
 			},
 			{
@@ -1481,7 +1477,7 @@ func buildRoot() *Command {
 					},
 					{
 						Name:      "skip-password-change",
-						Short:     "dismiss the forced-password-change prompt for this session only",
+						Short:     "dismiss the forced-password-change prompt (not available for the default admin login)",
 						NeedsAuth: true,
 						Run:       func(ctx *RunCtx) int { return runUsersSkipPasswordChange(ctx.Flags, ctx.Stdout, ctx.Stderr) },
 					},

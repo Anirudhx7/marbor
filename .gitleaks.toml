@@ -22,6 +22,4 @@ regexes = [
   '''operator\.Xk9fA1b2C3d4''',
   '''admin\.Xk9fA1b2C3d4''',
   '''sekret-marbor-agent-token''',
-  '''Replacement-Passw0rd-9''',
-  '''ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789''',
 ]

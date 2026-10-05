@@ -57,14 +57,7 @@ sudo systemctl enable --now marbor
 sudo journalctl -u marbor -f
 ```
 
-First boot creates `/opt/marbor/marbor.db` blank-slate and a user `admin` with a random password, written once to `/opt/marbor/initial-admin-password` (mode 0600, owned by the service user; read it with `sudo cat`). There is no `admin`/`admin` on a fresh install. Log in, set a new password when prompted (the file is deleted after the change), then add your nodes/API keys from the dashboard - or run `install.sh`'s network-discovery wizard beforehand to seed nodes automatically.
-
-The unit above leaves the admin bind at its default (all interfaces), and while the initial password is unchanged the admin dashboard is **not started** on a non-loopback bind (the proxy and metrics keep running; the journal says why). Pick one:
-
-- **Choose the password up front (managed deployments).** Add `Environment=MARBOR_ADMIN_PASSWORD_FILE=/etc/marbor/admin-password` to the unit, with that file readable only by the `marbor` user. It is read only when the first administrator is created. `MARBOR_ADMIN_PASSWORD=<password>` also works but is weaker (visible to process listings). The password is never accepted as a command-line argument.
-- **Bind to loopback first.** Add `Environment=MARBOR_ADMIN_BIND_ADDRESS=127.0.0.1:8080`, restart, reach the dashboard through `ssh -L 8080:localhost:8080 <host>`, change the password, then remove the line and restart. The override applies to that process only and is never saved.
-
-Do not set `MARBOR_ALLOW_INSECURE_DEFAULT_ADMIN=true` to get around this on an exposed host: it serves the plaintext dashboard on a non-loopback address while an initial password is active, logs a warning on every boot, and writes an audit entry. See [SECURITY.md](../SECURITY.md#default-admin-login).
+First boot creates `/opt/marbor/marbor.db` blank-slate. Log in at `http://<host>:8080` as `admin` / `admin`. You are required to set a new password immediately and that first-login change cannot be skipped; until then the dashboard (plain HTTP) accepts the default login from anyone who can reach it, so do this right after install. Then add your nodes/API keys from the dashboard - or run `install.sh`'s network-discovery wizard beforehand to seed nodes automatically.
 
 ---
 
@@ -94,34 +87,7 @@ volumes:
   marbor-backups:
 ```
 
-The `marbor-data` volume mount is important: without it, nodes, API keys, quota counters, and every other setting reset on every container restart. First boot creates a blank-slate `marbor.db` inside the volume and a user `admin` with a random password (no `admin`/`admin`), written to `/data/initial-admin-password` in the volume.
-
-An unmodified container binds the admin dashboard to all interfaces, so while that initial password is unchanged the admin dashboard is refused: the proxy (`:11434`) and metrics keep running but `http://localhost:8080` does not answer, and `docker compose logs marbor` says why. The shipped compose file does not set a password or the insecure-admin escape hatch. Supported options:
-
-- **Docker secret (recommended).** Mount a secret holding the password and point `MARBOR_ADMIN_PASSWORD_FILE` at it (the variable carries a path, not the secret). It is read when the first administrator is created, so set it before the first start:
-
-  ```yaml
-  services:
-    marbor:
-      environment:
-        - MARBOR_ADMIN_PASSWORD_FILE=/run/secrets/marbor_admin_password
-      secrets:
-        - marbor_admin_password
-  secrets:
-    marbor_admin_password:
-      file: ./marbor_admin_password.txt   # keep this file out of version control
-  ```
-
-  The forced password change still applies at first login, and a supplied password counts as an initial password until it is changed. Because the container bind is all interfaces, the dashboard is still refused until that change is made: make the first login through the loopback option below. An operator who accepts serving the plaintext dashboard on a non-loopback address for that first login can set `MARBOR_ALLOW_INSECURE_DEFAULT_ADMIN=true` explicitly (it is logged and audited on every boot); nothing in this repo sets it for you.
-- **Generated file.** Read it once with `docker compose exec marbor cat /data/initial-admin-password`, then restart the container with `MARBOR_ADMIN_BIND_ADDRESS=127.0.0.1:8080` (an environment-only override, never saved) and log in from inside the container network namespace (`docker compose exec`, or `network_mode: host` on a trusted machine). Change the password, then remove the override.
-
-`MARBOR_ADMIN_PASSWORD=<password>` as a plain environment value is also accepted but is visible through `docker inspect`, so it is not used in any shipped file. marbor unsets it in its own process after reading it, which only stops child processes inheriting it: `/proc/<pid>/environ` and the container definition still carry it, so use a secrets file or remove the variable from the container definition after the first boot. A supplied password is never regenerated if the variable or secret later goes missing; restore the same value. See [SECURITY.md](../SECURITY.md#default-admin-login) for the full model.
-
-**Container health.** While the initial password is unchanged the admin dashboard is not served on the container's all-interfaces bind, so its `/health` route refuses connections. The shipped compose healthcheck therefore passes when either that route answers or the always-on proxy port (`11434`) accepts a TCP connection (no unauthenticated health route exists on the proxy or metrics listeners). If you write your own healthcheck, do not rely on `:8080/health` alone before the first password change.
-
-**Same-host reverse proxy.** A proxy on the same host that forwards to a loopback admin bind makes every remote caller look like loopback to marbor, so it exposes the admin login itself by design. The `/health` pending flag is only given to a direct loopback caller: it is hidden whenever the request carries `X-Forwarded-For`, `Forwarded`, `X-Real-IP`, `CF-Connecting-IP`, `True-Client-IP`, `X-Client-IP`, `Via`, `X-Forwarded-Host` or `Forwarded-Host`. Change the initial password before putting a public proxy in front of the admin listener.
-
-**The check runs at startup only.** The refusal is decided when marbor starts. Saving a non-loopback `admin_bind_address` while the initial password is still unchanged takes effect at the next restart, which then refuses the dashboard; the Settings page and `marbor settings set` warn about it when the save is accepted. Do not copy the demo compose environment (`MARBOR_DEMO_MODE=true`) into a production file: on a database that is still on `admin` / `admin` it lets a non-loopback bind serve that public login.
+The `marbor-data` volume mount is important: without it, nodes, API keys, quota counters, and every other setting reset on every container restart. First boot creates a blank-slate `marbor.db` inside the volume - configure it via the dashboard at `http://localhost:8080` (`admin`/`admin`, forced password change on first login).
 
 `marbor-backups` is a **separate** volume from `marbor-data`, on purpose: enable scheduled backups from the dashboard's Settings > Backup & Restore card (interval + retention count are configurable there), and a `docker volume rm marbor-data` or `docker-compose down -v` that wipes the live database still leaves every backup intact, and vice versa. For real protection against losing the whole Docker host (not just a container or a single volume), point `marbor-backups` at storage that lives elsewhere - a different physical disk, an NFS/SMB mount, or a bind mount synced off-host - rather than leaving it as a second volume on the same disk as `marbor-data`. A manual "Download Backup Now" button on the same Settings card streams an on-demand copy straight to your browser at any time. The same card also lists scheduled backups and can restore one with a click - which stops and restarts the marbor process, so it requires `restart: unless-stopped` (already set above) or an equivalent supervisor. See [`backup.md`](backup.md) for the full restore flow, the supervisor requirement, and the fully-manual fallback (not limited to files under `/backups` - any `.db` file works, on Docker or bare metal alike).
 

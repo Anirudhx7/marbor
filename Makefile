@@ -33,7 +33,7 @@ demo: demo-build ## Spin up demo stack (all 4 runtimes), send 20 real requests, 
 	@echo "Sending demo traffic (20 requests, runs in Docker - no local Go needed)..."
 	docker compose -f docker-compose.demo.yml run --rm demotraffic
 	@echo ""
-	@echo "Dashboard: http://localhost:8080  (demo stack only - credentials: admin / admin)"
+	@echo "Dashboard: http://localhost:8080  (credentials: admin / admin)"
 	@echo "Proxy:     http://localhost:11434 (key:   demo-api-key)"
 	@echo "Grafana:   http://localhost:3000"
 

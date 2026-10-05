@@ -221,6 +221,7 @@ const DEMO_SESSION: SessionData = {
   role: 'admin',
   username: 'demo',
   mustChangePassword: false,
+  canSkipPasswordChange: false,
 };
 
 function App() {

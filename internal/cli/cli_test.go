@@ -359,19 +359,3 @@ func TestRun_Models_Table(t *testing.T) {
 		t.Fatalf("expected the column header to say HEALTHY (not TOTAL) since the server field is a healthy-node count, got %q", stdout.String())
 	}
 }
-
-func TestRun_Status_ReportsPendingInitialPassword(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"status":"ok","version":"v0.25.0","proxy_port":11434,"uptime_seconds":1,"nodes":{"total":0,"healthy":0},"bootstrap_password_pending":true}`))
-	}))
-	defer srv.Close()
-
-	var stdout, stderr bytes.Buffer
-	if code := Run([]string{"status", "--server", srv.URL}, &stdout, &stderr); code != ExitOK {
-		t.Fatalf("expected exit %d, got %d (stderr: %s)", ExitOK, code, stderr.String())
-	}
-	if !strings.Contains(stdout.String(), "initial admin password is still unchanged") {
-		t.Fatalf("status output should flag the pending initial password, got %q", stdout.String())
-	}
-}

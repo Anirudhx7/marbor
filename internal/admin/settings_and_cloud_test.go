@@ -25,7 +25,7 @@ func newRealStoreTestServer(t *testing.T) *Server {
 	}
 	t.Cleanup(func() { st.Close() })
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{}, nil)
-	return NewServerWithBootstrap(r, nil, config.Config{}, st, testBootstrapOptions(t))
+	return NewServer(r, nil, config.Config{}, st)
 }
 
 // TestUpdateSettings_PersistsNewConfigYAMLEliminationFields verifies that the
