@@ -1399,6 +1399,43 @@ func (c *Client) PredictiveDecisions() ([]PredictiveDecision, error) {
 	return wrapper.Decisions, nil
 }
 
+// PrefixLocalityStats mirrors the shape returned by GET /admin/prefix-locality/stats.
+// HitRate is the server's own hit/(hit+miss) fraction, 0 when nothing was counted.
+type PrefixLocalityStats struct {
+	Enabled bool    `json:"enabled"`
+	Hits    uint64  `json:"hits"`
+	Misses  uint64  `json:"misses"`
+	HitRate float64 `json:"hit_rate"`
+}
+
+// PrefixLocalityStats calls GET /admin/prefix-locality/stats.
+func (c *Client) PrefixLocalityStats() (*PrefixLocalityStats, error) {
+	resp, err := c.doRequest(http.MethodGet, "/admin/prefix-locality/stats", true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	// Pointer fields so a body missing the counters is an error, not a
+	// fabricated all-zero reading.
+	var wire struct {
+		Enabled *bool    `json:"enabled"`
+		Hits    *uint64  `json:"hits"`
+		Misses  *uint64  `json:"misses"`
+		HitRate *float64 `json:"hit_rate"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&wire); err != nil {
+		return nil, serverErrorf("could not parse prefix-locality stats response: %v", err)
+	}
+	if wire.Enabled == nil || wire.Hits == nil || wire.Misses == nil {
+		return nil, serverErrorf("prefix-locality stats response is missing enabled, hits or misses")
+	}
+	stats := PrefixLocalityStats{Enabled: *wire.Enabled, Hits: *wire.Hits, Misses: *wire.Misses}
+	if wire.HitRate != nil {
+		stats.HitRate = *wire.HitRate
+	}
+	return &stats, nil
+}
+
 // RequestEntry mirrors handleRequests' response entry shape (GET
 // /admin/requests) - the dashboard's request log, newest first.
 type RequestEntry struct {
