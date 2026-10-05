@@ -154,6 +154,17 @@ var ErrReplicaMemberMissing = errors.New("replica member is no longer registered
 // lock is held at once. A concurrent resolver reads nodes one at a time, so it
 // can briefly see a mix of old and new declarations; the resolver fails closed
 // to unresolved on any mismatch, which is the safe direction.
+//
+// The read lock is deliberately held across persist: releasing it would let a
+// node be removed between the existence check and the write. The admin node
+// delete handler, node PATCH (including a URL change) and replica confirm all
+// take the admin node-patch mutex first, so they never overlap an apply. A
+// config reload (SyncNodes) does not take that mutex: if it removes or
+// replaces a node it waits on the router lock until the apply finishes, and
+// while it waits new routing readers wait behind it. The cost is one store
+// transaction, in which each lock wait is bounded by the store's busy timeout. A caller
+// outside the admin API must not rely on RemoveNode or UpdateNodeURL running
+// concurrently with an apply.
 func (r *Router) ApplyReplicaPeersBatch(assign map[string]store.ReplicaPeers, persist func(map[string]store.ReplicaPeers) error) error {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
