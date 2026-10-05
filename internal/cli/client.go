@@ -623,14 +623,6 @@ type HealthResp struct {
 		Total   int `json:"total"`
 		Healthy int `json:"healthy"`
 	} `json:"nodes"`
-	// BootstrapPasswordPending is true while the first-boot administrator
-	// still has its initial password. Absent on older servers (false).
-	BootstrapPasswordPending bool `json:"bootstrap_password_pending"`
-	// BootstrapPasswordSource says where that password comes from: "file" (a
-	// generated password in the data directory), "supplied" (configured by the
-	// operator) or "default" (the public default). Absent on older servers and
-	// whenever nothing is pending. Never a password.
-	BootstrapPasswordSource string `json:"bootstrap_password_source,omitempty"`
 }
 
 // Health calls GET /health (unauthenticated).
@@ -2481,20 +2473,13 @@ func (c *Client) Settings() (json.RawMessage, error) {
 // current config (handleUpdateSettings). Passing back a "***" mask value
 // for a secret field the caller didn't intend to change preserves the
 // real stored secret (server-side mask-preserve behavior).
-func (c *Client) UpdateSettings(body json.RawMessage) ([]string, error) {
+func (c *Client) UpdateSettings(body json.RawMessage) error {
 	resp, err := c.doRequestBody(http.MethodPut, "/admin/settings", body)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer resp.Body.Close()
-	// The body is empty on a plain save; it carries {"warnings":[...]} when the
-	// save is accepted but needs a heads-up (for example an admin bind that would
-	// lock the operator out after a restart). An unparseable body is no warning.
-	var out struct {
-		Warnings []string `json:"warnings"`
-	}
-	_ = json.NewDecoder(io.LimitReader(resp.Body, 1<<16)).Decode(&out)
-	return out.Warnings, nil
+	return nil
 }
 
 // PendingUserCount calls GET /admin/v1/users/pending-count.

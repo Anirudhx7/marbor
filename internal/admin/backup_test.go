@@ -77,7 +77,7 @@ func TestFreshInstallBackup_BlockedUntilPasswordStep(t *testing.T) {
 	s := newRealStoreTestServer(t)
 	handler := s.Handler()
 
-	loginBody, _ := json.Marshal(map[string]string{"username": "admin", "password": testBootstrapPassword})
+	loginBody, _ := json.Marshal(map[string]string{"username": "admin", "password": "admin"})
 	loginReq := httptest.NewRequest(http.MethodPost, "/admin/login", bytes.NewReader(loginBody))
 	loginReq.Header.Set("Content-Type", "application/json")
 	loginRec := httptest.NewRecorder()
@@ -130,35 +130,25 @@ func TestFreshInstallBackup_BlockedUntilPasswordStep(t *testing.T) {
 		t.Fatal("session must still report MustChangePassword after the blocked attempt")
 	}
 
-	// Step 2: the generated first-boot password cannot be skipped; the
-	// change itself must go through, then backup must succeed even on a
+	// Step 2: skip the password change, then backup must succeed even on a
 	// completely empty fleet (zero nodes, zero cloud providers).
 	skipReq := httptest.NewRequest(http.MethodPost, "/admin/skip-password-change", nil)
 	skipReq.AddCookie(sessionCookie)
 	skipRec := httptest.NewRecorder()
 	handler.ServeHTTP(skipRec, skipReq)
-	if skipRec.Code != http.StatusForbidden {
-		t.Fatalf("skip-password-change status = %d, want 403; body: %s", skipRec.Code, skipRec.Body.String())
+	if skipRec.Code != http.StatusOK {
+		t.Fatalf("skip-password-change status = %d, want 200; body: %s", skipRec.Code, skipRec.Body.String())
 	}
-	changeBody, _ := json.Marshal(map[string]string{"new_password": "A-Brand-New-Passw0rd!"})
-	changeReq := httptest.NewRequest(http.MethodPost, "/admin/change-password", bytes.NewReader(changeBody))
-	changeReq.Header.Set("Content-Type", "application/json")
-	changeReq.AddCookie(sessionCookie)
-	changeRec := httptest.NewRecorder()
-	handler.ServeHTTP(changeRec, changeReq)
-	if changeRec.Code != http.StatusOK {
-		t.Fatalf("change-password status = %d, want 200; body: %s", changeRec.Code, changeRec.Body.String())
-	}
-	// change-password rotates the session (old token deleted, new cookie
-	// issued) - the post-change request must carry the new cookie, not the old.
+	// skip-password-change rotates the session (old token deleted, new cookie
+	// issued) - the post-skip request must carry the new cookie, not the old.
 	var postSkipCookie *http.Cookie
-	for _, c := range changeRec.Result().Cookies() {
+	for _, c := range skipRec.Result().Cookies() {
 		if c.Name == sessionCookieName {
 			postSkipCookie = c
 		}
 	}
 	if postSkipCookie == nil {
-		t.Fatal("no session cookie set on change-password")
+		t.Fatal("no session cookie set on skip-password-change")
 	}
 
 	backupReq2 := httptest.NewRequest(http.MethodPost, "/admin/backup", nil)

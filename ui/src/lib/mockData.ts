@@ -1,5 +1,5 @@
 import { GPUNode, APIKey, Settings, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelCatalogResponse, ModelConfig, BenchmarkRun, SpillCounterRow, RoutingDecision, ModelAlias, QuantRecommendation } from '../types';
-import type { SystemInfo, ReplicaSuggestionsResponse, BootstrapPasswordStatus } from './api';
+import type { SystemInfo, ReplicaSuggestionsResponse } from './api';
 
 const GB = 1024;
 const GiB = 1024 * 1024 * 1024;
@@ -729,17 +729,6 @@ export const defaultSettings: Settings = {
   backupTargetDir: '/backups',
   backupLastAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
   backupLastError: '',
-};
-
-// Demo value for GET /health's bootstrap_password_pending and
-// bootstrap_password_source: the bundled demo stacks run on the public
-// admin/admin account, which counts as an initial password whose source is the
-// default login, so the login page notice says to sign in with the default
-// credentials. The static demo never renders the login page; the value exists
-// so the fetch has a demo path.
-export const mockBootstrapPasswordStatus: BootstrapPasswordStatus = {
-  pending: true,
-  source: 'default',
 };
 
 export const mockSavings: Savings = {

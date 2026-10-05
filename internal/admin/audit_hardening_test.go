@@ -11,7 +11,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/Anirudhx7/marbor/internal/auth"
 	"github.com/Anirudhx7/marbor/internal/config"
@@ -239,16 +238,6 @@ func TestDefaultAdminCredentialWarning(t *testing.T) {
 	t.Cleanup(func() { st.Close() })
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{}, nil)
 
-	// An install created before the generated first-boot password: the
-	// administrator is still on the public default.
-	seedHash, err := hashPassword(defaultAdminPassword)
-	if err != nil {
-		t.Fatalf("hashPassword: %v", err)
-	}
-	if _, err := st.CreateUser(store.User{Username: "admin", Role: "admin", Status: "active", PasswordHash: seedHash, MustChangePassword: true, CreatedAt: time.Now()}); err != nil {
-		t.Fatalf("CreateUser: %v", err)
-	}
-
 	buf := captureLog(t)
 	NewServer(r, nil, config.Config{}, st)
 	for _, want := range []string{`"admin" / "admin"`, "password change is required", "plaintext HTTP", "TLS"} {
@@ -310,6 +299,36 @@ func (failingCreateStore) CreateUser(store.User) (int64, error) {
 	return 0, errors.New("simulated create failure")
 }
 
+// failingSkipCapStore lets CreateUser succeed but fails the first UpdateUser
+// that follows it, which is the write that stores the skip cap during legacy
+// admin recovery. Later updates pass through untouched.
+type failingSkipCapStore struct {
+	store.Store
+	mu          sync.Mutex
+	failNextUpd bool
+}
+
+func (f *failingSkipCapStore) CreateUser(u store.User) (int64, error) {
+	id, err := f.Store.CreateUser(u)
+	if err == nil {
+		f.mu.Lock()
+		f.failNextUpd = true
+		f.mu.Unlock()
+	}
+	return id, err
+}
+
+func (f *failingSkipCapStore) UpdateUser(u store.User) error {
+	f.mu.Lock()
+	fail := f.failNextUpd
+	f.failNextUpd = false
+	f.mu.Unlock()
+	if fail {
+		return errors.New("simulated skip-cap write failure")
+	}
+	return f.Store.UpdateUser(u)
+}
+
 // logLeaksDefaultPassword reports whether logs print the default password as
 // a standalone value. The default password is the word admin, which also
 // appears inside account names and prose, so only the quoted and
@@ -323,12 +342,11 @@ func logLeaksDefaultPassword(logs string) bool {
 	return false
 }
 
-// The recovered account is created with its skip cap in one write, so a failed
-// create leaves no account at all (never one with a skippable forced change)
-// and no pending marker. Nothing may be left on the default password, no second
-// default admin may appear, and neither the default password nor the legacy
-// hash may be logged.
-func TestLegacyRecoveryCreateFailureLeavesNoAccountOrMarker(t *testing.T) {
+// If the skip-cap write fails after the recovered account was created, the
+// account is removed rather than left with a skippable forced change. Nothing
+// may be left on the default password, no second default admin may appear, and
+// neither the default password nor the legacy hash may be logged.
+func TestLegacyRecoverySkipCapWriteFailureRemovesAccount(t *testing.T) {
 	st, err := store.Open(filepath.Join(t.TempDir(), "legacy-skipcap.db"))
 	if err != nil {
 		t.Fatalf("store.Open: %v", err)
@@ -340,13 +358,10 @@ func TestLegacyRecoveryCreateFailureLeavesNoAccountOrMarker(t *testing.T) {
 	}
 	buf := captureLog(t)
 	r := router.New(config.RoutingConfig{}, []config.NodeConfig{}, nil)
-	s := NewServer(r, nil, config.Config{}, failingCreateStore{st})
+	s := NewServer(r, nil, config.Config{}, &failingSkipCapStore{Store: st})
 
 	if _, err := st.GetUserByUsername("legacyadmin"); err == nil {
-		t.Error("recovered user row exists after the create failed")
-	}
-	if m, err := s.loadMarker(); err != nil || m != nil {
-		t.Errorf("pending marker = %+v (err %v) after a failed create, want none", m, err)
+		t.Error("recovered user row still exists after the skip-cap write failed")
 	}
 	if _, err := st.GetUserByUsername("admin"); err == nil {
 		t.Error("a default admin user was created after the failed recovery")

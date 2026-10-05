@@ -2319,10 +2319,10 @@ func (s *sqliteStore) CreateUser(u User) (int64, error) {
 	result, err := s.db.Exec(
 		`INSERT INTO users
 			(username, email, password_hash, salt, role, status, api_key_name,
-			 must_change_password, skip_password_count, created_at, approved_at, approved_by)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			 must_change_password, created_at, approved_at, approved_by)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		u.Username, u.Email, u.PasswordHash, u.Salt, u.Role, u.Status, u.APIKeyName,
-		mcp, u.SkipPasswordCount, u.CreatedAt.Unix(), approvedAt, u.ApprovedBy,
+		mcp, u.CreatedAt.Unix(), approvedAt, u.ApprovedBy,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("store: CreateUser: %w", err)
