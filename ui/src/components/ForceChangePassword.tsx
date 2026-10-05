@@ -22,7 +22,7 @@ export function ForceChangePassword({ session, onSuccess }: Props) {
     e.preventDefault();
     if (!newPw) { setError('New password is required'); return; }
     if (newPw !== confirmPw) { setError('Passwords do not match'); return; }
-    if (newPw.length < 8) { setError('Password must be at least 8 characters'); return; }
+    if ([...newPw].length < 8) { setError('Password must be at least 8 characters'); return; }
     if (newPw === 'admin') { setError('The new password cannot be the default password'); return; }
     setSaving(true);
     setError(null);
@@ -56,14 +56,17 @@ export function ForceChangePassword({ session, onSuccess }: Props) {
     try {
       await skipPasswordChangeThisSession();
       onSuccess({ ...session, mustChangePassword: false, canSkipPasswordChange: false });
-    } catch (err: any) {
+    } catch (e) {
+      const err = e as Error & { code?: string };
       // Match on the structured code, not a copy of the server's message
       // string - and only ever render that server-provided message for the
       // one error on this explicit allowlist; any other error gets a
       // generic fallback instead of showing a raw backend error verbatim.
-      if (err?.code === 'skip_limit_reached') {
+      if (err.code === 'skip_limit_reached') {
         setError(err.message || 'Skip limit reached - you must set a new password to continue.');
         setSkipLimitReached(true);
+      } else if (err.code === 'no_password_change_pending') {
+        setError('This password change is no longer pending. Sign in again.');
       } else {
         setError('Failed to skip password change. Please try again.');
       }

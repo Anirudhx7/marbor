@@ -7,9 +7,14 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Anirudhx7/marbor/internal/store"
 )
+
+// barrierTimeout bounds the barrier wait so a failed test errors out instead of
+// hanging.
+const barrierTimeout = 10 * time.Second
 
 // barrierStore holds every ChangeUserPassword call until n callers have
 // arrived, so all concurrent requests have already passed authentication and
@@ -29,7 +34,11 @@ func (b *barrierStore) ChangeUserPassword(id int64, oldHash, newHash string) (bo
 		close(b.release)
 	}
 	b.mu.Unlock()
-	<-b.release
+	select {
+	case <-b.release:
+	case <-time.After(barrierTimeout):
+		return false, errors.New("barrier: not all concurrent callers arrived")
+	}
 	return b.Store.ChangeUserPassword(id, oldHash, newHash)
 }
 
@@ -88,7 +97,8 @@ func TestConcurrentForcedPasswordChangeHasOneWinner(t *testing.T) {
 
 // raceOnSkipStore performs a real password change just before the skip
 // counter is bumped, simulating a change that lands between the handler's
-// read and its write.
+// read and its write. This is a deterministic interleaving, not a real race:
+// the change always lands at the same point, so the test never flakes.
 type raceOnSkipStore struct {
 	store.Store
 	changeTo string
@@ -175,6 +185,30 @@ func TestChangePasswordSessionFailureReportsPasswordChanged(t *testing.T) {
 	}
 	if !strings.Contains(buf.String(), "disk is full") || strings.Contains(buf.String(), "Fresh-Pass-77") {
 		t.Errorf("log should hold the cause but never the password: %s", buf.String())
+	}
+}
+
+// If the new session cannot be stored after a skip was recorded, the caller gets
+// a static sign-in-again message and the cause stays in the server log only.
+func TestSkipSessionFailureReportsSignInAgain(t *testing.T) {
+	buf := captureLog(t)
+	var fs *failSessionStore
+	s := newTempPasswordServerWith(t, true, 0, func(st store.Store) store.Store {
+		fs = &failSessionStore{Store: st}
+		return fs
+	})
+	cookie := sessionCookieFrom(t, loginAs(t, s, "ops", "Temp-Pass-9"))
+	fs.armed.Store(true)
+
+	rec := doWithCookie(s, http.MethodPost, "/admin/skip-password-change", "", cookie)
+	if rec.Code != http.StatusInternalServerError || !strings.Contains(rec.Body.String(), "skip recorded; please sign in again") {
+		t.Fatalf("status = %d body = %s, want 500 with the sign-in-again message", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "disk is full") {
+		t.Error("internal error text reached the client")
+	}
+	if !strings.Contains(buf.String(), "disk is full") {
+		t.Errorf("log should hold the cause: %s", buf.String())
 	}
 }
 

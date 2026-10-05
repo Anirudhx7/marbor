@@ -4834,6 +4834,15 @@ func (s *Server) writePasswordChangedSessionError(w http.ResponseWriter, r *http
 	w.Write([]byte(`{"error":"password changed; please sign in again"}`))
 }
 
+// writeSkipSessionError answers a skip request whose dismissal was recorded but
+// whose follow-up session handling failed. Cause is logged server-side only; the
+// client gets a static message telling it to sign in again.
+func (s *Server) writeSkipSessionError(w http.ResponseWriter, r *http.Request, username string, err error) {
+	log.Printf("admin: skip for %q was recorded but the new session could not be issued (%s %s): %v", username, r.Method, r.URL.Path, err)
+	w.WriteHeader(http.StatusInternalServerError)
+	w.Write([]byte(`{"error":"skip recorded; please sign in again"}`))
+}
+
 // maxSkipPasswordChanges is the number of dismissals after which the
 // forced-password-change screen can no longer be skipped. Only an admin on the
 // default password with a change pending (and accounts recovered from the
@@ -4877,7 +4886,7 @@ func (s *Server) handleSkipPasswordChange(w http.ResponseWriter, r *http.Request
 	user, err := s.st.GetUserByUsername(username)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"error":"user not found"}`))
+		w.Write([]byte(`{"error":"could not load user"}`))
 		return
 	}
 	if !user.MustChangePassword {
@@ -4903,7 +4912,7 @@ func (s *Server) handleSkipPasswordChange(w http.ResponseWriter, r *http.Request
 		fresh, err := s.st.GetUserByUsername(username)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(`{"error":"user not found"}`))
+			w.Write([]byte(`{"error":"could not load user"}`))
 			return
 		}
 		if !fresh.MustChangePassword {
@@ -4915,22 +4924,28 @@ func (s *Server) handleSkipPasswordChange(w http.ResponseWriter, r *http.Request
 		w.Write([]byte(`{"error":"skip_limit_reached","message":"password must be changed - skip limit reached"}`))
 		return
 	}
-	_ = s.st.DeleteUserSessionsByUserID(user.ID)
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		writeServerError(w, r, err)
+		s.writeSkipSessionError(w, r, user.Username, err)
+		return
+	}
+	if err := s.st.DeleteUserSessionsByUserID(user.ID); err != nil {
+		s.writeSkipSessionError(w, r, user.Username, err)
 		return
 	}
 	newToken := hex.EncodeToString(b)
 	expiry := time.Now().Add(30 * 24 * time.Hour)
-	_ = s.st.CreateUserSession(store.UserSession{
+	if err := s.st.CreateUserSession(store.UserSession{
 		Token:              newToken,
 		UserID:             user.ID,
 		Role:               user.Role,
 		Username:           user.Username,
 		MustChangePassword: false,
 		ExpiresAt:          expiry,
-	})
+	}); err != nil {
+		s.writeSkipSessionError(w, r, user.Username, err)
+		return
+	}
 	setSessionCookie(w, r, newToken, expiry)
 	json.NewEncoder(w).Encode(map[string]string{
 		"expires_at": expiry.Format(time.RFC3339),
