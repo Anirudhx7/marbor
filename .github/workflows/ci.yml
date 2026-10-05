@@ -124,9 +124,10 @@ jobs:
         # Timeout guards against hangs in integration tests. internal/admin alone already
         # runs ~120s under -race (many NewServer-per-test integration tests), so 120s left
         # no real margin - bumped to 300s, then to 600s once the package total
-        # reached ~300s on CI and the limit killed a passing run mid-test. Still
+        # reached ~300s on CI and the limit killed a passing run mid-test, then to 900s
+        # when the suite again reached 600s on CI and failed a passing run. Still
         # tight enough to catch a real hang.
-        run: go test -race -timeout 600s ./...
+        run: go test -race -timeout 900s ./...
 
       - name: Docs drift check (man pages, docs/cli.md, README CLI table)
         # cmd/gen-docs derives docs/man/*.1, docs/cli.md, and README.md's CLI
