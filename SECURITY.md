@@ -51,11 +51,9 @@ marbor does not terminate TLS internally by design. TLS is delegated to a revers
 
 See [docs/PRODUCTION.md](docs/PRODUCTION.md) for a working nginx TLS configuration snippet.
 
-### Default admin login (current behavior and a proposed hardening)
+### Default admin login
 
-A fresh install creates the well-known `admin` / `admin` account and requires a password change at first login. marbor logs a startup warning on every boot while that password is still active, saying the default login is live, that a change is required, and that the dashboard is plaintext HTTP. It does **not** refuse a non-loopback admin bind and does **not** generate a random first-boot password. Until you change the password, any host that can reach port 8080 can take over the control plane: change it immediately, keep the dashboard on `127.0.0.1` or put TLS in front of it (reverse proxy) for any exposed deployment.
-
-*Proposed, not current behavior:* a generated first-boot password and/or refusing a non-loopback admin bind while the default credential is active. This changes the quickstart and the Docker/demo flow, so it is tracked as a separate item.
+A fresh install creates the well-known `admin` / `admin` account. You sign in as `admin` / `admin` and are required to set a new password immediately; that first-login change cannot be skipped, and the new password cannot be `admin` or the current password. Until it is changed, the server rejects every request from that session except changing the password and logging out. Until then, however, the dashboard (plain HTTP) accepts the default login from anyone who can reach port 8080, so do this right after install. marbor logs a startup warning on every boot while the default password is still active, and logs the address from which the first password change was made. For any exposed deployment, keep the dashboard on `127.0.0.1` or put TLS in front of it (reverse proxy).
 
 ### marbor-agent transport
 

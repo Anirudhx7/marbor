@@ -49,6 +49,7 @@ export function saveSession(data: LoginResponse): void {
   localStorage.setItem('sessionRole', data.role);
   localStorage.setItem('sessionUsername', data.username);
   localStorage.setItem('sessionMustChangePassword', String(data.must_change_password));
+  localStorage.setItem('sessionCanSkipPasswordChange', String(data.can_skip_password_change === true));
 }
 
 export function loadSession(): SessionData | null {
@@ -58,6 +59,7 @@ export function loadSession(): SessionData | null {
     role: localStorage.getItem('sessionRole') ?? 'admin',
     username,
     mustChangePassword: localStorage.getItem('sessionMustChangePassword') === 'true',
+    canSkipPasswordChange: localStorage.getItem('sessionCanSkipPasswordChange') === 'true',
   };
 }
 
@@ -65,6 +67,7 @@ export function clearSession(): void {
   localStorage.removeItem('sessionRole');
   localStorage.removeItem('sessionUsername');
   localStorage.removeItem('sessionMustChangePassword');
+  localStorage.removeItem('sessionCanSkipPasswordChange');
 }
 
 // Called from ForceChangePassword's "Skip for now" - reissues the session

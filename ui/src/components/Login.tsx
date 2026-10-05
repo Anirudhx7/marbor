@@ -30,6 +30,7 @@ export function Login({ onSuccess, mode = 'admin' }: LoginProps) {
         role: data.role,
         username: data.username,
         mustChangePassword: data.must_change_password,
+        canSkipPasswordChange: data.can_skip_password_change === true,
       });
     } catch (err) {
       // Branch on the failure: a bare catch{} previously showed

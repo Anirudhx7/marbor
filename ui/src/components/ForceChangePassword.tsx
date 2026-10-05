@@ -14,21 +14,26 @@ export function ForceChangePassword({ session, onSuccess }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [skipLimitReached, setSkipLimitReached] = useState(false);
+  // An account on the default password cannot skip; the server is the real
+  // gate, this only avoids offering a button that would fail.
+  const canSkip = session.canSkipPasswordChange && !skipLimitReached;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!newPw) { setError('New password is required'); return; }
     if (newPw !== confirmPw) { setError('Passwords do not match'); return; }
     if (newPw.length < 8) { setError('Password must be at least 8 characters'); return; }
+    if (newPw === 'admin') { setError('The new password cannot be the default password'); return; }
     setSaving(true);
     setError(null);
     try {
       await changePassword('', newPw);
-      const updated: SessionData = { ...session, mustChangePassword: false };
+      const updated: SessionData = { ...session, mustChangePassword: false, canSkipPasswordChange: false };
       saveSession({
         role: updated.role,
         username: updated.username,
         must_change_password: false,
+        can_skip_password_change: false,
         expires_at: '',
       });
       onSuccess(updated);
@@ -50,7 +55,7 @@ export function ForceChangePassword({ session, onSuccess }: Props) {
     setError(null);
     try {
       await skipPasswordChangeThisSession();
-      onSuccess({ ...session, mustChangePassword: false });
+      onSuccess({ ...session, mustChangePassword: false, canSkipPasswordChange: false });
     } catch (err: any) {
       // Match on the structured code, not a copy of the server's message
       // string - and only ever render that server-provided message for the
@@ -84,13 +89,15 @@ export function ForceChangePassword({ session, onSuccess }: Props) {
               <KeyRound className="w-5 h-5 text-amber-600 dark:text-amber-400" />
             </div>
             <div>
-              <h2 className="text-sm font-semibold text-foreground">Set new password</h2>
+              <h2 className="text-sm font-semibold text-foreground">{session.canSkipPasswordChange ? 'Set new password' : 'Set a new password'}</h2>
               <p className="text-xs text-muted-foreground">Required before continuing</p>
             </div>
           </div>
 
           <p className="text-xs text-muted-foreground mb-4">
-            Your account requires a password change. Choose a strong password to continue.
+            {session.canSkipPasswordChange
+              ? 'Your account requires a password change. Choose a strong password to continue.'
+              : 'This account is using the default password. Set a new password to continue.'}
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -130,7 +137,7 @@ export function ForceChangePassword({ session, onSuccess }: Props) {
               {saving ? 'Saving...' : 'Set Password & Continue'}
             </button>
 
-            {!skipLimitReached && (
+            {canSkip && (
               <button
                 type="button"
                 onClick={handleSkip}

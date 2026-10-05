@@ -57,7 +57,7 @@ sudo systemctl enable --now marbor
 sudo journalctl -u marbor -f
 ```
 
-First boot creates `/opt/marbor/marbor.db` blank-slate. Log in at `http://<host>:8080` with `admin`/`admin` (forced password change on first login) and add your nodes/API keys from the dashboard - or run `install.sh`'s network-discovery wizard beforehand to seed nodes automatically.
+First boot creates `/opt/marbor/marbor.db` blank-slate. Log in at `http://<host>:8080` as `admin` / `admin`. You are required to set a new password immediately and that first-login change cannot be skipped; until then the dashboard (plain HTTP) accepts the default login from anyone who can reach it, so do this right after install. Then add your nodes/API keys from the dashboard - or run `install.sh`'s network-discovery wizard beforehand to seed nodes automatically.
 
 ---
 

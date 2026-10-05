@@ -107,7 +107,7 @@ func printStartupBanner(cfg *config.Config, dbPath string) {
 	fmt.Printf("  Point your apps at:  http://localhost:%d\n", cfg.Proxy.Port)
 	fmt.Println()
 	fmt.Printf("  Dashboard:           %s\n", adminDashboardURL(cfg.Admin.BindAddress))
-	fmt.Println("  Dashboard login:     admin / admin (a password change is required at first login)")
+	fmt.Println("  Dashboard login:     admin / admin (you must set a new password at first login; it cannot be skipped)")
 	if !adminBindIsLoopback(cfg.Admin.BindAddress) {
 		fmt.Println("  WARNING:             while that default login is active, and since the dashboard is plaintext HTTP,")
 		fmt.Println("                       anyone who can reach it can take over the control plane.")
@@ -373,7 +373,7 @@ Server flags:
 	flag.CommandLine.SetOutput(w)
 	flag.PrintDefaults()
 	flag.CommandLine.SetOutput(prevOutput)
-	fmt.Fprint(w, "\nNo config file needed: start the binary, then add nodes/API keys/settings\nthrough the dashboard at http://localhost:8080 (admin/admin on first run).\n")
+	fmt.Fprint(w, "\nNo config file needed: start the binary, then add nodes/API keys/settings\nthrough the dashboard at http://localhost:8080 (sign in as admin/admin, then set a new password: the first-login change cannot be skipped).\n")
 }
 
 // printUnknownCommand reports tok (os.Args[1]) as an unrecognized top-level

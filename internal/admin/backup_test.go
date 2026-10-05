@@ -71,7 +71,7 @@ func TestHandleBackupNow_StreamsValidDatabase(t *testing.T) {
 // direct handler calls: a fresh install's forced password-change session
 // gets a plain 403 password_change_required on POST /admin/backup with no
 // 401/session-clear semantics anywhere in the response, and after the
-// password step (skip-password-change) the same call succeeds with a real
+// password change the same call succeeds with a real
 // SQLite backup even on a completely empty fleet.
 func TestFreshInstallBackup_BlockedUntilPasswordStep(t *testing.T) {
 	s := newRealStoreTestServer(t)
@@ -130,25 +130,27 @@ func TestFreshInstallBackup_BlockedUntilPasswordStep(t *testing.T) {
 		t.Fatal("session must still report MustChangePassword after the blocked attempt")
 	}
 
-	// Step 2: skip the password change, then backup must succeed even on a
-	// completely empty fleet (zero nodes, zero cloud providers).
-	skipReq := httptest.NewRequest(http.MethodPost, "/admin/skip-password-change", nil)
-	skipReq.AddCookie(sessionCookie)
-	skipRec := httptest.NewRecorder()
-	handler.ServeHTTP(skipRec, skipReq)
-	if skipRec.Code != http.StatusOK {
-		t.Fatalf("skip-password-change status = %d, want 200; body: %s", skipRec.Code, skipRec.Body.String())
+	// Step 2: change the password (the first login cannot be skipped), then
+	// backup must succeed even on a completely empty fleet (zero nodes, zero
+	// cloud providers).
+	chgReq := httptest.NewRequest(http.MethodPost, "/admin/change-password", strings.NewReader(`{"new_password":"Fresh-Pass-1"}`))
+	chgReq.Header.Set("Content-Type", "application/json")
+	chgReq.AddCookie(sessionCookie)
+	chgRec := httptest.NewRecorder()
+	handler.ServeHTTP(chgRec, chgReq)
+	if chgRec.Code != http.StatusOK {
+		t.Fatalf("change-password status = %d, want 200; body: %s", chgRec.Code, chgRec.Body.String())
 	}
-	// skip-password-change rotates the session (old token deleted, new cookie
-	// issued) - the post-skip request must carry the new cookie, not the old.
+	// change-password rotates the session (old token deleted, new cookie
+	// issued) - the post-change request must carry the new cookie, not the old.
 	var postSkipCookie *http.Cookie
-	for _, c := range skipRec.Result().Cookies() {
+	for _, c := range chgRec.Result().Cookies() {
 		if c.Name == sessionCookieName {
 			postSkipCookie = c
 		}
 	}
 	if postSkipCookie == nil {
-		t.Fatal("no session cookie set on skip-password-change")
+		t.Fatal("no session cookie set on change-password")
 	}
 
 	backupReq2 := httptest.NewRequest(http.MethodPost, "/admin/backup", nil)
@@ -156,10 +158,10 @@ func TestFreshInstallBackup_BlockedUntilPasswordStep(t *testing.T) {
 	backupRec2 := httptest.NewRecorder()
 	handler.ServeHTTP(backupRec2, backupReq2)
 	if backupRec2.Code != http.StatusOK {
-		t.Fatalf("post-skip backup status = %d, want 200; body: %s", backupRec2.Code, backupRec2.Body.String())
+		t.Fatalf("post-change backup status = %d, want 200; body: %s", backupRec2.Code, backupRec2.Body.String())
 	}
 	if !bytes.HasPrefix(backupRec2.Body.Bytes(), []byte("SQLite format 3")) {
-		t.Errorf("post-skip backup body does not start with the SQLite magic header")
+		t.Errorf("post-change backup body does not start with the SQLite magic header")
 	}
 }
 

@@ -4704,7 +4704,9 @@ func (s *Server) handleLoginForRole(w http.ResponseWriter, r *http.Request, requ
 		"role":                 user.Role,
 		"username":             user.Username,
 		"must_change_password": user.MustChangePassword,
-		"expires_at":           expiry.Format(time.RFC3339),
+		// Lets the UI hide the skip option for an account that cannot skip.
+		"can_skip_password_change": user.SkipPasswordCount < maxSkipPasswordChanges,
+		"expires_at":               expiry.Format(time.RFC3339),
 	})
 }
 
@@ -4763,6 +4765,19 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"error":"new_password required"}`))
 		return
 	}
+	if req.NewPassword == defaultAdminPassword {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":"the new password cannot be the default password"}`))
+		return
+	}
+	if verifyPassword(user.PasswordHash, req.NewPassword) {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":"the new password must differ from the current password"}`))
+		return
+	}
+	// Computed before the update: was this the first change away from the
+	// public default credential?
+	firstChange := user.MustChangePassword && verifyPassword(user.PasswordHash, defaultAdminPassword)
 
 	newHash, err := hashPassword(req.NewPassword)
 	if err != nil {
@@ -4778,6 +4793,9 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(`{"error":"could not save credentials"}`))
 		return
+	}
+	if firstChange {
+		log.Printf("admin: initial password for %q was changed from %s", user.Username, clientIP(r))
 	}
 
 	// Invalidate all sessions for this user and issue a fresh one.
@@ -5305,8 +5323,8 @@ func generatePassword(length int) string {
 // defaultAdminPassword is the well-known first-run admin password (same
 // pattern as Grafana's default admin/admin). It is never logged or printed -
 // it's public knowledge, documented in the startup banner and README, and
-// MustChangePassword forces a change (or an explicit skip) before the
-// account can be used for anything beyond the change-password endpoint.
+// MustChangePassword forces an unskippable change before the account can be
+// used for anything beyond the change-password endpoint.
 const defaultAdminPassword = "admin"
 
 // ensureAdminUser sets up the initial admin in the users table on first run.
@@ -5352,24 +5370,11 @@ func (s *Server) ensureAdminUser() {
 				// The account sits on the public default password until the
 				// real administrator changes it, so skipping the forced change
 				// must not be possible: it would hand any host that can reach
-				// the dashboard a full-privilege session.
-			}
-			id, err2 := s.st.CreateUser(migrated)
-			if err2 == nil && !usable {
-				// CreateUser does not persist the skip counter, so set it with
-				// an update. The account sits on the public default password
-				// until the real administrator changes it, so skipping the
-				// forced change must be impossible (it would hand any host that
-				// can reach the dashboard a full-privilege session). If the cap
-				// cannot be stored, remove the account rather than leave it
-				// skippable.
-				migrated.ID = id
+				// the dashboard a full-privilege session. The cap is part of
+				// the single insert, so a crash cannot leave it skippable.
 				migrated.SkipPasswordCount = maxSkipPasswordChanges
-				if err2 = s.st.UpdateUser(migrated); err2 != nil {
-					_ = s.st.DeleteUser(id)
-				}
 			}
-			if err2 != nil {
+			if _, err2 := s.st.CreateUser(migrated); err2 != nil {
 				// Do not fall through to the fresh-install branch: that would
 				// create a second admin on the default password and hide the
 				// real account from the operator.
@@ -5384,7 +5389,9 @@ func (s *Server) ensureAdminUser() {
 			return
 		}
 	}
-	// Fresh install: well-known default, force change on first login.
+	// Fresh install: well-known default, forced and unskippable change on
+	// first login. The skip cap is part of the single insert, so a crash can
+	// never leave a skippable default account.
 	hash, hashErr := hashPassword(defaultAdminPassword)
 	if hashErr != nil {
 		log.Printf("admin: could not hash initial admin password: %v", hashErr)
@@ -5397,6 +5404,7 @@ func (s *Server) ensureAdminUser() {
 		PasswordHash:       hash,
 		Salt:               "",
 		MustChangePassword: true,
+		SkipPasswordCount:  maxSkipPasswordChanges,
 		CreatedAt:          time.Now(),
 	}); err != nil {
 		log.Printf("admin: could not persist admin user: %v", err)
@@ -5425,16 +5433,28 @@ func logLegacyAdminRecoveryWarning(username string) {
 
 // warnIfDefaultAdminCredential logs a startup warning when the built-in admin
 // account still accepts the well-known default password, so a restart before the
-// first-login change does not go quiet about it.
+// first-login change does not go quiet about it. An admin that is still on the
+// default password with the change pending is also raised to the skip cap, so
+// an install that predates the unskippable first login cannot be dismissed
+// past the forced change. Accounts without the pending change are untouched.
 func (s *Server) warnIfDefaultAdminCredential() {
 	users, err := s.st.ListUsers()
 	if err != nil {
 		return
 	}
 	for _, u := range users {
-		if u.Role == "admin" && u.Status == "active" && verifyPassword(u.PasswordHash, defaultAdminPassword) {
-			logDefaultAdminCredentialWarning(u.Username, u.MustChangePassword)
+		if u.Role != "admin" || u.Status != "active" || !verifyPassword(u.PasswordHash, defaultAdminPassword) {
+			continue
 		}
+		if u.MustChangePassword && u.SkipPasswordCount < maxSkipPasswordChanges {
+			u.SkipPasswordCount = maxSkipPasswordChanges
+			if err := s.st.UpdateUser(u); err != nil {
+				log.Printf("WARNING: could not make the first-login password change mandatory for %q: %v", u.Username, err)
+			} else {
+				log.Printf("admin: first-login password change for %q can no longer be skipped", u.Username)
+			}
+		}
+		logDefaultAdminCredentialWarning(u.Username, u.MustChangePassword)
 	}
 }
 

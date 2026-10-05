@@ -67,8 +67,10 @@ sudo systemctl daemon-reload && sudo systemctl enable --now marbor
 ```
 
 First boot creates a blank-slate `/opt/marbor.db`. Log in at `http://<marbor>:8080`
-with `admin`/`admin` (forced password change on first login - do this
-immediately since the admin port is reachable from the SSH tunnel below) and,
+as `admin` / `admin`. You are required to set a new password immediately and
+that first-login change cannot be skipped; until then the dashboard (plain
+HTTP) accepts the default login from anyone who can reach it, so do this right
+after install. Then,
 from **Settings**, set `admin.bind_address` to `127.0.0.1:8080` (restart
 required). Add your GPU nodes from the **GPU Nodes** page and an API key from
 **API Keys** - or run `install.sh`'s network-discovery wizard against your VPC

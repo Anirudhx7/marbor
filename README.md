@@ -325,7 +325,7 @@ There is no config file. Marbor is DB-first: everything lives in `marbor.db` (SQ
 ```bash
 ./marbor              # or --db /path/to/marbor.db to pick the database location
 ```
-The binary opens (or creates) `marbor.db`, starts blank-slate, and prints a banner pointing you at the dashboard. Log in at `http://localhost:8080` with `admin` / `admin` - you'll be forced to set a new password on first login.
+The binary opens (or creates) `marbor.db`, starts blank-slate, and prints a banner pointing you at the dashboard. Sign in at `http://localhost:8080` as `admin` / `admin`. You are required to set a new password immediately, and that first-login change cannot be skipped. Until you do, the dashboard (plain HTTP) accepts the default login from anyone who can reach it, so do this right after install.
 
 **Secrets at rest:** cloud provider API keys, marbor-issued API keys, the LiteLLM key, HuggingFace token, and webhook secret are encrypted in `marbor.db` with AES-256-GCM. The encryption key lives in `marbor.db.key`, generated next to the database on first boot (0600 permissions) - back it up alongside `marbor.db`, since losing it means re-entering those secrets. To supply your own key instead (e.g. from a secrets manager), set `MARBOR_ENCRYPTION_KEY` to a base64-encoded 32-byte value before starting the binary; `marbor.db.key` is not created when this is set. Upgrading from an older version that stored these fields as plaintext encrypts them automatically on first boot - no manual migration step.
 
@@ -646,7 +646,7 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor users delete <id>` | delete a user (requires auth) |
 | `marbor users pending-count` | show the number of users awaiting approval (requires auth) |
 | `marbor users change-password` | change your own password (interactive, masked prompts) (requires auth) |
-| `marbor users skip-password-change` | dismiss the forced-password-change prompt for this session only (requires auth) |
+| `marbor users skip-password-change` | dismiss the forced-password-change prompt for this session only (requires auth; not available for the default `admin` / `admin` login, whose first change cannot be skipped) |
 | `marbor completion <shell>` | generate a shell completion script (bash, zsh, or fish) (hidden from `--help`; see `docs/cli.md`) |
 <!-- END CLI TABLE -->
 
