@@ -78,9 +78,7 @@ func TestChangePasswordAfterSkipRequiresCurrentPassword(t *testing.T) {
 			if login := loginAs(t, s, "ops", "Temp-Pass-9"); login.Code != http.StatusUnauthorized {
 				t.Errorf("login with the old password: status = %d, want 401", login.Code)
 			}
-			if after := mustUser(t, s, "ops"); after.PasswordHash == before.PasswordHash {
-				t.Error("a successful change must replace the stored password hash")
-			}
+			assertPasswordChanged(t, s, "ops", before)
 		})
 	}
 }
