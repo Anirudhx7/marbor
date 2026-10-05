@@ -666,7 +666,10 @@ func derefOr(p *float64, fallback float64) float64 {
 
 // clearAgentTelemetry resets every agent-derived field to its zero/unknown
 // value. Called whenever no agent is configured for a node's host, or the
-// most recent poll of a configured host's agent failed.
+// most recent poll of a configured host's agent failed. Temperature and power
+// clear only when the VRAM was agent-sourced (the agent was then their source);
+// applyOversizeTelemetry clears them whenever VRAM is not local nvidia-smi,
+// because it keeps the agent present and has no other source to defer to.
 func clearAgentTelemetry(n *NodeState) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -680,12 +683,10 @@ func clearAgentTelemetry(n *NodeState) {
 	n.AgentArchitecture = ""
 	n.AgentGPUVendor = ""
 	n.AgentGPUCount = 0
-	n.AgentGPUs = nil
 	n.DriverVersion = ""
 	n.CUDAVersion = ""
 	n.AgentRuntime = ""
 	n.RuntimeVersion = ""
-	n.RuntimeStatus = ""
 	n.AgentRuntimeID = ""
 	clearLiveReadings(n)
 	n.Hostname = ""
@@ -699,11 +700,6 @@ func clearAgentTelemetry(n *NodeState) {
 	n.DetectedSource = ""
 	n.DetectedCaps = nil
 	n.DetectedRuntime = ""
-	// CPUPercent (applyAgentTelemetry's success path, above) is the only
-	// writer of NodeState.CPUPercent anywhere in the codebase - reset it
-	// here too, or a disabled/unreachable agent's last-reported CPU reading
-	// would linger forever with nothing to mark it stale.
-	n.CPUPercent = 0
 	n.AgentTelemetryUnknown = false
 	if wasAgentSourced {
 		fallBackAgentVRAM(n)
@@ -765,7 +761,8 @@ func fallBackAgentVRAM(n *NodeState) {
 // declared figure only when it was agent-sourced. For an agent-sourced node
 // that leaves VRAM reading as unknown/zero, which may lower its placement
 // score until the report shrinks; the node stays routable. Disk and RAM clear
-// together so the disk-fit check reports "unknown" rather than a fabricated
+// together so the disk-fit check (pinned by internal/admin's
+// TestClassifyDiskFitOversizeClearedShapeIsUnknown) reports "unknown" rather than a fabricated
 // "insufficient". Last-known detected deployment shape is kept: it describes
 // how a runtime was launched, not its load, and replica detection already
 // stops because host evidence is dropped.

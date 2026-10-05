@@ -55,9 +55,10 @@ func TestPollAgentStatusBodyCapBoundary(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			logBuf := captureLog(t)
+			body := paddedStatusBody(tc.size) // exact boundary size, built once per case
 			r := pollOneAgent(t, func(w http.ResponseWriter, _ *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
-				_, _ = w.Write(paddedStatusBody(tc.size))
+				_, _ = w.Write(body)
 			}, 1)
 			present, failures := agentState(r)
 			if !present || failures != 0 {

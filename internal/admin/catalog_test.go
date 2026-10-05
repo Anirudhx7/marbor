@@ -827,3 +827,16 @@ func TestExtractQuantization(t *testing.T) {
 		}
 	}
 }
+
+// TestClassifyDiskFitOversizeClearedShapeIsUnknown pins how a node whose
+// agent is present but whose live disk readings were cleared (an oversize
+// status reply zeroes DiskFreeGB and DiskTotalGB) is read: "unknown", never a
+// fabricated "insufficient" from comparing a model size to zero free space.
+func TestClassifyDiskFitOversizeClearedShapeIsUnknown(t *testing.T) {
+	if !diskTelemetryUnknown(0, true) {
+		t.Error("diskTelemetryUnknown(0, true) = false, want true")
+	}
+	if got := classifyDiskFit(4096, 0, 0, true); got != "unknown" {
+		t.Errorf("classifyDiskFit with cleared disk and agent present = %q, want unknown", got)
+	}
+}

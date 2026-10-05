@@ -236,18 +236,21 @@ func TestOversizeAfterGoodPollClearsReadingsKeepsIdentity(t *testing.T) {
 	r.pollAgentHosts()
 
 	n.mu.RLock()
-	if n.VRAMSource != "agent" || n.Temperature == nil || n.UptimeSeconds == 0 || n.EngineRunningRequests == nil || len(n.AgentGPUs) == 0 {
-		t.Fatalf("good poll did not populate the node (src=%q)", n.VRAMSource)
-	}
-	if n.DiskFreeGB == 0 || n.DiskTotalGB == 0 || n.RAMUsedMB == 0 || n.RAMTotalMB == 0 || n.BootTime == 0 ||
-		n.FanPercent == nil || n.CPUPercent == 0 || n.PowerDrawW == 0 || n.AgentTelemetryUnknown ||
-		n.prevEnginePrefixCacheQueries == nil || n.prevEnginePrefixCacheHits == nil {
-		t.Fatalf("good poll left a precondition reading unset: disk=%v/%v ram=%d/%d boot=%d fan=%v cpu=%v power=%v unknown=%v",
-			n.DiskFreeGB, n.DiskTotalGB, n.RAMUsedMB, n.RAMTotalMB, n.BootTime, n.FanPercent, n.CPUPercent, n.PowerDrawW, n.AgentTelemetryUnknown)
-	}
+	src, popOK := n.VRAMSource, n.Temperature != nil && n.UptimeSeconds != 0 && n.EngineRunningRequests != nil && len(n.AgentGPUs) != 0
+	diskFree, diskTotal, ramUsed, ramTotal, boot := n.DiskFreeGB, n.DiskTotalGB, n.RAMUsedMB, n.RAMTotalMB, n.BootTime
+	fan, cpu, power, unknown := n.FanPercent, n.CPUPercent, n.PowerDrawW, n.AgentTelemetryUnknown
+	prevSet := n.prevEnginePrefixCacheQueries != nil && n.prevEnginePrefixCacheHits != nil
 	detected := n.DetectedParallelismType
 	gpuCount := n.AgentGPUCount
 	n.mu.RUnlock()
+	if src != "agent" || !popOK {
+		t.Fatalf("good poll did not populate the node (src=%q)", src)
+	}
+	if diskFree == 0 || diskTotal == 0 || ramUsed == 0 || ramTotal == 0 || boot == 0 ||
+		fan == nil || cpu == 0 || power == 0 || unknown || !prevSet {
+		t.Fatalf("good poll left a precondition reading unset: disk=%v/%v ram=%d/%d boot=%d fan=%v cpu=%v power=%v unknown=%v prev=%v",
+			diskFree, diskTotal, ramUsed, ramTotal, boot, fan, cpu, power, unknown, prevSet)
+	}
 
 	a.set(modeOversize)
 	r.pollAgentHosts()
@@ -292,7 +295,8 @@ func TestOversizeAfterGoodPollClearsReadingsKeepsIdentity(t *testing.T) {
 	}
 	// Disk/RAM clear as a unit. DiskTotalGB == 0 is what internal/admin's
 	// classifyDiskFit/diskTelemetryUnknown read as "unknown", so the disk-fit
-	// check never reports a fabricated "insufficient".
+	// check never reports a fabricated "insufficient"; internal/admin's
+	// TestClassifyDiskFitOversizeClearedShapeIsUnknown pins that reading.
 	if n.DiskFreeGB != 0 || n.DiskTotalGB != 0 || n.RAMUsedMB != 0 || n.RAMTotalMB != 0 {
 		t.Errorf("disk/ram not cleared together: %v %v %d %d", n.DiskFreeGB, n.DiskTotalGB, n.RAMUsedMB, n.RAMTotalMB)
 	}
@@ -320,14 +324,20 @@ func TestOversizeWithoutDeclaredVRAMFallsToNone(t *testing.T) {
 // was still the only source of its temperature and power, so those clear,
 // while the VRAM figure that is not the agent's stays.
 func TestOversizeNonAgentVRAMKeepsVRAMButClearsAgentTempAndPower(t *testing.T) {
-	for _, src := range []string{"declared", "api", "none"} {
+	// A "none" source means no VRAM figure at all, so its total/used are zero;
+	// the other sources carry a real figure that must survive untouched.
+	for _, tc := range []struct {
+		src         string
+		total, used int64
+	}{{"declared", 20000, 5000}, {"api", 20000, 5000}, {"none", 0, 0}} {
+		src := tc.src
 		t.Run(src, func(t *testing.T) {
 			a := newSwitchAgent(t)
 			r := oversizeRouter(t, a, "gpu-0")
 			n := r.nodes[0]
 			temp := 66.0
 			n.mu.Lock()
-			n.VRAMSource, n.VRAMTotalMB, n.VRAMUsedMB = src, 20000, 5000
+			n.VRAMSource, n.VRAMTotalMB, n.VRAMUsedMB = src, tc.total, tc.used
 			n.Temperature, n.PowerDrawW = &temp, 210
 			n.mu.Unlock()
 			a.set(modeOversize)
@@ -337,8 +347,8 @@ func TestOversizeNonAgentVRAMKeepsVRAMButClearsAgentTempAndPower(t *testing.T) {
 			if n.Temperature != nil || n.PowerDrawW != 0 {
 				t.Errorf("temp=%v power=%v, want cleared for %s-sourced node", n.Temperature, n.PowerDrawW, src)
 			}
-			if n.VRAMSource != src || n.VRAMTotalMB != 20000 || n.VRAMUsedMB != 5000 {
-				t.Errorf("VRAM src=%q total=%d used=%d, want %s/20000/5000 untouched", n.VRAMSource, n.VRAMTotalMB, n.VRAMUsedMB, src)
+			if n.VRAMSource != src || n.VRAMTotalMB != tc.total || n.VRAMUsedMB != tc.used {
+				t.Errorf("VRAM src=%q total=%d used=%d, want %s/%d/%d untouched", n.VRAMSource, n.VRAMTotalMB, n.VRAMUsedMB, src, tc.total, tc.used)
 			}
 		})
 	}
@@ -409,13 +419,29 @@ func TestOversizeAfterStaleRecoversAndFiresAgentUpOnce(t *testing.T) {
 			t.Fatalf("webhook events after 3s: %v, want one agent_down and one agent_up", got)
 		}
 	}
-	settle := time.After(200 * time.Millisecond)
-	for done := false; !done; {
+	// Barrier instead of a sleep: a sentinel fired after every poll above is
+	// delivered only once the earlier webhook goroutines have had their turn,
+	// so draining up to it (then whatever is already queued) sees any extra
+	// event deterministically.
+	r.fireWebhook("barrier", "gpu-0", "")
+	for barrier := false; !barrier; {
+		select {
+		case e := <-events:
+			if e == "barrier" {
+				barrier = true
+			} else {
+				got[e]++
+			}
+		case <-timeout:
+			t.Fatalf("barrier event not delivered within the deadline; events so far %v", got)
+		}
+	}
+	for drained := false; !drained; {
 		select {
 		case e := <-events:
 			got[e]++
-		case <-settle:
-			done = true
+		default:
+			drained = true
 		}
 	}
 	if got["agent_down"] != 1 || got["agent_up"] != 1 {
@@ -545,44 +571,78 @@ func TestOversizeDropsHostEvidenceButKeepsLogKey(t *testing.T) {
 	}
 }
 
+// TestOversizeAllNodesStillRoutableAndFitUnknown runs the same fleet twice:
+// with the agent's capacity known the fit check confirms a fit, with the
+// report oversize (capacity unknown everywhere) it does not, though routing
+// still works.
 func TestOversizeAllNodesStillRoutableAndFitUnknown(t *testing.T) {
-	a := newSwitchAgent(t)
-	r := oversizeRouter(t, a, "gpu-0", "gpu-1")
-	r.pollAgentHosts()
-	a.set(modeOversize)
-	r.pollAgentHosts()
-	for _, n := range r.nodes {
-		r.pollNode(n)
-	}
-	if picked, _, _ := r.Route("some-model", "", ""); picked == nil {
-		t.Error("router refused to route when every agent report is oversize")
-	}
-	if r.ModelFitsAnyHealthyNode("some-model", 0) {
-		t.Error("ModelFitsAnyHealthyNode = true with unknown capacity everywhere, want false (not confirmed to fit)")
+	for _, oversize := range []bool{false, true} {
+		name := "capacity known"
+		if oversize {
+			name = "oversize"
+		}
+		t.Run(name, func(t *testing.T) {
+			a := newSwitchAgent(t)
+			r := oversizeRouter(t, a, "gpu-0", "gpu-1")
+			if oversize {
+				a.set(modeOversize)
+			}
+			r.pollAgentHosts()
+			for _, n := range r.nodes {
+				r.pollNode(n)
+			}
+			n := r.nodes[0]
+			n.mu.RLock()
+			src, total := n.VRAMSource, n.VRAMTotalMB
+			n.mu.RUnlock()
+			if wantKnown := !oversize; (total > 0) != wantKnown || (wantKnown && src != "agent") {
+				t.Fatalf("setup: VRAM src=%q total=%d, oversize=%v", src, total, oversize)
+			}
+			if picked, _, _ := r.Route("some-model", "", ""); picked == nil {
+				t.Error("router refused to route")
+			}
+			if got := r.ModelFitsAnyHealthyNode("some-model", 0); got == oversize {
+				t.Errorf("ModelFitsAnyHealthyNode = %v with oversize=%v, want %v", got, oversize, !oversize)
+			}
+		})
 	}
 }
 
+// TestOversizeEvictForHeadroomZeroTotalIsSafe runs the same eviction twice:
+// with the agent-reported capacity known the resident model is evicted to make
+// room (so the loop is really exercised); with the reply oversize the capacity
+// is unknown and nothing is evicted.
 func TestOversizeEvictForHeadroomZeroTotalIsSafe(t *testing.T) {
-	a := newSwitchAgent(t)
-	r := oversizeRouter(t, a, "gpu-0")
-	r.pollAgentHosts()
-	a.set(modeOversize)
-	r.pollAgentHosts()
-	n := r.nodes[0]
-	n.mu.Lock()
-	n.LoadedModels = []ModelInfo{{Name: "resident", SizeVRAM: 4 << 30}}
-	total := n.VRAMTotalMB
-	n.mu.Unlock()
-	if total != 0 {
-		t.Fatalf("setup: VRAMTotalMB = %d, want 0 after an oversize reply", total)
+	cases := []struct {
+		name      string
+		oversize  bool
+		wantEvict int
+	}{
+		{"capacity known evicts", false, 1},
+		{"oversize unknown capacity does not", true, 0},
 	}
-	if got := r.EvictForHeadroom(context.Background(), "gpu-0", "m", 1<<30); got != 0 {
-		t.Errorf("EvictForHeadroom evicted %d with unknown capacity, want 0", got)
-	}
-	n.mu.RLock()
-	defer n.mu.RUnlock()
-	if len(n.LoadedModels) != 1 {
-		t.Errorf("loaded models = %d, want the resident model untouched", len(n.LoadedModels))
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			a := newSwitchAgent(t)
+			r := oversizeRouter(t, a, "gpu-0")
+			if tc.oversize {
+				a.set(modeOversize)
+			}
+			r.pollAgentHosts()
+			n := r.nodes[0]
+			n.mu.Lock()
+			n.LoadedModels = []ModelInfo{{Name: "resident", SizeVRAM: 4 << 30}}
+			total := n.VRAMTotalMB
+			n.mu.Unlock()
+			if (total > 0) == tc.oversize {
+				t.Fatalf("setup: VRAMTotalMB = %d with oversize=%v", total, tc.oversize)
+			}
+			// 15 GiB wanted on a 16000 MiB node holding 4 GiB: only evicting
+			// the resident model makes room.
+			if got := r.EvictForHeadroom(context.Background(), "gpu-0", "m", 15<<30); got != tc.wantEvict {
+				t.Errorf("EvictForHeadroom evicted %d, want %d", got, tc.wantEvict)
+			}
+		})
 	}
 }
 
@@ -591,7 +651,9 @@ func TestOversizeThenPollNodeAndConcurrentPollsAreStable(t *testing.T) {
 	r := oversizeRouter(t, a, "gpu-0", "gpu-1")
 	a.set(modeOversize)
 	var wg sync.WaitGroup
-	for i := 0; i < 4; i++ {
+	// Two rounds of one pollAgentHosts racing one pollNode already overlap the
+	// two writers under -race; more goroutines only add cost.
+	for i := 0; i < 2; i++ {
 		wg.Add(2)
 		go func() { defer wg.Done(); r.pollAgentHosts() }()
 		go func() { defer wg.Done(); r.pollNode(r.nodes[0]) }()
@@ -674,6 +736,12 @@ func TestApplyAgentTelemetryGPULessBranchFallsBackAgentVRAM(t *testing.T) {
 	n.VRAMTotalMBConfig = 24000
 	n.mu.Unlock()
 	r.pollAgentHosts()
+	n.mu.RLock()
+	before := n.VRAMSource
+	n.mu.RUnlock()
+	if before != "agent" {
+		t.Fatalf("setup: VRAMSource = %q before the GPU-less report, want agent", before)
+	}
 	tel := richTelemetry()
 	tel.GPU.Devices = nil
 	r.applyAgentTelemetry(n, tel)
@@ -750,31 +818,49 @@ func TestOversizeMixedFleetPlacement(t *testing.T) {
 
 // TestOversizeConfirmedReplicaGroupStaysResolved: a declared, mutually
 // confirmed replica group keeps its head/worker roles when the host evidence
-// is dropped on an oversize reply; roles come from the declarations, not from
-// the dropped evidence.
+// is dropped on an oversize reply. Roles cannot be influenced by evidence:
+// resolveSchedulingRoles reads only each node's declared ReplicaPeers
+// (placement.go, resolveSchedulingRolesAndHeads), and the evidence snapshot is
+// consumed solely by replica suggestions (replica_suggestions.go). So the
+// strongest real invariant is asserted instead: evidence really is present
+// before and gone after, the declarations are untouched, and the roles and the
+// routed head (gpu-1, deliberately not node 0) are identical.
 func TestOversizeConfirmedReplicaGroupStaysResolved(t *testing.T) {
 	a := newSwitchAgent(t)
 	r := oversizeRouter(t, a, "gpu-0", "gpu-1")
 	for _, n := range r.nodes {
 		n.mu.Lock()
-		n.ReplicaPeers = peers("gpu-0", "gpu-0", "gpu-1")
+		n.ReplicaPeers = peers("gpu-1", "gpu-0", "gpu-1")
 		n.mu.Unlock()
 	}
 	r.pollAgentHosts()
+	host := r.nodes[0].Host
+	if _, ok := r.snapshotHostEvidence()[host]; !ok {
+		t.Fatal("setup: host evidence should exist after a good poll")
+	}
 	before := r.resolveSchedulingRoles(r.Nodes())
-	if before["gpu-0"] != RoleHead || before["gpu-1"] != RoleWorker {
-		t.Fatalf("setup: roles %v, want gpu-0 head and gpu-1 worker", before)
+	if before["gpu-1"] != RoleHead || before["gpu-0"] != RoleWorker {
+		t.Fatalf("setup: roles %v, want gpu-1 head and gpu-0 worker", before)
 	}
 	a.set(modeOversize)
 	r.pollAgentHosts()
+	if _, ok := r.snapshotHostEvidence()[host]; ok {
+		t.Fatal("host evidence still present after an oversize poll")
+	}
 	after := r.resolveSchedulingRoles(r.Nodes())
-	if after["gpu-0"] != RoleHead || after["gpu-1"] != RoleWorker {
+	if after["gpu-1"] != RoleHead || after["gpu-0"] != RoleWorker {
 		t.Errorf("roles after oversize %v, want unchanged head/worker", after)
 	}
 	for _, n := range r.nodes {
+		n.mu.RLock()
+		rp := n.ReplicaPeers
+		n.mu.RUnlock()
+		if rp == nil || rp.Head != "gpu-1" || len(rp.Members) != 2 {
+			t.Errorf("node %s replica declaration changed: %+v", n.Name, rp)
+		}
 		r.pollNode(n)
 	}
-	if picked, _, _ := r.Route("some-model", "", ""); picked == nil || picked.Name != "gpu-0" {
-		t.Errorf("Route picked %v, want the group head gpu-0", picked)
+	if picked, _, _ := r.Route("some-model", "", ""); picked == nil || picked.Name != "gpu-1" {
+		t.Errorf("Route picked %v, want the group head gpu-1", picked)
 	}
 }
