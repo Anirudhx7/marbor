@@ -75,13 +75,21 @@ func TestChangePasswordAfterSkipRequiresCurrentPassword(t *testing.T) {
 			if login := loginAs(t, s, "ops", "Another-Pass-2"); login.Code != http.StatusOK {
 				t.Errorf("login with the new password: status = %d, want 200", login.Code)
 			}
+			if login := loginAs(t, s, "ops", "Temp-Pass-9"); login.Code != http.StatusUnauthorized {
+				t.Errorf("login with the old password: status = %d, want 401", login.Code)
+			}
+			if after := mustUser(t, s, "ops"); after.PasswordHash == before.PasswordHash {
+				t.Error("a successful change must replace the stored password hash")
+			}
 		})
 	}
 }
 
 // A session that claims a forced change while the stored flag is already clear
 // gets no waiver either. This guards the stored-flag half of the waiver
-// condition; it is a safety net, not a test that fails without that half.
+// condition (session flag set AND stored flag set): the session flag is true
+// here, so only the stored flag being clear withholds the waiver. It is a
+// safety net for that half of the conjunction.
 func TestStaleForcedSessionNeedsCurrentPassword(t *testing.T) {
 	s := newTempPasswordServer(t, false, 0)
 	u := mustUser(t, s, "ops")
@@ -147,7 +155,8 @@ func TestChangePasswordAfterSkipRequiresCurrentPasswordNonAdmin(t *testing.T) {
 		t.Fatalf("skip: status = %d body = %s", rec.Code, rec.Body.String())
 	}
 	cookie = sessionCookieFrom(t, rec)
-	if !mustUser(t, s, "viewer").MustChangePassword {
+	before := mustUser(t, s, "viewer")
+	if !before.MustChangePassword {
 		t.Fatal("precondition: stored must-change flag must still be set after the skip")
 	}
 
@@ -159,20 +168,39 @@ func TestChangePasswordAfterSkipRequiresCurrentPasswordNonAdmin(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("correct current password: status = %d body = %s, want 200", rec.Code, rec.Body.String())
 	}
+	assertPasswordChanged(t, s, "viewer", before)
+}
+
+// assertPasswordChanged checks the stored hash differs from before and the
+// stored must-change flag is cleared.
+func assertPasswordChanged(t *testing.T, s *Server, name string, before store.User) {
+	t.Helper()
+	after := mustUser(t, s, name)
+	if after.PasswordHash == before.PasswordHash {
+		t.Error("a successful change must replace the stored password hash")
+	}
+	if after.MustChangePassword {
+		t.Error("a successful change must clear the stored must-change flag")
+	}
 }
 
 // A forced non-admin session keeps the waiver on the session-only route.
 func TestForcedNonAdminSessionWaivesCurrentPassword(t *testing.T) {
 	s := newViewerServer(t)
 	cookie := viewerLogin(t, s)
+	before := mustUser(t, s, "viewer")
 	rec := doWithCookie(s, http.MethodPost, "/change-password", `{"new_password":"Another-Pass-2"}`, cookie)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("forced change without current password: status = %d body = %s, want 200", rec.Code, rec.Body.String())
 	}
+	assertPasswordChanged(t, s, "viewer", before)
 }
 
 // Fail closed: a request whose context carries a username but no forced-change
 // flag must prove the current password even though the stored flag is set.
+// This guards the session-flag half of the waiver condition (session flag set
+// AND stored flag set): the stored flag is true here, so only the missing
+// session flag withholds the waiver.
 func TestChangePasswordMissingContextFlagFailsClosed(t *testing.T) {
 	s := newTempPasswordServer(t, true, 0)
 	if !mustUser(t, s, "ops").MustChangePassword {
@@ -194,10 +222,12 @@ func TestForcedSessionStillWaivesCurrentPassword(t *testing.T) {
 		t.Run(rt.name, func(t *testing.T) {
 			s := newTempPasswordServer(t, true, 0)
 			cookie := sessionCookieFrom(t, loginAs(t, s, "ops", "Temp-Pass-9"))
+			before := mustUser(t, s, "ops")
 			rec := doWithCookie(s, http.MethodPost, path, `{"new_password":"Another-Pass-2"}`, cookie)
 			if rec.Code != http.StatusOK {
 				t.Fatalf("forced change without current password: status = %d body = %s, want 200", rec.Code, rec.Body.String())
 			}
+			assertPasswordChanged(t, s, "ops", before)
 		})
 	}
 }
