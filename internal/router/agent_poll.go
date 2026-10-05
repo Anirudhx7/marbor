@@ -32,7 +32,8 @@ import (
 // maxAgentStatusBodyBytes caps how much of one agent status response is read.
 // A real report is a few KiB to a few hundred KiB; the cap sits far above that
 // and exists so a runaway or hostile agent cannot make the router buffer an
-// unbounded body. Over the cap the poll counts as failed.
+// unbounded body. A reply over the cap is not read: the agent still counts as
+// reachable, but its telemetry is treated as unknown until a reply fits.
 const maxAgentStatusBodyBytes = 8 << 20
 
 // derivePrefixCacheHitRate converts this poll's raw cumulative prefix-cache
@@ -196,10 +197,19 @@ func (r *Router) pollAgentHost(host string, cfg MarborAgentConfig, members []*No
 			log.Printf("router: reading agent status from host %q failed: %v; treating the agent as unreachable", host, err)
 		}
 	} else if len(body) > maxAgentStatusBodyBytes {
+		// The agent answered, so it is reachable; only its telemetry is
+		// unknown. Retained host evidence is dropped (it can no longer be
+		// refreshed) without resetting the log rate limit.
 		if r.allowHostLog("oversize:" + host) {
-			log.Printf("router: agent status response exceeds %d bytes on host %q; treating the agent as unreachable", maxAgentStatusBodyBytes, host)
+			log.Printf("router: agent status response exceeds %d bytes on host %q; its telemetry is unknown until it shrinks; the node stays reachable and, for agent-sourced nodes, placement treats its VRAM as unknown", maxAgentStatusBodyBytes, host)
 		}
-		err = errors.New("agent status response too large")
+		r.dropHostEvidenceOnly(host)
+		for _, n := range members {
+			r.setAgentTLSMismatch(n, false)
+			applyOversizeTelemetry(n)
+			r.agentReachable(n.Name)
+		}
+		return
 	}
 	var t marboragent.Telemetry
 	if err == nil {
@@ -272,6 +282,7 @@ func (r *Router) applyAgentTelemetry(n *NodeState, t marboragent.Telemetry) {
 	n.AgentFailures = 0
 	n.AgentPresent = true
 	n.AgentStale = false
+	n.AgentTelemetryUnknown = false
 	n.AgentNodeID = t.Agent.NodeID
 	n.AgentVersion = t.Agent.Version
 	n.AgentCapabilities = append([]string(nil), t.Capabilities...)
@@ -362,14 +373,7 @@ func (r *Router) applyAgentTelemetry(n *NodeState, t marboragent.Telemetry) {
 				n.Temperature = nil
 				n.PowerDrawW = 0
 				if n.VRAMSource == "agent" {
-					if n.VRAMTotalMBConfig > 0 {
-						n.VRAMTotalMB = n.VRAMTotalMBConfig
-						n.VRAMSource = "declared"
-					} else {
-						n.VRAMTotalMB = 0
-						n.VRAMSource = "none"
-					}
-					n.VRAMUsedMB = 0
+					fallBackAgentVRAM(n)
 				}
 			}
 		}
@@ -699,17 +703,65 @@ func clearAgentTelemetry(n *NodeState) {
 	// here too, or a disabled/unreachable agent's last-reported CPU reading
 	// would linger forever with nothing to mark it stale.
 	n.CPUPercent = 0
+	n.AgentTelemetryUnknown = false
 	if wasAgentSourced {
-		// Fall back to whatever the node's declared/API-derived VRAM would
-		// otherwise be, same defaulting pollNode's non-local branch uses.
-		if n.VRAMTotalMBConfig > 0 {
-			n.VRAMTotalMB = n.VRAMTotalMBConfig
-			n.VRAMSource = "declared"
-		} else {
-			n.VRAMTotalMB = 0
-			n.VRAMSource = "none"
-		}
-		n.VRAMUsedMB = 0
+		fallBackAgentVRAM(n)
+		n.Temperature = nil
+		n.PowerDrawW = 0
+	}
+}
+
+// fallBackAgentVRAM drops an agent-sourced VRAM reading back to whatever the
+// node's declared figure would otherwise be (or none), same defaulting
+// pollNode's non-local branch uses. The caller holds n.mu and has already
+// checked that the VRAM was agent-sourced.
+func fallBackAgentVRAM(n *NodeState) {
+	if n.VRAMTotalMBConfig > 0 {
+		n.VRAMTotalMB = n.VRAMTotalMBConfig
+		n.VRAMSource = "declared"
+	} else {
+		n.VRAMTotalMB = 0
+		n.VRAMSource = "none"
+	}
+	n.VRAMUsedMB = 0
+}
+
+// applyOversizeTelemetry records that the agent answered but its status reply
+// was too large to read. The agent is reachable, so presence and identity
+// stay and the failure counter resets; every live reading is forgotten
+// because none of it can be trusted, and AgentTelemetryUnknown says so
+// explicitly. VRAM, temperature and power are cleared only when they came
+// from the agent (local or API-sourced readings are not the agent's to
+// forget). Disk and RAM clear together so the disk-fit check reports
+// "unknown" rather than a fabricated "insufficient". Last-known detected
+// deployment shape is kept: it describes how a runtime was launched, not its
+// load, and replica detection already stops because host evidence is dropped.
+func applyOversizeTelemetry(n *NodeState) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	wasAgentSourced := n.VRAMSource == "agent"
+	n.AgentFailures = 0
+	n.AgentPresent = true
+	n.AgentStale = false
+	n.AgentTelemetryUnknown = true
+	n.FanPercent = nil
+	n.CPUPercent = 0
+	n.AgentGPUs = nil
+	n.RuntimeStatus = ""
+	n.EngineRunningRequests = nil
+	n.EngineWaitingRequests = nil
+	n.EngineKVCacheUsagePercent = nil
+	n.EnginePrefixCacheHitRatePercent = nil
+	n.prevEnginePrefixCacheQueries = nil
+	n.prevEnginePrefixCacheHits = nil
+	n.DiskFreeGB = 0
+	n.DiskTotalGB = 0
+	n.RAMUsedMB = 0
+	n.RAMTotalMB = 0
+	n.UptimeSeconds = 0
+	n.BootTime = 0
+	if wasAgentSourced {
+		fallBackAgentVRAM(n)
 		n.Temperature = nil
 		n.PowerDrawW = 0
 	}

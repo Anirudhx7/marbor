@@ -47,10 +47,10 @@ func TestPollAgentStatusBodyCapBoundary(t *testing.T) {
 	cases := []struct {
 		name        string
 		size        int
-		wantPresent bool
+		wantUnknown bool
 	}{
-		{"exactly the cap is accepted", maxAgentStatusBodyBytes, true},
-		{"one byte over the cap is rejected", maxAgentStatusBodyBytes + 1, false},
+		{"exactly the cap is accepted", maxAgentStatusBodyBytes, false},
+		{"one byte over the cap is unknown, not unreachable", maxAgentStatusBodyBytes + 1, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -60,18 +60,21 @@ func TestPollAgentStatusBodyCapBoundary(t *testing.T) {
 				_, _ = w.Write(paddedStatusBody(tc.size))
 			}, 1)
 			present, failures := agentState(r)
-			if present != tc.wantPresent {
-				t.Errorf("AgentPresent = %v, want %v", present, tc.wantPresent)
+			if !present || failures != 0 {
+				t.Errorf("AgentPresent=%v AgentFailures=%d, want true/0 (the agent answered)", present, failures)
 			}
-			if !tc.wantPresent && failures != 1 {
-				t.Errorf("AgentFailures = %d, want 1", failures)
+			r.nodes[0].mu.RLock()
+			stale, unknown := r.nodes[0].AgentStale, r.nodes[0].AgentTelemetryUnknown
+			r.nodes[0].mu.RUnlock()
+			if stale {
+				t.Error("AgentStale = true, want false")
+			}
+			if unknown != tc.wantUnknown {
+				t.Errorf("AgentTelemetryUnknown = %v, want %v", unknown, tc.wantUnknown)
 			}
 			oversizeLogged := strings.Contains(logBuf.String(), "status response exceeds")
-			if tc.wantPresent && oversizeLogged {
-				t.Errorf("size %d is within the cap but an oversize rejection was logged\n%s", tc.size, logBuf.String())
-			}
-			if !tc.wantPresent && !oversizeLogged {
-				t.Errorf("size %d is over the cap but no oversize rejection was logged\n%s", tc.size, logBuf.String())
+			if oversizeLogged != tc.wantUnknown {
+				t.Errorf("size %d: oversize logged = %v, want %v\n%s", tc.size, oversizeLogged, tc.wantUnknown, logBuf.String())
 			}
 		})
 	}

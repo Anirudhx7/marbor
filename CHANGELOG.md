@@ -21,6 +21,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **`marbor prefix-locality stats` no longer shows a made-up `hit_rate=0.0%` when the server omits the rate but reports real hit and miss counts.** The rate is now worked out from the counts.
 - **The startup banner no longer prints the exposed-dashboard warning when the admin bind address is `localhost`.** Only the loopback classification changed; who can reach the dashboard and the first-login rules are untouched.
 - **Changing your password now requires the current password unless the session is a forced-change session (first login or an admin-issued temporary password).** Previously an account that had used "Skip for now" on the forced password change could set a new password from its normal session without entering the current one; now the current password is required there. The forced-change session itself is unchanged.
+- **An agent status reply over 8 MiB no longer takes the node out of rotation.** The router used to treat it as agent unreachable; now the node stays reachable and routable, its live VRAM, temperature, power, queue and runtime readings show as unknown until the report shrinks, and replica detection ignores that host meanwhile (logged at most every 10 minutes per host). A reply that cannot be read or is not valid JSON still counts as agent unreachable. This supersedes the 0.24.0 behavior where an oversize reply counted as a failed poll.
 
 ## [0.24.1] - 2026-10-05
 

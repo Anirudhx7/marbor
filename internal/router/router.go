@@ -260,11 +260,16 @@ type NodeState struct {
 	// distinguishable from "deliberately agentless" - that difference is the
 	// whole point; the dashboard's fleet-health strip alerts on the former
 	// only, never nagging fleets that chose to run without agents.
-	AgentStale   bool
-	AgentVersion string
-	FanPercent   *float64
-	RAMUsedMB    int64
-	DiskFreeGB   float64
+	AgentStale bool
+	// AgentTelemetryUnknown is true only while the agent answers but its
+	// status reply exceeded the size cap, so none of its live readings can be
+	// trusted. The node stays reachable and routable; cleared on the next
+	// normal reply. Guarded by mu.
+	AgentTelemetryUnknown bool
+	AgentVersion          string
+	FanPercent            *float64
+	RAMUsedMB             int64
+	DiskFreeGB            float64
 	// AgentCapabilities lists what the polled agent build actually supports
 	// (e.g. "status", "models.pull") - the marbor/UI must gate any
 	// agent-dependent feature on this list rather than assuming every agent
