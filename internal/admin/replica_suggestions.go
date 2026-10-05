@@ -164,12 +164,48 @@ func decodeOptionalJSON(r *http.Request, v any) error {
 }
 
 // loadDismissedSuggestions returns the stored dismissal entries, oldest first.
-// Caller holds replicaSuggestMu when it intends to write back.
-func (s *Server) loadDismissedSuggestions() []string {
+// A missing, empty or null saved value is an empty list. Any other failure
+// (the read itself failing, or a saved value that is not a list of strings) is
+// returned, never turned into an empty list: callers that write the list back
+// would otherwise erase every other dismissal. Caller holds replicaSuggestMu
+// when it intends to write back.
+func (s *Server) loadDismissedSuggestions() ([]string, error) {
+	raw, err := s.st.GetSetting(replicaSuggestionsDismissedKey)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", replicaSuggestionsDismissedKey, err)
+	}
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
 	var list []string
-	store.GetJSONSetting(s.st, replicaSuggestionsDismissedKey, &list)
-	return list
+	if err := json.Unmarshal([]byte(raw), &list); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", replicaSuggestionsDismissedKey, err)
+	}
+	// A JSON null element decodes to an empty string, so an empty fingerprint
+	// also catches [null] and entries with nothing before the state suffix.
+	for i, e := range list {
+		if fp, _ := splitDismissal(e); fp == "" {
+			return nil, fmt.Errorf("parse %s: entry %d is empty", replicaSuggestionsDismissedKey, i)
+		}
+	}
+	return list, nil
 }
+
+// failDismissedList logs why the dismissal list could not be read and answers
+// with the operator-facing message.
+func (s *Server) failDismissedList(w http.ResponseWriter, r *http.Request, err error) {
+	log.Printf("admin: replica suggestions %s %s: %v", r.Method, r.URL.Path, err)
+	writeJSONError(w, http.StatusInternalServerError, dismissedListUnreadableMsg)
+}
+
+// dismissedListUnreadableMsg is what a client sees when the saved dismissal
+// list cannot be read. It names the setting so an operator with a corrupt
+// value knows what to clear; the underlying error stays in the server log.
+const dismissedListUnreadableMsg = "could not read the saved " + replicaSuggestionsDismissedKey +
+	" setting; nothing was changed. If its stored value is corrupt, delete that row from the settings table in the marbor database and try again"
 
 func containsString(list []string, v string) bool {
 	for _, x := range list {
@@ -211,8 +247,13 @@ func (s *Server) handleReplicaSuggestions(w http.ResponseWriter, r *http.Request
 	includeDismissed := r.URL.Query().Get("includeDismissed") == "true"
 
 	s.replicaSuggestMu.Lock()
-	dismissed := dismissedStates(s.loadDismissedSuggestions())
+	list, err := s.loadDismissedSuggestions()
 	s.replicaSuggestMu.Unlock()
+	if err != nil {
+		s.failDismissedList(w, r, err)
+		return
+	}
+	dismissed := dismissedStates(list)
 
 	sugg, cov := s.router.ReplicaSuggestions()
 	resp := replicaSuggestionsListResp{
@@ -555,7 +596,11 @@ func (s *Server) setSuggestionDismissed(w http.ResponseWriter, r *http.Request, 
 
 	s.replicaSuggestMu.Lock()
 	defer s.replicaSuggestMu.Unlock()
-	list := s.loadDismissedSuggestions()
+	list, err := s.loadDismissedSuggestions()
+	if err != nil {
+		s.failDismissedList(w, r, err)
+		return
+	}
 	next := make([]string, 0, len(list)+1)
 	for _, x := range list {
 		if entryFP, _ := splitDismissal(x); entryFP != fp {
@@ -570,7 +615,7 @@ func (s *Server) setSuggestionDismissed(w http.ResponseWriter, r *http.Request, 
 	}
 	if dismiss || len(next) != len(list) {
 		if err := store.SetJSONSetting(s.st, replicaSuggestionsDismissedKey, next); err != nil {
-			log.Printf("admin: persist dismissed replica suggestions: %v", err)
+			log.Printf("admin: replica suggestions %s %s: persist dismissed list: %v", r.Method, r.URL.Path, err)
 			writeJSONError(w, http.StatusInternalServerError, "could not save the dismissal")
 			return
 		}
