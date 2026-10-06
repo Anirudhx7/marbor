@@ -69,7 +69,7 @@ var (
 	sglangTPRE          = regexp.MustCompile(`--tp[ =]+(\d+)|--tensor-parallel-size[ =]+(\d+)`)
 	tgiShardRE          = regexp.MustCompile(`--num-shard[ =]+(\d+)|--sharded[ =]+(true|false)`)
 	dockerContainerIDRE = regexp.MustCompile(`^[0-9a-fA-F]{12,64}$`)
-	portArgRE           = regexp.MustCompile(`--port[ =]+(\d+)|-p[ =]+(\d+)`)
+	portArgRE           = regexp.MustCompile(`--port[ =]+(\d+)|(?:^|\s)-p[ =]+(\d+)`)
 )
 
 // parseParallelismFromArgs extracts parallelism from a single process arg string.
@@ -214,9 +214,79 @@ func detectRuntimeFromArgs(args string) string {
 }
 
 func extractPortFromArgs(args string) int {
-	// matches --port 8000, --port=8000, -p 8000
+	// matches --port 8000, --port=8000, -p 8000. The short flag must start a
+	// token, so "--top-p 1" or "--min-p 5" are not read as a port.
 	if m := portArgRE.FindStringSubmatch(args); m != nil {
 		return firstInt(m[1], m[2])
 	}
 	return 0
+}
+
+// processRuntime names the runtime a host process IS, from its executable
+// alone: the basename of argv[0], or for a python launcher the "-m" module or
+// the script it runs. A runtime name that only appears elsewhere in the line
+// (tail -f vllm.log, docker logs vllm, ssh gpu1 vllm serve, vim llama.cpp/x,
+// a model path) does not count, and neither does a child the runtime spawns
+// (ollama runner). args must already be lower-cased. Empty means "not a
+// runtime server process".
+func processRuntime(args string) string {
+	f := strings.Fields(args)
+	if len(f) == 0 {
+		return ""
+	}
+	if rt := argv0Runtime(args); rt != "" {
+		return rt
+	}
+	exe := baseName(f[0])
+	rest := f[1:]
+	if isPythonExe(exe) {
+		ident := ""
+		for i := 0; i < len(rest); i++ {
+			if rest[i] == "-m" && i+1 < len(rest) {
+				ident = rest[i+1]
+				break
+			}
+			if !strings.HasPrefix(rest[i], "-") {
+				ident = baseName(rest[i])
+				ident = strings.TrimSuffix(ident, ".py")
+				break
+			}
+		}
+		return runtimeFromIdent(ident, nil)
+	}
+	return runtimeFromIdent(exe, rest)
+}
+
+// runtimeFromIdent maps an executable name or python module to a runtime.
+func runtimeFromIdent(ident string, rest []string) string {
+	root := ident
+	if i := strings.IndexAny(root, "."); i >= 0 {
+		root = root[:i]
+	}
+	switch {
+	case root == "vllm":
+		return "vllm"
+	case root == "sglang":
+		return "sglang"
+	case root == "text-generation-launcher" || root == "text-generation-server" || root == "text-generation-router" || root == "text_generation_server" || root == "text_generation_launcher":
+		return "tgi"
+	case root == "llama_cpp" || root == "llama-cpp-python":
+		return "llamacpp"
+	case root == "mlx_lm" || root == "mlx_vlm":
+		return "mlx"
+	case root == "ollama" && len(rest) > 0 && rest[0] == "serve":
+		return "ollama"
+	}
+	return ""
+}
+
+func baseName(p string) string {
+	if i := strings.LastIndexAny(p, `/\`); i >= 0 {
+		p = p[i+1:]
+	}
+	return strings.TrimSuffix(p, ".exe")
+}
+
+func isPythonExe(name string) bool {
+	return name == "python" || name == "pythonw" || strings.HasPrefix(name, "python3") || strings.HasPrefix(name, "python2")
 }
