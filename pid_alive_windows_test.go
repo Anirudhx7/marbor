@@ -3,9 +3,24 @@
 package main
 
 import (
+	"os"
+	"os/exec"
 	"syscall"
 	"testing"
 )
+
+func TestPidAlive(t *testing.T) {
+	if !pidAlive(os.Getpid()) {
+		t.Error("the running test process should count as alive")
+	}
+	cmd := exec.Command("cmd", "/c", "exit", "0")
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("run short-lived process: %v", err)
+	}
+	if pidAlive(cmd.Process.Pid) {
+		t.Error("an exited process should count as dead")
+	}
+}
 
 func TestPidAliveFromOpenErr(t *testing.T) {
 	if !pidAliveFromOpenErr(syscall.ERROR_ACCESS_DENIED) {

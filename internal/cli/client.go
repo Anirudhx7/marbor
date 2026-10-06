@@ -1424,6 +1424,10 @@ func (c *Client) PrefixLocalityStats() (*PrefixLocalityStats, error) {
 	stats := PrefixLocalityStats{Enabled: *wire.Enabled, Hits: *wire.Hits, Misses: *wire.Misses}
 	if wire.HitRate != nil {
 		stats.HitRate = *wire.HitRate
+	} else if total := stats.Hits + stats.Misses; total > 0 {
+		// A server that omits hit_rate still sent real counters; derive the
+		// rate from them rather than showing a made-up 0%.
+		stats.HitRate = float64(stats.Hits) / float64(total)
 	}
 	return &stats, nil
 }

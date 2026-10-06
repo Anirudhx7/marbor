@@ -275,6 +275,17 @@ func TestClient_PrefixLocalityStats_DisabledZeroCounts(t *testing.T) {
 	}
 }
 
+func TestClient_PrefixLocalityStats_MissingHitRateDerived(t *testing.T) {
+	c := prefixLocalityBodyClient(t, 200, `{"enabled":true,"hits":3,"misses":1}`)
+	stats, err := c.PrefixLocalityStats()
+	if err != nil {
+		t.Fatalf("PrefixLocalityStats() error: %v", err)
+	}
+	if stats.HitRate != 0.75 {
+		t.Fatalf("HitRate = %v, want 0.75 derived from counters", stats.HitRate)
+	}
+}
+
 func prefixLocalityBodyClient(t *testing.T, status int, body string) *Client {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
