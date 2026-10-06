@@ -83,11 +83,15 @@ func adminDashboardURL(bindAddress string) string {
 }
 
 // adminBindIsLoopback reports whether the admin bind address is a literal
-// loopback IP; an empty host (all interfaces) or a hostname is not.
+// loopback IP or the name "localhost"; an empty host (all interfaces) or any
+// other hostname is not.
 func adminBindIsLoopback(bindAddress string) bool {
 	host, _, err := net.SplitHostPort(bindAddress)
 	if err != nil {
 		host = bindAddress
+	}
+	if strings.EqualFold(host, "localhost") {
+		return true
 	}
 	ip := net.ParseIP(strings.Trim(host, "[]"))
 	return ip != nil && ip.IsLoopback()

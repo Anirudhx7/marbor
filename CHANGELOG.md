@@ -18,6 +18,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Dialogs are keyboard and screen-reader friendly.** They announce as dialogs with their title, take focus on open, close on Escape, keep Tab inside, and return focus afterwards; form errors in the replica and alias dialogs are announced. The replica confirm dialog no longer blanks its title and body while closing.
 - **The Nodes / Replica groups switch is exposed as a button group** instead of a tab list that lacked tab panels and arrow-key support.
 - **Smaller fixes:** a node named `gpu-node-1` is no longer matched inside `gpu-node-10` when listing nodes to fix before adopting a replica group; dismissed "multi-host group detected" prompts for groups that no longer exist are dropped from browser storage; duplicate "still needed" entries no longer share a React key; retrying a demo pull stays a demo pull instead of calling the real API; the Model Advisor now shows a pull as in progress for models given as bare Hugging Face GGUF repo names.
+- **`marbor prefix-locality stats` no longer shows a made-up `hit_rate=0.0%` when the server omits the rate but reports real hit and miss counts.** The rate is now worked out from the counts.
+- **The startup banner no longer prints the exposed-dashboard warning when the admin bind address is `localhost`.** Only the loopback classification changed; who can reach the dashboard and the first-login rules are untouched.
 
 ## [0.24.1] - 2026-10-05
 
