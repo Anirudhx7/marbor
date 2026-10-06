@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -72,12 +73,61 @@ func readProcCmdline(pid int) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(f, maxCmdlineBytes))
 }
 
+// psTimeout bounds the whole process listing, so a hung ps cannot stall the
+// scheduler refresh that waits on it.
+var psTimeout = 4 * time.Second
+
+// maxPSBytes bounds how much process listing is read. A host with a very large
+// process table is truncated, which only loses processes at the end of the
+// list, never corrupts the lines that were read.
+const maxPSBytes = 4 * 1024 * 1024
+
+// psRunner runs one ps invocation and returns its standard output only.
+type psRunner func(ctx context.Context, name string, args ...string) ([]byte, error)
+
+// limitedBuffer keeps at most max bytes and silently drops the rest. Write
+// always reports success so the child is never blocked on a full pipe.
+type limitedBuffer struct {
+	buf []byte
+	max int
+}
+
+func (b *limitedBuffer) Write(p []byte) (int, error) {
+	if room := b.max - len(b.buf); room > 0 {
+		if len(p) < room {
+			room = len(p)
+		}
+		b.buf = append(b.buf, p[:room]...)
+	}
+	return len(p), nil
+}
+
+// runPS runs a command with stdout captured up to maxPSBytes. Standard error
+// is discarded so a warning can never be parsed as a process line.
+func runPS(ctx context.Context, name string, args ...string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, name, args...)
+	out := &limitedBuffer{max: maxPSBytes}
+	cmd.Stdout = out
+	cmd.WaitDelay = time.Second
+	if err := cmd.Run(); err != nil {
+		return nil, err
+	}
+	return out.buf, nil
+}
+
 // psList lists every process as "pid ppid args" lines. Isolated for tests.
-func psList() (string, error) {
+func psList() (string, error) { return psListWith(runPS) }
+
+func psListWith(run psRunner) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), psTimeout)
+	defer cancel()
 	for _, cmd := range [][]string{{"ps", "-eo", "pid,ppid,args"}, {"ps", "-A", "-o", "pid,ppid,command"}} {
-		out, err := exec.Command(cmd[0], cmd[1:]...).CombinedOutput()
+		out, err := run(ctx, cmd[0], cmd[1:]...)
 		if err == nil {
 			return string(out), nil
+		}
+		if ctx.Err() != nil {
+			break
 		}
 	}
 	return "", fmt.Errorf("ps failed")
@@ -176,12 +226,10 @@ func (c *deploymentCollector) collectFromPS(psOutput string, detected []Detected
 		if p.args == "" {
 			continue
 		}
-		// Heuristic: only consider lines that look like inference runtimes
+		// Only a process whose executable (or python module) is a runtime
+		// counts; a client command that merely names one does not.
 		lower := strings.ToLower(p.args)
-		if !strings.Contains(lower, "vllm") && !strings.Contains(lower, "sglang") && !strings.Contains(lower, "tgi") && !strings.Contains(lower, "llama") && !strings.Contains(lower, "ollama") {
-			continue
-		}
-		runtimeHint := detectRuntimeFromArgs(lower)
+		runtimeHint := processRuntime(lower)
 		if runtimeHint == "" {
 			continue
 		}
@@ -190,22 +238,17 @@ func (c *deploymentCollector) collectFromPS(psOutput string, detected []Detected
 		// Topology uses the runtime the process's own arguments name, before
 		// any renaming to a detected runtime below.
 		topo := c.topologyForProcess(runtimeHint, p)
-		// A headless worker serves no HTTP, and a process recognised only by
-		// its executable name carries no port or name of its own, so neither
-		// may borrow a different runtime's name and port.
+		// A headless worker serves no HTTP, so it never borrows a port.
 		headless := topo != nil && topo.RoleHint == "worker"
-		nameOnly := argv0Runtime(lower) != ""
 		// If we have a detected runtime on same port, prefer its Name
 		if port > 0 {
 			if name, ok := portToRuntime[port]; ok {
 				runtimeHint = name
 			}
-		} else if len(detected) == 1 && !headless && (!nameOnly || detected[0].Name == runtimeHint) {
-			// Single runtime host - attribute lone detection's port
+		} else if len(detected) == 1 && !headless && detected[0].Name == runtimeHint {
+			// The one detected runtime is this same runtime: its port is this
+			// process's port. A different runtime's port or name is never lent.
 			port = detected[0].Port
-			if detected[0].Name != "" {
-				runtimeHint = detected[0].Name
-			}
 		}
 		rep := DeploymentReport{
 			Runtime:     runtimeHint,
@@ -222,7 +265,11 @@ func (c *deploymentCollector) collectFromPS(psOutput string, detected []Detected
 }
 
 // appendDeduped keeps one report per port+runtime, preferring the one that
-// carries parallelism or topology evidence.
+// carries parallelism or topology evidence. Reports with no known port share
+// the key port 0, so several same-runtime processes without a port (for
+// example the worker ranks of one launch) collapse into one report: without a
+// port nothing can tell the instances apart, and the server fans reports out by
+// port.
 func appendDeduped(reports []DeploymentReport, rep DeploymentReport) []DeploymentReport {
 	for i, existing := range reports {
 		if existing.Port == rep.Port && existing.Runtime == rep.Runtime {
@@ -320,6 +367,84 @@ type dockerContainer struct {
 			HostPort string `json:"HostPort"`
 		} `json:"Ports"`
 	} `json:"NetworkSettings"`
+	HostConfig struct {
+		NetworkMode    string `json:"NetworkMode"`
+		DeviceRequests []struct {
+			DeviceIDs []string `json:"DeviceIDs"`
+		} `json:"DeviceRequests"`
+	} `json:"HostConfig"`
+}
+
+// dockerHostPort returns the host port to report for a container, or 0 when
+// it cannot be known. A --port in the container's arguments is the port inside
+// the container, so it counts only when it is published (its host port is
+// used) or the container shares the host network. Without such an argument a
+// single published port is used; several published ports are ambiguous (one
+// may be metrics, not the API), so none is reported rather than a pick that
+// could change between refreshes.
+func dockerHostPort(argsPort int, cont *dockerContainer) int {
+	var published []int
+	byContainerPort := map[int][]int{}
+	for key, bindings := range cont.NetworkSettings.Ports {
+		cport, err := strconv.Atoi(strings.SplitN(key, "/", 2)[0])
+		for _, b := range bindings {
+			hp, e := strconv.Atoi(b.HostPort)
+			if e != nil || hp <= 0 {
+				continue
+			}
+			published = append(published, hp)
+			if err == nil {
+				byContainerPort[cport] = append(byContainerPort[cport], hp)
+			}
+		}
+	}
+	if argsPort > 0 {
+		if hps := byContainerPort[argsPort]; len(hps) > 0 {
+			sort.Ints(hps)
+			return hps[0]
+		}
+		if cont.HostConfig.NetworkMode == "host" {
+			return argsPort
+		}
+		return 0
+	}
+	sort.Ints(published)
+	for i := 1; i < len(published); i++ {
+		if published[i] != published[0] {
+			return 0
+		}
+	}
+	if len(published) > 0 {
+		return published[0]
+	}
+	return 0
+}
+
+// dockerGPUScope builds the GPU scope for a container. NVIDIA images bake
+// NVIDIA_VISIBLE_DEVICES=all into their environment, so that value (or an
+// explicit none) says nothing reliable about how this container was started:
+// it is reported as unknown, never as "every GPU is visible". Devices named in
+// the container's GPU device request (docker run --gpus device=0) are real
+// evidence and take precedence over a baked-in NVIDIA variable.
+func dockerGPUScope(cont *dockerContainer) (*GPUScope, []int) {
+	sc, legacy := scopeFromEnv(allowlistedEnvList(cont.Config.Env), "docker-env:")
+	if sc != nil && strings.HasSuffix(sc.Source, ":CUDA_VISIBLE_DEVICES") && (len(sc.Indices) > 0 || len(sc.UUIDs) > 0) {
+		return sc, legacy
+	}
+	var ids []string
+	for _, dr := range cont.HostConfig.DeviceRequests {
+		ids = append(ids, dr.DeviceIDs...)
+	}
+	if len(ids) > 0 {
+		r, g := parseGPUScope("docker-device-request:", "NVIDIA_VISIBLE_DEVICES", strings.Join(ids, ","))
+		return &r, g
+	}
+	if sc != nil && len(sc.Indices) == 0 && len(sc.UUIDs) == 0 {
+		sc.Note = "the container's " + sc.Source[strings.Index(sc.Source, ":")+1:] + " is " + strconv.Quote(sc.Raw) +
+			", which can be an image default rather than how the container was started, so which GPUs it uses is not known"
+		return sc, nil
+	}
+	return sc, legacy
 }
 
 // dockerDeployment is a parsed container plus the host PID of its init
@@ -353,17 +478,7 @@ func parseDockerInspect(inspectJSON string) *dockerDeployment {
 		return nil
 	}
 	par, caps := parseParallelismFromArgs(runtimeHint, argsStr)
-	port := extractPortFromArgs(argsStr)
-	if port == 0 {
-		for _, bindings := range cont.NetworkSettings.Ports {
-			for _, b := range bindings {
-				if p, err := strconv.Atoi(b.HostPort); err == nil && p > 0 {
-					port = p
-					break
-				}
-			}
-		}
-	}
+	port := dockerHostPort(extractPortFromArgs(argsStr), &cont)
 	rep := DeploymentReport{
 		Runtime:     runtimeHint,
 		Port:        port,
@@ -371,7 +486,7 @@ func parseDockerInspect(inspectJSON string) *dockerDeployment {
 		Caps:        caps,
 		Source:      "docker",
 	}
-	rep.GPUScope, rep.GPUGroup = scopeFromEnv(allowlistedEnvList(cont.Config.Env), "docker-env:")
+	rep.GPUScope, rep.GPUGroup = dockerGPUScope(&cont)
 	rep.Topology = buildTopology(topologyInput{
 		runtime:    runtimeHint,
 		tokens:     append(append([]string(nil), cont.Config.Cmd...), cont.Args...),
@@ -389,8 +504,12 @@ func (c *deploymentCollector) collectFromDockerSocket(detected []DetectedRuntime
 	if _, err := os.Stat(sock); err != nil {
 		return nil
 	}
+	// Each collection builds its own transport, so keep-alive would leave one
+	// idle socket (and its goroutines) behind per call. Close every
+	// connection when its request finishes instead.
 	client := &http.Client{
 		Transport: &http.Transport{
+			DisableKeepAlives: true,
 			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 				return (&net.Dialer{Timeout: 2 * time.Second}).DialContext(ctx, "unix", sock)
 			},

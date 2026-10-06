@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **Agent: the Docker socket path no longer leaks a socket and goroutines per container on every refresh.** Each collection now closes its connections to the Docker socket when the request finishes, so an agent that runs in a container no longer drifts toward file descriptor exhaustion.
+- **Agent: a hung `ps` can no longer stall the agent.** The process listing now has a 4 second limit, reads standard output only (a warning on standard error can no longer be parsed as a process) and is capped in size.
+- **Agent: only real runtime server processes are reported as deployments.** A process now counts only when its executable (or the python module it runs) is the runtime, so `tail -f vllm.log`, `docker logs vllm`, `ssh gpu1 vllm serve`, an editor open on a llama.cpp file and `ollama runner` children are no longer reported as runtimes. A runtime process with no `--port` also no longer takes the name or port of a different runtime that happens to be the only one detected. `--top-p 1` or `--min-p 5` are no longer read as a port.
+- **Agent: Docker containers no longer report "every GPU visible" from an image default.** NVIDIA images bake `NVIDIA_VISIBLE_DEVICES=all` into their environment, so a container started with `--gpus device=0` was reported as seeing all GPUs. That value is now reported as unknown, the container's GPU device request (`--gpus device=...`) is used when present, and, where `nvidia-smi` is available, the GPUs the runtime actually holds are reported (marked unconfirmed) instead of leaving the scope unknown.
+- **Agent: a Docker container's reported port is now stable and is the host port.** It was picked from a randomly ordered map, so it could change between refreshes, and a `--port` inside the container was reported as if it were reachable on the host. Now the host port published for the container's `--port` is used, host networking uses the port as given, and when several ports are published with no `--port` to tell them apart, no port is reported.
+- **Marbor no longer treats a running process as stopped when it is owned by another user** (a signal probe that returned a permission error was read as "not running").
+
 ## [0.24.1] - 2026-10-05
 
 ### Added
