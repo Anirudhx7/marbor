@@ -19,6 +19,7 @@ import {
   HFModel,
   HFRepoDetails,
   ModelVariantFit,
+  normalizePullTag,
 } from '../lib/api';
 import { startPull, isPullActive, subscribe as subscribePullProgress, getSnapshot as getPullProgressSnapshot } from '../lib/pullProgress';
 import { isDownloadOnlyRuntime, pullOptionsFor, sizeNotCurated as isSizeNotCurated } from '../lib/downloadOnly';
@@ -224,7 +225,7 @@ function NodeFitList({
     const r = m.recommendation;
     const isDiskShort = !r.picked && r.reason === 'disk_insufficient';
     const badge = r.picked ? r.fit : r.reason === 'too_large' ? 'red' : r.reason === 'incompatible_runtime' ? 'incompatible' : 'unknown';
-    const isPulling = r.picked && pullJobs.some(j => j.node === node.name && j.model === r.tag && isPullActive(j.status));
+    const isPulling = r.picked && pullJobs.some(j => j.node === node.name && j.model === normalizePullTag(r.tag) && isPullActive(j.status));
     const sizeNotCurated = isSizeNotCurated(hfRuntime, !!r.picked, r.reason, m.variants);
     return (
       <div key={m.name} className={`flex flex-col gap-1.5 text-xs rounded px-2.5 py-2 bg-secondary/50 border border-border/50 ${rowGrid}`}>
@@ -692,7 +693,7 @@ function ModelDetailPanel({
             <div className="space-y-1.5">
               {details.variants.map((v) => {
                 const isPulled = v.downloaded;
-                const isPulling = pullJobs.some(j => j.node === nodeName && j.model === v.tag && isPullActive(j.status));
+                const isPulling = pullJobs.some(j => j.node === nodeName && j.model === normalizePullTag(v.tag) && isPullActive(j.status));
                 const vramGB = v.vram_est_mb >= 1024 ? `${(v.vram_est_mb / 1024).toFixed(1)} GB` : `${v.vram_est_mb} MB`;
                 const sizeGB = v.size_mb >= 1024 ? `${(v.size_mb / 1024).toFixed(1)} GB` : `${v.size_mb} MB`;
                 return (
