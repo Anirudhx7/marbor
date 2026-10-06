@@ -238,7 +238,12 @@ func (p *nvidiaProbe) indicesFor(uuids map[string]bool) []int {
 }
 
 // resolveScopeUUIDs turns an environment scope into the set of full GPU UUIDs
-// it names. ok is false when any entry cannot be resolved (a MIG id, a
+// it names. Plain indices are looked up in nvidia-smi's index order, which is
+// PCI bus order; the CUDA runtime numbers devices fastest-first unless
+// CUDA_DEVICE_ORDER=PCI_BUS_ID. On a host with mixed GPU models the two can
+// differ, which at worst yields a "does not match" note (never a false
+// confirmation, since the comparison is against the GPUs the process actually
+// holds). ok is false when any entry cannot be resolved (a MIG id, a
 // sub-device mask, an unknown index or UUID), in which case no cross-check is
 // possible.
 func (p *nvidiaProbe) resolveScopeUUIDs(sc *GPUScope) (map[string]bool, bool) {
@@ -318,6 +323,17 @@ func applyCrossCheck(sc *GPUScope, legacy []int, probe *nvidiaProbe, pids []int)
 		if strings.HasSuffix(sc.Source, ":"+k) {
 			keyIsNVIDIA = true
 		}
+	}
+	// A scope that only carries a note (unreadable environment, "all", "none",
+	// no variable set) names no devices to compare. When the GPU process list
+	// does show where the runtime sits, report that observation instead of
+	// leaving an unknown or an unverifiable claim in place.
+	if len(sc.Indices) == 0 && len(sc.UUIDs) == 0 && (sc.Source == "" || sc.Source == "environ" || keyIsNVIDIA) && len(observed) > 0 {
+		note := "observed from the GPU process list; not confirmed against the runtime environment"
+		if sc.Note != "" {
+			note += " (" + sc.Note + ")"
+		}
+		return &GPUScope{Indices: probe.indicesFor(observed), Source: "nvidia-compute-apps", Note: note}, nil
 	}
 	if !keyIsNVIDIA {
 		return sc, legacy

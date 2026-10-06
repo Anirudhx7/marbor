@@ -15,5 +15,5 @@ func pidAlive(pid int) bool {
 	if err != nil {
 		return false
 	}
-	return proc.Signal(syscall.Signal(0)) == nil
+	return signalProbeMeansAlive(proc.Signal(syscall.Signal(0)))
 }
