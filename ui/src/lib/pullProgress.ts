@@ -343,7 +343,7 @@ export function retryPull(key: string): void {
   const job = jobs.get(key);
   if (!job) return;
   const a = retryArgs(job);
-  startPull(a.node, a.model, false, a.verifyLoad, a.completionNote);
+  startPull(a.node, a.model, a.simulate, a.verifyLoad, a.completionNote);
 }
 
 export function cancelPull(key: string): void {

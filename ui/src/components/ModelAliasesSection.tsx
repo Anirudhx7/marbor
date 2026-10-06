@@ -26,6 +26,7 @@ function TargetBadge({ row }: { row: ModelAlias }) {
 export function ModelAliasesSection({ demoMode, knownModelNames }: ModelAliasesSectionProps) {
   const [aliases, setAliases] = useState<ModelAlias[]>([]);
   const [loading, setLoading] = useState(!demoMode);
+  const [aliasToOverwrite, setAliasToOverwrite] = useState<{ existing: ModelAlias; target: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [newAlias, setNewAlias] = useState('');
   const [newTarget, setNewTarget] = useState('');
@@ -33,6 +34,9 @@ export function ModelAliasesSection({ demoMode, knownModelNames }: ModelAliasesS
   const [notice, setNotice] = useState<string | null>(null);
   const [aliasToRemove, setAliasToRemove] = useState<ModelAlias | null>(null);
   const mountedRef = useRef(true);
+  // Bumped on every reload and on demo-mode change so a slow response from an
+  // earlier request can never overwrite newer rows.
+  const requestRef = useRef(0);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -40,6 +44,7 @@ export function ModelAliasesSection({ demoMode, knownModelNames }: ModelAliasesS
   }, []);
 
   const reload = async () => {
+    const id = ++requestRef.current;
     if (demoMode) {
       setAliases(getMockModelAliases());
       setLoading(false);
@@ -47,28 +52,26 @@ export function ModelAliasesSection({ demoMode, knownModelNames }: ModelAliasesS
     }
     try {
       const rows = await fetchModelAliases();
-      if (mountedRef.current) setAliases(rows);
+      if (mountedRef.current && id === requestRef.current) setAliases(rows);
     } catch (err: any) {
-      if (mountedRef.current) setError(err.message);
+      if (mountedRef.current && id === requestRef.current) setError(err.message);
     } finally {
-      if (mountedRef.current) setLoading(false);
+      if (mountedRef.current && id === requestRef.current) setLoading(false);
     }
   };
 
   useEffect(() => {
+    // Drop rows from the other mode right away so demo aliases never show as
+    // live ones (or the reverse) while the new mode loads.
+    setAliases([]);
+    setError(null);
+    setLoading(!demoMode);
     reload();
+    return () => { requestRef.current++; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [demoMode]);
 
-  const handleAdd = async () => {
-    const alias = newAlias.trim();
-    const target = newTarget.trim();
-    setError(null);
-    setNotice(null);
-    if (!alias || !target) {
-      setError('Enter both an alias name and a target model.');
-      return;
-    }
+  const saveAlias = async (alias: string, target: string) => {
     setSaving(true);
     try {
       const row = demoMode ? setMockModelAlias(alias, target) : await setModelAlias(alias, target);
@@ -82,8 +85,29 @@ export function ModelAliasesSection({ demoMode, knownModelNames }: ModelAliasesS
     } catch (err: any) {
       if (mountedRef.current) setError(err.message);
     } finally {
-      if (mountedRef.current) setSaving(false);
+      if (mountedRef.current) {
+        setSaving(false);
+        setAliasToOverwrite(null);
+      }
     }
+  };
+
+  const handleAdd = async () => {
+    const alias = newAlias.trim();
+    const target = newTarget.trim();
+    setError(null);
+    setNotice(null);
+    if (!alias || !target) {
+      setError('Enter both an alias name and a target model.');
+      return;
+    }
+    // Saving over an existing alias re-points live traffic, so confirm first.
+    const existing = aliases.find(a => a.alias === alias);
+    if (existing && existing.target !== target) {
+      setAliasToOverwrite({ existing, target });
+      return;
+    }
+    await saveAlias(alias, target);
   };
 
   const handleRemove = async () => {
@@ -147,7 +171,7 @@ export function ModelAliasesSection({ demoMode, knownModelNames }: ModelAliasesS
                   onClick={() => setAliasToRemove(row)}
                   disabled={saving}
                   aria-label={`Remove alias ${row.alias}`}
-                  className="p-2 text-muted-foreground hover:text-destructive rounded-md hover:bg-secondary transition-colors disabled:opacity-50 shrink-0"
+                  className="p-2 text-muted-foreground hover:text-destructive rounded-md hover:bg-secondary transition-colors disabled:opacity-50 shrink-0 min-h-[40px] min-w-[40px] flex items-center justify-center"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -157,7 +181,10 @@ export function ModelAliasesSection({ demoMode, knownModelNames }: ModelAliasesS
         </div>
       )}
 
-      <div className="flex flex-col sm:flex-row gap-2">
+      <form
+        className="flex flex-col sm:flex-row gap-2"
+        onSubmit={(e) => { e.preventDefault(); if (!saving) void handleAdd(); }}
+      >
         <input
           type="text"
           value={newAlias}
@@ -174,16 +201,49 @@ export function ModelAliasesSection({ demoMode, knownModelNames }: ModelAliasesS
           className="sm:flex-1"
         />
         <button
-          onClick={handleAdd}
+          type="submit"
           disabled={saving}
           aria-label="Add model alias"
-          className="flex items-center justify-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+          className="flex items-center justify-center gap-1.5 px-3 py-2 min-h-[40px] min-w-[40px] bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
         >
           <Plus className="w-4 h-4" />
         </button>
-      </div>
-      {error && <p className="text-sm text-destructive mt-2">{error}</p>}
-      {notice && <p className="text-sm text-warning mt-2">{notice}</p>}
+      </form>
+      {error && <p role="alert" className="text-sm text-destructive mt-2">{error}</p>}
+      {notice && <p role="status" className="text-sm text-warning mt-2">{notice}</p>}
+
+      <Modal
+        isOpen={aliasToOverwrite !== null}
+        onClose={() => setAliasToOverwrite(null)}
+        title="Re-point model alias"
+        maxWidth="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground break-words">
+            <span className="text-foreground font-medium">{aliasToOverwrite?.existing.alias}</span> currently
+            serves <span className="text-foreground font-medium">{aliasToOverwrite?.existing.target}</span>.
+            Saving re-points it to <span className="text-foreground font-medium">{aliasToOverwrite?.target}</span>;
+            live requests for this name switch immediately. Reversible by saving the old target again.
+          </p>
+          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            <button
+              type="button"
+              onClick={() => setAliasToOverwrite(null)}
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => aliasToOverwrite && saveAlias(aliasToOverwrite.existing.alias, aliasToOverwrite.target)}
+              disabled={saving}
+              className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm disabled:opacity-50"
+            >
+              Re-point alias
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         isOpen={aliasToRemove !== null}

@@ -54,10 +54,12 @@ test('sizeNotCurated: only an unpicked vram_unknown vllm/tgi row with a missing 
 test('retryArgs carries node, model, verify choice and completion note through', () => {
   assert.deepEqual(
     retryArgs({ node: 'gpu1', model: 'org/model', verifyLoad: false, completionNote: DOWNLOAD_ONLY_NOTE }),
-    { node: 'gpu1', model: 'org/model', verifyLoad: false, completionNote: DOWNLOAD_ONLY_NOTE },
+    { node: 'gpu1', model: 'org/model', verifyLoad: false, completionNote: DOWNLOAD_ONLY_NOTE, simulate: false },
   );
   assert.deepEqual(
     retryArgs({ node: 'gpu2', model: 'llama3', verifyLoad: true }),
-    { node: 'gpu2', model: 'llama3', verifyLoad: true, completionNote: '' },
+    { node: 'gpu2', model: 'llama3', verifyLoad: true, completionNote: '', simulate: false },
   );
+  // a demo (simulated) pull must retry as a demo pull, not hit the real API
+  assert.equal(retryArgs({ node: 'n', model: 'm', verifyLoad: false, simulating: true }).simulate, true);
 });

@@ -41,11 +41,13 @@ export function sizeNotCurated(
 
 // retryArgs maps a finished pull job to the arguments of a fresh pull, so a retry
 // keeps the original verify choice and completion note.
-export function retryArgs(job: { node: string; model: string; verifyLoad: boolean; completionNote?: string }): {
+export function retryArgs(job: { node: string; model: string; verifyLoad: boolean; completionNote?: string; simulating?: boolean }): {
   node: string;
   model: string;
   verifyLoad: boolean;
   completionNote: string;
+  simulate: boolean;
 } {
-  return { node: job.node, model: job.model, verifyLoad: job.verifyLoad, completionNote: job.completionNote ?? '' };
+  // A simulated (demo) pull retries as a simulated pull, never against the real API.
+  return { node: job.node, model: job.model, verifyLoad: job.verifyLoad, completionNote: job.completionNote ?? '', simulate: job.simulating === true };
 }
