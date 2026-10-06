@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Modal } from './Modal';
 import type { ReplicaSuggestion } from '../lib/api';
 import type { GPUNode } from '../types';
@@ -83,7 +84,12 @@ function AdoptBody({ s }: { s: ReplicaSuggestion }) {
   );
 }
 
-export function ReplicaConfirmModal({ target, nodes, busy, error, onClose, onSubmit, onEditNode }: ReplicaConfirmModalProps) {
+export function ReplicaConfirmModal({ target: liveTarget, nodes, busy, error, onClose, onSubmit, onEditNode }: ReplicaConfirmModalProps) {
+  // Keep showing the last target while the modal animates out, so the title and
+  // body do not blank for a frame on close.
+  const [lastTarget, setLastTarget] = useState(liveTarget);
+  if (liveTarget && liveTarget !== lastTarget) setLastTarget(liveTarget);
+  const target = liveTarget ?? lastTarget;
   const adopt = target?.mode === 'adopt';
   const title = !target
     ? ''
@@ -94,11 +100,11 @@ export function ReplicaConfirmModal({ target, nodes, busy, error, onClose, onSub
   const outside = target && adopt && error ? outsideDeclarers(target.suggestion, nodes, error) : [];
 
   return (
-    <Modal isOpen={target !== null} onClose={closeIfIdle} title={title} maxWidth={adopt ? 'lg' : 'md'}>
+    <Modal isOpen={liveTarget !== null} onClose={closeIfIdle} title={title} maxWidth={adopt ? 'lg' : 'md'}>
       {target && (
         <div className="space-y-4">
           {adopt ? <AdoptBody s={target.suggestion} /> : <ConfirmBody s={target.suggestion} />}
-          {error && <p className="text-sm text-destructive break-words">{error}</p>}
+          {error && <p role="alert" className="text-sm text-destructive break-words">{error}</p>}
           {outside.length > 0 && (
             <div className="text-sm">
               <p className="text-muted-foreground">Fix these nodes first, then try again:</p>

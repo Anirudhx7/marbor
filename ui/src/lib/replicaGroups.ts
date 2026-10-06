@@ -85,7 +85,7 @@ export function suggestionChip(s: ReplicaSuggestion): StatusChip {
 // reasonToShow keeps the reason from being printed twice: when missing[] has
 // items it already says what is needed, so the reason is dropped.
 export function reasonToShow(s: ReplicaSuggestion): string {
-  if (!s.reason || s.missing.length > 0 || s.missing.includes(s.reason)) return '';
+  if (!s.reason || s.missing.length > 0) return '';
   return s.reason;
 }
 
@@ -133,6 +133,23 @@ export function roleChangeLine(row: DriftRow, head: string): string {
   return '';
 }
 
+// mentionsNode reports whether text names the node as a whole word, so
+// "gpu-node-1" is not found inside "gpu-node-10".
+export function mentionsNode(text: string, name: string): boolean {
+  if (!name) return false;
+  const isNameChar = (c: string | undefined) => c !== undefined && /[A-Za-z0-9._-]/.test(c);
+  let from = 0;
+  for (;;) {
+    const i = text.indexOf(name, from);
+    if (i < 0) return false;
+    const end = i + name.length;
+    // A trailing "." ends a sentence unless a name character follows it (gpu-1.lan).
+    const afterIsName = text[end] === '.' ? isNameChar(text[end + 1]) : isNameChar(text[end]);
+    if (!isNameChar(text[i - 1]) && !afterIsName) return true;
+    from = i + 1;
+  }
+}
+
 // outsideDeclarers finds nodes outside the group whose own declaration names a
 // group member. Adopt refuses while any exist, so they are listed for fixing.
 export function outsideDeclarers(s: ReplicaSuggestion, nodes: readonly GPUNode[], serverText = ''): string[] {
@@ -141,7 +158,7 @@ export function outsideDeclarers(s: ReplicaSuggestion, nodes: readonly GPUNode[]
   for (const n of nodes) {
     if (inGroup.has(n.name)) continue;
     const names = n.replicaPeers?.members ?? [];
-    const mentioned = serverText !== '' && serverText.includes(n.name);
+    const mentioned = serverText !== '' && mentionsNode(serverText, n.name);
     if (mentioned || names.some(m => s.members.includes(m))) found.push(n.name);
   }
   return found;
@@ -314,6 +331,14 @@ export function writeDismissedReady(fingerprints: readonly string[]): void {
   } catch {
     // storage unavailable: the line simply reappears on the next load
   }
+}
+
+// pruneDismissedReady drops dismissals for groups that no longer exist, so the
+// stored list cannot grow forever. A fingerprint still present in the current
+// suggestions (in any state) is kept.
+export function pruneDismissedReady(dismissed: readonly string[], known: readonly string[]): string[] {
+  const live = new Set(known);
+  return dismissed.filter(f => live.has(f));
 }
 
 // The line stays hidden while every ready fingerprint was already dismissed;

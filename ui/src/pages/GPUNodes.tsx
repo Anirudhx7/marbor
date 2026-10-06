@@ -22,7 +22,7 @@ import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm
 import type { MarborAgentStatus, NodeHealthCheckResult, NodeControlStatus, ReplicaSuggestionsResponse } from '../lib/api';
 import type { GPUNode, ModelFitResponse, NodeFit, FitStatus } from '../types';
 import { formatDurationLong } from '../lib/time';
-import { actionableCount, bucketSuggestions, chipsByNode, hasReplicaContent, readDismissedReady, readyFingerprints, readyLineVisible, writeDismissedReady } from '../lib/replicaGroups';
+import { actionableCount, bucketSuggestions, chipsByNode, hasReplicaContent, pruneDismissedReady, readDismissedReady, readyFingerprints, readyLineVisible, writeDismissedReady } from '../lib/replicaGroups';
 import type { NodeChip } from '../lib/replicaGroups';
 
 // vramOverridesToString mirrors the CLI's --vram-override comma-separated
@@ -1542,6 +1542,15 @@ export function GPUNodes() {
     }
   };
 
+  // Suggestions from the other mode must never survive a demo toggle: a demo
+  // group shown as live could be confirmed against the real API.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setReplicaSuggestions(null);
+    setSuggestionsError(false);
+    setSuggestionsSettled(false);
+  }, [demoMode]);
+
   useEffect(() => {
     if (currentAppPath() !== '/gpu-nodes') return;
     let active = true;
@@ -1644,7 +1653,8 @@ export function GPUNodes() {
   const showReplicaTab = hasReplicaContent(nodes, replicaSuggestions);
   const readyIds = readyFingerprints(suggestionBuckets);
   const dismissReadyLine = () => {
-    const next = Array.from(new Set([...dismissedReady, ...readyIds]));
+    const known = (replicaSuggestions?.suggestions ?? []).map(sg => sg.fingerprint);
+    const next = Array.from(new Set([...pruneDismissedReady(dismissedReady, known), ...readyIds]));
     writeDismissedReady(next);
     setDismissedReady(next);
   };
@@ -2307,12 +2317,11 @@ export function GPUNodes() {
       )}
 
       {(showReplicaTab || view === 'replicas') && (
-        <div role="tablist" aria-label="GPU nodes views" className="flex items-center gap-1 p-1 bg-secondary rounded-lg w-fit">
+        <div role="group" aria-label="GPU nodes views" className="flex items-center gap-1 p-1 bg-secondary rounded-lg w-fit">
           {(['nodes', 'replicas'] as const).map((v) => (
             <button
               key={v}
-              role="tab"
-              aria-selected={view === v}
+              aria-pressed={view === v}
               onClick={() => setView(v)}
               className={`px-4 py-1.5 min-h-[40px] sm:min-h-0 text-sm font-medium rounded-md transition-colors duration-200 ease-out ${view === v ? 'bg-card shadow-sm text-foreground border border-border' : 'text-muted-foreground hover:text-foreground'}`}
             >

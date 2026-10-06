@@ -97,7 +97,7 @@ export function ReplicaSuggestionCard({ suggestion: s, nodes, disabled, onReview
                 </p>
               ) : (
                 <ul className="mt-1 space-y-1">
-                  {s.missing.map(m => <li key={m} className="break-words">{m}</li>)}
+                  {s.missing.map((m, i) => <li key={`${m}-${i}`} className="break-words">{m}</li>)}
                 </ul>
               )}
             </div>
