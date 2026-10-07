@@ -76,7 +76,7 @@ func countHostLogLines(out, host, token string) int {
 
 // webhookRecorder collects webhook events under a mutex and wakes waiters per
 // event, so a test can wait for one event with its own deadline and then check
-// a bounded quiet window for any late duplicate.
+// a sentinel barrier plus a short settle for any late duplicate.
 type webhookRecorder struct {
 	srv    *httptest.Server
 	mu     sync.Mutex
@@ -341,7 +341,7 @@ func TestOversizeReplyKeepsNodeReachable(t *testing.T) {
 	if got := countHostLogLines(out, host, "exceeds"); got != 1 {
 		t.Errorf("oversize logged %d lines for host %q across %d polls, want 1\n%s", got, host, polls, out)
 	}
-	if got := countHostLogLines(out, host, "unknown"); got < 1 {
+	if got := countHostLogLines(out, host, "telemetry is unknown"); got < 1 {
 		t.Errorf("no log line for host %q says telemetry is unknown\n%s", host, out)
 	}
 	// Smoke check, not a revert detector: Route never reads agent state, so
