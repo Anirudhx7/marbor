@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -18,27 +19,21 @@ func TestValidateNodeURL(t *testing.T) {
 		"http://172.16.4.2:8000",
 		"https://api.example.com",
 		"http://192.168.1.50:11434",
-		"http://0x7f.0.0.1:11434", // loopback written in legacy hex form
-		"http://0300.0250.1.50",   // 192.168.1.50 written in octal
-		"http://node1.lan.:11434", // FQDN with one trailing dot
-		"http://1.2.3.4.5",        // five parts: not an IPv4 form
-		"http://256.1.1.1",        // first part out of range: not an IP
-		"http://256.0.0.1",        // first part out of range: not an IP
-		"http://1.2.3.256",        // last part out of range: not an IP
-		"http://169.254",          // two parts = 169.0.0.254, not link-local
-		"http://08.1.1.1",         // 8 is not an octal digit; plain decimal 8.1.1.1
-		"http://0x.1",             // empty hex part: not an IP
-		// Bare "0x" has no digits. glibc 2.42 (WSL Debian) was checked with
-		// getaddrinfo: 169.254.169.0x, 169.254.0x, 0x, 1.0x and 0x.1 all fail
-		// to resolve, while 0x0 and 169.254.169.0x1 resolve. So these are not
-		// link-local forms and are allowed.
-		"http://169.254.169.0x",
-		"http://169.254.0x",
-		"http://0x",
+		"http://0x7f.0.0.1:11434",  // loopback written in legacy hex form
+		"http://0300.0250.1.50",    // 192.168.1.50 written in octal
+		"http://node1.lan.:11434",  // FQDN with one trailing dot
+		"http://1.2.3.4.5",         // five parts: not an IPv4 form
+		"http://256.1.1.1",         // first part out of range: not an IP
+		"http://256.0.0.1",         // first part out of range: not an IP
+		"http://1.2.3.256",         // last part out of range: not an IP
+		"http://169.254",           // two parts = 169.0.0.254, not link-local
+		"http://08.1.1.1",          // 8 is not an octal digit; plain decimal 8.1.1.1
+		"http://0x.1",              // bare 0x reads as 0: 0.0.0.1, not link-local
+		"http://0x",                // bare 0x reads as 0: 0.0.0.0, not link-local
 		"http://169.254.169.254..", // two trailing dots: not an IP (a Go-valid literal that no resolver reads as one)
 		"http://169.254.169.254.0", // five parts: not an IPv4 form
-		"http://1.2.3.4.0",
-		"http://1.2.3.4.5.6", // six parts
+		"http://1.2.3.4.0",         // five parts: not an IPv4 form
+		"http://1.2.3.4.5.6",       // six parts: not an IPv4 form
 		// Near misses around the link-local range.
 		"http://169.253.0.1",
 		"http://169.255.0.1",
@@ -53,6 +48,14 @@ func TestValidateNodeURL(t *testing.T) {
 		if err := ValidateNodeURL(u); err != nil {
 			t.Errorf("ValidateNodeURL(%q) = %v, want nil (must allow loopback/private/public)", u, err)
 		}
+	}
+
+	// Rejected for a reason other than link-local, so no "link-local" in the error.
+	blockedForOtherReasons := map[string]bool{
+		"ftp://169.254.169.254": true, // scheme error
+		"http://":               true, // no host
+		"not-a-url":             true, // no scheme/host
+		"tcp://10.0.0.1:11434":  true, // scheme error
 	}
 
 	blocked := []string{
@@ -119,15 +122,15 @@ func TestValidateNodeURL(t *testing.T) {
 		"http://[ff02::1]",
 		"http://[fe80::1]",
 
+		// Bare 0x reads as 0, so these are 169.254.169.0 and 169.254.0.0. glibc
+		// does not resolve a bare 0x (tested on one glibc build), but a resolver
+		// that does must not reach link-local, so they fail closed.
+		"http://169.254.169.0x",
+		"http://169.254.0x",
+
 		// One-digit hex parts.
 		"http://0xA9.0xFE.0xA.0x1",
 		"http://169.254.0xA.0xA",
-	}
-	notLinkLocalCases := map[string]bool{
-		"ftp://169.254.169.254": true, // scheme error
-		"http://":               true, // no host
-		"not-a-url":             true, // no scheme/host
-		"tcp://10.0.0.1:11434":  true, // scheme error
 	}
 	for _, u := range blocked {
 		err := ValidateNodeURL(u)
@@ -135,36 +138,8 @@ func TestValidateNodeURL(t *testing.T) {
 			t.Errorf("ValidateNodeURL(%q) = nil, want error (must reject link-local/metadata/invalid)", u)
 			continue
 		}
-		if !notLinkLocalCases[u] && !strings.Contains(err.Error(), "link-local") {
+		if !blockedForOtherReasons[u] && !strings.Contains(err.Error(), "link-local") {
 			t.Errorf("ValidateNodeURL(%q) error %q does not mention link-local", u, err)
-		}
-	}
-}
-
-// TestParseLegacyIPv4DecimalReading covers the second reading used by
-// isLinkLocalHost: a part with a leading zero is plain decimal, so "0169" is
-// 169 and "010" is 10, where the octal reading gives invalid and 8.
-func TestParseLegacyIPv4DecimalReading(t *testing.T) {
-	cases := []struct {
-		host string
-		base int
-		want string
-	}{
-		{"0169.254.43518", decimalBase, "169.254.169.254"},
-		{"0169.254.43518", octalBase, ""},
-		{"010.0.0.1", decimalBase, "10.0.0.1"},
-		{"010.0.0.1", octalBase, "8.0.0.1"},
-		{"08.1.1.1", decimalBase, "8.1.1.1"},
-		{"08.1.1.1", octalBase, ""},
-		{"0x10.0.0.1", decimalBase, "16.0.0.1"}, // hex prefix wins over the base
-	}
-	for _, c := range cases {
-		got := ""
-		if ip := parseLegacyIPv4(c.host, c.base); ip != nil {
-			got = ip.String()
-		}
-		if got != c.want {
-			t.Errorf("parseLegacyIPv4(%q, %d) = %q, want %q", c.host, c.base, got, c.want)
 		}
 	}
 }
@@ -172,83 +147,97 @@ func TestParseLegacyIPv4DecimalReading(t *testing.T) {
 // TestParseLegacyIPv4 pins the inet_aton grammar: one to four dot-separated
 // parts in decimal, 0x hex or leading-zero octal, every part but the last at
 // most 255, the last part filling the remaining bytes, and at most one
-// trailing dot. An empty want means the host is not a legacy IPv4 literal.
+// trailing dot. base is the reading of a leading-zero part (octalBase follows
+// inet_aton, decimalBase is the operator reading). An empty want means the host
+// is not a legacy IPv4 literal.
 func TestParseLegacyIPv4(t *testing.T) {
 	cases := []struct {
 		host string
+		base int
 		want string
 	}{
 		// one part
-		{"2852039166", "169.254.169.254"},
-		{"0xA9FEA9FE", "169.254.169.254"},
-		{"0Xa9fea9fe", "169.254.169.254"},
-		{"025177524776", "169.254.169.254"}, // octal
-		{"0", "0.0.0.0"},
-		{"4294967295", "255.255.255.255"},
-		{"4294967296", ""},
-		{"0x100000000", ""},
+		{"2852039166", octalBase, "169.254.169.254"},
+		{"0xA9FEA9FE", octalBase, "169.254.169.254"},
+		{"0Xa9fea9fe", octalBase, "169.254.169.254"},
+		{"025177524776", octalBase, "169.254.169.254"},
+		{"0", octalBase, "0.0.0.0"},
+		{"4294967295", octalBase, "255.255.255.255"},
+		{"4294967296", octalBase, ""},
+		{"0x100000000", octalBase, ""},
 		// two parts: last part is 24 bits
-		{"169.16689662", "169.254.169.254"},
-		{"169.16777215", "169.255.255.255"},
-		{"169.16777216", ""},
-		{"169.254", "169.0.0.254"},
+		{"169.16689662", octalBase, "169.254.169.254"},
+		{"169.16777215", octalBase, "169.255.255.255"},
+		{"169.16777216", octalBase, ""},
+		{"169.254", octalBase, "169.0.0.254"},
 		// three parts: last part is 16 bits
-		{"169.254.43518", "169.254.169.254"},
-		{"169.254.0xa9fe", "169.254.169.254"},
-		{"169.254.65535", "169.254.255.255"},
-		{"169.254.65536", ""},
+		{"169.254.43518", octalBase, "169.254.169.254"},
+		{"169.254.0xa9fe", octalBase, "169.254.169.254"},
+		{"169.254.65535", octalBase, "169.254.255.255"},
+		{"169.254.65536", octalBase, ""},
 		// four parts: every part is 8 bits
-		{"169.254.169.254", "169.254.169.254"},
-		{"0xA9.0xFE.0xA9.0xFE", "169.254.169.254"},
-		{"0XA9.0XFE.0XA9.0XFE", "169.254.169.254"},
-		{"0251.0376.0251.0376", "169.254.169.254"},
-		{"169.0xfe.169.0376", "169.254.169.254"},
-		{"0xaB.0Xcd.0xEf.0x01", "171.205.239.1"},
-		{"255.255.255.255", "255.255.255.255"},
-		{"255.255.255.256", ""},
-		{"256.1.1.1", ""},
-		{"1.256.1.1", ""},
-		// octal edge cases
-		{"010.0.0.1", "8.0.0.1"},
-		{"08.1.1.1", ""},
-		{"09.1.1.1", ""},
-		{"1.2.3.08", ""},
-		{"08", ""},
+		{"169.254.169.254", octalBase, "169.254.169.254"},
+		{"0xA9.0xFE.0xA9.0xFE", octalBase, "169.254.169.254"},
+		{"0XA9.0XFE.0XA9.0XFE", octalBase, "169.254.169.254"},
+		{"0251.0376.0251.0376", octalBase, "169.254.169.254"},
+		{"169.0xfe.169.0376", octalBase, "169.254.169.254"},
+		{"0xaB.0Xcd.0xEf.0x01", octalBase, "171.205.239.1"},
+		{"255.255.255.255", octalBase, "255.255.255.255"},
+		{"255.255.255.256", octalBase, ""},
+		{"256.1.1.1", octalBase, ""},
+		{"1.256.1.1", octalBase, ""},
+		// leading-zero parts under the octal reading
+		{"010.0.0.1", octalBase, "8.0.0.1"},
+		{"08.1.1.1", octalBase, ""},
+		{"09.1.1.1", octalBase, ""},
+		{"1.2.3.08", octalBase, ""},
+		{"08", octalBase, ""},
+		{"0169.254.43518", octalBase, ""},
+		// leading-zero parts under the decimal reading
+		{"0169.254.43518", decimalBase, "169.254.169.254"},
+		{"010.0.0.1", decimalBase, "10.0.0.1"},
+		{"08.1.1.1", decimalBase, "8.1.1.1"},
+		{"0x10.0.0.1", decimalBase, "16.0.0.1"}, // hex prefix wins over the base
 		// one trailing dot is accepted, two are not
-		{"169.254.169.254.", "169.254.169.254"},
-		{"2852039166.", "169.254.169.254"},
-		{"169.254.169.254..", ""},
+		{"169.254.169.254.", octalBase, "169.254.169.254"},
+		{"2852039166.", octalBase, "169.254.169.254"},
+		{"169.254.169.254..", octalBase, ""},
+		// bare 0x reads as 0 (fail closed; glibc itself does not resolve it)
+		{"0x", octalBase, "0.0.0.0"},
+		{"0x.", octalBase, "0.0.0.0"},
+		{"0x.1", octalBase, "0.0.0.1"},
+		{"1.0x", octalBase, "1.0.0.0"},
+		{"169.254.0x", octalBase, "169.254.0.0"},
+		{"169.254.169.0x", octalBase, "169.254.169.0"},
+		// "00" is two leading zeros: the value 0 in either base
+		{"00", octalBase, "0.0.0.0"},
+		{"0x0", octalBase, "0.0.0.0"},
 		// not IPv4 literals
-		{"", ""},
-		{".", ""},
-		{"..", ""},
-		{".1.2.3", ""},
-		{"1..2", ""},
-		{"1.2.3.4.5", ""},
-		{"0x", ""}, // bare 0x: glibc 2.42 does not resolve it
-		{"0x.", ""},
-		{"0x.1", ""},
-		{"1.0x", ""},
-		{"00", "0.0.0.0"},
-		{"0x0", "0.0.0.0"},
-		{"0169.254.43518", ""}, // invalid octal; the decimal reading is tested separately
-		{"1.2.3.4.0", ""},      // five parts even with a zero last part
-		{"1.2.3.4.5.6", ""},
-		{"0xg1", ""},
-		{"gpu-node.lan", ""},
-		{"node1", ""},
-		{"1.2.3.x", ""},
-		{"-1", ""},
-		{"+1", ""},
-		{"1_000", ""},
+		{"", octalBase, ""},
+		{".", octalBase, ""},
+		{"..", octalBase, ""},
+		{".1.2.3", octalBase, ""},
+		{"1..2", octalBase, ""},
+		{"1.2.3.4.5", octalBase, ""},
+		{"1.2.3.4.0", octalBase, ""}, // five parts even with a zero last part
+		{"1.2.3.4.5.6", octalBase, ""},
+		{"0xg1", octalBase, ""},
+		{"gpu-node.lan", octalBase, ""},
+		{"node1", octalBase, ""},
+		{"1.2.3.x", octalBase, ""},
+		{"-1", octalBase, ""},
+		{"+1", octalBase, ""},
+		{"1_000", octalBase, ""},
 	}
 	for _, c := range cases {
-		got := ""
-		if ip := parseLegacyIPv4(c.host, octalBase); ip != nil {
-			got = ip.String()
-		}
-		if got != c.want {
-			t.Errorf("parseLegacyIPv4(%q) =%q, want %q", c.host, got, c.want)
-		}
+		t.Run(fmt.Sprintf("%s/base%d", c.host, c.base), func(t *testing.T) {
+			got := ""
+			if ip := parseLegacyIPv4(c.host, c.base); ip != nil {
+				got = ip.String()
+			}
+			if got != c.want {
+				t.Errorf("parseLegacyIPv4(%q, %d) = %q, want %q", c.host, c.base, got, c.want)
+			}
+		})
 	}
 }

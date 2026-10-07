@@ -52,15 +52,27 @@ func ValidateNodeURL(raw string) error {
 	return nil
 }
 
+// Bases for a dotted part that has a leading zero and no 0x prefix.
+const (
+	octalBase   = 8  // inet_aton reading: "010" is 8, "09" is invalid
+	decimalBase = 10 // operator reading: "010" is 10, "0169" is 169
+)
+
+// isLinkLocalIP reports whether ip is a link-local unicast or multicast address.
+func isLinkLocalIP(ip net.IP) bool {
+	return ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast()
+}
+
 // isLinkLocalHost reports whether host is a link-local literal address in any
-// form an OS resolver would turn into one. Besides standard IPv4/IPv6 text this
+// form a C resolver would turn into one. Besides standard IPv4/IPv6 text this
 // covers the legacy IPv4 spellings that some C resolvers (notably glibc)
 // accept: a bare integer or 0x-prefixed hex hostname such as "2852039166", the
-// dotted hex/octal/mixed forms such as "0xA9.0xFE.0xA9.0xFE", the short 2 and 3
-// part forms, and one trailing dot.
+// dotted hex/octal/mixed forms such as "0xA9.0xFE.0xA9.0xFE", the one-part
+// (single number), two-part and three-part forms where the last part fills the
+// remaining bytes, and one trailing dot.
 func isLinkLocalHost(host string) bool {
 	if ip := net.ParseIP(host); ip != nil {
-		return ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast()
+		return isLinkLocalIP(ip)
 	}
 	// A part with a leading zero and only decimal digits is ambiguous: C
 	// resolvers read it as octal, but an operator (and an earlier version of
@@ -68,22 +80,14 @@ func isLinkLocalHost(host string) bool {
 	// link-local. For a dotless all-digit host such as "025177524776" the
 	// decimal reading overflows 32 bits and only the octal reading flags it, so
 	// this must not be reduced to a single reading.
-	for _, ip := range []net.IP{
-		parseLegacyIPv4(host, octalBase),
-		parseLegacyIPv4(host, decimalBase),
-	} {
-		if ip != nil && (ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast()) {
-			return true
-		}
+	if ip := parseLegacyIPv4(host, octalBase); ip != nil && isLinkLocalIP(ip) {
+		return true
+	}
+	if ip := parseLegacyIPv4(host, decimalBase); ip != nil && isLinkLocalIP(ip) {
+		return true
 	}
 	return false
 }
-
-// Bases for a dotted part that has a leading zero and no 0x prefix.
-const (
-	octalBase   = 8  // inet_aton reading: "010" is 8, "09" is invalid
-	decimalBase = 10 // operator reading: "010" is 10, "0169" is 169
-)
 
 // parseLegacyIPv4 decodes a hostname written in the inet_aton grammar into an
 // IPv4 address (To4 is non-nil), or returns nil if host is not such a literal.
@@ -100,6 +104,7 @@ func parseLegacyIPv4(host string, leadingZeroBase int) net.IP {
 	}
 	var addr uint64
 	for i, part := range parts {
+		// An empty host or an empty part makes ParseUint("") fail, so it returns nil here.
 		n, ok := parseLegacyIPv4Part(part, leadingZeroBase)
 		if !ok {
 			return nil
@@ -119,18 +124,22 @@ func parseLegacyIPv4(host string, leadingZeroBase int) net.IP {
 	return net.IPv4(byte(addr>>24), byte(addr>>16), byte(addr>>8), byte(addr))
 }
 
-// parseLegacyIPv4Part parses one dot-separated part: "0x"/"0X" followed by at
-// least one hex digit is base 16, a leading zero with more digits is zeroBase,
-// anything else is base 10. A bare "0x" has no digits and is rejected (glibc
-// 2.42 does not resolve it either). strconv with an explicit base rejects signs,
+// parseLegacyIPv4Part parses one dot-separated part: "0x"/"0X" is base 16, a
+// leading zero with more digits is leadingZeroBase, anything else is base 10. A
+// bare "0x" with no digits is read as 0: glibc does not resolve it (tested on
+// one glibc build), but other resolvers may, so it fails closed and
+// "169.254.0x" is refused. strconv with an explicit base rejects signs,
 // underscores and empty strings, so only digits of the chosen base get through.
-func parseLegacyIPv4Part(part string, zeroBase int) (uint64, bool) {
+func parseLegacyIPv4Part(part string, leadingZeroBase int) (uint64, bool) {
 	digits, base := part, 10
 	switch {
-	case len(part) > 2 && part[0] == '0' && (part[1] == 'x' || part[1] == 'X'):
+	case len(part) >= 2 && part[0] == '0' && (part[1] == 'x' || part[1] == 'X'):
+		if len(part) == 2 {
+			return 0, true
+		}
 		digits, base = part[2:], 16
 	case len(part) > 1 && part[0] == '0':
-		base = zeroBase
+		base = leadingZeroBase
 	}
 	n, err := strconv.ParseUint(digits, base, 32)
 	if err != nil {
