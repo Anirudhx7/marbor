@@ -102,6 +102,15 @@ func (r *Router) DropHostEvidence(host string) {
 	r.hostEvidenceMu.Unlock()
 }
 
+// dropHostEvidenceOnly forgets the snapshot for host but leaves the log
+// rate-limit keys alone, so a warning that fires on every poll of a
+// persistent condition (an oversize reply) stays rate-limited.
+func (r *Router) dropHostEvidenceOnly(host string) {
+	r.hostEvidenceMu.Lock()
+	delete(r.hostEvidence, host)
+	r.hostEvidenceMu.Unlock()
+}
+
 // dropHostEvidenceNotIn forgets every snapshot whose host is not a key of keep.
 // Run after each agent poll pass so a host that lost its last node row, or
 // whose agent was removed or disabled, stops feeding address identity.
