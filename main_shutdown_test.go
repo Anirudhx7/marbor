@@ -1,8 +1,7 @@
 package main
 
-// Proves, through the real main() and a real SIGTERM, that the audit logger
-// closes only after the HTTP servers drain, so in-flight requests still reach
-// the store. The test binary re-executes itself as the server (see TestMain).
+// Proves via the real main() and SIGTERM that the audit logger closes only
+// after the HTTP servers drain. The test binary re-execs itself (see TestMain).
 
 import (
 	"fmt"
@@ -30,13 +29,14 @@ const (
 	runMainDBEnv  = "MARBOR_TEST_RUN_MAIN_DB"
 	shutdownKey   = "sk-shutdown-test-key"
 	inFlightCount = 8
+	// Must exceed the summed stage budgets (3x30s startup, 30s warmUp, 20s, 10s, 30s exit);
+	// only bounds orphaned children.
+	childWatchdog = 6 * time.Minute
 )
 
-// TestMain runs the server when the gate variable is set (spawned child only).
 func TestMain(m *testing.M) {
 	if os.Getenv(runMainEnv) == "1" {
-		// Self-destruct so an orphaned child (parent killed by -timeout) cannot linger.
-		time.AfterFunc(2*time.Minute, func() { os.Exit(1) })
+		time.AfterFunc(childWatchdog, func() { os.Exit(1) })
 		os.Args = []string{"marbor", "-db", os.Getenv(runMainDBEnv)}
 		main()
 		os.Exit(0)
@@ -44,7 +44,6 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// slowBackend is a fake ollama node; once slow is set, chat holds open until release.
 type slowBackend struct {
 	srv     *httptest.Server
 	slow    atomic.Bool
@@ -92,7 +91,6 @@ var (
 	streamClient = &http.Client{Timeout: 90 * time.Second}
 )
 
-// freePorts holds n ":0" listeners open together so the ports are distinct.
 func freePorts(t *testing.T, n int) []int {
 	t.Helper()
 	var ports []int
@@ -134,7 +132,6 @@ func seedShutdownDB(t *testing.T, dbPath string, proxyPort, adminPort, metricsPo
 	must(t, st.UpsertKey(store.KeyRecord{Name: "shutdown-test", Key: shutdownKey}))
 }
 
-// childEnv drops variables that would redirect the child database or backups.
 func childEnv(dbPath string) []string {
 	var env []string
 	for _, kv := range os.Environ() {
@@ -155,7 +152,6 @@ type shutdownServer struct {
 	dbPath    string
 }
 
-// startShutdownServer boots the child, retrying on a port clash.
 func startShutdownServer(t *testing.T, backend *slowBackend) *shutdownServer {
 	t.Helper()
 	for attempt := 0; attempt < 3; attempt++ {
@@ -237,7 +233,6 @@ func chatRequest(addr string) (*http.Request, error) {
 	return req, err
 }
 
-// warmUp retries chat until three succeed.
 func (s *shutdownServer) warmUp(t *testing.T) []string {
 	t.Helper()
 	var ids []string
@@ -274,19 +269,19 @@ func (s *shutdownServer) assertNoDropsYet(t *testing.T, when string) {
 	}
 }
 
-// startInFlight opens n held-open requests; returns IDs and a body-finishing func.
 func (s *shutdownServer) startInFlight(t *testing.T, backend *slowBackend, n int) ([]string, func() error) {
 	t.Helper()
 	backend.slow.Store(true)
-	results := make(chan *http.Response, n)
+	type result struct {
+		resp *http.Response
+		err  error
+	}
+	results := make(chan result, n)
 	for i := 0; i < n; i++ {
 		go func() {
 			req, _ := chatRequest(s.proxyAddr)
 			resp, err := streamClient.Do(req)
-			if err != nil {
-				resp = nil
-			}
-			results <- resp
+			results <- result{resp, err}
 		}()
 	}
 	var ids []string
@@ -295,17 +290,23 @@ func (s *shutdownServer) startInFlight(t *testing.T, backend *slowBackend, n int
 		for _, resp := range resps {
 			resp.Body.Close()
 		}
+		for len(results) > 0 { // close responses queued but not yet received
+			if r := <-results; r.resp != nil {
+				r.resp.Body.Close()
+			}
+		}
 	})
 	for i := 0; i < n; i++ {
 		select {
-		case resp := <-results:
-			if resp != nil {
-				resps = append(resps, resp)
+		case r := <-results:
+			if r.err != nil {
+				t.Fatalf("in-flight request %d failed: %v\n%s", i, r.err, s.log())
 			}
-			if resp == nil || resp.StatusCode != http.StatusOK {
-				t.Fatalf("in-flight request %d failed: %v\n%s", i, resp, s.log())
+			resps = append(resps, r.resp)
+			if r.resp.StatusCode != http.StatusOK {
+				t.Fatalf("in-flight request %d: status %s\n%s", i, r.resp.Status, s.log())
 			}
-			ids = append(ids, resp.Header.Get("X-Request-ID"))
+			ids = append(ids, r.resp.Header.Get("X-Request-ID"))
 		case <-time.After(20 * time.Second):
 			t.Fatalf("only %d of %d in-flight responses started\n%s", i, n, s.log())
 		}
@@ -349,7 +350,7 @@ func TestSignalShutdownFlushesInFlightAuditEntries(t *testing.T) {
 
 	must(t, s.cmd.Process.Signal(syscall.SIGTERM))
 	s.waitProxyRefusing(t)
-	s.assertNoDropsYet(t, "during the drain")
+	s.assertNoDropsYet(t, "during the drain") // sanity only; the flush proof is the log and store rows below
 
 	backend.releaseAll()
 	if err := finish(); err != nil {
