@@ -30,7 +30,13 @@ const (
 )
 
 // hostLogKeyPrefixes lists every rate-limit key prefix; a key is prefix+host.
-var hostLogKeyPrefixes = []string{"truncate:", "oversize:", "read:", "lastresort:"}
+var hostLogKeyPrefixes = []string{"truncate:", "oversize:", "read:"}
+
+// lastResortLogPrefix keys the last-resort routing warning by head name and
+// host. It is not in hostLogKeyPrefixes: the head's host often has no polled
+// agent, so pruning by poll group would reset the limit every pass. These keys
+// are only removed once they are older than hostLogInterval.
+const lastResortLogPrefix = "lastresort:"
 
 // HostEvidence is one agent's latest host-level report. Host is the same key
 // pollAgentHosts groups nodes by (the raw NodeState.Host string).
@@ -121,7 +127,14 @@ func (r *Router) dropHostEvidenceNotIn(keep map[string][]*NodeState) {
 			delete(r.hostEvidence, host)
 		}
 	}
-	for key := range r.hostLogAt {
+	now := time.Now()
+	for key, at := range r.hostLogAt {
+		if strings.HasPrefix(key, lastResortLogPrefix) {
+			if now.Sub(at) >= hostLogInterval {
+				delete(r.hostLogAt, key)
+			}
+			continue
+		}
 		for _, prefix := range hostLogKeyPrefixes {
 			if host, ok := strings.CutPrefix(key, prefix); ok {
 				if _, kept := keep[host]; !kept {

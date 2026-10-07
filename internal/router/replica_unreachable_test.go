@@ -33,11 +33,12 @@ func replicaStaleRouter(t *testing.T, cfgs []config.NodeConfig, members ...strin
 	return r
 }
 
-// filterCandidates is the hard filter without the last-resort list, for tests
-// that only care about the healthy and excluded sets.
-func (r *Router) filterCandidates(nodes []*NodeState, modelName, runtimeFilter string, exclude map[string]bool) (healthy []*NodeState, excluded []ExcludedCandidate, excludedTotal int) {
-	healthy, excluded, excludedTotal, _ = r.filterCandidatesWithFallback(nodes, modelName, runtimeFilter, exclude)
-	return healthy, excluded, excludedTotal
+// filterCandidatesNoFallback is the hard filter without the last-resort
+// list, for tests that only care about the healthy and excluded sets. It is
+// a test helper only; production code calls filterCandidatesWithFallback.
+func (r *Router) filterCandidatesNoFallback(nodes []*NodeState, modelName, runtimeFilter string, exclude map[string]bool) (healthy []*NodeState, excluded []ExcludedCandidate, excludedTotal int) {
+	f := r.filterCandidatesWithFallback(nodes, modelName, runtimeFilter, exclude)
+	return f.healthy, f.excluded, f.excludedTotal
 }
 
 // pinSession installs a session-affinity entry for sess on the named node,
@@ -97,7 +98,7 @@ func TestHeadExcludedWhenWorkerAgentStale(t *testing.T) {
 	r := replicaStaleRouter(t, twoNodeCfgs(), "head", "worker")
 	setStaleByName(t, r, "worker", true)
 
-	healthy, excluded, _ := r.filterCandidates(r.nodes, "", "", nil)
+	healthy, excluded, _ := r.filterCandidatesNoFallback(r.nodes, "", "", nil)
 	if got := excludedReasons(excluded)["head"]; got != ExcludeReasonReplicaMemberUnreachable {
 		t.Fatalf("head exclude reason = %q, want %q", got, ExcludeReasonReplicaMemberUnreachable)
 	}
@@ -118,7 +119,7 @@ func TestHeadExcludedWhenWorkerAgentStale(t *testing.T) {
 func TestHeadKeptWhenWorkerAgentless(t *testing.T) {
 	r := replicaStaleRouter(t, twoNodeCfgs(), "head", "worker")
 	// Agentless worker: AgentStale stays false, no matter what else is unknown.
-	healthy, excluded, _ := r.filterCandidates(r.nodes, "", "", nil)
+	healthy, excluded, _ := r.filterCandidatesNoFallback(r.nodes, "", "", nil)
 	if _, ok := excludedReasons(excluded)["head"]; ok {
 		t.Fatal("head excluded although its worker has no agent (unknown must fail open)")
 	}
@@ -138,7 +139,7 @@ func TestHeadKeptWhenHeadlessWorkerUnhealthyButAgentPresent(t *testing.T) {
 	w.Healthy = false // headless workers never pass HTTP probing
 	w.AgentPresent = true
 	w.mu.Unlock()
-	_, excluded, _ := r.filterCandidates(r.nodes, "", "", nil)
+	_, excluded, _ := r.filterCandidatesNoFallback(r.nodes, "", "", nil)
 	if got, ok := excludedReasons(excluded)["head"]; ok {
 		t.Fatalf("head excluded with reason %q although the worker's agent answers", got)
 	}
@@ -151,7 +152,7 @@ func TestHeadUnreachableExistingReasonsWinPrecedence(t *testing.T) {
 	h.mu.Lock()
 	h.Healthy = false
 	h.mu.Unlock()
-	_, excluded, _ := r.filterCandidates(r.nodes, "", "", nil)
+	_, excluded, _ := r.filterCandidatesNoFallback(r.nodes, "", "", nil)
 	if got := excludedReasons(excluded)["head"]; got != ExcludeReasonUnhealthy {
 		t.Errorf("head reason = %q, want %q (existing check must win)", got, ExcludeReasonUnhealthy)
 	}
@@ -166,7 +167,7 @@ func TestHeadExcludedThreeNodeGroupOneStaleMember(t *testing.T) {
 	}
 	r := replicaStaleRouter(t, cfgs, "head", "w1", "w2")
 	setStaleByName(t, r, "w2", true)
-	_, excluded, _ := r.filterCandidates(r.nodes, "", "", nil)
+	_, excluded, _ := r.filterCandidatesNoFallback(r.nodes, "", "", nil)
 	if got := excludedReasons(excluded)["head"]; got != ExcludeReasonReplicaMemberUnreachable {
 		t.Errorf("head reason = %q, want %q", got, ExcludeReasonReplicaMemberUnreachable)
 	}
@@ -180,7 +181,7 @@ func TestHeadExcludedForNonVLLMManualDeclaration(t *testing.T) {
 	}
 	r := replicaStaleRouter(t, cfgs, "head", "worker")
 	setStaleByName(t, r, "worker", true)
-	_, excluded, _ := r.filterCandidates(r.nodes, "", "", nil)
+	_, excluded, _ := r.filterCandidatesNoFallback(r.nodes, "", "", nil)
 	if got := excludedReasons(excluded)["head"]; got != ExcludeReasonReplicaMemberUnreachable {
 		t.Errorf("tgi head reason = %q, want %q", got, ExcludeReasonReplicaMemberUnreachable)
 	}
@@ -195,7 +196,7 @@ func TestHeadCoHostedWithWorkerBothStale(t *testing.T) {
 	r := replicaStaleRouter(t, cfgs, "head", "worker")
 	setStaleByName(t, r, "head", true)
 	setStaleByName(t, r, "worker", true)
-	_, excluded, _ := r.filterCandidates(r.nodes, "", "", nil)
+	_, excluded, _ := r.filterCandidatesNoFallback(r.nodes, "", "", nil)
 	if got := excludedReasons(excluded)["head"]; got != ExcludeReasonReplicaMemberUnreachable {
 		t.Errorf("co-hosted head reason = %q, want %q (non-head member is stale)", got, ExcludeReasonReplicaMemberUnreachable)
 	}
@@ -203,7 +204,7 @@ func TestHeadCoHostedWithWorkerBothStale(t *testing.T) {
 	// Only the head node itself is stale: its own health already covers it,
 	// this filter must not exclude it.
 	setStaleByName(t, r, "worker", false)
-	_, excluded, _ = r.filterCandidates(r.nodes, "", "", nil)
+	_, excluded, _ = r.filterCandidatesNoFallback(r.nodes, "", "", nil)
 	if got, ok := excludedReasons(excluded)["head"]; ok {
 		t.Errorf("head excluded (%q) because only its own node is stale", got)
 	}
@@ -222,7 +223,7 @@ func TestOnlyHeadStaleWorkerFallsBackWithLabel(t *testing.T) {
 		t.Fatalf("Route picked %v, want the head as last resort", picked)
 	}
 	if dec == nil || !strings.Contains(dec.Detail, "last resort") {
-		t.Fatalf("decision detail %q must label the last-resort fallback", dec.Detail)
+		t.Fatalf("decision %+v must label the last-resort fallback", dec)
 	}
 	if got := excludedReasons(dec.Excluded)["head"]; got != ExcludeReasonReplicaMemberUnreachable {
 		t.Errorf("explain reason for head = %q, want %q", got, ExcludeReasonReplicaMemberUnreachable)
@@ -230,8 +231,8 @@ func TestOnlyHeadStaleWorkerFallsBackWithLabel(t *testing.T) {
 
 	// RouteExcluding takes the same path.
 	picked, _, dec = r.RouteExcluding("", "", nil)
-	if picked == nil || picked.Name != "head" || !strings.Contains(dec.Detail, "last resort") {
-		t.Errorf("RouteExcluding picked %v detail %q, want head with last-resort label", picked, dec.Detail)
+	if picked == nil || picked.Name != "head" || dec == nil || !strings.Contains(dec.Detail, "last resort") {
+		t.Fatalf("RouteExcluding picked %v decision %+v, want head with last-resort label", picked, dec)
 	}
 
 	// A caller-directed retry exclusion still wins over the fallback.
@@ -367,14 +368,14 @@ func TestStickyPinSoleHeadStaleWorkerRoutesToHeadAndKeepsPin(t *testing.T) {
 	if !dec.AffinityLost {
 		t.Error("AffinityLost should be set when the pin was bypassed")
 	}
-	if !strings.HasSuffix(dec.Detail, "a replica member's host agent is not answering; the session pin is kept)") {
-		t.Errorf("detail %q should end with one coherent last-resort sentence that includes the kept pin", dec.Detail)
+	if !strings.HasSuffix(dec.Detail, "the session pin was skipped for this request and kept)") {
+		t.Errorf("detail %q should end by saying the pin was skipped for this request and kept", dec.Detail)
 	}
 	if n := strings.Count(dec.Detail, "last resort"); n != 1 {
 		t.Errorf("detail %q mentions last resort %d times, want once", dec.Detail, n)
 	}
-	if strings.Contains(dec.Detail, "unhealthy/draining") {
-		t.Errorf("detail %q must not carry the generic expired-pin wording", dec.Detail)
+	if strings.Contains(dec.Detail, "no longer usable") {
+		t.Errorf("detail %q must not carry the generic lost-pin wording", dec.Detail)
 	}
 }
 
@@ -407,32 +408,20 @@ func TestUnreachableReplicaHeadsHelper(t *testing.T) {
 			without = append(without, n)
 		}
 	}
-	if down := unreachableReplicaHeads(without, roles, heads); down["head"] {
+	if down := unreachableReplicaHeads(without, roles, heads); down["head"] != nil {
 		t.Error("head marked down although its stale member is no longer in the node list")
 	}
-	if down := unreachableReplicaHeads(r.nodes, roles, heads); !down["head"] {
-		t.Error("head not marked down for a stale member")
+	down := unreachableReplicaHeads(r.nodes, roles, heads)
+	if down["head"] == nil || down["head"].Name != "worker" {
+		t.Errorf("head not marked down by its stale member worker: %v", down["head"])
 	}
 
-	// No replica heads: nil, and no node lock is touched. roles names the
-	// worker, so a pass over the nodes would take its read lock; only the
-	// early return on empty heads can avoid blocking behind the write lock
-	// held here.
-	held := nodeByName(t, r, "worker")
-	held.mu.Lock()
-	done := make(chan map[string]bool, 1)
-	go func() {
-		done <- unreachableReplicaHeads(r.nodes, map[string]SchedulingRole{"worker": RoleWorker}, map[string]string{})
-	}()
-	select {
-	case got := <-done:
-		if got != nil {
-			t.Errorf("helper returned %v for no heads, want nil", got)
-		}
-	case <-time.After(2 * time.Second):
-		t.Error("helper blocked on a node lock although there are no replica heads")
+	// No replica heads: nil. This only checks the result; the early return
+	// is a fast path, and a pass without heads would also return nil because
+	// every worker lookup finds no head, so it is not observable from here.
+	if got := unreachableReplicaHeads(r.nodes, roles, map[string]string{}); got != nil {
+		t.Errorf("helper returned %v for no heads, want nil", got)
 	}
-	held.mu.Unlock()
 }
 
 // TestFilterCandidatesRaceWithAgentStaleWrites makes no assertion about the
@@ -453,6 +442,10 @@ func TestFilterCandidatesRaceWithAgentStaleWrites(t *testing.T) {
 
 	var wg sync.WaitGroup
 	stop := make(chan struct{})
+	defer func() {
+		close(stop)
+		wg.Wait()
+	}()
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -469,11 +462,9 @@ func TestFilterCandidatesRaceWithAgentStaleWrites(t *testing.T) {
 		}
 	}()
 	for i := 0; i < 500; i++ {
-		r.filterCandidates(r.nodes, "", "", nil)
+		r.filterCandidatesNoFallback(r.nodes, "", "", nil)
 		r.Route("", "sess", "")
 	}
-	close(stop)
-	wg.Wait()
 }
 
 // Producer-driven cases: the flag is set by the real poll path.
@@ -504,7 +495,7 @@ func staleProducerRouter(t *testing.T, agentPort int, scheme string) *Router {
 
 func headExcludedNow(t *testing.T, r *Router) bool {
 	t.Helper()
-	_, excluded, _ := r.filterCandidates(r.nodes, "", "", nil)
+	_, excluded, _ := r.filterCandidatesNoFallback(r.nodes, "", "", nil)
 	return excludedReasons(excluded)["head"] == ExcludeReasonReplicaMemberUnreachable
 }
 
@@ -577,13 +568,33 @@ func TestStaleProducerFailedPollsExcludeHead(t *testing.T) {
 				t.Fatal("head excluded after a good poll")
 			}
 			fail()
+			// Every poll after fail() must be counted as a failure, so a
+			// kept-alive connection or a cached answer cannot pass this test
+			// for the wrong reason.
+			worker := nodeByName(t, r, "worker")
+			failures := func() int {
+				worker.mu.RLock()
+				defer worker.mu.RUnlock()
+				return worker.AgentFailures
+			}
 			for i := 0; i < r.healthFailureThreshold-1; i++ {
 				r.pollAgentHosts()
+				if got := failures(); got != i+1 {
+					t.Fatalf("poll %d after fail() left %d counted failures, want %d", i+1, got, i+1)
+				}
 			}
 			if headExcludedNow(t, r) {
 				t.Fatal("head excluded below the failure threshold")
 			}
 			r.pollAgentHosts()
+			// The counter resets once the threshold is crossed (the agent is
+			// marked stale), so only the stale flag is checked here.
+			worker.mu.RLock()
+			stale := worker.AgentStale
+			worker.mu.RUnlock()
+			if !stale {
+				t.Fatal("worker not marked stale by the threshold poll")
+			}
 			if !headExcludedNow(t, r) {
 				t.Fatal("head not excluded after the failure threshold")
 			}
@@ -660,7 +671,7 @@ func TestStaleProducerAgentlessWorkerKeepsHead(t *testing.T) {
 func TestHeadWithDeclaredMemberAbsentFromFleet(t *testing.T) {
 	r := replicaStaleRouter(t, twoNodeCfgs(), "head", "worker", "ghost")
 	setStaleByName(t, r, "worker", true)
-	_, excluded, _ := r.filterCandidates(r.nodes, "", "", nil)
+	_, excluded, _ := r.filterCandidatesNoFallback(r.nodes, "", "", nil)
 	reasons := excludedReasons(excluded)
 	for _, name := range []string{"head", "worker"} {
 		if got := reasons[name]; got != ExcludeReasonReplicaUnresolved {
@@ -719,7 +730,8 @@ func TestTwoStaleHeadsBothEnterLastResort(t *testing.T) {
 	setStaleByName(t, r, "worker", true)
 	setStaleByName(t, r, "worker2", true)
 
-	healthy, _, _, lastResort := r.filterCandidatesWithFallback(r.nodes, "", "", nil)
+	f := r.filterCandidatesWithFallback(r.nodes, "", "", nil)
+	healthy, lastResort := f.healthy, f.lastResort
 	if len(healthy) != 0 {
 		t.Fatalf("healthy = %d nodes, want none", len(healthy))
 	}
@@ -732,8 +744,11 @@ func TestTwoStaleHeadsBothEnterLastResort(t *testing.T) {
 	}
 
 	picked, _, dec := r.Route("", "", "")
-	if picked == nil || (picked.Name != "head" && picked.Name != "head2") {
-		t.Fatalf("Route picked %v, want one of the two heads", picked)
+	if picked == nil || dec == nil {
+		t.Fatalf("Route picked %v decision %+v, want one of the two heads", picked, dec)
+	}
+	if picked.Name != "head" && picked.Name != "head2" {
+		t.Fatalf("Route picked %q, want exactly one of head or head2", picked.Name)
 	}
 	reasons := excludedReasons(dec.Excluded)
 	if reasons["head"] != ExcludeReasonReplicaMemberUnreachable || reasons["head2"] != ExcludeReasonReplicaMemberUnreachable {

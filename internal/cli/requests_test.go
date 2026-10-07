@@ -123,22 +123,32 @@ func TestExcludedReasonText_ReplicaReasons(t *testing.T) {
 
 // TestExcludedReasonText_CoversEveryRouterReason fails when the router adds an
 // ExcludeReason constant that this CLI has no display text for (the lookup
-// would fall through and print the raw identifier). The router is imported by
-// this test only; the CLI itself does not depend on it.
+// would fall through and print the raw identifier). It iterates the router's
+// own list of reasons and pins the exact display text. The router is imported
+// by this test only; the CLI itself does not depend on it.
 func TestExcludedReasonText_CoversEveryRouterReason(t *testing.T) {
-	for _, reason := range []string{
-		router.ExcludeReasonUnhealthy,
-		router.ExcludeReasonDraining,
-		router.ExcludeReasonRuntimeMismatch,
-		router.ExcludeReasonIneligibleModel,
-		router.ExcludeReasonOverCapacity,
-		router.ExcludeReasonInsufficientGPUGroup,
-		router.ExcludeReasonReplicaWorker,
-		router.ExcludeReasonReplicaUnresolved,
-		router.ExcludeReasonReplicaMemberUnreachable,
-	} {
-		if got := excludedReasonText(reason); got == reason {
-			t.Errorf("excludedReasonText(%q) has no display text", reason)
+	want := map[string]string{
+		router.ExcludeReasonUnhealthy:                "node is unhealthy",
+		router.ExcludeReasonDraining:                 "node is draining",
+		router.ExcludeReasonRuntimeMismatch:          "runtime does not match the request",
+		router.ExcludeReasonIneligibleModel:          "model not loaded on this node",
+		router.ExcludeReasonOverCapacity:             "over the per-node request cap",
+		router.ExcludeReasonInsufficientGPUGroup:     "insufficient GPUs for this model's parallelism requirement",
+		router.ExcludeReasonReplicaWorker:            "non-head member of a multi-host replica; requests go to its head",
+		router.ExcludeReasonReplicaUnresolved:        "replica declaration conflicts with another node and needs reconciling",
+		router.ExcludeReasonReplicaMemberUnreachable: "a replica member's host agent is not answering (the worker itself may still be up)",
+	}
+	for _, reason := range router.ExcludeReasons {
+		exp, ok := want[reason]
+		if !ok {
+			t.Errorf("reason %q has no expected display text in this test", reason)
+			continue
 		}
+		if got := excludedReasonText(reason); got != exp {
+			t.Errorf("excludedReasonText(%q) = %q, want %q", reason, got, exp)
+		}
+	}
+	if len(want) != len(router.ExcludeReasons) {
+		t.Errorf("test lists %d reasons, router exposes %d", len(want), len(router.ExcludeReasons))
 	}
 }

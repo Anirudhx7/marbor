@@ -1004,8 +1004,8 @@ const mockRoutingDecisions: Record<string, RoutingDecision> = {
       { node: 'gpu-node-07', reason: 'replica_member_unreachable' },
       { node: 'gpu-node-08', reason: 'replica_worker' },
       { node: 'gpu-node-09', reason: 'replica_unresolved' },
+      { node: 'gpu-node-10', reason: 'replica_unresolved' },
     ],
-    excludedTotal: 7,
   },
 };
 

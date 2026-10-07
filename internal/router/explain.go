@@ -72,6 +72,20 @@ const (
 	ExcludeReasonReplicaMemberUnreachable = "replica_member_unreachable"
 )
 
+// ExcludeReasons lists every ExcludeReason constant, so a client that maps
+// reasons to display text can assert it covers all of them.
+var ExcludeReasons = []string{
+	ExcludeReasonUnhealthy,
+	ExcludeReasonDraining,
+	ExcludeReasonRuntimeMismatch,
+	ExcludeReasonIneligibleModel,
+	ExcludeReasonOverCapacity,
+	ExcludeReasonInsufficientGPUGroup,
+	ExcludeReasonReplicaWorker,
+	ExcludeReasonReplicaUnresolved,
+	ExcludeReasonReplicaMemberUnreachable,
+}
+
 // maxExcludedCandidates bounds how many ExcludedCandidate entries a single
 // RoutingDecision carries, so a large fleet routing a rarely-requested model
 // can't put every node in the response. ExcludedTotal (below) reports the
@@ -95,16 +109,20 @@ type RoutingDecision struct {
 	Components   []ScoreComponent `json:"components,omitempty"` // score_based only
 	// Excluded lists up to maxExcludedCandidates real candidates the
 	// pre-score hard filter removed before scoring, in the order they were
-	// evaluated. Never populated for the session_affinity fast path (it
+	// evaluated; a replica head that can be a last resort is always listed,
+	// even past that cap. Never populated for the session_affinity fast path (it
 	// never runs the candidate loop). When the last-resort path routed to a
 	// replica head whose member host agent is not answering, the chosen node
 	// itself also appears here with replica_member_unreachable, and Detail
 	// says it was a last resort.
 	Excluded []ExcludedCandidate `json:"excluded,omitempty"`
 	// ExcludedTotal is only set (non-zero) when the real number of excluded
-	// candidates exceeds maxExcludedCandidates - omitted entirely in the
+	// candidates exceeds the number listed - omitted entirely in the
 	// common case where every excluded candidate is already listed.
 	ExcludedTotal int `json:"excludedTotal,omitempty"`
+	// lastResort is set when the node was chosen only because no other
+	// candidate remained and its replica member's host agent is dark.
+	lastResort bool
 }
 
 const (
