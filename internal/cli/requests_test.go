@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/Anirudhx7/marbor/internal/router"
 )
 
 func TestRun_RequestsExplain(t *testing.T) {
@@ -102,15 +104,41 @@ func TestRun_RequestsExplain_MissingID(t *testing.T) {
 }
 
 func TestExcludedReasonText_ReplicaReasons(t *testing.T) {
-	cases := map[string]string{
-		"replica_worker":             "non-head member",
-		"replica_unresolved":         "conflicts",
-		"replica_member_unreachable": "host agent is not answering",
-		"something_new":              "something_new",
+	cases := []struct {
+		name, reason, want string
+	}{
+		{"worker", "replica_worker", "non-head member of a multi-host replica; requests go to its head"},
+		{"unresolved", "replica_unresolved", "replica declaration conflicts with another node and needs reconciling"},
+		{"unreachable", "replica_member_unreachable", "a replica member's host agent is not answering (the worker itself may still be up)"},
+		{"unknown passes through", "something_new", "something_new"},
 	}
-	for reason, want := range cases {
-		if got := excludedReasonText(reason); !strings.Contains(got, want) {
-			t.Errorf("excludedReasonText(%q) = %q, want it to contain %q", reason, got, want)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := excludedReasonText(tc.reason); got != tc.want {
+				t.Errorf("excludedReasonText(%q) = %q, want %q", tc.reason, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestExcludedReasonText_CoversEveryRouterReason fails when the router adds an
+// ExcludeReason constant that this CLI has no display text for (the lookup
+// would fall through and print the raw identifier). The router is imported by
+// this test only; the CLI itself does not depend on it.
+func TestExcludedReasonText_CoversEveryRouterReason(t *testing.T) {
+	for _, reason := range []string{
+		router.ExcludeReasonUnhealthy,
+		router.ExcludeReasonDraining,
+		router.ExcludeReasonRuntimeMismatch,
+		router.ExcludeReasonIneligibleModel,
+		router.ExcludeReasonOverCapacity,
+		router.ExcludeReasonInsufficientGPUGroup,
+		router.ExcludeReasonReplicaWorker,
+		router.ExcludeReasonReplicaUnresolved,
+		router.ExcludeReasonReplicaMemberUnreachable,
+	} {
+		if got := excludedReasonText(reason); got == reason {
+			t.Errorf("excludedReasonText(%q) has no display text", reason)
 		}
 	}
 }

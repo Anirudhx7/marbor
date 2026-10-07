@@ -30,7 +30,7 @@ const (
 )
 
 // hostLogKeyPrefixes lists every rate-limit key prefix; a key is prefix+host.
-var hostLogKeyPrefixes = []string{"truncate:", "oversize:", "read:"}
+var hostLogKeyPrefixes = []string{"truncate:", "oversize:", "read:", "lastresort:"}
 
 // HostEvidence is one agent's latest host-level report. Host is the same key
 // pollAgentHosts groups nodes by (the raw NodeState.Host string).

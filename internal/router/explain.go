@@ -85,16 +85,21 @@ type RoutingDecision struct {
 	Reason string `json:"reason"` // session_affinity | pinned_warm | score_based
 	Detail string `json:"detail,omitempty"`
 	// AffinityLost is true when the request had a session-affinity entry
-	// that was cleared (target node unhealthy/draining/ineligible) before
-	// falling through to normal selection - so Reason is score_based or
-	// pinned_warm but the request did not start out affinity-free.
+	// that was cleared (target node unhealthy/draining/ineligible) or, for a
+	// replica head whose member host agent is not answering, bypassed with
+	// the pin kept, before falling through to normal selection - so Reason is
+	// score_based or pinned_warm but the request did not start out
+	// affinity-free.
 	AffinityLost bool             `json:"affinityLost,omitempty"`
 	Score        float64          `json:"score,omitempty"`
 	Components   []ScoreComponent `json:"components,omitempty"` // score_based only
 	// Excluded lists up to maxExcludedCandidates real candidates the
 	// pre-score hard filter removed before scoring, in the order they were
 	// evaluated. Never populated for the session_affinity fast path (it
-	// never runs the candidate loop).
+	// never runs the candidate loop). When the last-resort path routed to a
+	// replica head whose member host agent is not answering, the chosen node
+	// itself also appears here with replica_member_unreachable, and Detail
+	// says it was a last resort.
 	Excluded []ExcludedCandidate `json:"excluded,omitempty"`
 	// ExcludedTotal is only set (non-zero) when the real number of excluded
 	// candidates exceeds maxExcludedCandidates - omitted entirely in the

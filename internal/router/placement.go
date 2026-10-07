@@ -9,6 +9,7 @@ package router
 import (
 	"log"
 	"math"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -1353,21 +1354,6 @@ func (r *Router) replicaFor(n *NodeState, allNodes []*NodeState) Replica {
 	}
 }
 
-// filterCandidates applies the pre-score hard filter (runtime match, health,
-// draining, model eligibility, per-node capacity, GPU-group shape) that
-// routeInternal and RouteExcluding both need, recording which single
-// condition eliminated each excluded node - the first one that fails, in the
-// exact order the original boolean short-circuit already evaluated:
-// runtime filter -> health -> draining -> model eligibility -> capacity ->
-// GPU group -> replica worker/unresolved -> replica member unreachable.
-// exclude may be nil (routeInternal has no retry-exclude set); a node
-// skipped via exclude is a caller-directed retry skip, not a hard-filter
-// exclusion, so it is not recorded as an ExcludedCandidate.
-func (r *Router) filterCandidates(nodes []*NodeState, modelName, runtimeFilter string, exclude map[string]bool) (healthy []*NodeState, excluded []ExcludedCandidate, excludedTotal int) {
-	healthy, excluded, excludedTotal, _ = r.filterCandidatesWithFallback(nodes, modelName, runtimeFilter, exclude)
-	return healthy, excluded, excludedTotal
-}
-
 // lastResortDetail is appended to a decision's Detail when the only nodes
 // left were replica heads whose member host agent is not answering.
 const lastResortDetail = " (last resort: no other candidate, and a replica member's host agent is not answering)"
@@ -1384,6 +1370,14 @@ func (r *Router) filterAndSelect(nodes []*NodeState, modelName, runtimeFilter, p
 	if len(healthy) == 0 && len(lastResort) > 0 {
 		healthy = lastResort
 		usedLastResort = true
+		for _, n := range lastResort {
+			n.mu.RLock()
+			host := n.Host
+			n.mu.RUnlock()
+			if r.allowHostLog("lastresort:" + host) {
+				log.Printf("router: routing to replica head %q as a last resort: no other candidate and a replica member's host agent is not answering", n.Name)
+			}
+		}
 	}
 	node, warm, decision := r.selectBestNode(healthy, modelName, preferredNode)
 	applyExclusionExplainability(decision, excluded, excludedTotal)
@@ -1393,9 +1387,22 @@ func (r *Router) filterAndSelect(nodes []*NodeState, modelName, runtimeFilter, p
 	return node, warm, decision
 }
 
-// filterCandidatesWithFallback is filterCandidates that also returns
-// lastResort: the nodes whose only failing check was the replica-member-
-// unreachable one. The caller routes to them only when healthy is empty.
+// filterCandidatesWithFallback applies the pre-score hard filter (runtime match, health,
+// draining, model eligibility, per-node capacity, GPU-group shape) that
+// routeInternal and RouteExcluding both need, recording which single
+// condition eliminated each excluded node - the first one that fails, in the
+// exact order the original boolean short-circuit already evaluated:
+// runtime filter -> health -> draining -> model eligibility -> capacity ->
+// GPU group -> replica worker/unresolved -> replica member unreachable.
+// exclude may be nil (routeInternal has no retry-exclude set); a node
+// skipped via exclude is a caller-directed retry skip, not a hard-filter
+// exclusion, so it is not recorded as an ExcludedCandidate.
+//
+// It also returns lastResort: the nodes whose only failing check was the
+// replica-member-unreachable one. Only those heads enter lastResort, and the
+// list is not subject to the maxExcludedCandidates truncation that applies to
+// excluded. The caller routes to lastResort whenever healthy is empty, even
+// if the other nodes were merely over capacity rather than down.
 func (r *Router) filterCandidatesWithFallback(nodes []*NodeState, modelName, runtimeFilter string, exclude map[string]bool) (healthy []*NodeState, excluded []ExcludedCandidate, excludedTotal int, lastResort []*NodeState) {
 	roles, heads := resolveSchedulingRolesAndHeads(nodes) // computed once for this call, not per node
 	down := unreachableReplicaHeads(nodes, roles, heads)
@@ -1512,7 +1519,9 @@ func (r *Router) RouteWithPrefix(modelName, sessionID, runtimeFilter, preferredN
 		node, hadEntry := r.stickyNode(sessionID)
 		if node != nil {
 			stickyNodes := r.Nodes()
-			roles, heads := resolveSchedulingRolesAndHeads(stickyNodes) // one extra pass, same cost as one filterCandidates pass
+			// Roles and heads are recomputed here and again inside the
+			// fall-through's filter, so the bypass path resolves them twice.
+			roles, heads := resolveSchedulingRolesAndHeads(stickyNodes)
 			role := roles[node.Name]
 			hardValid := (runtimeFilter == "" || node.GetRuntime() == runtimeFilter) &&
 				r.isEligibleForModel(node, modelName) &&
@@ -1566,10 +1575,28 @@ func (r *Router) RouteWithPrefix(modelName, sessionID, runtimeFilter, preferredN
 		}
 		if decision != nil && affinityLost {
 			decision.AffinityLost = true
-			decision.Detail += " (session affinity existed but target node unhealthy/draining/expired or a replica member unreachable)"
+			decision.Detail = withAffinityLostDetail(decision.Detail, keepPin)
 		}
 	}
 	return node, warm, decision
+}
+
+// withAffinityLostDetail returns detail with the note for a session-affinity
+// entry the request could not use. bypassed is true only when the pin was kept
+// but skipped because a replica member's host agent is not answering; that is
+// the one case where the replica wording applies. When the last-resort path
+// then picked that same pinned head, detail already ends with the last-resort
+// sentence, so the pin note is folded into its closing parenthesis rather than
+// stacked after it.
+func withAffinityLostDetail(detail string, bypassed bool) string {
+	switch {
+	case !bypassed:
+		return detail + " (session affinity existed but target node unhealthy/draining/expired)"
+	case strings.HasSuffix(detail, lastResortDetail):
+		return strings.TrimSuffix(detail, ")") + "; the session pin is kept)"
+	default:
+		return detail + " (session pin kept but skipped for this request: a replica member's host agent is not answering)"
+	}
 }
 
 // RouteExcluding picks the best healthy node for modelName using weighted placement scoring,
