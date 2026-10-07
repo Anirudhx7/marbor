@@ -63,6 +63,13 @@ const (
 	// reasons because the operator-facing remediation differs.
 	ExcludeReasonReplicaWorker     = "replica_worker"
 	ExcludeReasonReplicaUnresolved = "replica_unresolved"
+	// ExcludeReasonReplicaMemberUnreachable: this node is the head of a
+	// confirmed replica and the marbor agent of a non-head member's host has
+	// stopped answering. It says the agent is dark, not that the worker
+	// process is dead - the worker may still be serving. When excluding it
+	// would leave no candidate at all the head is used anyway as a last
+	// resort and the decision Detail says so.
+	ExcludeReasonReplicaMemberUnreachable = "replica_member_unreachable"
 )
 
 // maxExcludedCandidates bounds how many ExcludedCandidate entries a single

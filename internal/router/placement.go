@@ -995,6 +995,49 @@ func resolveSchedulingRolesAndHeads(nodes []*NodeState) (map[string]SchedulingRo
 	return roles, heads
 }
 
+// unreachableReplicaHeads returns the set of replica head names that have at
+// least one non-head member whose marbor agent is stale (enrolled but not
+// answering). It reads AgentStale only - never Healthy (a headless worker is
+// permanently unhealthy by design), AgentPresent or AgentTelemetryUnknown -
+// so a worker with no agent, or one whose agent answered with an over-cap
+// reply, is unknown and never counts as down. A head's own AgentStale is not
+// a signal here: its own health already covers it.
+//
+// One pass over nodes, one node read lock at a time, never nested, and the
+// caller holds no router lock. Returns nil at once when there are no replica
+// heads, so a fleet without replicas pays nothing on the per-route path. A
+// member missing from nodes is simply never visited (fail open).
+//
+// Accepted race: the gap between this read and the per-node reads that
+// follow in filterCandidates is not closed. A flip inside it is wrong for at
+// most one poll interval and the next route sees the new value.
+func unreachableReplicaHeads(nodes []*NodeState, roles map[string]SchedulingRole, heads map[string]string) map[string]bool {
+	if len(heads) == 0 {
+		return nil
+	}
+	var down map[string]bool
+	for _, n := range nodes {
+		if roles[n.Name] != RoleWorker {
+			continue
+		}
+		head := heads[n.Name]
+		if head == "" || down[head] {
+			continue
+		}
+		n.mu.RLock()
+		stale := n.AgentStale
+		n.mu.RUnlock()
+		if !stale {
+			continue
+		}
+		if down == nil {
+			down = make(map[string]bool)
+		}
+		down[head] = true
+	}
+	return down
+}
+
 // validateComponent reports whether every real node inside members has an
 // identical, reciprocal replica_peers declaration naming EXACTLY this
 // component's members (itself included) and the same head - the concrete
@@ -1316,12 +1359,46 @@ func (r *Router) replicaFor(n *NodeState, allNodes []*NodeState) Replica {
 // condition eliminated each excluded node - the first one that fails, in the
 // exact order the original boolean short-circuit already evaluated:
 // runtime filter -> health -> draining -> model eligibility -> capacity ->
-// GPU group -> replica worker/unresolved. exclude may be nil (routeInternal
-// has no retry-exclude set); a node skipped via exclude is a caller-directed
-// retry skip, not a hard-filter exclusion, so it is not recorded as an
-// ExcludedCandidate.
+// GPU group -> replica worker/unresolved -> replica member unreachable.
+// exclude may be nil (routeInternal has no retry-exclude set); a node
+// skipped via exclude is a caller-directed retry skip, not a hard-filter
+// exclusion, so it is not recorded as an ExcludedCandidate.
 func (r *Router) filterCandidates(nodes []*NodeState, modelName, runtimeFilter string, exclude map[string]bool) (healthy []*NodeState, excluded []ExcludedCandidate, excludedTotal int) {
-	roles := r.resolveSchedulingRoles(nodes) // computed once for this call, not per node
+	healthy, excluded, excludedTotal, _ = r.filterCandidatesWithFallback(nodes, modelName, runtimeFilter, exclude)
+	return healthy, excluded, excludedTotal
+}
+
+// lastResortDetail is appended to a decision's Detail when the only nodes
+// left were replica heads whose member host agent is not answering.
+const lastResortDetail = " (last resort: no other candidate, and a replica member's host agent is not answering)"
+
+// filterAndSelect runs the pre-score hard filter and selection shared by
+// routeInternal and RouteExcluding. When the filter leaves no candidate but
+// some replica heads were excluded only because a member host agent is dark,
+// it routes to those heads anyway: a dark agent alone must not turn a model
+// into a total outage while its worker may still be serving. The decision
+// keeps the excluded entry and says last resort in Detail.
+func (r *Router) filterAndSelect(nodes []*NodeState, modelName, runtimeFilter, preferredNode string, exclude map[string]bool) (*NodeState, bool, *RoutingDecision) {
+	healthy, excluded, excludedTotal, lastResort := r.filterCandidatesWithFallback(nodes, modelName, runtimeFilter, exclude)
+	usedLastResort := false
+	if len(healthy) == 0 && len(lastResort) > 0 {
+		healthy = lastResort
+		usedLastResort = true
+	}
+	node, warm, decision := r.selectBestNode(healthy, modelName, preferredNode)
+	applyExclusionExplainability(decision, excluded, excludedTotal)
+	if usedLastResort && node != nil && decision != nil {
+		decision.Detail += lastResortDetail
+	}
+	return node, warm, decision
+}
+
+// filterCandidatesWithFallback is filterCandidates that also returns
+// lastResort: the nodes whose only failing check was the replica-member-
+// unreachable one. The caller routes to them only when healthy is empty.
+func (r *Router) filterCandidatesWithFallback(nodes []*NodeState, modelName, runtimeFilter string, exclude map[string]bool) (healthy []*NodeState, excluded []ExcludedCandidate, excludedTotal int, lastResort []*NodeState) {
+	roles, heads := resolveSchedulingRolesAndHeads(nodes) // computed once for this call, not per node
+	down := unreachableReplicaHeads(nodes, roles, heads)
 	for _, n := range nodes {
 		if exclude[n.URL] { // safe on a nil map: indexing returns the zero value, never panics
 			continue
@@ -1355,18 +1432,23 @@ func (r *Router) filterCandidates(nodes []*NodeState, modelName, runtimeFilter s
 				reason = ExcludeReasonReplicaWorker
 			case roles[n.Name] == RoleUnresolved:
 				reason = ExcludeReasonReplicaUnresolved
+			case roles[n.Name] == RoleHead && down[n.Name]:
+				reason = ExcludeReasonReplicaMemberUnreachable
 			}
 		}
 		if reason == "" {
 			healthy = append(healthy, n)
 			continue
 		}
+		if reason == ExcludeReasonReplicaMemberUnreachable {
+			lastResort = append(lastResort, n)
+		}
 		excludedTotal++
 		if len(excluded) < maxExcludedCandidates {
 			excluded = append(excluded, ExcludedCandidate{Node: n.Name, Reason: reason})
 		}
 	}
-	return healthy, excluded, excludedTotal
+	return healthy, excluded, excludedTotal, lastResort
 }
 
 // applyExclusionExplainability copies excluded/excludedTotal onto decision
@@ -1394,10 +1476,7 @@ func (r *Router) routeInternal(modelName, runtimeFilter, preferredNode string) (
 	copy(nodes, r.nodes)
 	r.mu.RUnlock()
 
-	healthy, excluded, excludedTotal := r.filterCandidates(nodes, modelName, runtimeFilter, nil)
-	node, warm, decision := r.selectBestNode(healthy, modelName, preferredNode)
-	applyExclusionExplainability(decision, excluded, excludedTotal)
-	return node, warm, decision
+	return r.filterAndSelect(nodes, modelName, runtimeFilter, preferredNode, nil)
 }
 
 // Route picks the best healthy node for modelName using weighted placement scoring.
@@ -1428,15 +1507,24 @@ func (r *Router) RouteWithPrefix(modelName, sessionID, runtimeFilter, preferredN
 		sessionID = ""
 	}
 	affinityLost := false
+	keepPin := false
 	if sessionID != "" {
 		node, hadEntry := r.stickyNode(sessionID)
 		if node != nil {
-			role := r.resolveSchedulingRoles(r.Nodes())[node.Name] // one extra call, same cost as one filterCandidates pass
+			stickyNodes := r.Nodes()
+			roles, heads := resolveSchedulingRolesAndHeads(stickyNodes) // one extra pass, same cost as one filterCandidates pass
+			role := roles[node.Name]
 			hardValid := (runtimeFilter == "" || node.GetRuntime() == runtimeFilter) &&
 				r.isEligibleForModel(node, modelName) &&
 				r.isGPUGroupSufficient(node) &&
 				role != RoleWorker && role != RoleUnresolved
-			if hardValid && r.isUnderCapacity(node) {
+			// A pinned head whose member host agent is dark is bypassed for
+			// this request only. The pin is kept, not deleted, so affinity
+			// and warm KV resume once the agent answers again: a stale flag
+			// is a doubtful signal and an eviction cannot be undone.
+			if hardValid && role == RoleHead && unreachableReplicaHeads(stickyNodes, roles, heads)[node.Name] {
+				keepPin = true
+			} else if hardValid && r.isUnderCapacity(node) {
 				r.RecordTransition(modelName, time.Now())
 				warm := r.isModelWarm(node, modelName)
 				if !warm {
@@ -1467,7 +1555,7 @@ func (r *Router) RouteWithPrefix(modelName, sessionID, runtimeFilter, preferredN
 	node, warm, decision := r.routeInternal(modelName, runtimeFilter, preferredNode)
 	if node != nil {
 		r.RecordTransition(modelName, time.Now())
-		if sessionID != "" {
+		if sessionID != "" && !keepPin {
 			r.affinityMu.Lock()
 			if len(r.affinity) < maxAffinityEntries {
 				entry := &affinityEntry{nodeURL: node.URL, model: modelName}
@@ -1478,7 +1566,7 @@ func (r *Router) RouteWithPrefix(modelName, sessionID, runtimeFilter, preferredN
 		}
 		if decision != nil && affinityLost {
 			decision.AffinityLost = true
-			decision.Detail += " (session affinity existed but target node unhealthy/draining/expired)"
+			decision.Detail += " (session affinity existed but target node unhealthy/draining/expired or a replica member unreachable)"
 		}
 	}
 	return node, warm, decision
@@ -1507,10 +1595,7 @@ func (r *Router) RouteExcludingWithPrefix(modelName, runtimeFilter string, exclu
 	copy(nodes, r.nodes)
 	r.mu.RUnlock()
 
-	healthy, excluded, excludedTotal := r.filterCandidates(nodes, modelName, runtimeFilter, exclude)
-	node, warm, decision := r.selectBestNode(healthy, modelName, preferredNode)
-	applyExclusionExplainability(decision, excluded, excludedTotal)
-	return node, warm, decision
+	return r.filterAndSelect(nodes, modelName, runtimeFilter, preferredNode, exclude)
 }
 
 // pickLeastConns returns the node with the fewest active connections.
