@@ -917,44 +917,6 @@ func TestAgentStale_DistinguishesConfiguredDownFromNeverConfigured(t *testing.T)
 	}
 }
 
-// TestPollAgentTelemetryOversizeBodyIsUnreachable proves a status response
-// larger than the body cap is treated as a failed poll (agent unreachable),
-// never decoded: a valid JSON object followed by padding past the cap must not
-// sneak through on the strength of its valid prefix.
-func TestPollAgentTelemetryOversizeBodyIsUnreachable(t *testing.T) {
-	psSrv := nodePSServer()
-	defer psSrv.Close()
-
-	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(paddedStatusBody(maxAgentStatusBodyBytes + 1024))
-	}))
-	defer agentSrv.Close()
-	agentPort := mustPort(t, agentSrv.URL)
-
-	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
-		{Name: "gpu-0", URL: psSrv.URL},
-	}, nil)
-	r.SetMarborAgent(r.nodes[0].Host, true, agentPort, "tok", "http")
-
-	logBuf := captureLog(t)
-
-	r.pollAgentHosts()
-	r.pollAgentHosts()
-
-	r.nodes[0].mu.RLock()
-	defer r.nodes[0].mu.RUnlock()
-	if r.nodes[0].AgentPresent {
-		t.Error("AgentPresent = true, want false for an oversize status body")
-	}
-	if r.nodes[0].AgentFailures != 2 {
-		t.Errorf("AgentFailures = %d, want 2 (each oversize poll is a failed poll)", r.nodes[0].AgentFailures)
-	}
-	if got := strings.Count(logBuf.String(), "status response exceeds"); got != 1 {
-		t.Errorf("oversize log appeared %d times across 2 polls, want 1 (rate-limited)\n%s", got, logBuf.String())
-	}
-}
-
 // TestPollAgentTelemetryUnderCapBodyWithUnknownFieldsDecodes proves the cap
 // does not break the forward-compat contract: a body well under the cap with
 // fields this binary does not know still decodes and counts as reachable.
