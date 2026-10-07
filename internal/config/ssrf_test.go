@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // TestValidateNodeURL locks in the SSRF guard: link-local / cloud-metadata
 // hosts are rejected, while loopback, RFC1918 private, and public hosts (the
@@ -15,17 +18,36 @@ func TestValidateNodeURL(t *testing.T) {
 		"http://172.16.4.2:8000",
 		"https://api.example.com",
 		"http://192.168.1.50:11434",
-		"http://0x7f.0.0.1:11434",  // loopback written in legacy hex form
-		"http://0300.0250.1.50",    // 192.168.1.50 written in octal
-		"http://node1.lan.:11434",  // FQDN with one trailing dot
-		"http://1.2.3.4.5",         // five parts: not an IPv4 form
-		"http://256.1.1.1",         // first part out of range: not an IP
-		"http://256.0.0.1",         // first part out of range: not an IP
-		"http://1.2.3.256",         // last part out of range: not an IP
-		"http://169.254",           // two parts = 169.0.0.254, not link-local
-		"http://08.1.1.1",          // 8 is not an octal digit; plain decimal 8.1.1.1
-		"http://0x.1",              // empty hex part: not an IP
-		"http://169.254.169.254..", // two trailing dots: not an IP
+		"http://0x7f.0.0.1:11434", // loopback written in legacy hex form
+		"http://0300.0250.1.50",   // 192.168.1.50 written in octal
+		"http://node1.lan.:11434", // FQDN with one trailing dot
+		"http://1.2.3.4.5",        // five parts: not an IPv4 form
+		"http://256.1.1.1",        // first part out of range: not an IP
+		"http://256.0.0.1",        // first part out of range: not an IP
+		"http://1.2.3.256",        // last part out of range: not an IP
+		"http://169.254",          // two parts = 169.0.0.254, not link-local
+		"http://08.1.1.1",         // 8 is not an octal digit; plain decimal 8.1.1.1
+		"http://0x.1",             // empty hex part: not an IP
+		// Bare "0x" has no digits. glibc 2.42 (WSL Debian) was checked with
+		// getaddrinfo: 169.254.169.0x, 169.254.0x, 0x, 1.0x and 0x.1 all fail
+		// to resolve, while 0x0 and 169.254.169.0x1 resolve. So these are not
+		// link-local forms and are allowed.
+		"http://169.254.169.0x",
+		"http://169.254.0x",
+		"http://0x",
+		"http://169.254.169.254..", // two trailing dots: not an IP (a Go-valid literal that no resolver reads as one)
+		"http://169.254.169.254.0", // five parts: not an IPv4 form
+		"http://1.2.3.4.0",
+		"http://1.2.3.4.5.6", // six parts
+		// Near misses around the link-local range.
+		"http://169.253.0.1",
+		"http://169.255.0.1",
+		"http://0251.0375.0.1", // 169.253.0.1 in octal
+		// Over-block guards: look numeric but are not link-local.
+		"http://0169.1.1.1", // decimal 169.1.1.1, invalid octal
+		"http://123456",     // 0.1.226.64
+		"http://1e3.lan",
+		"http://0x1.example.com",
 	}
 	for _, u := range allowed {
 		if err := ValidateNodeURL(u); err != nil {
@@ -86,14 +108,63 @@ func TestValidateNodeURL(t *testing.T) {
 		// refused if either reading is link-local.
 		"http://0169.254.169.254/",
 
-		// Intentional over-blocking: glibc does not resolve a trailing dot on
-		// the all-hex form, but accepting one trailing dot on every legacy
-		// form is simpler and safer than per-form exceptions.
+		// Intentional over-blocking: one trailing dot is accepted on every
+		// legacy form rather than keeping per-form exceptions, so the all-hex
+		// form is refused with a trailing dot whether or not a resolver reads it.
 		"http://0xA9.0xFE.0xA9.0xFE./",
+
+		// Multicast link-local (224.0.0.0/24, ff02::/16) and unicast IPv6.
+		"http://224.0.0.1",
+		"http://0xE0.0.0.1",
+		"http://[ff02::1]",
+		"http://[fe80::1]",
+
+		// One-digit hex parts.
+		"http://0xA9.0xFE.0xA.0x1",
+		"http://169.254.0xA.0xA",
+	}
+	notLinkLocalCases := map[string]bool{
+		"ftp://169.254.169.254": true, // scheme error
+		"http://":               true, // no host
+		"not-a-url":             true, // no scheme/host
+		"tcp://10.0.0.1:11434":  true, // scheme error
 	}
 	for _, u := range blocked {
-		if err := ValidateNodeURL(u); err == nil {
+		err := ValidateNodeURL(u)
+		if err == nil {
 			t.Errorf("ValidateNodeURL(%q) = nil, want error (must reject link-local/metadata/invalid)", u)
+			continue
+		}
+		if !notLinkLocalCases[u] && !strings.Contains(err.Error(), "link-local") {
+			t.Errorf("ValidateNodeURL(%q) error %q does not mention link-local", u, err)
+		}
+	}
+}
+
+// TestParseLegacyIPv4DecimalReading covers the second reading used by
+// isLinkLocalHost: a part with a leading zero is plain decimal, so "0169" is
+// 169 and "010" is 10, where the octal reading gives invalid and 8.
+func TestParseLegacyIPv4DecimalReading(t *testing.T) {
+	cases := []struct {
+		host string
+		base int
+		want string
+	}{
+		{"0169.254.43518", decimalBase, "169.254.169.254"},
+		{"0169.254.43518", octalBase, ""},
+		{"010.0.0.1", decimalBase, "10.0.0.1"},
+		{"010.0.0.1", octalBase, "8.0.0.1"},
+		{"08.1.1.1", decimalBase, "8.1.1.1"},
+		{"08.1.1.1", octalBase, ""},
+		{"0x10.0.0.1", decimalBase, "16.0.0.1"}, // hex prefix wins over the base
+	}
+	for _, c := range cases {
+		got := ""
+		if ip := parseLegacyIPv4(c.host, c.base); ip != nil {
+			got = ip.String()
+		}
+		if got != c.want {
+			t.Errorf("parseLegacyIPv4(%q, %d) = %q, want %q", c.host, c.base, got, c.want)
 		}
 	}
 }
@@ -154,9 +225,15 @@ func TestParseLegacyIPv4(t *testing.T) {
 		{".1.2.3", ""},
 		{"1..2", ""},
 		{"1.2.3.4.5", ""},
-		{"0x", ""},
+		{"0x", ""}, // bare 0x: glibc 2.42 does not resolve it
+		{"0x.", ""},
 		{"0x.1", ""},
 		{"1.0x", ""},
+		{"00", "0.0.0.0"},
+		{"0x0", "0.0.0.0"},
+		{"0169.254.43518", ""}, // invalid octal; the decimal reading is tested separately
+		{"1.2.3.4.0", ""},      // five parts even with a zero last part
+		{"1.2.3.4.5.6", ""},
 		{"0xg1", ""},
 		{"gpu-node.lan", ""},
 		{"node1", ""},
@@ -167,11 +244,11 @@ func TestParseLegacyIPv4(t *testing.T) {
 	}
 	for _, c := range cases {
 		got := ""
-		if ip := parseLegacyIPv4(c.host); ip != nil {
+		if ip := parseLegacyIPv4(c.host, octalBase); ip != nil {
 			got = ip.String()
 		}
 		if got != c.want {
-			t.Errorf("parseLegacyIPv4(%q) = %q, want %q", c.host, got, c.want)
+			t.Errorf("parseLegacyIPv4(%q) =%q, want %q", c.host, got, c.want)
 		}
 	}
 }
