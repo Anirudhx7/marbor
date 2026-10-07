@@ -46,7 +46,7 @@ function ScrollableValue({ value, valueClassName }: { value: string; valueClassN
 
 // EXCLUDED_REASON_LABELS translates ExcludedCandidate.reason (a stable,
 // machine-readable identifier from the Admin API) into display text - kept
-// as a local mapping matching the same six identifiers the CLI's
+// as a local mapping matching the identifiers the CLI's
 // excludedReasonText translates, rather than trusting the wire value to
 // already be a sentence.
 const EXCLUDED_REASON_LABELS: Record<string, string> = {
@@ -56,6 +56,9 @@ const EXCLUDED_REASON_LABELS: Record<string, string> = {
   ineligible_model: 'model not loaded on this node',
   over_capacity: 'over the per-node request cap',
   insufficient_gpu_group: "insufficient GPUs for this model's parallelism requirement",
+  replica_worker: 'non-head member of a multi-host replica; requests go to its head',
+  replica_unresolved: 'replica declaration conflicts with another node and needs reconciling',
+  replica_member_unreachable: 'a replica member host agent is not answering (the worker itself may still be up)',
 };
 
 // ExplainTable is the shared table shell for the explain panel's score

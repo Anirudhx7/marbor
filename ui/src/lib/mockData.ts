@@ -1002,6 +1002,7 @@ const mockRoutingDecisions: Record<string, RoutingDecision> = {
       { node: 'gpu-node-04', reason: 'draining' },
       { node: 'gpu-node-06', reason: 'ineligible_model' },
       { node: 'gpu-node-07', reason: 'insufficient_gpu_group' },
+      { node: 'gpu-node-08', reason: 'replica_member_unreachable' },
     ],
     excludedTotal: 7,
   },

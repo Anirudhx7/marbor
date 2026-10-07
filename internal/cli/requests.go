@@ -12,7 +12,7 @@ import (
 // excludedReasonText translates ExcludedCandidate.Reason (a stable,
 // machine-readable identifier from the Admin API) into the sentence shown to
 // an operator. Kept as a local lookup rather than trusting the wire value to
-// already be display text, matching the same six identifiers
+// already be display text, matching the identifiers
 // internal/router/explain.go defines.
 func excludedReasonText(reason string) string {
 	switch reason {
@@ -28,6 +28,12 @@ func excludedReasonText(reason string) string {
 		return "over the per-node request cap"
 	case "insufficient_gpu_group":
 		return "insufficient GPUs for this model's parallelism requirement"
+	case "replica_worker":
+		return "non-head member of a multi-host replica; requests go to its head"
+	case "replica_unresolved":
+		return "replica declaration conflicts with another node and needs reconciling"
+	case "replica_member_unreachable":
+		return "a replica member host agent is not answering (the worker itself may still be up)"
 	default:
 		return reason
 	}

@@ -100,3 +100,17 @@ func TestRun_RequestsExplain_MissingID(t *testing.T) {
 		t.Errorf("expected a usage error, got %q", stderr.String())
 	}
 }
+
+func TestExcludedReasonText_ReplicaReasons(t *testing.T) {
+	cases := map[string]string{
+		"replica_worker":             "non-head member",
+		"replica_unresolved":         "conflicts",
+		"replica_member_unreachable": "host agent is not answering",
+		"something_new":              "something_new",
+	}
+	for reason, want := range cases {
+		if got := excludedReasonText(reason); !strings.Contains(got, want) {
+			t.Errorf("excludedReasonText(%q) = %q, want it to contain %q", reason, got, want)
+		}
+	}
+}
