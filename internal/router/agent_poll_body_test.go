@@ -48,9 +48,12 @@ func TestPollAgentStatusBodyCapBoundary(t *testing.T) {
 		name        string
 		size        int
 		wantUnknown bool
+		wantVersion string
 	}{
-		{"exactly the cap is accepted", maxAgentStatusBodyBytes, false},
-		{"one byte over the cap is unknown, not unreachable", maxAgentStatusBodyBytes + 1, true},
+		// At the cap the body is decoded, so the agent's version is read; one
+		// byte over, the body is never parsed and no version is known.
+		{"exactly the cap is accepted", maxAgentStatusBodyBytes, false, "v1.0.0"},
+		{"one byte over the cap is unknown, not unreachable", maxAgentStatusBodyBytes + 1, true, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -66,7 +69,17 @@ func TestPollAgentStatusBodyCapBoundary(t *testing.T) {
 			}
 			r.nodes[0].mu.RLock()
 			stale, unknown := r.nodes[0].AgentStale, r.nodes[0].AgentTelemetryUnknown
+			version, vramSource := r.nodes[0].AgentVersion, r.nodes[0].VRAMSource
 			r.nodes[0].mu.RUnlock()
+			if version != tc.wantVersion {
+				t.Errorf("AgentVersion = %q, want %q", version, tc.wantVersion)
+			}
+			// A first poll has no earlier agent-sourced VRAM to drop, so the
+			// source is simply never "agent" (the none fallback after a good
+			// poll is pinned by TestOversizeWithoutDeclaredVRAMFallsToNone).
+			if vramSource == "agent" {
+				t.Errorf("VRAMSource = %q, want it never agent-sourced here", vramSource)
+			}
 			if stale {
 				t.Error("AgentStale = true, want false")
 			}

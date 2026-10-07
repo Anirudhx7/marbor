@@ -1,12 +1,16 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Anirudhx7/marbor/internal/config"
 	"github.com/Anirudhx7/marbor/internal/marboragent"
@@ -838,5 +842,68 @@ func TestClassifyDiskFitOversizeClearedShapeIsUnknown(t *testing.T) {
 	}
 	if got := classifyDiskFit(4096, 0, 0, true); got != "unknown" {
 		t.Errorf("classifyDiskFit with cleared disk and agent present = %q, want unknown", got)
+	}
+}
+
+// TestDiskFitOversizeAgentReplyReadsUnknownFromRealNode drives the disk-fit
+// classification from a real node state: a node whose agent first reported
+// disk figures and then went oversize must classify as unknown (never a
+// fabricated insufficient), while the same node before going oversize
+// classifies from its real figures.
+func TestDiskFitOversizeAgentReplyReadsUnknownFromRealNode(t *testing.T) {
+	var oversize atomic.Bool
+	agent := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if oversize.Load() {
+			_, _ = w.Write([]byte(`{"agent": {"version": "v1.0.0"}}` + strings.Repeat(" ", 8<<20)))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(marboragent.Telemetry{
+			Agent: marboragent.Agent{Version: "v1.0.0", ProtocolVersion: 1},
+			Host:  &marboragent.HostTelemetry{DiskFreeGB: 100, DiskTotalGB: 500},
+		})
+	}))
+	defer agent.Close()
+	agentPort := 0
+	fmt.Sscanf(strings.TrimPrefix(agent.URL, "http://127.0.0.1:"), "%d", &agentPort)
+
+	r := router.New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 50}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://127.0.0.1:1"},
+	}, nil)
+	host, _ := r.NodeHost("gpu-0")
+	r.SetMarborAgent(host, true, agentPort, "tok", "http")
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { defer close(done); r.Start(ctx) }()
+	defer func() { cancel(); <-done }()
+
+	waitDisk := func(wantUnknown bool) (free, total float64, present bool) {
+		t.Helper()
+		deadline := time.Now().Add(10 * time.Second)
+		for time.Now().Before(deadline) {
+			free, total, present = nodeDiskState(r.Nodes(), "gpu-0")
+			if present && (total > 0) != wantUnknown {
+				return
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		t.Fatalf("node never reached disk state with unknown=%v (free=%v total=%v present=%v)", wantUnknown, free, total, present)
+		return
+	}
+
+	free, total, present := waitDisk(false)
+	if got := classifyDiskFit(4096, free, total, present); got != "ok" {
+		t.Fatalf("setup: classifyDiskFit with real figures %v/%v = %q, want ok", free, total, got)
+	}
+	oversize.Store(true)
+	free, total, present = waitDisk(true)
+	if !present {
+		t.Fatal("agent must stay present on an oversize reply")
+	}
+	if got := classifyDiskFit(4096, free, total, present); got != "unknown" {
+		t.Errorf("classifyDiskFit after an oversize reply = %q, want unknown", got)
+	}
+	if got := classifyUnknownSizeDiskFit(free, total, present); got != "unknown" {
+		t.Errorf("classifyUnknownSizeDiskFit after an oversize reply = %q, want unknown", got)
 	}
 }
