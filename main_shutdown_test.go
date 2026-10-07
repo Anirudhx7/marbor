@@ -1,10 +1,8 @@
 package main
 
-// Proves, through the real main() wiring and a real SIGTERM, that the audit
-// logger closes only after the HTTP servers drain, so the audit entry of every
-// request still in flight at signal time reaches the store. main() has no
-// separate shutdown function, so the test binary re-executes itself as the
-// server (see TestMain).
+// Proves, through the real main() and a real SIGTERM, that the audit logger
+// closes only after the HTTP servers drain, so in-flight requests still reach
+// the store. The test binary re-executes itself as the server (see TestMain).
 
 import (
 	"fmt"
@@ -32,13 +30,13 @@ const (
 	runMainDBEnv  = "MARBOR_TEST_RUN_MAIN_DB"
 	shutdownKey   = "sk-shutdown-test-key"
 	inFlightCount = 8
-	dropLogText   = "audit entries are being dropped"
 )
 
-// TestMain runs the server when the gate variable is set (only on the spawned
-// child). A race in the child makes the race runtime override os.Exit(0).
+// TestMain runs the server when the gate variable is set (spawned child only).
 func TestMain(m *testing.M) {
 	if os.Getenv(runMainEnv) == "1" {
+		// Self-destruct so an orphaned child (parent killed by -timeout) cannot linger.
+		time.AfterFunc(2*time.Minute, func() { os.Exit(1) })
 		os.Args = []string{"marbor", "-db", os.Getenv(runMainDBEnv)}
 		main()
 		os.Exit(0)
@@ -46,9 +44,7 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// slowBackend is a fake ollama node. Until slow is set it answers chat
-// immediately; afterwards it streams a chunk and holds the response open
-// until release is closed.
+// slowBackend is a fake ollama node; once slow is set, chat holds open until release.
 type slowBackend struct {
 	srv     *httptest.Server
 	slow    atomic.Bool
@@ -91,24 +87,38 @@ func newSlowBackend(t *testing.T) *slowBackend {
 
 func (b *slowBackend) releaseAll() { b.once.Do(func() { close(b.release) }) }
 
-// freePort reserves a port by binding ":0" (the proxy listens on all interfaces).
-func freePort(t *testing.T) int {
+var (
+	probeClient  = &http.Client{Timeout: 5 * time.Second}
+	streamClient = &http.Client{Timeout: 90 * time.Second}
+)
+
+// freePorts holds n ":0" listeners open together so the ports are distinct.
+func freePorts(t *testing.T, n int) []int {
 	t.Helper()
-	l, err := net.Listen("tcp", ":0")
-	if err != nil {
-		t.Fatalf("reserve port: %v", err)
+	var ports []int
+	for i := 0; i < n; i++ {
+		l, err := net.Listen("tcp", ":0")
+		if err != nil {
+			t.Fatalf("reserve port: %v", err)
+		}
+		defer l.Close()
+		ports = append(ports, l.Addr().(*net.TCPAddr).Port)
 	}
-	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port
+	return ports
+}
+
+func must(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 // seedShutdownDB writes the settings, node and key the server boots from.
 func seedShutdownDB(t *testing.T, dbPath string, proxyPort, adminPort, metricsPort int, nodeURL string) {
 	t.Helper()
 	st, err := store.Open(dbPath)
-	if err != nil {
-		t.Fatal(err)
-	}
+	must(t, err)
 	defer st.Close()
 	settings := map[string]string{
 		"proxy_port":           strconv.Itoa(proxyPort),
@@ -118,27 +128,19 @@ func seedShutdownDB(t *testing.T, dbPath string, proxyPort, adminPort, metricsPo
 		"audit_enabled":        "true",
 	}
 	for k, v := range settings {
-		if err := st.SetSetting(k, v); err != nil {
-			t.Fatal(err)
-		}
+		must(t, st.SetSetting(k, v))
 	}
-	if err := st.UpsertNode(store.NodeRecord{Name: "fake-node", URL: nodeURL, Runtime: "ollama"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.UpsertKey(store.KeyRecord{Name: "shutdown-test", Key: shutdownKey}); err != nil {
-		t.Fatal(err)
-	}
+	must(t, st.UpsertNode(store.NodeRecord{Name: "fake-node", URL: nodeURL, Runtime: "ollama"}))
+	must(t, st.UpsertKey(store.KeyRecord{Name: "shutdown-test", Key: shutdownKey}))
 }
 
-// childEnv drops variables that would redirect the child database or backups
-// and adds the gate variables; the parent environment is never modified.
+// childEnv drops variables that would redirect the child database or backups.
 func childEnv(dbPath string) []string {
 	var env []string
 	for _, kv := range os.Environ() {
-		if strings.HasPrefix(kv, "MARBOR_DB_PATH=") || strings.HasPrefix(kv, "MARBOR_BACKUP_DIR=") {
-			continue
+		if !strings.HasPrefix(kv, "MARBOR_DB_PATH=") && !strings.HasPrefix(kv, "MARBOR_BACKUP_DIR=") {
+			env = append(env, kv)
 		}
-		env = append(env, kv)
 	}
 	return append(env, runMainEnv+"=1", runMainDBEnv+"="+dbPath)
 }
@@ -158,7 +160,8 @@ func startShutdownServer(t *testing.T, backend *slowBackend) *shutdownServer {
 	t.Helper()
 	for attempt := 0; attempt < 3; attempt++ {
 		dbPath := t.TempDir() + string(os.PathSeparator) + "marbor.db"
-		pp, ap, mp := freePort(t), freePort(t), freePort(t)
+		ports := freePorts(t, 3)
+		pp, ap, mp := ports[0], ports[1], ports[2]
 		seedShutdownDB(t, dbPath, pp, ap, mp, backend.srv.URL)
 
 		s := &shutdownServer{
@@ -172,14 +175,11 @@ func startShutdownServer(t *testing.T, backend *slowBackend) *shutdownServer {
 		s.cmd = exec.Command(os.Args[0])
 		s.cmd.Env = childEnv(dbPath)
 		logFile, err := os.Create(s.logPath)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer logFile.Close()
+		must(t, err)
 		s.cmd.Stdout, s.cmd.Stderr = logFile, logFile
-		if err := s.cmd.Start(); err != nil {
-			t.Fatal(err)
-		}
+		err = s.cmd.Start()
+		logFile.Close() // the child keeps its own descriptor
+		must(t, err)
 		go func() { s.exited <- s.cmd.Wait() }()
 		t.Cleanup(func() { _ = s.cmd.Process.Kill() })
 
@@ -192,15 +192,13 @@ func startShutdownServer(t *testing.T, backend *slowBackend) *shutdownServer {
 	return nil
 }
 
-// log returns everything the child has written so far.
 func (s *shutdownServer) log() string {
 	b, _ := os.ReadFile(s.logPath)
 	return string(b)
 }
 
-// waitListening waits until every listener has logged that it is serving and
-// the admin health endpoint answers, which is past the signal registration.
-// It returns false if the child died on a listen error.
+// waitListening waits for the listeners and admin health (past signal
+// registration); false means a listen error.
 func (s *shutdownServer) waitListening(t *testing.T) bool {
 	t.Helper()
 	deadline := time.Now().Add(30 * time.Second)
@@ -217,7 +215,7 @@ func (s *shutdownServer) waitListening(t *testing.T) bool {
 		default:
 		}
 		if strings.Contains(out, "Proxy listening") && strings.Contains(out, "Admin dashboard listening") {
-			if resp, err := http.Get("http://" + s.adminAddr + "/health"); err == nil {
+			if resp, err := probeClient.Get("http://" + s.adminAddr + "/health"); err == nil {
 				resp.Body.Close()
 				if resp.StatusCode == http.StatusOK {
 					return true
@@ -239,14 +237,14 @@ func chatRequest(addr string) (*http.Request, error) {
 	return req, err
 }
 
-// warmUp retries chat until three succeed (the node must be polled first).
+// warmUp retries chat until three succeed.
 func (s *shutdownServer) warmUp(t *testing.T) []string {
 	t.Helper()
 	var ids []string
 	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) && len(ids) < 3 {
 		req, _ := chatRequest(s.proxyAddr)
-		if resp, err := http.DefaultClient.Do(req); err == nil {
+		if resp, err := probeClient.Do(req); err == nil {
 			_, _ = io.Copy(io.Discard, resp.Body)
 			resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
@@ -265,7 +263,7 @@ var droppedMetric = regexp.MustCompile(`(?m)^marbor_audit_dropped_total\s+(\S+)$
 
 func (s *shutdownServer) assertNoDropsYet(t *testing.T, when string) {
 	t.Helper()
-	resp, err := http.Get("http://" + s.metrics + "/metrics")
+	resp, err := probeClient.Get("http://" + s.metrics + "/metrics")
 	if err != nil {
 		t.Fatalf("scrape metrics %s: %v", when, err)
 	}
@@ -276,8 +274,7 @@ func (s *shutdownServer) assertNoDropsYet(t *testing.T, when string) {
 	}
 }
 
-// startInFlight sends n requests the backend holds open and returns their IDs
-// once all headers arrived (handlers mid-stream), plus a body-finishing func.
+// startInFlight opens n held-open requests; returns IDs and a body-finishing func.
 func (s *shutdownServer) startInFlight(t *testing.T, backend *slowBackend, n int) ([]string, func() error) {
 	t.Helper()
 	backend.slow.Store(true)
@@ -285,7 +282,7 @@ func (s *shutdownServer) startInFlight(t *testing.T, backend *slowBackend, n int
 	for i := 0; i < n; i++ {
 		go func() {
 			req, _ := chatRequest(s.proxyAddr)
-			resp, err := http.DefaultClient.Do(req)
+			resp, err := streamClient.Do(req)
 			if err != nil {
 				resp = nil
 			}
@@ -294,14 +291,21 @@ func (s *shutdownServer) startInFlight(t *testing.T, backend *slowBackend, n int
 	}
 	var ids []string
 	var resps []*http.Response
+	t.Cleanup(func() {
+		for _, resp := range resps {
+			resp.Body.Close()
+		}
+	})
 	for i := 0; i < n; i++ {
 		select {
 		case resp := <-results:
+			if resp != nil {
+				resps = append(resps, resp)
+			}
 			if resp == nil || resp.StatusCode != http.StatusOK {
 				t.Fatalf("in-flight request %d failed: %v\n%s", i, resp, s.log())
 			}
 			ids = append(ids, resp.Header.Get("X-Request-ID"))
-			resps = append(resps, resp)
 		case <-time.After(20 * time.Second):
 			t.Fatalf("only %d of %d in-flight responses started\n%s", i, n, s.log())
 		}
@@ -318,7 +322,6 @@ func (s *shutdownServer) startInFlight(t *testing.T, backend *slowBackend, n int
 	}
 }
 
-// waitProxyRefusing blocks until the proxy listener closes (drain began).
 func (s *shutdownServer) waitProxyRefusing(t *testing.T) {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
@@ -344,11 +347,8 @@ func TestSignalShutdownFlushesInFlightAuditEntries(t *testing.T) {
 	s.assertNoDropsYet(t, "before the signal")
 	inFlightIDs, finish := s.startInFlight(t, backend, inFlightCount)
 
-	if err := s.cmd.Process.Signal(syscall.SIGTERM); err != nil {
-		t.Fatal(err)
-	}
+	must(t, s.cmd.Process.Signal(syscall.SIGTERM))
 	s.waitProxyRefusing(t)
-	// Sanity only: the real post-close detector is the drop log line below.
 	s.assertNoDropsYet(t, "during the drain")
 
 	backend.releaseAll()
