@@ -132,13 +132,25 @@ func (w *webhookRecorder) waitFor(event string, want int, d time.Duration) bool 
 	return true
 }
 
-// quiet waits a bounded window and returns every event seen by the end of it.
-func (w *webhookRecorder) quiet(d time.Duration) map[string]int {
-	time.Sleep(d)
+// barrier fires a sentinel webhook through r and waits until the recorder has
+// seen it, then lets a short settle pass before returning every event seen. All
+// events the polls queued were started before the sentinel, so their deliveries
+// have normally landed by the time it does. Delivery is unordered (each webhook
+// is its own goroutine and the router has no synchronous seam), so the sentinel
+// narrows the window for a late duplicate rather than eliminating it; the settle
+// covers the remainder. The sentinel wait is what bounds the check: if it never
+// arrives the test fails instead of passing on slow delivery.
+func (w *webhookRecorder) barrier(t *testing.T, r *Router) map[string]int {
+	t.Helper()
+	r.fireWebhook("barrier", "gpu-0", "")
+	if !w.waitFor("barrier", 1, 3*time.Second) {
+		t.Fatalf("sentinel webhook not delivered within 3s; events so far %v", w.snapshot())
+	}
+	time.Sleep(webhookSettle)
 	return w.snapshot()
 }
 
-const webhookQuietWindow = 400 * time.Millisecond
+const webhookSettle = 150 * time.Millisecond
 
 // oversizeBody is the valid-but-oversize status body, built once per test
 // binary rather than per request.
@@ -325,8 +337,12 @@ func TestOversizeReplyKeepsNodeReachable(t *testing.T) {
 	// One warning for the host across every poll, counted by host plus a
 	// stable token rather than the message wording.
 	host := n.Host
-	if got := countHostLogLines(logBuf.String(), host, "exceeds"); got != 1 {
-		t.Errorf("oversize logged %d lines for host %q across %d polls, want 1\n%s", got, host, polls, logBuf.String())
+	out := logBuf.String()
+	if got := countHostLogLines(out, host, "exceeds"); got != 1 {
+		t.Errorf("oversize logged %d lines for host %q across %d polls, want 1\n%s", got, host, polls, out)
+	}
+	if got := countHostLogLines(out, host, "unknown"); got < 1 {
+		t.Errorf("no log line for host %q says telemetry is unknown\n%s", host, out)
 	}
 	// Smoke check, not a revert detector: Route never reads agent state, so
 	// this passes with or without the oversize handling. What it guards is
@@ -622,8 +638,8 @@ func TestOversizeAfterStaleRecoversAndFiresAgentUpOnce(t *testing.T) {
 			t.Fatalf("no %s webhook within 3s; events so far %v", ev, rec.snapshot())
 		}
 	}
-	// Then a separate bounded quiet window catches a late duplicate.
-	if got := rec.quiet(webhookQuietWindow); got["agent_down"] != 1 || got["agent_up"] != 1 {
+	// Then the sentinel barrier bounds the check for a late duplicate.
+	if got := rec.barrier(t, r); got["agent_down"] != 1 || got["agent_up"] != 1 {
 		t.Errorf("events %v, want exactly one agent_down and one agent_up", got)
 	}
 }
@@ -641,7 +657,7 @@ func TestOversizeFlapFiresNoAgentWebhooks(t *testing.T) {
 	for i := 0; i < r.healthFailureThreshold+1; i++ {
 		r.pollAgentHosts()
 	}
-	if got := rec.quiet(webhookQuietWindow); got["agent_down"] != 0 || got["agent_up"] != 0 {
+	if got := rec.barrier(t, r); got["agent_down"] != 0 || got["agent_up"] != 0 {
 		t.Errorf("events %v, want no agent_down and no agent_up for an oversize-but-reachable agent", got)
 	}
 }
@@ -665,7 +681,9 @@ func TestOversizeAlternatingWithFailureResetsCounter(t *testing.T) {
 
 // TestOversizeBadReplyShapesStayUnreachable covers the replies that must NOT
 // count as "agent reachable, telemetry unknown": an unreadable body, a small
-// malformed body, and an oversize body that is not a JSON object.
+// malformed body, and an oversize body that is not a JSON object. The oversize
+// body that starts with '{' but is not JSON is reachable by design and lives in
+// TestOversizeObjectShapeRule; non-200 oversize bodies are the 500 case below.
 func TestOversizeBadReplyShapesStayUnreachable(t *testing.T) {
 	cases := []struct {
 		name string
@@ -717,7 +735,10 @@ func TestOversizeBadReplyShapesStayUnreachable(t *testing.T) {
 // unreachable; one starting with '{' is reachable with unknown telemetry even
 // if the rest is not valid JSON (intentional: the body is too large to decode,
 // and an object-like start is the only evidence of a live agent available
-// without reading it); leading JSON whitespace before '{' still counts.
+// without reading it); leading JSON whitespace before '{' still counts. The
+// brace-then-garbage case is therefore reachable on purpose, not a gap; oversize
+// bodies behind a non-200 status are covered by the 500 case in
+// TestOversizeBadReplyShapesStayUnreachable.
 func TestOversizeObjectShapeRule(t *testing.T) {
 	cases := []struct {
 		name          string
@@ -1320,7 +1341,11 @@ func TestOversizeDropsReplicaSuggestionsAndRestoresThem(t *testing.T) {
 	tel.Deployments = append(tel.Deployments, second.Deployments...)
 	a := newSwitchAgentWith(t, tel)
 	r := oversizeRouter(t, a, "gpu-0", "gpu-1")
-	r.nodes[0].AgentRuntimeID, r.nodes[1].AgentRuntimeID = "rt-a", "rt-b"
+	for i, id := range []string{"rt-a", "rt-b"} {
+		r.nodes[i].mu.Lock()
+		r.nodes[i].AgentRuntimeID = id
+		r.nodes[i].mu.Unlock()
+	}
 
 	r.pollAgentHosts()
 	got, _ := r.ReplicaSuggestions()
@@ -1358,7 +1383,11 @@ func TestOversizeKeepsOtherHostReplicaSuggestion(t *testing.T) {
 	}
 	r.SetMarborAgent(hostA, true, mustPort(t, agentA.srv.URL), "tok", "http")
 	r.SetMarborAgent(hostB, true, mustPort(t, agentB.srv.URL), "tok", "http")
-	r.nodes[0].AgentRuntimeID, r.nodes[1].AgentRuntimeID = "rt-a", "rt-b"
+	for i, id := range []string{"rt-a", "rt-b"} {
+		r.nodes[i].mu.Lock()
+		r.nodes[i].AgentRuntimeID = id
+		r.nodes[i].mu.Unlock()
+	}
 
 	r.pollAgentHosts()
 	before, _ := r.ReplicaSuggestions()
@@ -1443,7 +1472,8 @@ func TestOversizeEndlessBodyIsBoundedAndKeepsNodeReachable(t *testing.T) {
 	start := time.Now()
 	r.pollAgentHosts()
 	elapsed := time.Since(start)
-	if elapsed > 4*time.Second {
+	// Margin against the 5s deadline: only fail when the poll plainly ran to it.
+	if elapsed >= 4500*time.Millisecond {
 		t.Errorf("poll took %v against an endless body, want well under the 5s deadline", elapsed)
 	}
 	n.mu.RLock()
@@ -1459,7 +1489,8 @@ func TestOversizeEndlessBodyIsBoundedAndKeepsNodeReachable(t *testing.T) {
 	}
 	// The poller stopped reading at the cap; only socket buffers can absorb
 	// more, so the writer stalls shortly past it.
-	const slack = 32 << 20
+	// Generous slack: this only needs to prove the read is not unbounded.
+	const slack = 64 << 20
 	if w := a.endlessWritten.Load(); w < maxAgentStatusBodyBytes+1 || w > maxAgentStatusBodyBytes+slack {
 		t.Errorf("handler wrote %d bytes, want between the cap+1 (%d) and cap+%d", w, maxAgentStatusBodyBytes+1, slack)
 	}

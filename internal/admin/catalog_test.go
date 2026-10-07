@@ -3,10 +3,10 @@ package admin
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -864,8 +864,10 @@ func TestDiskFitOversizeAgentReplyReadsUnknownFromRealNode(t *testing.T) {
 		})
 	}))
 	defer agent.Close()
-	agentPort := 0
-	fmt.Sscanf(strings.TrimPrefix(agent.URL, "http://127.0.0.1:"), "%d", &agentPort)
+	agentPort, err := strconv.Atoi(strings.TrimPrefix(agent.URL, "http://127.0.0.1:"))
+	if err != nil {
+		t.Fatalf("parse agent port from %q: %v", agent.URL, err)
+	}
 
 	r := router.New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 50}, []config.NodeConfig{
 		{Name: "gpu-0", URL: "http://127.0.0.1:1"},
@@ -882,8 +884,14 @@ func TestDiskFitOversizeAgentReplyReadsUnknownFromRealNode(t *testing.T) {
 		deadline := time.Now().Add(10 * time.Second)
 		for time.Now().Before(deadline) {
 			free, total, present = nodeDiskState(r.Nodes(), "gpu-0")
-			if present && (total > 0) != wantUnknown {
-				return
+			// Unknown disk telemetry reads as a zero total.
+			if present {
+				if wantUnknown && total == 0 {
+					return
+				}
+				if !wantUnknown && total > 0 {
+					return
+				}
 			}
 			time.Sleep(20 * time.Millisecond)
 		}
