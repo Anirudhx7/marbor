@@ -4,6 +4,8 @@ import { TrendingUp, DollarSign, Server, Cloud, Download } from 'lucide-react';
 import {
   AreaChart,
   Area,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -142,8 +144,12 @@ export function Analytics() {
     hour: formatHourLabel(b.hour, tz),
     Local: b.local,
     Cloud: b.cloud,
-    saved: b.saved_usd,
+    'Est. saved ($)': b.saved_usd,
+    'Spent ($)': b.spent_usd,
   }));
+  const savedSpentAllZero = chartData.every(
+    d => !(d['Est. saved ($)'] > 0) && !(d['Spent ($)'] > 0),
+  );
 
   const totalRequests = (data?.local_requests ?? 0) + (data?.cloud_requests ?? 0);
   const localPct =
@@ -270,6 +276,66 @@ export function Analytics() {
                 fill="url(#colorCloud)"
               />
             </AreaChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      {/* Saved vs spent per hour */}
+      <div className="glass-panel rounded-xl p-6">
+        <h3 className="text-sm font-semibold text-foreground">Saved vs spent per hour (24h)</h3>
+        <p className="text-xs text-muted-foreground mt-1 mb-6">
+          Savings are estimated against cloud list rates. Spend is what cloud fallback requests cost.
+        </p>
+        {loading ? (
+          <div className="h-64 bg-secondary/30 rounded-lg animate-pulse" />
+        ) : chartData.length === 0 && error && !data ? (
+          <div className="h-64 flex items-center justify-center text-sm text-muted-foreground text-center px-4">
+            Savings and spend data is unavailable right now.
+          </div>
+        ) : chartData.length === 0 ? (
+          <div className="h-64 flex items-center justify-center text-sm text-muted-foreground text-center px-4">
+            No data yet - requests will appear here as traffic flows through the proxy.
+          </div>
+        ) : savedSpentAllZero ? (
+          <div className="h-64 flex items-center justify-center text-sm text-muted-foreground text-center px-4">
+            No savings or cloud spend in this window.
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+              <XAxis
+                dataKey="hour"
+                tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                tickLine={false}
+                axisLine={false}
+                interval={3}
+              />
+              <YAxis
+                tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={(v: number) => `$${v.toFixed(2)}`}
+              />
+              <Tooltip
+                contentStyle={{
+                  background: 'hsl(var(--card))',
+                  border: '1px solid hsl(var(--border))',
+                  borderRadius: '8px',
+                  fontSize: '12px',
+                }}
+                formatter={(value, name) => [
+                  typeof value === 'number' ? `$${value.toFixed(4)}` : String(value),
+                  String(name),
+                ]}
+              />
+              <Legend
+                wrapperStyle={{ fontSize: '12px', paddingTop: '16px' }}
+                formatter={(value) => <span className="text-muted-foreground">{value}</span>}
+              />
+              <Bar dataKey="Est. saved ($)" fill="hsl(var(--success))" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="Spent ($)" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+            </BarChart>
           </ResponsiveContainer>
         )}
       </div>

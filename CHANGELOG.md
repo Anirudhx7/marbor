@@ -6,6 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+- **Metrics now shows tokens per second per hour, and Analytics owns cost and routing.** Metrics no longer repeats the requests per hour, requests by model, request distribution and savings charts or the cost and request tiles, and it loses its per-chart "Export CSV" buttons (Analytics keeps its server-side Hourly and Models CSV exports). Its one chart plots generation speed per hour for the last 24 hours, with gaps for hours that have no generation timing. Only Ollama-native requests report timing, so other runtimes show no data there, and a marbor restart clears the chart. The Prometheus and Grafana block stays. The page subtitle no longer says "Ollama deployment".
+- **Analytics gains a "Saved vs spent per hour" chart.** It plots estimated savings (against cloud list rates) next to actual cloud spend for each of the last 24 hours.
+
 ### Fixed
 - **Agent: the Docker socket path no longer leaks a socket and goroutines per container on every refresh.** Each collection now closes its connections to the Docker socket when the request finishes, so an agent that runs in a container no longer drifts toward file descriptor exhaustion.
 - **Agent: a hung `ps` can no longer stall the agent.** The process listing now has a 4 second limit, reads standard output only (a warning on standard error can no longer be parsed as a process) and is capped in size.
