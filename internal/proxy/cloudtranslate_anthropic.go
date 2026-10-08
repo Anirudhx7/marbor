@@ -183,6 +183,7 @@ func clampAnthropicTemperature(t *float64) *float64 {
 	if v < 0 {
 		v = 0
 	}
+	// Logged on every clamped request (one line per request), not deduplicated.
 	if v != *t {
 		log.Printf("anthropic: temperature %v is outside 0..1, clamped to %v", *t, v)
 	}
@@ -193,9 +194,12 @@ func clampAnthropicTemperature(t *float64) *float64 {
 // finish_reason vocabulary. An empty reason stays empty and an unknown one
 // becomes "stop". tool_use -> tool_calls is unreachable until tool
 // translation exists; it is mapped so the vocabulary is already correct then.
+// Unknown values are logged so a new Anthropic stop reason is noticed.
 func openAIFinishReason(stop string) string {
 	switch stop {
 	case "":
+		// No stop_reason reported: emit no finish_reason at all rather than
+		// inventing one.
 		return ""
 	case "end_turn", "stop_sequence":
 		return "stop"
@@ -206,6 +210,7 @@ func openAIFinishReason(stop string) string {
 	case "refusal":
 		return "content_filter"
 	default:
+		log.Printf("anthropic: unknown stop_reason %q mapped to \"stop\"", stop)
 		return "stop"
 	}
 }
@@ -320,10 +325,9 @@ type openAIChatResponse struct {
 // Unparseable bodies pass through raw so nothing is silently lost.
 func translateAnthropicJSONToOpenAI(src io.ReadCloser) io.ReadCloser {
 	defer src.Close()
-	raw, err := io.ReadAll(src)
-	if err != nil {
-		return io.NopCloser(strings.NewReader(`{"error":"failed to read cloud response"}` + "\n"))
-	}
+	// src is the buffered body from capCloudResponse (the single read point);
+	// this read cannot fail.
+	raw, _ := io.ReadAll(src)
 
 	// Anthropic error responses are a distinct envelope shape
 	// ({"type":"error","error":{...}}), not a zero-valued success body -
@@ -442,6 +446,7 @@ func translateAnthropicSSEToOpenAI(src io.ReadCloser) io.ReadCloser {
 			b, _ := json.Marshal(struct {
 				Error errBody `json:"error"`
 			}{Error: errBody{Type: errType, Message: errMsg}})
+			logStreamFailure(errType+": "+errMsg, err)
 			pw.Write([]byte("data: " + string(b) + "\n\n")) //nolint:errcheck -- CloseWithError below reports it
 			pw.CloseWithError(err)
 		}
@@ -523,7 +528,7 @@ func translateAnthropicSSEToOpenAI(src io.ReadCloser) io.ReadCloser {
 		if err == nil {
 			err = io.ErrUnexpectedEOF
 		}
-		closeWithErrorChunk("api_error", "upstream stream ended unexpectedly", err)
+		closeWithErrorChunk("api_error", streamFailureMessage(err), err)
 	}()
 
 	return pr
