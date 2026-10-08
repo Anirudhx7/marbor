@@ -48,6 +48,8 @@ func counterCfg() config.AuthConfig {
 	}
 }
 
+// The startup ordering regression (counters restored only after the keys are
+// registered) is pinned by the startup test in the main package.
 func TestSaveLoadStateRoundTrip(t *testing.T) {
 	mw := NewMiddleware(counterCfg())
 	mw.byName["a"].counter.today, mw.byName["a"].counter.month, mw.byName["a"].counter.tokensMonth = 3, 7, 900

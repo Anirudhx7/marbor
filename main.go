@@ -1114,6 +1114,8 @@ func applyNodeOverrides(r *router.Router, overrides map[string]store.NodeOverrid
 // after the keys exist: counters are matched to keys by name, and a restore
 // run first finds nothing to restore.
 func loadStoredKeys(authMw *auth.Middleware, st store.Store) (int, error) {
+	// If the key list cannot be read, counters are not restored: there are no
+	// keys to attach them to.
 	runtimeKeys, err := st.AllKeys()
 	if err != nil {
 		return 0, err
