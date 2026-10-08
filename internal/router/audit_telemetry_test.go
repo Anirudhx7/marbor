@@ -309,7 +309,7 @@ func TestAgentUnreachableAfterReachableRecordsDown(t *testing.T) {
 
 // --- deployment / runtime matching ---
 
-func TestPortOf(t *testing.T) {
+func TestPortOfOrDefault(t *testing.T) {
 	cases := map[string]int{
 		"http://host:8080":  8080,
 		"https://host:8443": 8443,
@@ -321,8 +321,8 @@ func TestPortOf(t *testing.T) {
 		"::not a url":       0,
 	}
 	for in, want := range cases {
-		if got := portOf(in); got != want {
-			t.Errorf("portOf(%q) = %d, want %d", in, got, want)
+		if got := portOfOrDefault(in); got != want {
+			t.Errorf("portOfOrDefault(%q) = %d, want %d", in, got, want)
 		}
 	}
 }
@@ -665,6 +665,7 @@ func TestLocalInterfaceAddrsKeepsPreviousSetWhenLookupFails(t *testing.T) {
 		localAddrMu.Lock()
 		localAddrCache = nil
 		localAddrAt = time.Time{}
+		localAddrRetryAt = time.Time{}
 		localAddrMu.Unlock()
 	})
 
@@ -690,11 +691,13 @@ func TestLocalInterfaceAddrsDoesNotCacheEmptySetOnFirstFailure(t *testing.T) {
 		localAddrMu.Lock()
 		localAddrCache = nil
 		localAddrAt = time.Time{}
+		localAddrRetryAt = time.Time{}
 		localAddrMu.Unlock()
 	})
 	localAddrMu.Lock()
 	localAddrCache = nil
 	localAddrAt = time.Time{}
+	localAddrRetryAt = time.Time{}
 	localAddrMu.Unlock()
 
 	interfaceAddrs = func() ([]net.Addr, error) { return nil, errors.New("simulated failure") }

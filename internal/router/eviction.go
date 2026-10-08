@@ -64,39 +64,108 @@ func (r *Router) RecordModelUse(node, model string) {
 	if node == "" || model == "" {
 		return
 	}
+	// The resident-model set is only needed when this node is at its cap, so
+	// it is gathered outside lruMu and only then.
 	r.lruMu.Lock()
-	if r.lastUsed == nil {
-		r.lastUsed = make(map[string]time.Time)
+	full := r.lastUsedFullLocked(node, model)
+	r.lruMu.Unlock()
+	var loaded map[string]bool
+	if full {
+		loaded = r.loadedModelSet(node)
 	}
-	key := modelKey(node, model)
-	if _, exists := r.lastUsed[key]; !exists {
-		trimLastUsedLocked(r.lastUsed, node)
-	}
-	r.lastUsed[key] = time.Now()
+	r.lruMu.Lock()
+	r.stampLastUsedLocked(node, model, time.Now(), loaded)
 	r.lruMu.Unlock()
 }
 
-// trimLastUsedLocked makes room for one new entry for node: when the node is at
-// maxTrackedModelsPerNode it drops that node's least recently used entry. Only
-// the oldest stamp of the over-full node is removed, so eviction ordering for
-// models in real use is unaffected. The caller holds lruMu.
-func trimLastUsedLocked(m map[string]time.Time, node string) {
+// lastUsedFullLocked reports whether stamping (node, model) would add a new
+// entry to a node already at maxTrackedModelsPerNode. The caller holds lruMu.
+func (r *Router) lastUsedFullLocked(node, model string) bool {
+	if r.lastUsedCount[node] < maxTrackedModelsPerNode {
+		return false
+	}
+	_, exists := r.lastUsed[modelKey(node, model)]
+	return !exists
+}
+
+// stampLastUsedLocked records at as the last-use time for (node, model) and is
+// the single writer of lastUsed, so every path (live requests and the startup
+// warm-state restore) obeys the per-node cap. A new entry on a full node first
+// trims that node (see trimNodeEntries). loaded names the models currently
+// resident on node; nil means unknown. The caller holds lruMu.
+func (r *Router) stampLastUsedLocked(node, model string, at time.Time, loaded map[string]bool) {
+	if r.lastUsed == nil {
+		r.lastUsed = make(map[string]time.Time)
+	}
+	if r.lastUsedCount == nil {
+		r.lastUsedCount = make(map[string]int)
+	}
+	key := modelKey(node, model)
+	if _, exists := r.lastUsed[key]; !exists {
+		if r.lastUsedCount[node] >= maxTrackedModelsPerNode {
+			r.lastUsedCount[node] = trimNodeEntries(r.lastUsed, node, loaded, func(t time.Time) time.Time { return t })
+		}
+		r.lastUsedCount[node]++
+	}
+	r.lastUsed[key] = at
+}
+
+// trimBatch is how many entries a full node sheds at once. Trimming in a batch
+// amortizes the one scan of the map over many inserts, so a client cycling
+// made-up model names cannot force a scan per request.
+const trimBatch = maxTrackedModelsPerNode / 8
+
+// trimNodeEntries drops up to trimBatch entries for node from m and returns how
+// many remain. Entries for models not currently loaded (per loaded) go first,
+// oldest first by stamp, then the oldest overall - so a flood of made-up names
+// cannot push a resident model's stamp out. stamp extracts the ordering time
+// from a value (the zero time for values with none, which then tie).
+func trimNodeEntries[V any](m map[string]V, node string, loaded map[string]bool, stamp func(V) time.Time) int {
 	prefix := node + "\x00"
-	count := 0
-	var oldestKey string
-	var oldest time.Time
-	for k, t := range m {
-		if !strings.HasPrefix(k, prefix) {
+	type entry struct {
+		key      string
+		at       time.Time
+		resident bool
+	}
+	var entries []entry
+	for k, v := range m {
+		name, ok := strings.CutPrefix(k, prefix)
+		if !ok {
 			continue
 		}
-		count++
-		if oldestKey == "" || t.Before(oldest) {
-			oldestKey, oldest = k, t
+		entries = append(entries, entry{k, stamp(v), loaded[name]})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].resident != entries[j].resident {
+			return !entries[i].resident
 		}
+		return entries[i].at.Before(entries[j].at)
+	})
+	drop := trimBatch
+	if drop > len(entries) {
+		drop = len(entries)
 	}
-	if count >= maxTrackedModelsPerNode {
-		delete(m, oldestKey)
+	for _, e := range entries[:drop] {
+		delete(m, e.key)
 	}
+	return len(entries) - drop
+}
+
+// loadedModelSet returns the canonical names of the models currently loaded on
+// node, for the cap-trim preference. Takes r.mu and the node lock, so callers
+// must not hold lruMu or vramSeenMu.
+func (r *Router) loadedModelSet(node string) map[string]bool {
+	n := r.FindNode(node)
+	if n == nil {
+		return nil
+	}
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	set := make(map[string]bool, len(n.LoadedModels))
+	for _, m := range n.LoadedModels {
+		set[canonicalModelName(m.Name)] = true
+	}
+	return set
 }
 
 // lastUsedAt returns the last-request time for (node, model); the zero time
@@ -115,28 +184,32 @@ func (r *Router) recordLastKnownVRAM(node, model string, bytes int64) {
 	if bytes <= 0 {
 		return
 	}
+	key := modelKey(node, model)
+	r.vramSeenMu.Lock()
+	_, exists := r.lastKnownVRAM[key]
+	full := !exists && r.lastKnownCount[node] >= maxTrackedModelsPerNode
+	r.vramSeenMu.Unlock()
+	var loaded map[string]bool
+	if full {
+		loaded = r.loadedModelSet(node)
+	}
 	r.vramSeenMu.Lock()
 	defer r.vramSeenMu.Unlock()
 	if r.lastKnownVRAM == nil {
 		r.lastKnownVRAM = make(map[string]int64)
 	}
-	key := modelKey(node, model)
+	if r.lastKnownCount == nil {
+		r.lastKnownCount = make(map[string]int)
+	}
 	if _, exists := r.lastKnownVRAM[key]; !exists {
 		// Same per-node bound as lastUsed. These entries carry no timestamp, so
-		// the victim is arbitrary; the value is only a size hint and is
-		// re-recorded on the next poll while the model is resident.
-		prefix := node + "\x00"
-		count := 0
-		var victim string
-		for k := range r.lastKnownVRAM {
-			if strings.HasPrefix(k, prefix) {
-				count++
-				victim = k
-			}
+		// among equals the victim is arbitrary; non-resident models go first. The
+		// value is only a size hint and is re-recorded on the next poll while the
+		// model is resident.
+		if r.lastKnownCount[node] >= maxTrackedModelsPerNode {
+			r.lastKnownCount[node] = trimNodeEntries(r.lastKnownVRAM, node, loaded, func(int64) time.Time { return time.Time{} })
 		}
-		if count >= maxTrackedModelsPerNode {
-			delete(r.lastKnownVRAM, victim)
-		}
+		r.lastKnownCount[node]++
 	}
 	r.lastKnownVRAM[key] = bytes
 }
@@ -342,7 +415,7 @@ func (r *Router) unloadModel(ctx context.Context, n *NodeState, model, reason st
 		return err
 	}
 	// Drain a bounded amount of the reply so the connection can be reused.
-	io.Copy(io.Discard, io.LimitReader(resp.Body, maxUnloadReplyBytes))
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxUnloadReplyBytes))
 	resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("node %s returned %d unloading %q", n.Name, resp.StatusCode, model)
@@ -482,7 +555,7 @@ func (r *Router) unloadModelViaAgent(ctx context.Context, nodeURL string, cfg Ma
 	// ok:true body on a non-2xx status is a proxy or misbehaving agent, not a
 	// confirmed unload.
 	if !out.OK || resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		msg := out.Error
+		msg := truncateForLog(out.Error, maxLogValueBytes)
 		if msg == "" {
 			msg = fmt.Sprintf("agent returned %d", resp.StatusCode)
 		}
@@ -622,8 +695,11 @@ func (r *Router) UnloadModels(ctx context.Context, nodeName string, models []str
 			defer wg.Done()
 			defer func() {
 				if rec := recover(); rec != nil {
-					log.Printf("scheduled unload of %q on %s panicked: %v\n%s", m, nodeName, rec, debug.Stack())
-					perr := fmt.Errorf("panic: %v", rec)
+					pv := truncateForLog(fmt.Sprint(rec), maxLogValueBytes)
+					if r.allowHostLog("panic:" + nodeName + "/" + m) {
+						log.Printf("scheduled unload of %q on %s panicked: %s\n%s", m, nodeName, pv, debug.Stack())
+					}
+					perr := fmt.Errorf("panic: %s", pv)
 					recordUnloadError(n, m, perr)
 					addFailure(m, perr.Error())
 				}
@@ -774,9 +850,15 @@ func (r *Router) EvictForHeadroom(ctx context.Context, nodeName, forModel string
 				continue
 			}
 			if m.size <= 0 {
-				// Unknown resident size: unloading it would free nothing we
-				// can account for, so it can never help meet the target.
-				continue
+				// The runtime reports no per-model size (vLLM, TGI, llama.cpp,
+				// MLX). Fall back to the last size seen for it; with none,
+				// unloading it would free nothing we can account for, so it can
+				// never help meet the target.
+				known := r.lastKnownVRAMBytes(nodeName, m.name)
+				if known <= 0 {
+					continue
+				}
+				loaded[i].size = known
 			}
 			if forModelRanked {
 				if rank, ok := r.warmRank(nodeName, m.name); ok && rank < forModelRank {
@@ -833,6 +915,21 @@ func (r *Router) EvictForHeadroom(ctx context.Context, nodeName, forModel string
 // sustained pressure can't thrash (rapid load/evict oscillation).
 const evictCooldown = 15 * time.Second
 
+// lookupByModelName finds model in m by exact key first, then by name
+// equivalence, so "llama3" and "llama3:latest" resolve the same entry.
+func lookupByModelName[V any](m map[string]V, model string) (V, bool) {
+	if v, ok := m[model]; ok {
+		return v, true
+	}
+	for k, v := range m {
+		if ModelNamesEquivalent(k, model) {
+			return v, true
+		}
+	}
+	var zero V
+	return zero, false
+}
+
 // estimateModelSizeBytes estimates the VRAM a not-yet-loaded model needs, in
 // priority order: (1) the real VRAM footprint last observed while this model
 // was actually resident on this node (lastKnownVRAM) - a model that doesn't
@@ -870,7 +967,7 @@ func (r *Router) estimateModelSizeBytes(nodeURL, model string, allowFetch bool, 
 			continue
 		}
 		nodeName = n.Name
-		overrideMB = n.VRAMOverrides[model]
+		overrideMB, _ = lookupByModelName(n.VRAMOverrides, model)
 		runtime = n.Runtime
 		n.mu.RUnlock()
 		break
@@ -1080,13 +1177,10 @@ func (r *Router) ModelDownloadedAnyNode(model string) bool {
 	for _, n := range nodes {
 		n.mu.RLock()
 		nodeURL := n.URL
-		healthy := n.Healthy
 		n.mu.RUnlock()
-		if !healthy {
-			// A down node cannot serve the substitute, and querying it would
-			// only add a timeout to the request path.
-			continue
-		}
+		// A down or not-yet-polled node still counts: its cached tags say the
+		// model is on disk there, and rejecting on health would refuse the
+		// fallback chain right after startup. Only a failed fetch skips it.
 		tags, err := r.FetchModelTags(nodeURL)
 		if err != nil {
 			continue
@@ -1240,36 +1334,72 @@ func (r *Router) ensureHeadroom(ctx context.Context, n *NodeState, model string)
 		return // fits alongside real usage and any other in-flight loads
 	}
 	// Thrash guard: at most one auto-eviction per node per cooldown window.
+	// A second caller that arrives while the first one's eviction is still in
+	// flight finds the claim held and returns without evicting; it proceeds on
+	// the first caller's reservation view. If the first pass evicts nothing the
+	// claim is given back, and later callers evaluate afresh.
+	claim, ok := r.claimEvictCooldown(nodeName)
+	if !ok {
+		return
+	}
+	evicted := 0
+	// Deferred so a panic or a context cancellation inside the eviction also
+	// gives the claim back: a pass that evicted nothing (all pinned/higher-
+	// priority/in-flight, an unload error, a panic) must not burn the cooldown,
+	// which would block further auto-eviction attempts on this node for the full
+	// window while pressure persists.
+	defer func() {
+		if evicted == 0 {
+			r.releaseEvictClaim(nodeName, claim)
+		}
+	}()
+	evicted = r.EvictForHeadroom(ctx, nodeName, model, est+reservedByOthers)
+}
+
+// evictClaim identifies one claim of a node's eviction cooldown, so releasing
+// it can never undo a different caller's newer claim.
+type evictClaim struct {
+	id      uint64
+	prev    time.Time
+	hadPrev bool
+}
+
+// claimEvictCooldown atomically checks the node's eviction cooldown and, when
+// it is clear, claims it in the same critical section. Checking first and
+// stamping after the eviction let two concurrent warmups both pass the check
+// and each evict, doubling the eviction the guard exists to prevent.
+func (r *Router) claimEvictCooldown(nodeName string) (evictClaim, bool) {
 	r.evictMu.Lock()
+	defer r.evictMu.Unlock()
 	if r.lastEvictAt == nil {
 		r.lastEvictAt = make(map[string]time.Time)
 	}
-	prevEvict, hadPrevEvict := r.lastEvictAt[nodeName]
-	if hadPrevEvict && time.Since(prevEvict) < evictCooldown {
-		r.evictMu.Unlock()
+	if r.evictClaimID == nil {
+		r.evictClaimID = make(map[string]uint64)
+	}
+	prev, hadPrev := r.lastEvictAt[nodeName]
+	if hadPrev && time.Since(prev) < evictCooldown {
+		return evictClaim{}, false
+	}
+	r.evictClaimSeq++
+	r.evictClaimID[nodeName] = r.evictClaimSeq
+	r.lastEvictAt[nodeName] = time.Now()
+	return evictClaim{id: r.evictClaimSeq, prev: prev, hadPrev: hadPrev}, true
+}
+
+// releaseEvictClaim restores the cooldown state from before claim, but only
+// while claim is still the node's latest: a newer claim by another caller is
+// left alone.
+func (r *Router) releaseEvictClaim(nodeName string, claim evictClaim) {
+	r.evictMu.Lock()
+	defer r.evictMu.Unlock()
+	if r.evictClaimID[nodeName] != claim.id {
 		return
 	}
-	// Claim the cooldown in the same critical section as the check. Checking
-	// first and stamping after the eviction let two concurrent warmups both
-	// pass the check and each evict, doubling the eviction the guard exists
-	// to prevent.
-	claimedAt := time.Now()
-	r.lastEvictAt[nodeName] = claimedAt
-	r.evictMu.Unlock()
-
-	// A pass that evicted nothing (all pinned/higher-priority/in-flight, or an
-	// unload error) must not burn the cooldown, which would block further
-	// auto-eviction attempts on this node for the full window while pressure
-	// persists - so give the claim back.
-	if evicted := r.EvictForHeadroom(ctx, nodeName, model, est+reservedByOthers); evicted == 0 {
-		r.evictMu.Lock()
-		if cur, ok := r.lastEvictAt[nodeName]; ok && cur.Equal(claimedAt) {
-			if hadPrevEvict {
-				r.lastEvictAt[nodeName] = prevEvict
-			} else {
-				delete(r.lastEvictAt, nodeName)
-			}
-		}
-		r.evictMu.Unlock()
+	delete(r.evictClaimID, nodeName)
+	if claim.hadPrev {
+		r.lastEvictAt[nodeName] = claim.prev
+	} else {
+		delete(r.lastEvictAt, nodeName)
 	}
 }

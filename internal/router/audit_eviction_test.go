@@ -259,17 +259,24 @@ func TestModelDownloadedAnyNodeMatchesTaggedCatalogEntry(t *testing.T) {
 	}
 }
 
-func TestModelDownloadedAnyNodeSkipsUnhealthyNodes(t *testing.T) {
-	srv, hits := tagsServer(t, map[string]int64{"llama3:latest": 4 << 30})
+func TestModelDownloadedAnyNodeCountsNodeNotMarkedHealthy(t *testing.T) {
+	srv, _ := tagsServer(t, map[string]int64{"llama3:latest": 4 << 30})
 	r := New(config.RoutingConfig{}, []config.NodeConfig{{Name: "n", URL: srv.URL, Runtime: "ollama"}}, nil)
 	r.nodes[0].mu.Lock()
-	r.nodes[0].Healthy = false
+	r.nodes[0].Healthy = false // down, or not polled yet right after startup
 	r.nodes[0].mu.Unlock()
-	if r.ModelDownloadedAnyNode("llama3:latest") {
-		t.Fatal("a model that is only on a down node must not count as downloaded")
+	if !r.ModelDownloadedAnyNode("llama3:latest") {
+		t.Fatal("a node that is not marked healthy yet must still count when its tags list the model")
 	}
-	if atomic.LoadInt32(hits) != 0 {
-		t.Fatal("an unhealthy node must not be queried at all")
+}
+
+func TestModelDownloadedAnyNodeSkipsNodeWhoseTagsFail(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	url := srv.URL
+	srv.Close() // nothing listens: the tag fetch fails
+	r := New(config.RoutingConfig{}, []config.NodeConfig{{Name: "n", URL: url, Runtime: "ollama"}}, nil)
+	if r.ModelDownloadedAnyNode("llama3:latest") {
+		t.Fatal("a node whose tags cannot be fetched must not count as having the model")
 	}
 }
 

@@ -139,8 +139,7 @@ func (r *Router) SetModelArchFacts(model string, facts ModelArchFacts) {
 func (r *Router) modelArchFactsFor(model string) (ModelArchFacts, bool) {
 	r.archFactsMu.RLock()
 	defer r.archFactsMu.RUnlock()
-	facts, ok := r.modelArchFacts[model]
-	return facts, ok
+	return lookupByModelName(r.modelArchFacts, model)
 }
 
 // SetContextWindows replaces the operator-declared per-model context-window

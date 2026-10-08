@@ -650,6 +650,9 @@ type Router struct {
 	// read; nil means time.Now. Tests set it before any use. Reads happen
 	// under hostEvidenceMu.
 	hostLogNow func() time.Time
+	// applyTelemetryHook, when set, runs inside the locked telemetry apply so a
+	// test can inject a panic there.
+	applyTelemetryHook func()
 	// nodeControl holds the per-node accepted ControlDriver config,
 	// guarded by r.mu same as marborAgents. Absent (or Configured: false)
 	// means lifecycle actions must return the "no control driver
@@ -664,8 +667,11 @@ type Router struct {
 	// guarded by lruMu (hot path). pinned holds never-evict models per node,
 	// guarded by r.mu.
 	lastUsed map[string]time.Time
-	lruMu    sync.Mutex
-	pinned   map[string]map[string]bool
+	// lastUsedCount is the per-node entry count of lastUsed, guarded by lruMu,
+	// so the cap check never scans the whole map.
+	lastUsedCount map[string]int
+	lruMu         sync.Mutex
+	pinned        map[string]map[string]bool
 	// lastKnownVRAM caches the most recent REAL /api/ps size_vram observed for a
 	// (node, model) pair, keyed by modelKey, surviving after the model is
 	// unloaded/evicted. estimateModelSizeBytes prefers this over the on-disk
@@ -675,9 +681,16 @@ type Router struct {
 	// reservation for it without bound. Guarded by vramSeenMu.
 	vramSeenMu    sync.Mutex
 	lastKnownVRAM map[string]int64
+	// lastKnownCount is the per-node entry count of lastKnownVRAM, guarded by
+	// vramSeenMu, so the cap check never scans the whole map.
+	lastKnownCount map[string]int
 	// lastEvictAt throttles auto-eviction per node (thrash guard), guarded by evictMu.
 	evictMu     sync.Mutex
 	lastEvictAt map[string]time.Time
+	// evictClaimID/evictClaimSeq tag each cooldown claim so a release never
+	// undoes a newer claim; guarded by evictMu.
+	evictClaimID  map[string]uint64
+	evictClaimSeq uint64
 	// warmReserved tracks VRAM bytes reserved for warmup loads that have started
 	// but aren't yet reflected in a node's LoadedModels (populated only by the
 	// next /api/ps poll). Keyed by node -> model. Guarded by evictMu. See
@@ -1697,6 +1710,7 @@ func (r *Router) RemoveNode(name string) {
 	// a different node whose name happens to start with this one's.
 	prefix := name + "\x00"
 	r.lruMu.Lock()
+	delete(r.lastUsedCount, name)
 	for k := range r.lastUsed {
 		if strings.HasPrefix(k, prefix) {
 			delete(r.lastUsed, k)
@@ -1705,6 +1719,7 @@ func (r *Router) RemoveNode(name string) {
 	r.lruMu.Unlock()
 
 	r.vramSeenMu.Lock()
+	delete(r.lastKnownCount, name)
 	for k := range r.lastKnownVRAM {
 		if strings.HasPrefix(k, prefix) {
 			delete(r.lastKnownVRAM, k)
@@ -1714,8 +1729,10 @@ func (r *Router) RemoveNode(name string) {
 
 	r.evictMu.Lock()
 	delete(r.lastEvictAt, name)
+	delete(r.evictClaimID, name)
 	delete(r.warmReserved, name)
 	r.evictMu.Unlock()
+	r.dropNodeLogKeys(name)
 
 	// B1 ROUTER-05: warmupSuppressed (keyed by node name) and showCache
 	// (keyed by "nodeURL|tag") used to survive RemoveNode entirely - a ghost
