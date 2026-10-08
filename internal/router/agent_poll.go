@@ -144,9 +144,11 @@ func (r *Router) pollAgentHost(host string, cfg MarborAgentConfig, members []*No
 	// process. Treat it as a failed poll for every node on the host.
 	defer func() {
 		if rec := recover(); rec != nil {
-			log.Printf("router: recovered panic polling agent on host %q: %v\n%s", host, rec, debug.Stack())
+			if r.allowHostLog("panic:" + host) {
+				log.Printf("router: recovered panic polling agent on host %q: %s\n%s", host, truncateForLog(fmt.Sprint(rec), maxLogValueBytes), debug.Stack())
+			}
 			for _, n := range members {
-				r.agentUnreachable(n)
+				r.agentUnreachableSafe(n)
 			}
 		}
 	}()
@@ -287,6 +289,33 @@ func (r *Router) pollAgentHost(host string, cfg MarborAgentConfig, members []*No
 	}
 }
 
+// maxLogValueBytes caps an untrusted or arbitrary value (a panic value, an
+// agent-supplied message) embedded in a log line or error string.
+const maxLogValueBytes = 256
+
+// truncateForLog cuts s to at most max bytes, marking the cut.
+func truncateForLog(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "..."
+}
+
+// agentUnreachableSafe clears the TLS-mismatch flag and records a failed poll
+// for n, recovering its own panic so one bad node cannot stop the rest of the
+// host's members from being marked unreachable.
+func (r *Router) agentUnreachableSafe(n *NodeState) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			if r.allowHostLog("panic:" + n.Name) {
+				log.Printf("router: recovered panic marking node %q agent unreachable: %s", n.Name, truncateForLog(fmt.Sprint(rec), maxLogValueBytes))
+			}
+		}
+	}()
+	r.setAgentTLSMismatch(n, false)
+	r.agentUnreachable(n)
+}
+
 // logAgentPoll logs one agent poll failure for host, at most once per
 // hostLogInterval per kind and host. Polls repeat every interval, so an
 // unconditional line would flood the log for an agent that stays down. The
@@ -330,13 +359,25 @@ func (r *Router) applyAgentTelemetry(n *NodeState, t marboragent.Telemetry) {
 // hostMembers nodes sharing it; the count decides whether a deployment report
 // with no port can be attributed to this node (see matchDeployment).
 func (r *Router) applyAgentTelemetryForHost(n *NodeState, t marboragent.Telemetry, hostMembers int) {
+	n.mu.Lock()
+	// Deferred so a panic in the body cannot leave the node lock held: the
+	// poll's recover path locks the same node again.
+	defer n.mu.Unlock()
+	r.applyAgentTelemetryLocked(n, t, hostMembers)
+}
+
+// applyAgentTelemetryLocked is the body of applyAgentTelemetryForHost; the
+// caller holds n.mu.
+func (r *Router) applyAgentTelemetryLocked(n *NodeState, t marboragent.Telemetry, hostMembers int) {
 	// One critical section for the reads that steer the writes below: a
 	// separate read lock first let a concurrent poll change the VRAM source or
 	// the runtime pin between the decision and the write.
-	n.mu.Lock()
+	if r.applyTelemetryHook != nil {
+		r.applyTelemetryHook()
+	}
 	hasGPU := n.VRAMSource == "nvidia"
 	pinnedID := n.AgentRuntimeID
-	nodePort := portOf(n.URL)
+	nodePort := portOfOrDefault(n.URL)
 	entry, matchedID := matchRuntime(t, pinnedID, nodePort)
 
 	n.AgentFailures = 0
@@ -554,7 +595,6 @@ func (r *Router) applyAgentTelemetryForHost(n *NodeState, t marboragent.Telemetr
 	// (non-Ollama: always-zero) API on its next poll cycle without ever
 	// re-deriving this attribution.
 	attributeSoleModelVRAM(n)
-	n.mu.Unlock()
 }
 
 // matchRuntime picks the *marboragent.RuntimeInfo (from t.Runtimes, or the
@@ -631,17 +671,30 @@ func matchDeploymentForHost(deployments []marboragent.DeploymentReport, pinnedID
 	return nil
 }
 
-// portOf returns rawURL's port as an int (80/443 for an http/https URL with no
-// explicit port), or 0 if it can't be determined - used
-// only as a one-time bootstrap heuristic for matchRuntime, never as
-// identity (see NodeState.AgentRuntimeID's field comment).
+// portOf returns rawURL's explicit port as an int, or 0 if there is none or it
+// can't be determined.
 func portOf(rawURL string) int {
+	return parsePort(rawURL, false)
+}
+
+// portOfOrDefault is portOf but returns 80/443 for an http/https URL with no
+// explicit port - used only as a one-time bootstrap heuristic for matchRuntime
+// and matchDeployment, never as identity (see NodeState.AgentRuntimeID's field
+// comment).
+func portOfOrDefault(rawURL string) int {
+	return parsePort(rawURL, true)
+}
+
+func parsePort(rawURL string, schemeDefault bool) int {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return 0
 	}
 	p := u.Port()
 	if p == "" {
+		if !schemeDefault {
+			return 0
+		}
 		// No explicit port: the scheme's default is the port the node is
 		// really on.
 		switch u.Scheme {

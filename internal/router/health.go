@@ -490,10 +490,17 @@ func (r *Router) ProbeNodeOnDemand(ctx context.Context, name string) (ok bool, e
 // window is rare and self-corrects on the next refresh.
 const localAddrCacheTTL = 30 * time.Second
 
+// localAddrFailureTTL is how long a failed interface lookup suppresses retries.
+const localAddrFailureTTL = 5 * time.Second
+
 var (
 	localAddrMu    sync.RWMutex
 	localAddrCache map[string]struct{}
 	localAddrAt    time.Time
+	// localAddrRetryAt, when in the future, holds off another interface lookup
+	// after a failed one, so a persistently failing syscall is not retried at
+	// call rate.
+	localAddrRetryAt time.Time
 
 	// interfaceAddrs is the interface lookup, a variable so a test can make
 	// it fail.
@@ -510,6 +517,14 @@ func localInterfaceAddrs() map[string]struct{} {
 		localAddrMu.RUnlock()
 		return cache
 	}
+	if time.Now().Before(localAddrRetryAt) {
+		prev := localAddrCache
+		localAddrMu.RUnlock()
+		if prev == nil {
+			return map[string]struct{}{}
+		}
+		return prev
+	}
 	localAddrMu.RUnlock()
 
 	addrs, err := interfaceAddrs()
@@ -517,10 +532,11 @@ func localInterfaceAddrs() map[string]struct{} {
 		// A failed lookup says nothing about which addresses are local, so
 		// never cache an empty set (it would make every local node look
 		// remote for a full TTL). Keep serving the previous set, if any, and
-		// retry on the next call.
-		localAddrMu.RLock()
+		// retry only after localAddrFailureTTL.
+		localAddrMu.Lock()
 		prev := localAddrCache
-		localAddrMu.RUnlock()
+		localAddrRetryAt = time.Now().Add(localAddrFailureTTL)
+		localAddrMu.Unlock()
 		if prev == nil {
 			return map[string]struct{}{}
 		}
@@ -536,6 +552,7 @@ func localInterfaceAddrs() map[string]struct{} {
 	localAddrMu.Lock()
 	localAddrCache = set
 	localAddrAt = time.Now()
+	localAddrRetryAt = time.Time{}
 	localAddrMu.Unlock()
 	return set
 }

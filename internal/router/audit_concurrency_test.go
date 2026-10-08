@@ -182,15 +182,17 @@ func TestUnloadModelsRecordsPanicAsFailure(t *testing.T) {
 
 // ensureHeadroomFixture builds a node with 20000 MB total, two 6 GiB models
 // resident and a declared 10000 MB size for model "X", behind a server that
-// counts unload calls (slowly, so concurrent callers overlap).
-func ensureHeadroomFixture(t *testing.T, delay time.Duration) (*Router, *NodeState, *int32) {
+// counts unload calls and runs onUnload (when non-nil) inside the handler.
+func ensureHeadroomFixture(t *testing.T, onUnload func()) (*Router, *NodeState, *int32) {
 	t.Helper()
 	var unloads int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		io.Copy(io.Discard, req.Body)
 		if req.URL.Path == "/api/generate" {
 			atomic.AddInt32(&unloads, 1)
-			time.Sleep(delay)
+			if onUnload != nil {
+				onUnload()
+			}
 			w.WriteHeader(http.StatusOK)
 			return
 		}
@@ -215,20 +217,38 @@ func ensureHeadroomFixture(t *testing.T, delay time.Duration) (*Router, *NodeSta
 }
 
 func TestEnsureHeadroomConcurrentCallersEvictOnce(t *testing.T) {
-	r, n, unloads := ensureHeadroomFixture(t, 300*time.Millisecond)
+	entered := make(chan struct{}, 2)
+	release := make(chan struct{})
+	r, n, unloads := ensureHeadroomFixture(t, func() {
+		entered <- struct{}{}
+		<-release
+	})
 
-	start := make(chan struct{})
-	var wg sync.WaitGroup
-	for i := 0; i < 2; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			<-start
-			r.ensureHeadroom(context.Background(), n, "X")
-		}()
+	// The first caller blocks inside the unload handler, so the second caller
+	// is guaranteed to start while that eviction is in flight.
+	first := make(chan struct{})
+	go func() {
+		defer close(first)
+		r.ensureHeadroom(context.Background(), n, "X")
+	}()
+	select {
+	case <-entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("first caller never reached the unload handler")
 	}
-	close(start)
-	wg.Wait()
+	second := make(chan struct{})
+	go func() {
+		defer close(second)
+		r.ensureHeadroom(context.Background(), n, "X")
+	}()
+	select {
+	case <-second:
+	case <-time.After(10 * time.Second):
+		close(release)
+		t.Fatal("second caller did not back off while the first eviction was in flight")
+	}
+	close(release)
+	<-first
 
 	if got := atomic.LoadInt32(unloads); got != 1 {
 		t.Fatalf("unload calls = %d, want 1: the cooldown must be claimed before evicting so a second caller backs off", got)
@@ -236,7 +256,7 @@ func TestEnsureHeadroomConcurrentCallersEvictOnce(t *testing.T) {
 }
 
 func TestEnsureHeadroomZeroEvictedLeavesNoCooldown(t *testing.T) {
-	r, n, unloads := ensureHeadroomFixture(t, 0)
+	r, n, unloads := ensureHeadroomFixture(t, nil)
 	r.SetPinnedModels("n", []string{"A", "B"})
 
 	r.ensureHeadroom(context.Background(), n, "X")

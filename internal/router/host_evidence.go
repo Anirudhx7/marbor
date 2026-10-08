@@ -32,6 +32,13 @@ const (
 // hostLogKeyPrefixes lists every rate-limit key prefix; a key is prefix+host.
 var hostLogKeyPrefixes = []string{"truncate:", "oversize:", "read:"}
 
+// hostLogAgedKeyPrefixes lists the rate-limit keys whose subject (a node, a
+// docker URL, a panic site) has no per-pass keep set to compare against, so
+// dropHostEvidenceNotIn removes them once they are older than hostLogInterval,
+// the point where the limiter would let the next log through anyway. Prefix
+// match, so "docker-discovery" (no suffix) is covered too.
+var hostLogAgedKeyPrefixes = []string{"tags:", "probe:", "docker-add:", "docker-discovery", "panic:"}
+
 // hostLogPollKeyPrefixes lists the rate-limit key prefixes for agent poll
 // failures. They are pruned with the others when a host leaves the poll
 // groups, but unlike hostLogKeyPrefixes they are not reset by
@@ -150,6 +157,12 @@ func (r *Router) dropHostEvidenceNotIn(keep map[string][]*NodeState) {
 	}
 	now := r.hostLogClock()
 	for key, at := range r.hostLogAt {
+		if hasAnyPrefix(key, hostLogAgedKeyPrefixes) {
+			if now.Sub(at) >= hostLogInterval {
+				delete(r.hostLogAt, key)
+			}
+			continue
+		}
 		if strings.HasPrefix(key, lastResortLogPrefix) {
 			if now.Sub(at) >= hostLogInterval {
 				delete(r.hostLogAt, key)
@@ -167,6 +180,31 @@ func (r *Router) dropHostEvidenceNotIn(keep map[string][]*NodeState) {
 		}
 	}
 	r.hostEvidenceMu.Unlock()
+}
+
+func hasAnyPrefix(s string, prefixes []string) bool {
+	for _, p := range prefixes {
+		if strings.HasPrefix(s, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// dropNodeLogKeys forgets the rate-limit keys that are keyed by node name, for
+// a node that was removed.
+func (r *Router) dropNodeLogKeys(name string) {
+	r.hostEvidenceMu.Lock()
+	defer r.hostEvidenceMu.Unlock()
+	for _, k := range []string{"tags:" + name, "probe:" + name, "panic:" + name} {
+		delete(r.hostLogAt, k)
+	}
+	modelPrefix := "panic:" + name + "/"
+	for k := range r.hostLogAt {
+		if strings.HasPrefix(k, modelPrefix) {
+			delete(r.hostLogAt, k)
+		}
+	}
 }
 
 // snapshotHostEvidence returns the current snapshots. Stored values are never

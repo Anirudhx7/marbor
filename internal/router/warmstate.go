@@ -177,12 +177,11 @@ func (r *Router) RestoreWarmState() (int, error) {
 
 	byNode := make(map[string][]ModelInfo)
 	r.lruMu.Lock()
-	if r.lastUsed == nil {
-		r.lastUsed = make(map[string]time.Time)
-	}
 	for _, w := range rows {
 		if !w.LastUsed.IsZero() {
-			r.lastUsed[modelKey(w.Node, w.Model)] = w.LastUsed
+			// Same capped writer as live traffic, so a store with more rows
+			// than the per-node cap cannot grow the map past it.
+			r.stampLastUsedLocked(w.Node, w.Model, w.LastUsed, nil)
 		}
 		byNode[w.Node] = append(byNode[w.Node], ModelInfo{Name: w.Model, SizeVRAM: w.VRAMBytes})
 	}
