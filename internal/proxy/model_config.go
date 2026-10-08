@@ -90,9 +90,11 @@ func injectModelDefaults(body []byte, runtime string, cfg store.ModelConfig) []b
 	if runtime == "" || runtime == "ollama" {
 		var opts map[string]json.RawMessage
 		optsInvalid := false
-		if raw, ok := top["options"]; ok {
+		// "options":null is treated as absent (Ollama treats null as unset),
+		// so profile defaults apply and replace the null.
+		if raw, ok := top["options"]; ok && string(bytes.TrimSpace(raw)) != "null" {
 			if err := json.Unmarshal(raw, &opts); err != nil || opts == nil {
-				// Present but not an object (string, array, null): leave the
+				// Present but not an object (string, array, number): leave the
 				// client's value alone rather than replacing it. By design the
 				// profile's option defaults are then not applied to this
 				// request; the upstream decides what to do with the bad value.
