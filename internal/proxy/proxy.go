@@ -9,9 +9,11 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"path"
 	"slices"
 	"sort"
 	"strings"
@@ -24,12 +26,19 @@ import (
 	"github.com/Anirudhx7/marbor/internal/config"
 	"github.com/Anirudhx7/marbor/internal/metrics"
 	"github.com/Anirudhx7/marbor/internal/router"
-	"github.com/Anirudhx7/marbor/internal/store"
 )
 
 // maxRequestBodyBytes bounds how much of a request body the proxy will buffer
 // before extracting the model name. Caps a memory-exhaustion DoS vector.
 const maxRequestBodyBytes = 32 << 20 // 32 MiB
+
+// maxModelNameBytes bounds the model name a request may carry. Real model
+// names are short; an unbounded one would be copied into metrics labels,
+// logs and the audit trail.
+const maxModelNameBytes = 256
+
+// localDialTimeout bounds the TCP connect to a local node.
+const localDialTimeout = 5 * time.Second
 
 // apiError is the OpenAI-compatible error envelope. Every non-2xx response from
 // the proxy and auth middleware uses this shape so SDK clients can parse errors
@@ -139,6 +148,15 @@ func (h *Handler) cloudRoundTripper() *http.Transport {
 func (h *Handler) localRoundTripper() *http.Transport {
 	h.localTransportOnce.Do(func() {
 		h.localTransport = &http.Transport{
+			// A node that accepts nothing (powered off, firewalled) must
+			// fail the dial promptly so the retry loop can move on, instead
+			// of waiting out the OS connect timeout.
+			DialContext: (&net.Dialer{
+				Timeout:   localDialTimeout,
+				KeepAlive: 30 * time.Second,
+			}).DialContext,
+			IdleConnTimeout:       90 * time.Second,
+			MaxIdleConnsPerHost:   16,
 			ResponseHeaderTimeout: h.router.UpstreamTimeout(),
 		}
 	})
@@ -221,6 +239,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("X-Request-ID", requestID)
 
+	// Canonicalise the path before any path-based decision. Without this,
+	// "/api/../api/pull" or "//api/pull" slip past the exact-match management
+	// guard below yet are forwarded verbatim to a backend that normalises them.
+	// The cleaned path is also what gets forwarded.
+	if cleaned := canonicalPath(r.URL.Path); cleaned != r.URL.Path {
+		r.URL.Path = cleaned
+		r.URL.RawPath = ""
+	}
+
 	// Default-deny management-endpoint guard. Destructive Ollama management
 	// paths (/api/delete, /api/pull, /api/push, /api/create, /api/copy,
 	// /api/blobs[/...]) are blocked before any routing/forwarding so an
@@ -229,7 +256,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// tenant homelab escape hatch). Read-only inventory and inference paths are
 	// unaffected.
 	if !h.allowManagement && isBlockedManagementPath(r.URL.Path) {
-		log.Printf("blocked management endpoint (key=%s path=%s request_id=%s)", keyName, r.URL.Path, requestID)
+		log.Printf("blocked management endpoint (key=%s path=%q request_id=%s)", keyName, r.URL.Path, requestID)
 		writeAPIError(w, http.StatusForbidden, "endpoint not permitted through the marbor proxy", "invalid_request_error", "endpoint_blocked")
 		metrics.RequestsTotal(keyName, "", "none", "403")
 		return
@@ -284,7 +311,22 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		r.Body = io.NopCloser(bytes.NewReader(body))
 	}
 
+	// The allow-list and routing read the model name through
+	// router.ExtractModelName, which matches the key case-insensitively and
+	// takes the last duplicate, while a backend may read a different one. A body
+	// whose model key is ambiguous is rejected so every parser sees the same name.
+	if hasAmbiguousModelKey(body) {
+		writeAPIError(w, http.StatusBadRequest, "request body has an ambiguous \"model\" field", "invalid_request_error", "invalid_model")
+		metrics.RequestsTotal(keyName, "", "none", "400")
+		return
+	}
+
 	modelName := router.ExtractModelName(body)
+	if len(modelName) > maxModelNameBytes {
+		writeAPIError(w, http.StatusBadRequest, fmt.Sprintf("model name exceeds %d bytes", maxModelNameBytes), "invalid_request_error", "invalid_model")
+		metrics.RequestsTotal(keyName, "", "none", "400")
+		return
+	}
 
 	// Model alias resolution. An operator-declared alias (e.g. "gpt-4") is
 	// rewritten to its real target model before anything else looks at the
@@ -353,6 +395,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	requestedModelName := modelName
 	if chain := h.router.FallbackChainFor(modelName); len(chain) > 0 && !h.router.ModelFitsAnyHealthyNode(modelName, requestedCtxTokens) {
 		for _, alt := range chain {
+			// A key's model allow-list must survive a fallback swap, same as
+			// the degradation chain: never substitute a model the key may not use.
+			if len(allowedModels) > 0 && !slices.Contains(allowedModels, alt) {
+				continue
+			}
 			if h.router.ModelDownloadedAnyNode(alt) && h.router.ModelFitsAnyHealthyNode(alt, requestedCtxTokens) {
 				modelName = alt
 				break
@@ -490,6 +537,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// The cloud provider is sent the requested name, not the alias
 			// target, so the local resolution header no longer applies.
 			w.Header().Del("X-Marbor-Model-Alias")
+			w.Header().Del("X-Marbor-Model-Fallback")
 			cloudBody, cloudModel := cloudRequestFor(body, modelName, clientModelName, aliased)
 			h.proxyToCloud(w, r, cloudBody, cloudModel, keyName, requestID, start, clouds, 0)
 			return
@@ -507,8 +555,30 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.router.IncrConn(node)
-	h.router.IncrModelInFlight(node, modelName)
+	// holding tracks whether this request currently owns a connection slot and
+	// an in-flight model count on heldNode/heldModel. A deferred release
+	// returns them if a panic unwinds this method, so a crash can never leak
+	// the counters permanently (a leaked count skews placement forever).
+	var (
+		holding   bool
+		heldNode  *router.NodeState
+		heldModel string
+	)
+	acquire := func(n *router.NodeState, model string) {
+		h.router.IncrConn(n)
+		h.router.IncrModelInFlight(n, model)
+		holding, heldNode, heldModel = true, n, model
+	}
+	release := func() {
+		if holding {
+			holding = false
+			h.router.DecrConn(heldNode)
+			h.router.DecrModelInFlight(heldNode, heldModel)
+		}
+	}
+	defer release()
+
+	acquire(node, modelName)
 	h.router.RecordModelUse(node.Name, modelName) // LRU signal for model eviction
 	// initialNode/initialModel let the post-retry-loop code below detect
 	// whether the request ended up served by a different node/model
@@ -526,35 +596,51 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// selected. rpm/tpm are enforced as a pre-send gate; every other field
 	// is merged into the outgoing body only where the client didn't already
 	// specify it, using injection rules specific to this node's runtime.
-	var modelCfg store.ModelConfig
-	var hasModelCfg bool
-	if h.admin != nil {
-		modelCfg, hasModelCfg = h.admin.ModelConfigFor(modelName, node.Name)
-	}
-	if hasModelCfg && (modelCfg.RPM != nil || modelCfg.TPM != nil) {
-		if !h.modelLimiter.allow(modelName, node.Name, modelCfg.RPM, modelCfg.TPM) {
-			h.router.DecrConn(node)
-			h.router.DecrModelInFlight(node, modelName)
-			if h.auth != nil {
-				h.auth.Refund(keyName)
-			}
-			writeAPIError(w, http.StatusTooManyRequests,
-				fmt.Sprintf("model %q rate limit exceeded on node %q (rpm/tpm cap)", modelName, node.Name),
-				"server_error", "model_rate_limited")
-			metrics.RequestsTotal(keyName, modelName, node.Name, "429")
-			return
+	//
+	// baseBody is the request as the client sent it (after alias, fallback
+	// and degradation rewrites) with no node-specific profile applied. Every
+	// time the request moves to a different node or model - failover retry or
+	// degradation - the profile and the rpm/tpm gate are re-applied from
+	// baseBody for that node, so a retried request never carries the previous
+	// node's injected options or skips the new node's limits. baseBody is also
+	// what a cloud handoff sends, since a node profile means nothing to a cloud
+	// provider.
+	baseBody := body
+	// profileFor applies node n's profile for model to baseBody. ok=false means
+	// n's rpm/tpm cap for model is exhausted.
+	profileFor := func(n *router.NodeState, model string) (out []byte, ok bool) {
+		if h.admin == nil {
+			return baseBody, true
 		}
+		cfg, has := h.admin.ModelConfigFor(model, n.Name)
+		if !has {
+			return baseBody, true
+		}
+		if (cfg.RPM != nil || cfg.TPM != nil) && !h.modelLimiter.allow(model, n.Name, cfg.RPM, cfg.TPM) {
+			return nil, false
+		}
+		return injectModelDefaults(baseBody, n.Runtime, cfg), true
 	}
-	if hasModelCfg {
-		runtime := node.Runtime
-		body = injectModelDefaults(body, runtime, modelCfg)
-		r.Body = io.NopCloser(bytes.NewReader(body))
+	rejectModelRateLimited := func(rw http.ResponseWriter, n *router.NodeState, model string) {
+		release()
+		if h.auth != nil {
+			h.auth.Refund(keyName)
+		}
+		writeAPIError(rw, http.StatusTooManyRequests,
+			fmt.Sprintf("model %q rate limit exceeded on node %q (rpm/tpm cap)", model, n.Name),
+			"server_error", "model_rate_limited")
+		metrics.RequestsTotal(keyName, model, n.Name, "429")
 	}
+	var profiled bool
+	if body, profiled = profileFor(node, modelName); !profiled {
+		rejectModelRateLimited(w, node, modelName)
+		return
+	}
+	r.Body = io.NopCloser(bytes.NewReader(body))
 
 	targetURL, err := url.Parse(node.URL)
 	if err != nil {
-		h.router.DecrConn(node)
-		h.router.DecrModelInFlight(node, modelName)
+		release()
 		writeAPIError(w, http.StatusInternalServerError, "invalid node URL", "server_error", "internal_error")
 		return
 	}
@@ -575,6 +661,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var (
 		rec     *statusRecorder
 		aborted bool
+		// streamAborted is true only when the upstream died mid-body (the
+		// reverse proxy panicked http.ErrAbortHandler); aborted additionally
+		// covers a client that left before any response was written.
+		streamAborted bool
 	)
 
 	// retryCount/lastFailedNode are read-only context for the retry
@@ -609,19 +699,20 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		origReq := r
 		proxy.ErrorHandler = func(rw http.ResponseWriter, _ *http.Request, e error) {
 			// Upstream failed before writing any bytes - safe to retry.
-			h.router.DecrConn(node)
-			h.router.DecrModelInFlight(node, modelName)
+			release()
 			errHandled = true
 			tried[node.URL] = true
-			h.router.RecordRequestOutcome(node.Name, false)
 
 			// If the client already disconnected, do not burn an alternate node
-			// or a cloud call on a request nobody is waiting for.
+			// or a cloud call on a request nobody is waiting for - and do not
+			// blame the node: a cancelled client is not a node failure, so this
+			// check comes before the failure is recorded.
 			if origReq.Context().Err() != nil {
 				retryErr = origReq.Context().Err()
 				clientDisconnected = true
 				return
 			}
+			h.router.RecordRequestOutcome(node.Name, false)
 
 			if attempt < maxRetries {
 				// Same modelName == lookupModel guard RecordPrefixLocality applies
@@ -655,8 +746,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// looping the retry loop indefinitely).
 			if !degradedOnce {
 				if altNode, altModel, _, altDecision, ok := h.tryLocalDegradationChain(modelName, runtimeFilter, allowLocalDegradation, allowedModels); ok {
-					body = applyLocalDegradation(rw, body, modelName, altModel)
-					origReq.Body = io.NopCloser(bytes.NewReader(body))
+					baseBody = applyLocalDegradation(rw, baseBody, modelName, altModel)
 					modelName = altModel
 					lastFailedNode = node.Name
 					retryCount++
@@ -687,7 +777,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				// serveAndRecoverAbort returns.
 				retryErr = errCloudHandled
 				rw.Header().Del("X-Marbor-Model-Alias")
-				cloudBody, cloudModel := cloudRequestFor(body, modelName, clientModelName, aliased)
+				rw.Header().Del("X-Marbor-Model-Fallback")
+				cloudBody, cloudModel := cloudRequestFor(baseBody, modelName, clientModelName, aliased)
 				h.proxyToCloud(rw, origReq, cloudBody, cloudModel, keyName, requestID, start, clouds, 0)
 				return
 			}
@@ -698,23 +789,32 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		rec = &statusRecorder{ResponseWriter: w, start: start}
-		aborted = serveAndRecoverAbort(proxy, rec, r) || clientDisconnected
+		streamAborted = serveAndRecoverAbort(proxy, rec, r)
+		aborted = streamAborted || clientDisconnected
 
 		if retryErr == errCloudHandled {
-			// Cloud path handled the response and did its own logging.
+			// Cloud path handled the response and did its own logging. If the
+			// cloud stream died mid-body, surface that to the client too.
+			if streamAborted {
+				panic(http.ErrAbortHandler)
+			}
 			return
 		}
 
 		if nextNode != nil {
-			// Switch to the alternate node and retry.
+			// Switch to the alternate node and retry. The new node gets its
+			// own model profile and rpm/tpm gate, applied to the pristine body.
 			node = nextNode
 			decision = nextDecision
-			h.router.IncrConn(node)
-			h.router.IncrModelInFlight(node, modelName)
+			acquire(node, modelName)
+			if body, profiled = profileFor(node, modelName); !profiled {
+				rejectModelRateLimited(w, node, modelName)
+				return
+			}
+			r.Body = io.NopCloser(bytes.NewReader(body))
 			targetURL, err = url.Parse(node.URL)
 			if err != nil {
-				h.router.DecrConn(node)
-				h.router.DecrModelInFlight(node, modelName)
+				release()
 				writeAPIError(w, http.StatusInternalServerError, "invalid node URL", "server_error", "internal_error")
 				return
 			}
@@ -725,10 +825,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// Success or terminal failure - exit retry loop. Skip the decrement if
 		// ErrorHandler already released this node's slot.
 		if !errHandled {
-			h.router.DecrConn(node)
-			h.router.DecrModelInFlight(node, modelName)
+			release()
 			success := rec.StatusCode() < 500 && !aborted
-			h.router.RecordRequestOutcome(node.Name, success)
+			// A client that went away mid-request is not evidence about the
+			// node: neither its failure history nor prefix locality is touched.
+			clientGone := !success && r.Context().Err() != nil
+			if !clientGone {
+				h.router.RecordRequestOutcome(node.Name, success)
+			}
 			// Rolling prefix locality is recorded ONLY here, on full
 			// successful completion of the request that actually finished -
 			// never at candidate selection, backend start, response headers,
@@ -737,7 +841,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// point or leave success false). node is whichever node actually
 			// completed the request - the one that served it after any
 			// retry/failover, not necessarily the one first selected.
-			h.router.RecordPrefixLocality(prefixRecordKey, node.Name, success && modelName == lookupModel)
+			if !clientGone {
+				h.router.RecordPrefixLocality(prefixRecordKey, node.Name, success && modelName == lookupModel)
+			}
 		}
 		break
 	}
@@ -784,9 +890,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		status = "aborted"
 	}
 	latencyMs := int(time.Since(start).Milliseconds())
-	if rec.statusCode >= 500 {
-		latencyMs = 0 // error requests show as instant fail in UI
-	}
 	if h.admin != nil {
 		tokens := rec.tokenCount(aborted || rec.truncatedTail)
 		clientIP := r.RemoteAddr
@@ -855,6 +958,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		LatencyMs:  int64(time.Since(start).Milliseconds()),
 		Cloud:      false,
 	})
+
+	// Everything is recorded; now let the client see that the stream died. The
+	// reverse proxy already wrote a partial body, so swallowing the abort would
+	// end a chunked response cleanly and make a truncated reply look complete.
+	if streamAborted {
+		panic(http.ErrAbortHandler)
+	}
 }
 
 // cloudRequestFor returns the body and model name a cloud fallback should
@@ -864,7 +974,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // the local model since. A provider's default_model still overrides this
 // inside proxyToCloud. Non-aliased requests pass through unchanged.
 func cloudRequestFor(body []byte, modelName, clientModelName string, aliased bool) ([]byte, string) {
-	if !aliased {
+	// A fallback-chain substitution changes the local model without any alias,
+	// and a cloud provider does not know the local quantization tag either, so
+	// the client's name is restored whenever the two differ.
+	if !aliased && modelName == clientModelName {
 		return body, modelName
 	}
 	return rewriteModelField(body, clientModelName), clientModelName
@@ -959,11 +1072,16 @@ func isUnsupportedOpenAIPath(path string) bool {
 		"/v1/images",
 		"/v1/audio",
 		"/v1/fine-tuning",
+		"/v1/fine_tuning", // OpenAI's real spelling uses an underscore
 		"/v1/files",
+		"/v1/uploads",
 		"/v1/assistants",
 		"/v1/threads",
 		"/v1/batches",
 		"/v1/vector-stores",
+		"/v1/vector_stores", // OpenAI's real spelling uses an underscore
+		"/v1/responses",
+		"/v1/evals",
 	}
 	for _, base := range unsupported {
 		if path == base || strings.HasPrefix(path, base+"/") {
@@ -1076,10 +1194,11 @@ func (h *Handler) serveModel(w http.ResponseWriter, modelID string) {
 // which httputil.ReverseProxy panics with when the upstream dies mid-stream.
 // Without this, the net/http server recovers the panic above us and every
 // post-proxy step (metrics, admin log, audit) is silently skipped. Returns
-// true when the stream was aborted. The panic is intentionally not re-raised:
-// the partial body has already been written, the connection cannot be reused
-// either way, and swallowing it lets the request be recorded as "aborted".
-// Any other panic value is re-raised untouched.
+// true when the stream was aborted. The panic is absorbed here only so the
+// caller can finish recording; the caller must re-raise http.ErrAbortHandler
+// once everything is recorded, otherwise net/http ends the response as a clean
+// chunked stream and the client cannot tell a truncated reply from a complete
+// one. Any other panic value is re-raised untouched.
 func serveAndRecoverAbort(proxy *httputil.ReverseProxy, w http.ResponseWriter, r *http.Request) (aborted bool) {
 	defer func() {
 		if p := recover(); p != nil {
@@ -1189,6 +1308,16 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 		// Cookie carries the admin dashboard's httpOnly session cookie if this
 		// request came via a browser proxy path - never send it to a cloud provider.
 		req.Header.Del("Cookie")
+		// Credentials and client identity meant for marbor or the local fleet
+		// must not reach a third party: other auth headers, the session id, the
+		// client's Accept-Encoding (a coding the transport did not negotiate
+		// would arrive undecoded), and the client address headers.
+		for _, name := range []string{"X-Api-Key", "X-Session-Id", "Proxy-Authorization", "Accept-Encoding", "X-Real-Ip", "Forwarded"} {
+			req.Header.Del(name)
+		}
+		// A nil value stops ReverseProxy appending the client IP to
+		// X-Forwarded-For.
+		req.Header["X-Forwarded-For"] = nil
 		req.Header.Set("Authorization", "Bearer "+cloud.APIKey)
 		if len(outBody) > 0 {
 			req.Body = io.NopCloser(bytes.NewReader(outBody))
@@ -1213,6 +1342,11 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 	rec := &statusRecorder{ResponseWriter: w, start: start}
 	aborted := serveAndRecoverAbort(proxy, rec, r)
 	if delegated {
+		// The next provider already recorded the request; if its stream died
+		// mid-body, keep surfacing that to the client.
+		if aborted {
+			panic(http.ErrAbortHandler)
+		}
 		return
 	}
 
@@ -1283,6 +1417,11 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 		LatencyMs:  int64(time.Since(start).Milliseconds()),
 		Cloud:      true,
 	})
+
+	// Recording is done; let the client see that the cloud stream died.
+	if aborted {
+		panic(http.ErrAbortHandler)
+	}
 }
 
 func translateCloudPath(ollamaPath string) string {
@@ -1300,6 +1439,56 @@ func translateCloudPath(ollamaPath string) string {
 	}
 }
 
+// canonicalPath returns p with "." and ".." segments and duplicate slashes
+// resolved, keeping a trailing slash if p had one. An empty path is returned
+// unchanged.
+func canonicalPath(p string) string {
+	if p == "" {
+		return p
+	}
+	cleaned := path.Clean(p)
+	if strings.HasSuffix(p, "/") && cleaned != "/" {
+		cleaned += "/"
+	}
+	return cleaned
+}
+
+// hasAmbiguousModelKey reports whether a JSON object body names its "model"
+// field in a way different parsers could disagree on: the exact key repeated,
+// or any other key that equals "model" ignoring case (Go's decoder merges
+// those, case-sensitive backends do not). Bodies that are not a JSON object
+// are never ambiguous here - they carry no model for anyone to misread.
+func hasAmbiguousModelKey(body []byte) bool {
+	dec := json.NewDecoder(bytes.NewReader(body))
+	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
+		return false
+	}
+	exact := 0
+	for dec.More() {
+		tok, err := dec.Token()
+		if err != nil {
+			return false
+		}
+		key, ok := tok.(string)
+		if !ok {
+			return false
+		}
+		if key == "model" {
+			exact++
+			if exact > 1 {
+				return true
+			}
+		} else if strings.EqualFold(key, "model") {
+			return true
+		}
+		var skip json.RawMessage
+		if err := dec.Decode(&skip); err != nil {
+			return false
+		}
+	}
+	return false
+}
+
 func rewriteModelField(body []byte, model string) []byte {
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(body, &m); err != nil {
@@ -1308,6 +1497,13 @@ func rewriteModelField(body []byte, model string) []byte {
 	b, err := json.Marshal(model)
 	if err != nil {
 		return body
+	}
+	// Drop case variants ("Model", "MODEL") so a case-sensitive backend cannot
+	// read a different name than the one written here.
+	for k := range m {
+		if k != "model" && strings.EqualFold(k, "model") {
+			delete(m, k)
+		}
 	}
 	m["model"] = b
 	out, err := json.Marshal(m)
@@ -1392,19 +1588,43 @@ func (r *statusRecorder) Write(b []byte) (int, error) {
 		} else {
 			r.tail = append(r.tail, b[:n]...)
 			if len(r.tail) > tailMax {
-				cut := r.tail[len(r.tail)-tailMax:]
-				// Align to the next full line boundary after the hard cut,
-				// rather than trimming mid-line - a cut landing inside the
-				// final usage-bearing JSON line would otherwise make the
-				// token-count parser silently see no counts at all.
-				if idx := bytes.IndexByte(cut, '\n'); idx >= 0 {
-					cut = cut[idx+1:]
-				}
-				r.tail = cut
+				r.trimTail()
 			}
 		}
 	}
 	return n, err
+}
+
+// trimTail shrinks an over-long line-oriented tail to about tailMax, always on
+// a line boundary and never dropping the final line: that line carries the
+// token count, so cutting it (or cutting inside it) would turn a real count
+// into a fabricated zero. If the final line alone exceeds tailMax it is kept
+// whole up to embedTailMax; beyond that the tail is discarded and
+// truncatedTail is set, so the caller reports the count as unknown.
+func (r *statusRecorder) trimTail() {
+	tail := r.tail
+	// Start of the final line, ignoring one trailing newline.
+	body := tail
+	if body[len(body)-1] == '\n' {
+		body = body[:len(body)-1]
+	}
+	finalStart := bytes.LastIndexByte(body, '\n') + 1
+
+	start := len(tail) - tailMax
+	if start > 0 && tail[start-1] != '\n' {
+		if idx := bytes.IndexByte(tail[start:], '\n'); idx >= 0 {
+			start += idx + 1
+		}
+	}
+	if start > finalStart {
+		start = finalStart
+	}
+	if len(tail)-start > embedTailMax {
+		r.tail = nil
+		r.truncatedTail = true
+		return
+	}
+	r.tail = append([]byte(nil), tail[start:]...)
 }
 
 // ttft returns time-to-first-byte: the real wall-clock gap between request
