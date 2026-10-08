@@ -1,6 +1,9 @@
 package router
 
-import "sort"
+import (
+	"log"
+	"sort"
+)
 
 // SetModelAliases replaces the alias map (client-facing name -> real model).
 // The input is copied, and the copy is published with a single atomic swap,
@@ -78,6 +81,7 @@ func (r *Router) FleetModelInventory() (map[string]string, bool) {
 		healthy := n.Healthy
 		loaded := n.LoadedModels
 		nodeURL := n.URL
+		nodeName := n.Name
 		n.RUnlock()
 		if !healthy {
 			continue
@@ -89,6 +93,11 @@ func (r *Router) FleetModelInventory() (map[string]string, bool) {
 		tags, err := r.FetchModelTags(nodeURL)
 		if err != nil {
 			complete = false
+			// Rate limited: this runs on every inventory read, which the
+			// dashboard repeats.
+			if r.allowHostLog("tags:" + nodeName) {
+				log.Printf("router: model catalog fetch for node %q failed: %v; the fleet model inventory is incomplete", nodeName, err)
+			}
 			continue
 		}
 		for _, t := range tags {

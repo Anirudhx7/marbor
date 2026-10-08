@@ -72,7 +72,7 @@ func TestPollNode_SetsRuntimeMismatchHint_LlamaCppHealth404(t *testing.T) {
 
 	n := r.nodes[0]
 	n.mu.Lock()
-	n.probe = fixedErrProbe{err: fmt.Errorf("llamacpp probe: /health returned 404")}
+	n.probe = fixedErrProbe{err: fmt.Errorf("llamacpp probe: %w", &runtimepkg.HealthStatusError{StatusCode: 404})}
 	n.mu.Unlock()
 
 	r.pollNode(n)

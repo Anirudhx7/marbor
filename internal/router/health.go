@@ -4,11 +4,12 @@ package router
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 	"net/url"
-	"strings"
 	"sync"
 	"time"
 
@@ -40,7 +41,13 @@ func attributeSoleModelVRAM(n *NodeState) {
 	if n.LoadedModels[0].SizeVRAM > 0 {
 		return
 	}
-	n.LoadedModels[0].SizeVRAM = n.VRAMUsedMB * 1024 * 1024
+	// Replace the slice instead of editing its element: readers (pollNode's
+	// own post-unlock loops, snapshots taken by other goroutines) may still be
+	// iterating the old backing array, and an in-place write would race them.
+	updated := make([]ModelInfo, 1)
+	updated[0] = n.LoadedModels[0]
+	updated[0].SizeVRAM = n.VRAMUsedMB * 1024 * 1024
+	n.LoadedModels = updated
 }
 
 // pollNvidiaAll refreshes nvidia-smi stats for all local nodes and stores
@@ -54,7 +61,10 @@ func (r *Router) pollNvidiaAll() {
 
 	hasLocal := false
 	for _, n := range nodes {
-		if isLocalNode(n.URL) {
+		n.mu.RLock()
+		nodeURL := n.URL
+		n.mu.RUnlock()
+		if isLocalNode(nodeURL) {
 			hasLocal = true
 			break
 		}
@@ -89,7 +99,12 @@ func (r *Router) discoverAndAddDockerNodes() {
 
 	found, err := discoverDockerNodes(socket)
 	if err != nil {
-		// Docker not available or socket missing - log silently, don't crash.
+		// Docker not available or socket missing: never fatal, but an operator
+		// who enabled discovery needs to see why nothing is found. Rate limited
+		// because this runs every interval.
+		if r.allowHostLog("docker-discovery") {
+			log.Printf("router: docker discovery failed: %v", err)
+		}
 		return
 	}
 	for _, n := range found {
@@ -108,6 +123,8 @@ func (r *Router) discoverAndAddDockerNodes() {
 			r.mu.Lock()
 			r.discoveredURLs[n.URL] = struct{}{}
 			r.mu.Unlock()
+		} else if r.allowHostLog("docker-add:" + n.URL) {
+			log.Printf("router: docker-discovered node %q at %s was not added (see the rejection reason above)", n.Name, n.URL)
 		}
 	}
 }
@@ -213,10 +230,16 @@ func (r *Router) pollNode(n *NodeState) {
 		func() {
 			n.mu.Lock()
 			defer n.mu.Unlock()
-			if n.Runtime == "llamacpp" && strings.Contains(err.Error(), "/health returned 404") {
+			var healthErr *runtimepkg.HealthStatusError
+			if n.Runtime == "llamacpp" && errors.As(err, &healthErr) && healthErr.StatusCode == http.StatusNotFound {
 				n.RuntimeMismatchHint = "currently running as llamacpp, but /health returned 404 (no such route) - this is the exact signature of an MLX (mlx_lm.server) node, which cannot be auto-detected and must be set manually via runtime: mlx (a 404 here could also mean a llama.cpp build without /health, or a broken reverse proxy)"
 			}
 		}()
+		// Rate limited per node: the poll repeats every interval, so an
+		// unconditional line would flood the log for a node that stays down.
+		if r.allowHostLog("probe:" + n.Name) {
+			log.Printf("router: probe of node %q failed: %v", n.Name, err)
+		}
 		r.markFailure(n)
 		return
 	}
@@ -312,14 +335,23 @@ func (r *Router) pollNode(n *NodeState) {
 			// wins regardless - it is this poll's own live, non-guessed
 			// measurement and must never be shadowed by a possibly-stale agent
 			// figure.
-			n.PowerDrawW = 0
-			n.Temperature = nil
+			//
+			// Temperature and power are only unknown here when no agent
+			// supplies them: an agent reading is just as live as a local
+			// one, and zeroing it on every poll would make it flicker.
+			if !n.AgentPresent {
+				n.PowerDrawW = 0
+				n.Temperature = nil
+			}
 			if psUsedMB > 0 {
 				n.VRAMUsedMB = psUsedMB
 			} else if n.VRAMSource != "agent" {
 				n.VRAMUsedMB = 0
 			}
-			if psUsedMB > 0 || n.VRAMSource != "agent" {
+			// An agent-sourced total is the real device capacity: when the
+			// runtime also reports used VRAM, only the used figure is taken
+			// from it and the agent's total and source stay.
+			if n.VRAMSource != "agent" {
 				if n.VRAMTotalMBConfig > 0 {
 					n.VRAMTotalMB = n.VRAMTotalMBConfig
 					n.VRAMSource = "declared"
@@ -334,6 +366,9 @@ func (r *Router) pollNode(n *NodeState) {
 			}
 		}
 		attributeSoleModelVRAM(n)
+		// Work from a private copy from here on so the loops below never read
+		// the slice other goroutines can see through n.LoadedModels.
+		models = append([]ModelInfo(nil), n.LoadedModels...)
 		n.HealthHistory = append(n.HealthHistory, 100.0)
 		if len(n.HealthHistory) > 60 {
 			n.HealthHistory = n.HealthHistory[len(n.HealthHistory)-60:]
@@ -459,6 +494,10 @@ var (
 	localAddrMu    sync.RWMutex
 	localAddrCache map[string]struct{}
 	localAddrAt    time.Time
+
+	// interfaceAddrs is the interface lookup, a variable so a test can make
+	// it fail.
+	interfaceAddrs = net.InterfaceAddrs
 )
 
 // localInterfaceAddrs returns the set of IP addresses (string form) bound to
@@ -473,13 +512,24 @@ func localInterfaceAddrs() map[string]struct{} {
 	}
 	localAddrMu.RUnlock()
 
-	addrs, err := net.InterfaceAddrs()
+	addrs, err := interfaceAddrs()
+	if err != nil {
+		// A failed lookup says nothing about which addresses are local, so
+		// never cache an empty set (it would make every local node look
+		// remote for a full TTL). Keep serving the previous set, if any, and
+		// retry on the next call.
+		localAddrMu.RLock()
+		prev := localAddrCache
+		localAddrMu.RUnlock()
+		if prev == nil {
+			return map[string]struct{}{}
+		}
+		return prev
+	}
 	set := make(map[string]struct{}, len(addrs))
-	if err == nil {
-		for _, a := range addrs {
-			if ipNet, ok := a.(*net.IPNet); ok {
-				set[ipNet.IP.String()] = struct{}{}
-			}
+	for _, a := range addrs {
+		if ipNet, ok := a.(*net.IPNet); ok {
+			set[ipNet.IP.String()] = struct{}{}
 		}
 	}
 
