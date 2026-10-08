@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -77,20 +78,23 @@ func TestRetryNeverFiresAfterFirstResponseByte(t *testing.T) {
 	marborSrv := httptest.NewServer(h)
 	defer marborSrv.Close()
 
+	// The proxy re-raises the abort once the failure is recorded, so the client
+	// sees a broken response: either the connection dies before the headers
+	// reach it (a transport error, since the partial body was still buffered)
+	// or the body read fails. A clean, complete-looking response would be the
+	// bug. Either way no bytes of a second node may be spliced on.
 	resp, err := marborSrv.Client().Post(marborSrv.URL+"/api/generate", "application/json",
 		newJSONBody(t, map[string]string{"model": "llama3"}))
-	if err != nil {
-		t.Fatalf("POST: %v", err)
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body) // a read error here is expected - the stream was cut short
-
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("client status = %d, want 200 (the header the aborted node already wrote)", resp.StatusCode)
-	}
-	if string(body) != partial {
-		t.Errorf("client body = %q, want exactly the flaky node's partial write %q - no splicing of a second node's response onto this one",
-			body, partial)
+	if err == nil {
+		defer resp.Body.Close()
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr == nil {
+			t.Errorf("client read %q with a nil error; a mid-stream upstream death must reach the client as an aborted stream", body)
+		}
+		if !strings.HasPrefix(partial, string(body)) {
+			t.Errorf("client body = %q, want at most the flaky node's partial write %q - no splicing of a second node's response onto this one",
+				body, partial)
+		}
 	}
 	if got := atomic.LoadInt32(&goodHits); got != 0 {
 		t.Errorf("good node received %d requests, want 0 - a retry fired after the first response byte", got)
