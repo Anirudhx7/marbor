@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bytes"
 	"encoding/json"
 	"sync"
 	"time"
@@ -26,6 +27,9 @@ func setIfAbsent(m map[string]json.RawMessage, key string, val interface{}) {
 // message added, unless the client already supplied a system message (the
 // client's own always wins) or the value is not a messages array.
 func prependSystemMessage(raw json.RawMessage, system string) json.RawMessage {
+	if system == "" || string(bytes.TrimSpace(raw)) == "null" {
+		return raw
+	}
 	var msgs []json.RawMessage
 	if err := json.Unmarshal(raw, &msgs); err != nil {
 		return raw
@@ -89,7 +93,9 @@ func injectModelDefaults(body []byte, runtime string, cfg store.ModelConfig) []b
 		if raw, ok := top["options"]; ok {
 			if err := json.Unmarshal(raw, &opts); err != nil || opts == nil {
 				// Present but not an object (string, array, null): leave the
-				// client's value alone rather than replacing it.
+				// client's value alone rather than replacing it. By design the
+				// profile's option defaults are then not applied to this
+				// request; the upstream decides what to do with the bad value.
 				optsInvalid = true
 			}
 		}
@@ -232,26 +238,7 @@ func injectModelDefaults(body []byte, runtime string, cfg store.ModelConfig) []b
 		// system message (never overwrite a client-supplied value).
 		if cfg.System != nil {
 			if rawMsgs, ok := top["messages"]; ok {
-				var msgs []map[string]json.RawMessage
-				if err := json.Unmarshal(rawMsgs, &msgs); err == nil {
-					hasSystem := false
-					for _, m := range msgs {
-						var role string
-						if roleRaw, ok := m["role"]; ok && json.Unmarshal(roleRaw, &role) == nil && role == "system" {
-							hasSystem = true
-							break
-						}
-					}
-					if !hasSystem {
-						roleBytes, _ := json.Marshal("system")
-						contentBytes, _ := json.Marshal(*cfg.System)
-						sysMsg := map[string]json.RawMessage{"role": roleBytes, "content": contentBytes}
-						newMsgs := append([]map[string]json.RawMessage{sysMsg}, msgs...)
-						if raw, err := json.Marshal(newMsgs); err == nil {
-							top["messages"] = raw
-						}
-					}
-				}
+				top["messages"] = prependSystemMessage(rawMsgs, *cfg.System)
 			}
 		}
 

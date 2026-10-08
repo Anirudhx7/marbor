@@ -20,7 +20,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 )
@@ -44,20 +46,50 @@ func readCappedBody(src io.Reader) ([]byte, error) {
 	return raw, nil
 }
 
-// cloudReadErrorBody is the error body returned when the cloud response could
-// not be read or was too large.
-func cloudReadErrorBody(err error) io.ReadCloser {
+// capCloudResponse buffers a non-streaming cloud response for translation,
+// bounded by maxCloudResponseBytes. When the response is too large or cannot
+// be read it rewrites resp into a 502 with an error body (never truncated
+// data) and returns false; otherwise it leaves a replayable body and returns
+// true. ollamaShape picks the error JSON shape for the client.
+func capCloudResponse(resp *http.Response, ollamaShape bool) bool {
+	var (
+		raw []byte
+		err error
+	)
+	if resp.ContentLength > maxCloudResponseBytes {
+		err = errCloudResponseTooLarge
+	} else {
+		raw, err = readCappedBody(resp.Body)
+	}
+	resp.Body.Close() //nolint:errcheck
+	if err == nil {
+		resp.Body = io.NopCloser(bytes.NewReader(raw))
+		return true
+	}
+	log.Printf("cloud response could not be used: %v", err)
 	msg := "failed to read cloud response"
 	if errors.Is(err, errCloudResponseTooLarge) {
 		msg = errCloudResponseTooLarge.Error()
 	}
-	return io.NopCloser(strings.NewReader(`{"error":"` + msg + `"}` + "\n"))
+	var body []byte
+	if ollamaShape {
+		body = buildErrorNDJSON(msg)
+	} else {
+		body, _ = json.Marshal(map[string]map[string]string{"error": {"message": msg, "type": "upstream_error"}})
+	}
+	resp.StatusCode = http.StatusBadGateway
+	resp.Status = "502 Bad Gateway"
+	resp.Header.Set("Content-Type", "application/json")
+	resp.Header.Del("Content-Length")
+	resp.ContentLength = -1
+	resp.Body = io.NopCloser(bytes.NewReader(append(body, '\n')))
+	return false
 }
 
 // sseData extracts the payload of an SSE "data:" line. The space after the
-// colon is optional per the SSE spec, and a trailing CR is tolerated.
+// colon is optional per the SSE spec. Callers pass lines from a
+// bufio.ScanLines scanner, which already strips a trailing CR.
 func sseData(line string) (string, bool) {
-	line = strings.TrimSuffix(line, "\r")
 	if !strings.HasPrefix(line, "data:") {
 		return "", false
 	}
@@ -117,7 +149,7 @@ func clientWantsStream(body []byte) bool {
 }
 
 func (t *translatingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	req = req.WithContext(context.WithValue(req.Context(), ollamaOriginKey{}, true))
+	req = req.WithContext(context.WithValue(req.Context(), ollamaOriginKey{}, struct{}{}))
 	resp, err := t.inner.RoundTrip(req)
 	if err != nil {
 		return nil, err
@@ -128,6 +160,9 @@ func (t *translatingTransport) RoundTrip(req *http.Request) (*http.Response, err
 
 	ct := resp.Header.Get("Content-Type")
 	isSSE := strings.Contains(ct, "text/event-stream")
+	if !isSSE && !capCloudResponse(resp, true) {
+		return resp, nil
+	}
 
 	// Non-streaming client: Ollama returns a SINGLE JSON object for stream:false,
 	// not NDJSON. Emit one object and keep application/json so the client parses
@@ -187,6 +222,7 @@ func translateSSEToNDJSON(src io.ReadCloser, origPath, clientModel string) io.Re
 			completionTokens int64
 			promptTokens     int64
 			sawDone          bool
+			doneReason       string
 		)
 
 		for scanner.Scan() {
@@ -206,15 +242,26 @@ func translateSSEToNDJSON(src io.ReadCloser, origPath, clientModel string) io.Re
 					Delta struct {
 						Content string `json:"content"`
 					} `json:"delta"`
+					FinishReason string `json:"finish_reason"`
 				} `json:"choices"`
 				Usage *struct {
 					CompletionTokens int64 `json:"completion_tokens"`
 					PromptTokens     int64 `json:"prompt_tokens"`
 					TotalTokens      int64 `json:"total_tokens"`
 				} `json:"usage"`
+				Error json.RawMessage `json:"error"`
 			}
 			if err := json.Unmarshal([]byte(payload), &chunk); err != nil {
 				continue
+			}
+
+			// An upstream error chunk: forward its message instead of the
+			// generic truncation text, then end the stream with an error.
+			if len(chunk.Error) > 0 && string(chunk.Error) != "null" {
+				msg := upstreamErrorMessage(chunk.Error)
+				pw.Write(append(buildErrorNDJSON(msg), '\n')) //nolint:errcheck -- CloseWithError below reports it
+				pw.CloseWithError(fmt.Errorf("upstream stream error: %s", msg))
+				return
 			}
 
 			// Capture usage when present (some providers send it on every chunk,
@@ -230,14 +277,17 @@ func translateSSEToNDJSON(src io.ReadCloser, origPath, clientModel string) io.Re
 
 			// Emit a NDJSON line for every content delta.
 			for _, choice := range chunk.Choices {
+				if choice.FinishReason != "" {
+					doneReason = choice.FinishReason
+				}
 				content := choice.Delta.Content
 				// Emit even empty strings to keep done:false heartbeats working;
 				// but skip truly nil deltas (role-only chunks from some providers).
 				var line []byte
 				if origPath == "/api/chat" {
-					line = buildChatNDJSON(clientModel, content, false, 0, 0)
+					line = buildChatNDJSON(clientModel, content, false, 0, 0, "")
 				} else {
-					line = buildGenerateNDJSON(clientModel, content, false, 0, 0)
+					line = buildGenerateNDJSON(clientModel, content, false, 0, 0, "")
 				}
 				if _, err := pw.Write(append(line, '\n')); err != nil {
 					return
@@ -262,9 +312,9 @@ func translateSSEToNDJSON(src io.ReadCloser, origPath, clientModel string) io.Re
 		// Final done:true line.
 		var finalLine []byte
 		if origPath == "/api/chat" {
-			finalLine = buildChatNDJSON(clientModel, "", true, completionTokens, promptTokens)
+			finalLine = buildChatNDJSON(clientModel, "", true, completionTokens, promptTokens, doneReason)
 		} else {
-			finalLine = buildGenerateNDJSON(clientModel, "", true, completionTokens, promptTokens)
+			finalLine = buildGenerateNDJSON(clientModel, "", true, completionTokens, promptTokens, doneReason)
 		}
 		pw.Write(append(finalLine, '\n')) //nolint:errcheck -- pipe close handles error
 	}()
@@ -284,9 +334,9 @@ func translateSSEToNDJSON(src io.ReadCloser, origPath, clientModel string) io.Re
 func translateJSONToNDJSON(src io.ReadCloser, origPath, clientModel string) io.ReadCloser {
 	defer src.Close()
 
-	raw, err := readCappedBody(src)
+	raw, err := io.ReadAll(src)
 	if err != nil {
-		return cloudReadErrorBody(err)
+		return io.NopCloser(strings.NewReader(`{"error":"failed to read cloud response"}` + "\n"))
 	}
 
 	// Embeddings responses have no choices/streaming shape at all - Ollama's
@@ -302,7 +352,8 @@ func translateJSONToNDJSON(src io.ReadCloser, origPath, clientModel string) io.R
 			Message struct {
 				Content string `json:"content"`
 			} `json:"message"`
-			Text string `json:"text"` // completions endpoint
+			Text         string `json:"text"` // completions endpoint
+			FinishReason string `json:"finish_reason"`
 		} `json:"choices"`
 		Usage struct {
 			CompletionTokens int64 `json:"completion_tokens"`
@@ -319,13 +370,13 @@ func translateJSONToNDJSON(src io.ReadCloser, origPath, clientModel string) io.R
 		}
 		var contentLine, finalLine []byte
 		if origPath == "/api/chat" {
-			contentLine = buildChatNDJSON(clientModel, content, false, 0, 0)
+			contentLine = buildChatNDJSON(clientModel, content, false, 0, 0, "")
 			finalLine = buildChatNDJSON(clientModel, "", true,
-				resp.Usage.CompletionTokens, resp.Usage.PromptTokens)
+				resp.Usage.CompletionTokens, resp.Usage.PromptTokens, resp.Choices[0].FinishReason)
 		} else {
-			contentLine = buildGenerateNDJSON(clientModel, content, false, 0, 0)
+			contentLine = buildGenerateNDJSON(clientModel, content, false, 0, 0, "")
 			finalLine = buildGenerateNDJSON(clientModel, "", true,
-				resp.Usage.CompletionTokens, resp.Usage.PromptTokens)
+				resp.Usage.CompletionTokens, resp.Usage.PromptTokens, resp.Choices[0].FinishReason)
 		}
 		buf.Write(append(contentLine, '\n'))
 		buf.Write(append(finalLine, '\n'))
@@ -343,9 +394,9 @@ func translateJSONToNDJSON(src io.ReadCloser, origPath, clientModel string) io.R
 // passed through raw so nothing is silently lost.
 func translateJSONToSingleOllama(src io.ReadCloser, origPath, clientModel string) io.ReadCloser {
 	defer src.Close()
-	raw, err := readCappedBody(src)
+	raw, err := io.ReadAll(src)
 	if err != nil {
-		return cloudReadErrorBody(err)
+		return io.NopCloser(strings.NewReader(`{"error":"failed to read cloud response"}` + "\n"))
 	}
 	if line, ok := translateEmbeddingResponse(raw, origPath, clientModel); ok {
 		return io.NopCloser(bytes.NewReader(line))
@@ -355,7 +406,8 @@ func translateJSONToSingleOllama(src io.ReadCloser, origPath, clientModel string
 			Message struct {
 				Content string `json:"content"`
 			} `json:"message"`
-			Text string `json:"text"`
+			Text         string `json:"text"`
+			FinishReason string `json:"finish_reason"`
 		} `json:"choices"`
 		Usage struct {
 			CompletionTokens int64 `json:"completion_tokens"`
@@ -377,10 +429,11 @@ func translateJSONToSingleOllama(src io.ReadCloser, origPath, clientModel string
 			Done:            true,
 			EvalCount:       resp.Usage.CompletionTokens,
 			PromptEvalCount: resp.Usage.PromptTokens,
+			DoneReason:      resp.Choices[0].FinishReason,
 		}
 		line, _ = json.Marshal(obj)
 	} else {
-		line = buildGenerateNDJSON(clientModel, content, true, resp.Usage.CompletionTokens, resp.Usage.PromptTokens)
+		line = buildGenerateNDJSON(clientModel, content, true, resp.Usage.CompletionTokens, resp.Usage.PromptTokens, resp.Choices[0].FinishReason)
 	}
 	return io.NopCloser(bytes.NewReader(line))
 }
@@ -395,6 +448,7 @@ type ollamaChatLine struct {
 	Done            bool           `json:"done"`
 	EvalCount       int64          `json:"eval_count,omitempty"`
 	PromptEvalCount int64          `json:"prompt_eval_count,omitempty"`
+	DoneReason      string         `json:"done_reason,omitempty"`
 }
 
 type ollamaMessage struct {
@@ -408,14 +462,36 @@ type ollamaGenerateLine struct {
 	Done            bool   `json:"done"`
 	EvalCount       int64  `json:"eval_count,omitempty"`
 	PromptEvalCount int64  `json:"prompt_eval_count,omitempty"`
+	DoneReason      string `json:"done_reason,omitempty"`
 }
 
-func buildChatNDJSON(model, content string, done bool, evalCount, promptEvalCount int64) []byte {
+// upstreamErrorMessage extracts a human message from an OpenAI-style error
+// value, which is either an object with "message" or a bare string.
+func upstreamErrorMessage(raw json.RawMessage) string {
+	var obj struct {
+		Message string `json:"message"`
+	}
+	if json.Unmarshal(raw, &obj) == nil && obj.Message != "" {
+		return obj.Message
+	}
+	var s string
+	if json.Unmarshal(raw, &s) == nil && s != "" {
+		return s
+	}
+	return "upstream stream error"
+}
+
+// buildChatNDJSON builds one /api/chat line. doneReason (the OpenAI
+// finish_reason) is only carried on the final done line when known.
+func buildChatNDJSON(model, content string, done bool, evalCount, promptEvalCount int64, doneReason string) []byte {
 	line := ollamaChatLine{
 		Model:           model,
 		Done:            done,
 		EvalCount:       evalCount,
 		PromptEvalCount: promptEvalCount,
+	}
+	if done {
+		line.DoneReason = doneReason
 	}
 	if !done {
 		line.Message = &ollamaMessage{Role: "assistant", Content: content}
@@ -434,13 +510,16 @@ func buildErrorNDJSON(message string) []byte {
 	return b
 }
 
-func buildGenerateNDJSON(model, response string, done bool, evalCount, promptEvalCount int64) []byte {
+func buildGenerateNDJSON(model, response string, done bool, evalCount, promptEvalCount int64, doneReason string) []byte {
 	line := ollamaGenerateLine{
 		Model:           model,
 		Response:        response,
 		Done:            done,
 		EvalCount:       evalCount,
 		PromptEvalCount: promptEvalCount,
+	}
+	if done {
+		line.DoneReason = doneReason
 	}
 	b, _ := json.Marshal(line)
 	return b

@@ -6,6 +6,7 @@ package proxy
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -110,6 +111,9 @@ func TestAnthropicSSE_TruncatedStreamErrors(t *testing.T) {
 	if strings.Contains(body, "[DONE]") {
 		t.Errorf("truncated stream must not emit [DONE]: %q", body)
 	}
+	if !strings.Contains(body, `"error"`) {
+		t.Errorf("truncated stream should carry an error chunk: %q", body)
+	}
 }
 
 func TestAnthropicSSE_ErrorEventSurfacesError(t *testing.T) {
@@ -126,7 +130,7 @@ func TestAnthropicSSE_ErrorEventSurfacesError(t *testing.T) {
 	}
 }
 
-func TestAnthropicSSE_NoSpaceAndCRLF(t *testing.T) {
+func TestAnthropicSSE_AcceptsNoSpaceDataAndCRLFLineEndings(t *testing.T) {
 	events := "data:{\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":1}}}\r\n\r\n" +
 		"data:{\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\r\n\r\n" +
 		"data: {\"type\":\"message_stop\"}\r\n\r\n"
@@ -174,22 +178,73 @@ func TestCloudResponseSizeCap(t *testing.T) {
 	defer func() { maxCloudResponseBytes = old }()
 
 	big := `{"content":[{"type":"text","text":"` + strings.Repeat("a", 200) + `"}],"usage":{}}`
-	raw, _ := io.ReadAll(translateAnthropicJSONToOpenAI(io.NopCloser(strings.NewReader(big))))
-	if !strings.Contains(string(raw), `"error"`) || strings.Contains(string(raw), "aaaa") {
-		t.Errorf("Anthropic oversize: want error body, got %q", raw)
-	}
 	oai := `{"choices":[{"message":{"content":"` + strings.Repeat("a", 200) + `"}}],"usage":{}}`
-	raw, _ = io.ReadAll(translateJSONToNDJSON(io.NopCloser(strings.NewReader(oai)), "/api/chat", "m"))
-	if !strings.Contains(string(raw), `"error"`) || strings.Contains(string(raw), "aaaa") {
-		t.Errorf("NDJSON oversize: want error body, got %q", raw)
+
+	cases := []struct {
+		name     string
+		upstream string
+		chain    func(in http.RoundTripper) http.RoundTripper
+		wantOAI  bool
+	}{
+		{"anthropic openai-path", big, func(in http.RoundTripper) http.RoundTripper {
+			return &anthropicTransport{inner: in, apiKey: "k"}
+		}, true},
+		{"anthropic ollama-path", big, func(in http.RoundTripper) http.RoundTripper {
+			return &translatingTransport{inner: &anthropicTransport{inner: in, apiKey: "k"}, origPath: "/api/chat", clientModel: "m", clientStream: false}
+		}, false},
+		{"openai ollama-path", oai, func(in http.RoundTripper) http.RoundTripper {
+			return &translatingTransport{inner: in, origPath: "/api/chat", clientModel: "m", clientStream: false}
+		}, false},
 	}
-	raw, _ = io.ReadAll(translateJSONToSingleOllama(io.NopCloser(strings.NewReader(oai)), "/api/chat", "m"))
-	if !strings.Contains(string(raw), `"error"`) || strings.Contains(string(raw), "aaaa") {
-		t.Errorf("single oversize: want error body, got %q", raw)
+	for _, c := range cases {
+		for _, readErr := range []bool{false, true} {
+			var rc io.ReadCloser = io.NopCloser(strings.NewReader(c.upstream))
+			if readErr {
+				rc = io.NopCloser(io.MultiReader(strings.NewReader("{"), errReader{}))
+			}
+			inner := anthropicRTFunc(func(r *http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: 200, Status: "200 OK", Header: http.Header{"Content-Type": []string{"application/json"}}, Body: rc, ContentLength: -1}, nil
+			})
+			req, _ := http.NewRequest(http.MethodPost, "http://cloud.invalid/v1/chat/completions", strings.NewReader(`{"model":"m","messages":[{"role":"user","content":"hi"}]}`))
+			resp, err := c.chain(inner).RoundTrip(req)
+			if err != nil {
+				t.Fatalf("%s: RoundTrip: %v", c.name, err)
+			}
+			raw, _ := io.ReadAll(resp.Body)
+			if resp.StatusCode != http.StatusBadGateway {
+				t.Errorf("%s readErr=%v: status = %d, want 502", c.name, readErr, resp.StatusCode)
+			}
+			if resp.Header.Get("Content-Type") != "application/json" || resp.Header.Get("Content-Length") != "" {
+				t.Errorf("%s: bad headers %v", c.name, resp.Header)
+			}
+			if strings.Contains(string(raw), "aaaa") {
+				t.Errorf("%s: truncated upstream data leaked: %q", c.name, raw)
+			}
+			if c.wantOAI && !strings.Contains(string(raw), `"upstream_error"`) {
+				t.Errorf("%s: want OpenAI-shaped error, got %q", c.name, raw)
+			}
+			if !c.wantOAI && !strings.HasPrefix(string(raw), `{"error":"`) {
+				t.Errorf("%s: want Ollama-shaped error, got %q", c.name, raw)
+			}
+		}
+	}
+
+	// Declared Content-Length over the cap fails fast without reading.
+	inner := anthropicRTFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(errReader{}), ContentLength: 1000}, nil
+	})
+	req, _ := http.NewRequest(http.MethodPost, "http://cloud.invalid/x", strings.NewReader(`{"model":"m"}`))
+	resp, err := (&anthropicTransport{inner: inner, apiKey: "k"}).RoundTrip(req)
+	if err != nil || resp.StatusCode != http.StatusBadGateway {
+		t.Errorf("declared oversize: resp=%v err=%v, want 502", resp, err)
 	}
 }
 
-func TestOllamaSSE_NoSpaceAndCRLF(t *testing.T) {
+type errReader struct{}
+
+func (errReader) Read([]byte) (int, error) { return 0, errors.New("connection reset") }
+
+func TestOllamaSSE_AcceptsNoSpaceDataAndCRLFLineEndings(t *testing.T) {
 	src := "data:{\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\r\n\r\ndata:[DONE]\r\n\r\n"
 	raw, err := io.ReadAll(translateSSEToNDJSON(io.NopCloser(strings.NewReader(src)), "/api/chat", "m"))
 	if err != nil {
