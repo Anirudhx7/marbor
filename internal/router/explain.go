@@ -1,5 +1,7 @@
 package router
 
+import "slices"
+
 // explain.go - per-request routing explainability.
 //
 // RoutingDecision/ScoreComponent surface, per request, the reason a node was
@@ -63,12 +65,43 @@ const (
 	// reasons because the operator-facing remediation differs.
 	ExcludeReasonReplicaWorker     = "replica_worker"
 	ExcludeReasonReplicaUnresolved = "replica_unresolved"
+	// ExcludeReasonReplicaMemberUnreachable: this node is the head of a
+	// confirmed replica and the marbor agent of a non-head member's host has
+	// stopped answering. It says the agent is dark, not that the worker
+	// process is dead - the worker may still be serving. When excluding it
+	// would leave no candidate at all the head is used anyway as a last
+	// resort and the decision Detail says so.
+	ExcludeReasonReplicaMemberUnreachable = "replica_member_unreachable"
 )
+
+// excludeReasons backs ExcludeReasons; unexported so callers cannot mutate it.
+var excludeReasons = []string{
+	ExcludeReasonUnhealthy,
+	ExcludeReasonDraining,
+	ExcludeReasonRuntimeMismatch,
+	ExcludeReasonIneligibleModel,
+	ExcludeReasonOverCapacity,
+	ExcludeReasonInsufficientGPUGroup,
+	ExcludeReasonReplicaWorker,
+	ExcludeReasonReplicaUnresolved,
+	ExcludeReasonReplicaMemberUnreachable,
+}
+
+// ExcludeReasons returns a copy of the list of every ExcludeReason constant,
+// so a client that maps reasons to display text can assert it covers all of
+// them.
+func ExcludeReasons() []string {
+	return slices.Clone(excludeReasons)
+}
 
 // maxExcludedCandidates bounds how many ExcludedCandidate entries a single
 // RoutingDecision carries, so a large fleet routing a rarely-requested model
 // can't put every node in the response. ExcludedTotal (below) reports the
-// real count when this cap truncates the list.
+// real count when this cap truncates the list. The cap does not apply to
+// replica heads kept as a last resort (replica_member_unreachable): they are
+// always listed, even past the cap, so the head a request was routed to is
+// never missing from its explanation. Such a list can therefore exceed the
+// cap by the number of those heads.
 const maxExcludedCandidates = 20
 
 // RoutingDecision is the winner-only explanation of one routing pick, plus
@@ -78,21 +111,30 @@ type RoutingDecision struct {
 	Reason string `json:"reason"` // session_affinity | pinned_warm | score_based
 	Detail string `json:"detail,omitempty"`
 	// AffinityLost is true when the request had a session-affinity entry
-	// that was cleared (target node unhealthy/draining/ineligible) before
-	// falling through to normal selection - so Reason is score_based or
-	// pinned_warm but the request did not start out affinity-free.
+	// that was cleared (target node unhealthy/draining/ineligible) or, for a
+	// replica head whose member host agent is not answering, bypassed with
+	// the pin kept, before falling through to normal selection - so Reason is
+	// score_based or pinned_warm but the request did not start out
+	// affinity-free.
 	AffinityLost bool             `json:"affinityLost,omitempty"`
 	Score        float64          `json:"score,omitempty"`
 	Components   []ScoreComponent `json:"components,omitempty"` // score_based only
 	// Excluded lists up to maxExcludedCandidates real candidates the
 	// pre-score hard filter removed before scoring, in the order they were
-	// evaluated. Never populated for the session_affinity fast path (it
-	// never runs the candidate loop).
+	// evaluated; a replica head that can be a last resort is always listed,
+	// even past that cap. Never populated for the session_affinity fast path (it
+	// never runs the candidate loop). When the last-resort path routed to a
+	// replica head whose member host agent is not answering, the chosen node
+	// itself also appears here with replica_member_unreachable, and Detail
+	// says it was a last resort.
 	Excluded []ExcludedCandidate `json:"excluded,omitempty"`
 	// ExcludedTotal is only set (non-zero) when the real number of excluded
-	// candidates exceeds maxExcludedCandidates - omitted entirely in the
+	// candidates exceeds the number listed - omitted entirely in the
 	// common case where every excluded candidate is already listed.
 	ExcludedTotal int `json:"excludedTotal,omitempty"`
+	// lastResort is set when the node was chosen only because no other
+	// candidate remained and its replica member's host agent is dark.
+	lastResort bool
 }
 
 const (

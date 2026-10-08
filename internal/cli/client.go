@@ -901,7 +901,8 @@ type RoutingDecision struct {
 
 // ExcludedCandidate mirrors router.ExcludedCandidate. Reason is the
 // machine-readable identifier from the Admin API (unhealthy, draining,
-// runtime_mismatch, ineligible_model, over_capacity, insufficient_gpu_group)
+// runtime_mismatch, ineligible_model, over_capacity, insufficient_gpu_group,
+// replica_worker, replica_unresolved, replica_member_unreachable)
 // - excludedReasonText (requests.go) translates it for display.
 type ExcludedCandidate struct {
 	Node   string `json:"node"`

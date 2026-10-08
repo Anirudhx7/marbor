@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,16 +13,29 @@ import (
 	"github.com/Anirudhx7/marbor/internal/marboragent"
 )
 
+// captureLogMu serialises tests that redirect the process-wide standard
+// logger. It is held from captureLog until the test ends, so two such tests
+// can never interleave their swap and restore of the writer, even if one of
+// them calls t.Parallel. A test must therefore call captureLog at most once,
+// and not from both a parent and its subtest.
+var captureLogMu sync.Mutex
+
 // captureLog redirects the standard logger into a buffer for the test and
-// restores the previous writer when the test ends. The buffer is not
-// synchronised: read it only after the code under test has finished (for
-// example after the poll's wg.Wait).
+// restores the previous writer when the test ends. It is not parallel-safe
+// by nature (the logger is global), so it takes captureLogMu for the life of
+// the test; tests using it run one at a time. The buffer is not synchronised:
+// read it only after the code under test has finished (for example after the
+// poll's wg.Wait).
 func captureLog(t *testing.T) *bytes.Buffer {
 	t.Helper()
+	captureLogMu.Lock()
 	var buf bytes.Buffer
 	prev := log.Writer()
 	log.SetOutput(&buf)
-	t.Cleanup(func() { log.SetOutput(prev) })
+	t.Cleanup(func() {
+		log.SetOutput(prev)
+		captureLogMu.Unlock()
+	})
 	return &buf
 }
 
