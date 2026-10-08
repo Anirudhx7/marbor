@@ -122,9 +122,9 @@ func TestValidateNodeURL(t *testing.T) {
 		"http://[ff02::1]",
 		"http://[fe80::1]",
 
-		// Bare 0x reads as 0, so these are 169.254.169.0 and 169.254.0.0. glibc
-		// does not resolve a bare 0x (tested on one glibc build), but a resolver
-		// that does must not reach link-local, so they fail closed.
+		// A bare 0x reads as 0, so these are 169.254.169.0 and 169.254.0.0. A
+		// resolver that accepts a bare 0x must not reach link-local, so they
+		// fail closed.
 		"http://169.254.169.0x",
 		"http://169.254.0x",
 
@@ -151,86 +151,90 @@ func TestValidateNodeURL(t *testing.T) {
 // inet_aton, decimalBase is the operator reading). An empty want means the host
 // is not a legacy IPv4 literal.
 func TestParseLegacyIPv4(t *testing.T) {
-	cases := []struct {
+	type parseCase struct {
 		host string
 		base int
 		want string
-	}{
+	}
+	octal := func(host, want string) parseCase { return parseCase{host, octalBase, want} }
+	decimal := func(host, want string) parseCase { return parseCase{host, decimalBase, want} }
+	cases := []parseCase{
 		// one part
-		{"2852039166", octalBase, "169.254.169.254"},
-		{"0xA9FEA9FE", octalBase, "169.254.169.254"},
-		{"0Xa9fea9fe", octalBase, "169.254.169.254"},
-		{"025177524776", octalBase, "169.254.169.254"},
-		{"0", octalBase, "0.0.0.0"},
-		{"4294967295", octalBase, "255.255.255.255"},
-		{"4294967296", octalBase, ""},
-		{"0x100000000", octalBase, ""},
+		octal("2852039166", "169.254.169.254"),
+		octal("0xA9FEA9FE", "169.254.169.254"),
+		octal("0Xa9fea9fe", "169.254.169.254"),
+		octal("025177524776", "169.254.169.254"),
+		octal("0", "0.0.0.0"),
+		octal("4294967295", "255.255.255.255"),
+		octal("4294967296", ""),
+		octal("0x100000000", ""),
 		// two parts: last part is 24 bits
-		{"169.16689662", octalBase, "169.254.169.254"},
-		{"169.16777215", octalBase, "169.255.255.255"},
-		{"169.16777216", octalBase, ""},
-		{"169.254", octalBase, "169.0.0.254"},
+		octal("169.16689662", "169.254.169.254"),
+		octal("169.16777215", "169.255.255.255"),
+		octal("169.16777216", ""),
+		octal("169.254", "169.0.0.254"),
 		// three parts: last part is 16 bits
-		{"169.254.43518", octalBase, "169.254.169.254"},
-		{"169.254.0xa9fe", octalBase, "169.254.169.254"},
-		{"169.254.65535", octalBase, "169.254.255.255"},
-		{"169.254.65536", octalBase, ""},
+		octal("169.254.43518", "169.254.169.254"),
+		octal("169.254.0xa9fe", "169.254.169.254"),
+		octal("169.254.65535", "169.254.255.255"),
+		octal("169.254.65536", ""),
 		// four parts: every part is 8 bits
-		{"169.254.169.254", octalBase, "169.254.169.254"},
-		{"0xA9.0xFE.0xA9.0xFE", octalBase, "169.254.169.254"},
-		{"0XA9.0XFE.0XA9.0XFE", octalBase, "169.254.169.254"},
-		{"0251.0376.0251.0376", octalBase, "169.254.169.254"},
-		{"169.0xfe.169.0376", octalBase, "169.254.169.254"},
-		{"0xaB.0Xcd.0xEf.0x01", octalBase, "171.205.239.1"},
-		{"255.255.255.255", octalBase, "255.255.255.255"},
-		{"255.255.255.256", octalBase, ""},
-		{"256.1.1.1", octalBase, ""},
-		{"1.256.1.1", octalBase, ""},
+		octal("169.254.169.254", "169.254.169.254"),
+		octal("0xA9.0xFE.0xA9.0xFE", "169.254.169.254"),
+		octal("0XA9.0XFE.0XA9.0XFE", "169.254.169.254"),
+		octal("0251.0376.0251.0376", "169.254.169.254"),
+		octal("169.0xfe.169.0376", "169.254.169.254"),
+		octal("0xaB.0Xcd.0xEf.0x01", "171.205.239.1"),
+		octal("255.255.255.255", "255.255.255.255"),
+		octal("255.255.255.256", ""),
+		octal("256.1.1.1", ""),
+		octal("1.256.1.1", ""),
 		// leading-zero parts under the octal reading
-		{"010.0.0.1", octalBase, "8.0.0.1"},
-		{"08.1.1.1", octalBase, ""},
-		{"09.1.1.1", octalBase, ""},
-		{"1.2.3.08", octalBase, ""},
-		{"08", octalBase, ""},
-		{"0169.254.43518", octalBase, ""},
+		octal("010.0.0.1", "8.0.0.1"),
+		octal("08.1.1.1", ""),
+		octal("09.1.1.1", ""),
+		octal("1.2.3.08", ""),
+		octal("08", ""),
+		octal("0169.254.43518", ""),
 		// leading-zero parts under the decimal reading
-		{"0169.254.43518", decimalBase, "169.254.169.254"},
-		{"010.0.0.1", decimalBase, "10.0.0.1"},
-		{"08.1.1.1", decimalBase, "8.1.1.1"},
-		{"0x10.0.0.1", decimalBase, "16.0.0.1"}, // hex prefix wins over the base
+		decimal("0169.254.43518", "169.254.169.254"),
+		decimal("010.0.0.1", "10.0.0.1"),
+		decimal("08.1.1.1", "8.1.1.1"),
+		decimal("0x10.0.0.1", "16.0.0.1"), // hex prefix wins over the base
 		// one trailing dot is accepted, two are not
-		{"169.254.169.254.", octalBase, "169.254.169.254"},
-		{"2852039166.", octalBase, "169.254.169.254"},
-		{"169.254.169.254..", octalBase, ""},
-		// bare 0x reads as 0 (fail closed; glibc itself does not resolve it)
-		{"0x", octalBase, "0.0.0.0"},
-		{"0x.", octalBase, "0.0.0.0"},
-		{"0x.1", octalBase, "0.0.0.1"},
-		{"1.0x", octalBase, "1.0.0.0"},
-		{"169.254.0x", octalBase, "169.254.0.0"},
-		{"169.254.169.0x", octalBase, "169.254.169.0"},
+		octal("169.254.169.254.", "169.254.169.254"),
+		octal("2852039166.", "169.254.169.254"),
+		octal("169.254.169.254..", ""),
+		// a bare 0x reads as 0 (fail closed)
+		octal("0x", "0.0.0.0"),
+		octal("0x.", "0.0.0.0"),
+		octal("0x.1", "0.0.0.1"),
+		octal("1.0x", "1.0.0.0"),
+		octal("169.254.0x", "169.254.0.0"),
+		octal("169.254.169.0x", "169.254.169.0"),
 		// "00" is two leading zeros: the value 0 in either base
-		{"00", octalBase, "0.0.0.0"},
-		{"0x0", octalBase, "0.0.0.0"},
+		octal("00", "0.0.0.0"),
+		octal("0x0", "0.0.0.0"),
 		// not IPv4 literals
-		{"", octalBase, ""},
-		{".", octalBase, ""},
-		{"..", octalBase, ""},
-		{".1.2.3", octalBase, ""},
-		{"1..2", octalBase, ""},
-		{"1.2.3.4.5", octalBase, ""},
-		{"1.2.3.4.0", octalBase, ""}, // five parts even with a zero last part
-		{"1.2.3.4.5.6", octalBase, ""},
-		{"0xg1", octalBase, ""},
-		{"gpu-node.lan", octalBase, ""},
-		{"node1", octalBase, ""},
-		{"1.2.3.x", octalBase, ""},
-		{"-1", octalBase, ""},
-		{"+1", octalBase, ""},
-		{"1_000", octalBase, ""},
+		octal("", ""),
+		octal(".", ""),
+		octal("..", ""),
+		octal(".1.2.3", ""),
+		octal("1..2", ""),
+		octal("1.2.3.4.5", ""),
+		octal("1.2.3.4.0", ""), // five parts even with a zero last part
+		octal("1.2.3.4.5.6", ""),
+		octal("0xg1", ""),
+		octal("gpu-node.lan", ""),
+		octal("node1", ""),
+		octal("1.2.3.x", ""),
+		octal("-1", ""),
+		octal("+1", ""),
+		octal("1_000", ""),
 	}
 	for _, c := range cases {
-		t.Run(fmt.Sprintf("%s/base%d", c.host, c.base), func(t *testing.T) {
+		name := fmt.Sprintf("%q/base%d", c.host, c.base)
+		t.Run(name, func(t *testing.T) {
 			got := ""
 			if ip := parseLegacyIPv4(c.host, c.base); ip != nil {
 				got = ip.String()

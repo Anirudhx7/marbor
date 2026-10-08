@@ -66,10 +66,9 @@ func isLinkLocalIP(ip net.IP) bool {
 // isLinkLocalHost reports whether host is a link-local literal address in any
 // form a C resolver would turn into one. Besides standard IPv4/IPv6 text this
 // covers the legacy IPv4 spellings that some C resolvers (notably glibc)
-// accept: a bare integer or 0x-prefixed hex hostname such as "2852039166", the
-// dotted hex/octal/mixed forms such as "0xA9.0xFE.0xA9.0xFE", the one-part
-// (single number), two-part and three-part forms where the last part fills the
-// remaining bytes, and one trailing dot.
+// accept: one to four dot-separated decimal, 0x hex or leading-zero parts (for
+// example "2852039166" or "0xA9.0xFE.0xA9.0xFE") where the last part fills the
+// remaining bytes, and one trailing dot. See parseLegacyIPv4 for the grammar.
 func isLinkLocalHost(host string) bool {
 	if ip := net.ParseIP(host); ip != nil {
 		return isLinkLocalIP(ip)
@@ -126,12 +125,12 @@ func parseLegacyIPv4(host string, leadingZeroBase int) net.IP {
 
 // parseLegacyIPv4Part parses one dot-separated part: "0x"/"0X" is base 16, a
 // leading zero with more digits is leadingZeroBase, anything else is base 10. A
-// bare "0x" with no digits is read as 0: glibc does not resolve it (tested on
-// one glibc build), but other resolvers may, so it fails closed and
-// "169.254.0x" is refused. strconv with an explicit base rejects signs,
+// bare "0x" with no digits is read as 0 so that a resolver that accepts it
+// cannot reach a link-local address; it fails closed and "169.254.0x" is
+// refused. strconv with an explicit base rejects signs,
 // underscores and empty strings, so only digits of the chosen base get through.
 func parseLegacyIPv4Part(part string, leadingZeroBase int) (uint64, bool) {
-	digits, base := part, 10
+	digits, base := part, decimalBase
 	switch {
 	case len(part) >= 2 && part[0] == '0' && (part[1] == 'x' || part[1] == 'X'):
 		if len(part) == 2 {
