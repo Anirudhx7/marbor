@@ -529,30 +529,10 @@ func main() {
 
 	authMw := auth.NewMiddleware(cfg.Auth)
 
-	// Per-key usage/quota counters persist across restarts via SQLite.
-	if err := authMw.LoadFromStore(st); err != nil {
-		log.Printf("WARNING: could not restore key counters from store: %v", err)
-	}
-
 	// All API keys live in the store now - no config.yaml keys to merge.
 	keyCount := 0
-	if runtimeKeys, err := st.AllKeys(); err == nil {
-		for _, k := range runtimeKeys {
-			if k.Revoked {
-				authMw.RevokeKey(k.Name)
-				continue
-			}
-			authMw.AddKey(config.KeyConfig{
-				Name:         k.Name,
-				Key:          k.Key,
-				RateLimit:    k.RateLimit,
-				DailyLimit:   k.DailyLimit,
-				MonthlyLimit: k.MonthlyLimit,
-				Models:       k.Models,
-				ExpiresAt:    k.ExpiresAt,
-			})
-			keyCount++
-		}
+	if n, err := loadStoredKeys(authMw, st); err == nil {
+		keyCount = n
 		if keyCount > 0 {
 			log.Printf("store: loaded %d API key(s)", keyCount)
 		}
@@ -1119,4 +1099,29 @@ func stageRestoreCopy(dbPath, backupPath string) (string, error) {
 	}
 
 	return tmpPath, nil
+}
+
+// loadStoredKeys registers every non-revoked key from the store with the
+// middleware, then restores persisted usage counters. The restore must come
+// after the keys exist: counters are matched to keys by name, and a restore
+// run first finds nothing to restore.
+func loadStoredKeys(authMw *auth.Middleware, st store.Store) (int, error) {
+	runtimeKeys, err := st.AllKeys()
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, k := range runtimeKeys {
+		if k.Revoked {
+			authMw.RevokeKey(k.Name)
+			continue
+		}
+		authMw.AddKey(auth.KeyConfigFromRecord(k))
+		n++
+	}
+	// Per-key usage/quota counters persist across restarts via SQLite.
+	if err := authMw.LoadFromStore(st); err != nil {
+		log.Printf("WARNING: could not restore key counters from store: %v", err)
+	}
+	return n, nil
 }
