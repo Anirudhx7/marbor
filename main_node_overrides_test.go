@@ -20,7 +20,9 @@ var patchOnlyFields = map[string]string{
 
 // nodeProj is the projection of NodeState that the boot reload is responsible
 // for: one entry per persisted override field. It is a plain value so tests
-// never copy a whole NodeState (it holds a mutex).
+// never copy a whole NodeState (it holds a mutex). Derived side effects of an
+// override (VRAMSource alongside VRAMTotalMB, the runtime mismatch hint, the
+// probe reset alongside Runtime) are deliberately not projected here.
 type nodeProj struct {
 	VRAMTotalMBConfig  int64
 	GPUModel           string
@@ -171,22 +173,26 @@ func projectNode(t *testing.T, r *router.Router, name string) nodeProj {
 		}
 		var p nodeProj
 		// No lock needed: router.New starts no goroutine and the router is never started.
-		{
-			p = nodeProj{
-				VRAMTotalMBConfig:  n.VRAMTotalMBConfig,
-				GPUModel:           n.GPUModel,
-				Runtime:            n.Runtime,
-				DeclaredGPUIndices: append([]int(nil), n.DeclaredGPUIndices...),
-				MaxInFlight:        n.MaxInFlight,
-				TLSFingerprint:     n.TLSFingerprint,
-				ParallelismType:    n.ParallelismType,
-				ParallelismWidth:   n.ParallelismWidth,
-				VRAMOverrides:      n.VRAMOverrides,
+		p = nodeProj{
+			VRAMTotalMBConfig:  n.VRAMTotalMBConfig,
+			GPUModel:           n.GPUModel,
+			Runtime:            n.Runtime,
+			DeclaredGPUIndices: append([]int(nil), n.DeclaredGPUIndices...),
+			MaxInFlight:        n.MaxInFlight,
+			TLSFingerprint:     n.TLSFingerprint,
+			ParallelismType:    n.ParallelismType,
+			ParallelismWidth:   n.ParallelismWidth,
+		}
+		if n.VRAMOverrides != nil {
+			p.VRAMOverrides = make(map[string]int64, len(n.VRAMOverrides))
+			for k, v := range n.VRAMOverrides {
+				p.VRAMOverrides[k] = v
 			}
-			if n.ReplicaPeers != nil {
-				p.HasReplicaPeers = true
-				p.ReplicaPeers = *n.ReplicaPeers
-			}
+		}
+		if n.ReplicaPeers != nil {
+			p.HasReplicaPeers = true
+			p.ReplicaPeers = *n.ReplicaPeers
+			p.ReplicaPeers.Members = append([]string(nil), n.ReplicaPeers.Members...)
 		}
 		return p
 	}
@@ -206,10 +212,17 @@ func persistAndReload(t *testing.T, name string, ov store.NodeOverride) map[stri
 	if err != nil {
 		t.Fatalf("store.Open: %v", err)
 	}
+	firstClosed := false
+	defer func() {
+		if !firstClosed {
+			_ = st.Close()
+		}
+	}()
 	if err := st.UpsertNodeOverride(name, ov.VRAMTotalMB, ov.GPUModel, ov.Runtime, ov.GPUIndices, ov.MaxInFlight,
 		ov.TLSFingerprint, ov.ParallelismType, ov.ParallelismWidth, ov.VRAMOverrides, ov.ReplicaPeers); err != nil {
 		t.Fatalf("UpsertNodeOverride: %v", err)
 	}
+	firstClosed = true
 	if err := st.Close(); err != nil {
 		t.Fatalf("first store Close: %v", err)
 	}
@@ -300,6 +313,13 @@ func TestBootReloadEdgeCases(t *testing.T) {
 
 	t.Run("non-nil empty values survive the restart", func(t *testing.T) {
 		r := newBootRouter()
+		seeded := []int{5}
+		if !r.PatchNode("node-a", router.NodePatch{GPUIndices: &seeded}) {
+			t.Fatal("PatchNode: node-a not found")
+		}
+		if got := projectNode(t, r, "node-a"); len(got.DeclaredGPUIndices) == 0 || got.VRAMOverrides != nil {
+			t.Fatalf("baseline must have GPU indices and nil VRAMOverrides, got %+v", got)
+		}
 		noIndices, noModels := []int{}, map[string]int64{}
 		applyNodeOverrides(r, persistAndReload(t, "node-a", store.NodeOverride{
 			GPUIndices:    &noIndices,
@@ -320,11 +340,21 @@ func TestBootReloadEdgeCases(t *testing.T) {
 
 	t.Run("every runtime reloads", func(t *testing.T) {
 		for _, rt := range []string{"ollama", "vllm", "tgi", "llamacpp", "mlx"} {
-			r := newBootRouter()
-			applyNodeOverrides(r, persistAndReload(t, "node-a", store.NodeOverride{Runtime: &rt}))
-			if got := projectNode(t, r, "node-a").Runtime; got != rt {
-				t.Errorf("Runtime = %q after reload, want %q", got, rt)
-			}
+			t.Run(rt, func(t *testing.T) {
+				r := newBootRouter()
+				// Start from a runtime different from rt so the reload is a real change.
+				other := "vllm"
+				if rt == "vllm" {
+					other = "tgi"
+				}
+				if !r.PatchNode("node-a", router.NodePatch{Runtime: &other}) {
+					t.Fatal("PatchNode: node-a not found")
+				}
+				applyNodeOverrides(r, persistAndReload(t, "node-a", store.NodeOverride{Runtime: &rt}))
+				if got := projectNode(t, r, "node-a").Runtime; got != rt {
+					t.Errorf("Runtime = %q after reload, want %q", got, rt)
+				}
+			})
 		}
 	})
 
