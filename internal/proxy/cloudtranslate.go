@@ -17,11 +17,56 @@ package proxy
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
 )
+
+// maxCloudResponseBytes caps how much of a non-streaming cloud response the
+// translators will buffer. A var so tests can lower it.
+var maxCloudResponseBytes int64 = 64 << 20
+
+var errCloudResponseTooLarge = errors.New("cloud response exceeds size limit")
+
+// readCappedBody reads src up to maxCloudResponseBytes and returns an error
+// (never truncated data) when the response is larger.
+func readCappedBody(src io.Reader) ([]byte, error) {
+	raw, err := io.ReadAll(io.LimitReader(src, maxCloudResponseBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(raw)) > maxCloudResponseBytes {
+		return nil, errCloudResponseTooLarge
+	}
+	return raw, nil
+}
+
+// cloudReadErrorBody is the error body returned when the cloud response could
+// not be read or was too large.
+func cloudReadErrorBody(err error) io.ReadCloser {
+	msg := "failed to read cloud response"
+	if errors.Is(err, errCloudResponseTooLarge) {
+		msg = errCloudResponseTooLarge.Error()
+	}
+	return io.NopCloser(strings.NewReader(`{"error":"` + msg + `"}` + "\n"))
+}
+
+// sseData extracts the payload of an SSE "data:" line. The space after the
+// colon is optional per the SSE spec, and a trailing CR is tolerated.
+func sseData(line string) (string, bool) {
+	line = strings.TrimSuffix(line, "\r")
+	if !strings.HasPrefix(line, "data:") {
+		return "", false
+	}
+	return strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "), true
+}
+
+// ollamaOriginKey marks a request whose original client path was Ollama-native.
+// The Director rewrites the path, so inner transports cannot infer it.
+type ollamaOriginKey struct{}
 
 // isOllamaPath reports whether path is an Ollama-native API path.
 // Any path under /api/ is Ollama-native; /v1/ paths are OpenAI-compat and
@@ -72,6 +117,7 @@ func clientWantsStream(body []byte) bool {
 }
 
 func (t *translatingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req = req.WithContext(context.WithValue(req.Context(), ollamaOriginKey{}, true))
 	resp, err := t.inner.RoundTrip(req)
 	if err != nil {
 		return nil, err
@@ -144,13 +190,11 @@ func translateSSEToNDJSON(src io.ReadCloser, origPath, clientModel string) io.Re
 		)
 
 		for scanner.Scan() {
-			raw := scanner.Text()
-
 			// SSE lines look like "data: {...}" or "data: [DONE]".
-			if !strings.HasPrefix(raw, "data: ") {
+			payload, ok := sseData(scanner.Text())
+			if !ok {
 				continue
 			}
-			payload := strings.TrimPrefix(raw, "data: ")
 			if payload == "[DONE]" {
 				sawDone = true
 				break
@@ -240,11 +284,9 @@ func translateSSEToNDJSON(src io.ReadCloser, origPath, clientModel string) io.Re
 func translateJSONToNDJSON(src io.ReadCloser, origPath, clientModel string) io.ReadCloser {
 	defer src.Close()
 
-	raw, err := io.ReadAll(src)
+	raw, err := readCappedBody(src)
 	if err != nil {
-		// Return an error line so the client sees something.
-		errLine := `{"error":"failed to read cloud response"}` + "\n"
-		return io.NopCloser(strings.NewReader(errLine))
+		return cloudReadErrorBody(err)
 	}
 
 	// Embeddings responses have no choices/streaming shape at all - Ollama's
@@ -301,9 +343,9 @@ func translateJSONToNDJSON(src io.ReadCloser, origPath, clientModel string) io.R
 // passed through raw so nothing is silently lost.
 func translateJSONToSingleOllama(src io.ReadCloser, origPath, clientModel string) io.ReadCloser {
 	defer src.Close()
-	raw, err := io.ReadAll(src)
+	raw, err := readCappedBody(src)
 	if err != nil {
-		return io.NopCloser(strings.NewReader(`{"error":"failed to read cloud response"}` + "\n"))
+		return cloudReadErrorBody(err)
 	}
 	if line, ok := translateEmbeddingResponse(raw, origPath, clientModel); ok {
 		return io.NopCloser(bytes.NewReader(line))
