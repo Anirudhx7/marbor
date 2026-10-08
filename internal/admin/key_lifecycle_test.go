@@ -122,4 +122,19 @@ func TestAdmin_PatchKeyRejectsNegativeLimits(t *testing.T) {
 	if _, _, _, _, _, rl, _, _ := a.KeyStats("k1"); rl != 1000 {
 		t.Errorf("rate limit changed to %d by a rejected patch", rl)
 	}
+
+	// Zero (unlimited) and positive values are still accepted.
+	for _, body := range []string{
+		`{"rate_limit":0,"daily_limit":0,"monthly_limit":0,"daily_usd_cap":0,"monthly_usd_cap":0}`,
+		`{"rate_limit":500,"daily_limit":20,"monthly_limit":200,"daily_usd_cap":1.5,"monthly_usd_cap":30}`,
+	} {
+		req := httptest.NewRequest(http.MethodPatch, "/admin/keys/k1", strings.NewReader(body))
+		req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Errorf("PATCH %s: status = %d, want 200, body: %s", body, rec.Code, rec.Body.String())
+		}
+	}
 }
