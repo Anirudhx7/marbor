@@ -65,10 +65,13 @@ export function Metrics() {
     if (currentAppPath() !== '/metrics') return;
     if (demoMode) {
       setAnalytics(mockAnalytics);
+      setError(null);
       setLoading(false);
       return;
     }
     let active = true;
+    // Only the initial snapshot matters: a refresh keeps the last chart on screen, so
+    // analytics is deliberately not an effect dependency.
     let hasData = analytics !== null;
     const load = () => {
       if (active && currentAppPath() === '/metrics') {
@@ -117,7 +120,9 @@ export function Metrics() {
 
       {!loading && error && (
         <div className="p-4 bg-destructive/10 border border-destructive/30 rounded-xl">
-          <p className="text-sm font-semibold text-destructive">Failed to load metrics</p>
+          <p className="text-sm font-semibold text-destructive">
+            {analytics ? 'Refresh failed - showing the last data loaded' : 'Failed to load metrics'}
+          </p>
           <p className="text-xs text-muted-foreground mt-1">{error}</p>
         </div>
       )}
