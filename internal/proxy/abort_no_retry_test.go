@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -85,12 +86,19 @@ func TestRetryNeverFiresAfterFirstResponseByte(t *testing.T) {
 	// bug. Either way no bytes of a second node may be spliced on.
 	resp, err := marborSrv.Client().Post(marborSrv.URL+"/api/generate", "application/json",
 		newJSONBody(t, map[string]string{"model": "llama3"}))
+	var body []byte
+	readErr := error(nil)
 	if err == nil {
 		defer resp.Body.Close()
-		body, readErr := io.ReadAll(resp.Body)
-		if readErr == nil {
-			t.Errorf("client read %q with a nil error; a mid-stream upstream death must reach the client as an aborted stream", body)
-		}
+		body, readErr = io.ReadAll(resp.Body)
+	}
+	if err == nil && readErr == nil {
+		t.Errorf("client read %q cleanly; a mid-stream upstream death must reach the client as an error", body)
+	}
+	if cause := firstNonNil(err, readErr); cause != nil && !errors.Is(cause, io.EOF) && !errors.Is(cause, io.ErrUnexpectedEOF) && !strings.Contains(cause.Error(), "EOF") {
+		t.Errorf("client error = %v, want an EOF-like abort", cause)
+	}
+	{
 		if !strings.HasPrefix(partial, string(body)) {
 			t.Errorf("client body = %q, want at most the flaky node's partial write %q - no splicing of a second node's response onto this one",
 				body, partial)
@@ -114,4 +122,13 @@ func TestRetryNeverFiresAfterFirstResponseByte(t *testing.T) {
 		t.Errorf("flaky node SuccessHistory = %v, want [false] - a 200 status was written but the stream aborted mid-body, so the outcome must record failure, not a fabricated success",
 			hist)
 	}
+}
+
+func firstNonNil(errs ...error) error {
+	for _, e := range errs {
+		if e != nil {
+			return e
+		}
+	}
+	return nil
 }

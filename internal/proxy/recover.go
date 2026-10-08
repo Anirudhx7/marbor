@@ -45,6 +45,7 @@ func (rw *recoverWriter) Flush() {
 // listeners, which keep their own flat error shape; only proxy paths get the
 // OpenAI error envelope SDK clients expect.
 func isProxyAPIPath(p string) bool {
+	p = canonicalPath(p)
 	return strings.HasPrefix(p, "/v1/") || strings.HasPrefix(p, "/api/")
 }
 
@@ -83,7 +84,7 @@ func RecoverMiddleware(next http.Handler) http.Handler {
 				requestID = r.Header.Get("X-Request-ID")
 			}
 
-			log.Printf("PANIC recovered: method=%s path=%q request_id=%s panic=%v\n%s",
+			log.Printf("PANIC recovered: method=%s path=%q request_id=%q panic=%v\n%s",
 				r.Method,
 				r.URL.Path,
 				requestID,
@@ -97,15 +98,19 @@ func RecoverMiddleware(next http.Handler) http.Handler {
 			rw.ResponseWriter.Header().Set("Content-Type", "application/json")
 			rw.ResponseWriter.WriteHeader(http.StatusInternalServerError)
 			if isProxyAPIPath(r.URL.Path) {
-				json.NewEncoder(rw.ResponseWriter).Encode(apiError{Error: apiErrorBody{
+				if err := json.NewEncoder(rw.ResponseWriter).Encode(apiError{Error: apiErrorBody{
 					Message: "internal server error",
 					Type:    "server_error",
 					Code:    "internal_error",
-				}})
+				}}); err != nil {
+					log.Printf("panic response write failed (request_id=%q): %v", requestID, err)
+				}
 				return
 			}
 			body, _ := json.Marshal(map[string]string{"error": "internal server error"})
-			fmt.Fprintf(rw.ResponseWriter, "%s", body)
+			if _, err := fmt.Fprintf(rw.ResponseWriter, "%s", body); err != nil {
+				log.Printf("panic response write failed (request_id=%q): %v", requestID, err)
+			}
 		}()
 
 		next.ServeHTTP(rw, r)
