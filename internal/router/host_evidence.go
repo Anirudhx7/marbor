@@ -38,6 +38,11 @@ var hostLogKeyPrefixes = []string{"truncate:", "oversize:", "read:"}
 // are only removed once they are older than hostLogInterval.
 const lastResortLogPrefix = "lastresort:"
 
+// lastResortNoneKey is the rate-limit key suffix for the warning that
+// selection found no node among the last-resort heads. It contains no "@", so
+// it cannot collide with a head@host key.
+const lastResortNoneKey = "none"
+
 // HostEvidence is one agent's latest host-level report. Host is the same key
 // pollAgentHosts groups nodes by (the raw NodeState.Host string).
 type HostEvidence struct {
@@ -84,9 +89,9 @@ func (r *Router) RecordHostEvidence(ev HostEvidence) {
 // rate-limit map shares hostEvidenceMu on purpose: the critical section is a
 // single map lookup and write, so a separate mutex would add nothing.
 func (r *Router) allowHostLog(key string) bool {
-	now := time.Now()
 	r.hostEvidenceMu.Lock()
 	defer r.hostEvidenceMu.Unlock()
+	now := r.hostLogClock()
 	if r.hostLogAt == nil {
 		r.hostLogAt = make(map[string]time.Time)
 	}
@@ -95,6 +100,15 @@ func (r *Router) allowHostLog(key string) bool {
 	}
 	r.hostLogAt[key] = now
 	return true
+}
+
+// hostLogClock returns the current time for the log rate limiter. The caller
+// holds hostEvidenceMu.
+func (r *Router) hostLogClock() time.Time {
+	if r.hostLogNow != nil {
+		return r.hostLogNow()
+	}
+	return time.Now()
 }
 
 // DropHostEvidence forgets the snapshot for host. Exported for the same
@@ -127,7 +141,7 @@ func (r *Router) dropHostEvidenceNotIn(keep map[string][]*NodeState) {
 			delete(r.hostEvidence, host)
 		}
 	}
-	now := time.Now()
+	now := r.hostLogClock()
 	for key, at := range r.hostLogAt {
 		if strings.HasPrefix(key, lastResortLogPrefix) {
 			if now.Sub(at) >= hostLogInterval {

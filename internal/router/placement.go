@@ -1385,13 +1385,42 @@ func (r *Router) filterAndSelect(nodes []*NodeState, modelName, runtimeFilter, p
 		candidates = f.lastResort
 	}
 	node, warm, decision := r.selectBestNode(candidates, modelName, preferredNode)
+	if useLastResort {
+		decision = r.finishLastResort(f, node, decision)
+	}
 	applyExclusionExplainability(decision, f.excluded, f.excludedTotal)
-	if useLastResort && node != nil && decision != nil {
+	return node, warm, decision
+}
+
+// finishLastResort annotates the decision of a last-resort selection and
+// returns the decision to use. When node was chosen, the decision says so in
+// Detail and the choice is logged (rate limited). When selection yielded no
+// node despite there being last-resort heads to choose from, that is logged
+// too (rate limited) and a no_candidate decision is returned if there was
+// none, so the caller still attaches the excluded entries to it.
+func (r *Router) finishLastResort(f candidateFilter, node *NodeState, decision *RoutingDecision) *RoutingDecision {
+	if node == nil {
+		r.logLastResortNone(len(f.lastResort))
+		if decision == nil {
+			decision = &RoutingDecision{Reason: ReasonNoCandidate}
+		}
+		return decision
+	}
+	if decision != nil {
 		decision.Detail += lastResortDetail
 		decision.lastResort = true
-		r.logLastResort(node, f.down[node.Name])
 	}
-	return node, warm, decision
+	r.logLastResort(node, f.down[node.Name])
+	return decision
+}
+
+// logLastResortNone logs, at most once per hostLogInterval, that selection
+// found no node among heads last-resort heads.
+func (r *Router) logLastResortNone(heads int) {
+	if !r.allowHostLog(lastResortLogPrefix + lastResortNoneKey) {
+		return
+	}
+	log.Printf("router: no node could be selected from %d replica head(s) held in reserve for the last-resort path; the request has nowhere to go", heads)
 }
 
 // logLastResort logs, at most once per hostLogInterval per head and host,

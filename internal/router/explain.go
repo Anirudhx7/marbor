@@ -1,5 +1,7 @@
 package router
 
+import "slices"
+
 // explain.go - per-request routing explainability.
 //
 // RoutingDecision/ScoreComponent surface, per request, the reason a node was
@@ -72,9 +74,8 @@ const (
 	ExcludeReasonReplicaMemberUnreachable = "replica_member_unreachable"
 )
 
-// ExcludeReasons lists every ExcludeReason constant, so a client that maps
-// reasons to display text can assert it covers all of them.
-var ExcludeReasons = []string{
+// excludeReasons backs ExcludeReasons; unexported so callers cannot mutate it.
+var excludeReasons = []string{
 	ExcludeReasonUnhealthy,
 	ExcludeReasonDraining,
 	ExcludeReasonRuntimeMismatch,
@@ -86,10 +87,21 @@ var ExcludeReasons = []string{
 	ExcludeReasonReplicaMemberUnreachable,
 }
 
+// ExcludeReasons returns a copy of the list of every ExcludeReason constant,
+// so a client that maps reasons to display text can assert it covers all of
+// them.
+func ExcludeReasons() []string {
+	return slices.Clone(excludeReasons)
+}
+
 // maxExcludedCandidates bounds how many ExcludedCandidate entries a single
 // RoutingDecision carries, so a large fleet routing a rarely-requested model
 // can't put every node in the response. ExcludedTotal (below) reports the
-// real count when this cap truncates the list.
+// real count when this cap truncates the list. The cap does not apply to
+// replica heads kept as a last resort (replica_member_unreachable): they are
+// always listed, even past the cap, so the head a request was routed to is
+// never missing from its explanation. Such a list can therefore exceed the
+// cap by the number of those heads.
 const maxExcludedCandidates = 20
 
 // RoutingDecision is the winner-only explanation of one routing pick, plus

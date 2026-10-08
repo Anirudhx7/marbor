@@ -138,7 +138,7 @@ func TestExcludedReasonText_CoversEveryRouterReason(t *testing.T) {
 		router.ExcludeReasonReplicaUnresolved:        "replica declaration conflicts with another node and needs reconciling",
 		router.ExcludeReasonReplicaMemberUnreachable: "a replica member's host agent is not answering (the worker itself may still be up)",
 	}
-	for _, reason := range router.ExcludeReasons {
+	for _, reason := range router.ExcludeReasons() {
 		exp, ok := want[reason]
 		if !ok {
 			t.Errorf("reason %q has no expected display text in this test", reason)
@@ -148,7 +148,7 @@ func TestExcludedReasonText_CoversEveryRouterReason(t *testing.T) {
 			t.Errorf("excludedReasonText(%q) = %q, want %q", reason, got, exp)
 		}
 	}
-	if len(want) != len(router.ExcludeReasons) {
-		t.Errorf("test lists %d reasons, router exposes %d", len(want), len(router.ExcludeReasons))
+	if len(want) != len(router.ExcludeReasons()) {
+		t.Errorf("test lists %d reasons, router exposes %d", len(want), len(router.ExcludeReasons()))
 	}
 }
