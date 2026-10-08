@@ -82,7 +82,7 @@ func (h *Handler) localOnlyBlocked(w http.ResponseWriter, keyName, modelName str
 	writeAPIError(w, http.StatusServiceUnavailable,
 		"key is configured local_only and no local node is available; request was not sent to any cloud provider",
 		"server_error", "local_only_blocked")
-	metrics.RequestsTotal(keyName, modelName, "none", "503")
+	metrics.RequestsTotal(keyName, h.metricModel(modelName), "none", "503")
 	if h.admin != nil {
 		h.admin.IncrSpill(keyName, "blocked")
 	}
@@ -248,7 +248,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// guard below yet are forwarded verbatim to a backend that normalises them.
 	// The cleaned path is also what gets forwarded.
 	if cleaned := canonicalPath(r.URL.Path); cleaned != r.URL.Path {
-		log.Printf("request path rewritten (key=%q request_id=%q from=%q to=%q)", keyName, requestID, r.URL.Path, cleaned)
+		log.Printf("request path rewritten (key=%q request_id=%q from=%q to=%q)", keyName, requestID, truncateForLog(r.URL.Path, 128), truncateForLog(cleaned, 128))
 		r.URL.Path = cleaned
 		r.URL.RawPath = ""
 	}
@@ -261,7 +261,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// tenant homelab escape hatch). Read-only inventory and inference paths are
 	// unaffected.
 	if !h.allowManagement && isBlockedManagementPath(r.URL.Path) {
-		log.Printf("blocked management endpoint (key=%s path=%q request_id=%s)", keyName, r.URL.Path, requestID)
+		log.Printf("blocked management endpoint (key=%q path=%q request_id=%q)", keyName, truncateForLog(r.URL.Path, 128), requestID)
 		writeAPIError(w, http.StatusForbidden, "endpoint not permitted through the marbor proxy", "invalid_request_error", "endpoint_blocked")
 		metrics.RequestsTotal(keyName, "", "none", "403")
 		return
@@ -297,6 +297,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Request bodies are read, inspected and forwarded as plain bytes; a
+	// compressed one would be parsed as garbage here and, on a cloud handoff,
+	// sent on with its Content-Encoding header dropped. Refuse it plainly.
+	if enc := strings.TrimSpace(r.Header.Get("Content-Encoding")); enc != "" && !strings.EqualFold(enc, "identity") {
+		writeAPIError(w, http.StatusUnsupportedMediaType, "compressed request bodies are not supported", "invalid_request_error", "unsupported_content_encoding")
+		metrics.RequestsTotal(keyName, "", "none", "415")
+		return
+	}
+
 	var body []byte
 	if r.Body != nil {
 		var err error
@@ -320,9 +329,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// router.ExtractModelName, which matches the key case-insensitively and
 	// takes the last duplicate, while a backend may read a different one. A body
 	// whose model key is ambiguous is rejected so every parser sees the same name.
-	if hasAmbiguousModelKey(body) {
-		log.Printf("rejected request (key=%q request_id=%q reason=%q)", keyName, requestID, "ambiguous model field")
-		writeAPIError(w, http.StatusBadRequest, "request body has an ambiguous \"model\" field", "invalid_request_error", "invalid_model")
+	if problem := modelFieldProblem(body); problem != "" {
+		log.Printf("rejected request (key=%q request_id=%q reason=%q)", keyName, requestID, problem)
+		writeAPIError(w, http.StatusBadRequest, "request body rejected: "+problem, "invalid_request_error", "invalid_model")
 		metrics.RequestsTotal(keyName, "", "none", "400")
 		return
 	}
@@ -442,7 +451,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				writeAPIError(w, http.StatusBadRequest,
 					fmt.Sprintf("request (~%d estimated tokens) exceeds %q's %d-token context window", estTokens, modelName, window),
 					"invalid_request_error", "context_length_exceeded")
-				metrics.RequestsTotal(keyName, modelName, "none", "400")
+				metrics.RequestsTotal(keyName, h.metricModel(modelName), "none", "400")
 				return
 			}
 		}
@@ -519,7 +528,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// than cloud for a privacy-motivated operator. Tried before
 		// localOnlyBlocked since a successful substitution never leaves local
 		// nodes and so never needs to be blocked.
-		if altNode, alt, altWarm, altDecision, ok := h.tryLocalDegradationChain(modelName, runtimeFilter, allowLocalDegradation, allowedModels); ok {
+		if altNode, alt, altWarm, altDecision, ok := h.tryLocalDegradationChain(modelName, runtimeFilter, allowLocalDegradation, allowedModels, nil); ok {
 			body = applyLocalDegradation(w, body, modelName, alt)
 			r.Body = io.NopCloser(bytes.NewReader(body))
 			modelName = alt
@@ -542,7 +551,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if h.admin != nil {
 				if exceeded, reason := h.admin.CloudBudgetExceeded(keyName); exceeded {
 					writeAPIError(w, http.StatusServiceUnavailable, reason, "server_error", "cloud_budget_exceeded")
-					metrics.RequestsTotal(keyName, modelName, "none", "503")
+					metrics.RequestsTotal(keyName, h.metricModel(modelName), "none", "503")
 					return
 				}
 			}
@@ -559,11 +568,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// non-Ollama backends rather than getting a generic 503.
 		if runtimeFilter == "ollama" {
 			writeAPIError(w, http.StatusServiceUnavailable, "no Ollama nodes available; use /v1/ endpoint for non-Ollama backends", "server_error", "no_nodes_available")
-			metrics.RequestsTotal(keyName, modelName, "none", "503")
+			metrics.RequestsTotal(keyName, h.metricModel(modelName), "none", "503")
 			return
 		}
 		writeAPIError(w, http.StatusServiceUnavailable, "no healthy nodes available", "server_error", "no_nodes_available")
-		metrics.RequestsTotal(keyName, modelName, "none", "503")
+		metrics.RequestsTotal(keyName, h.metricModel(modelName), "none", "503")
 		return
 	}
 
@@ -647,7 +656,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(rw, http.StatusTooManyRequests,
 			"model rate limit exceeded (rpm/tpm cap)",
 			"server_error", "model_rate_limited")
-		metrics.RequestsTotal(keyName, model, n.Name, "429")
+		metrics.RequestsTotal(keyName, h.metricModel(model), n.Name, "429")
 	}
 	var profiled bool
 	if body, profiled = profileFor(baseBody, node, modelName); !profiled {
@@ -782,24 +791,32 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// bounds a cyclic operator config to one substitution instead of
 			// looping the retry loop indefinitely).
 			if !degradedOnce {
-				if altNode, altModel, _, altDecision, ok := h.tryLocalDegradationChain(modelName, runtimeFilter, allowLocalDegradation, allowedModels); ok {
-					// The substitute node's cap is checked before anything is
-					// committed, so a refused substitution leaves no header,
-					// metric or model change behind.
-					degraded := rewriteModelField(baseBody, altModel)
-					if altBody, capOK := profileFor(degraded, altNode, altModel); capOK {
-						baseBody = applyLocalDegradation(rw, baseBody, modelName, altModel)
-						modelName = altModel
-						lastFailedNode = node.Name
-						retryCount++
-						nextNode = altNode
-						nextBody = altBody
-						nextDecision = altDecision
-						retryErr = e
-						degradedOnce = true
-						return
+				// Each candidate's node cap is checked as the chain is walked, so a
+				// spent cap moves on to the next chain entry (as failover moves to the
+				// next node) and a refused candidate leaves no header, metric or
+				// model change behind. Still one hop at most: degradedOnce is set on
+				// the first committed substitution.
+				var altBody []byte
+				accept := func(n *router.NodeState, model string) bool {
+					b, capOK := profileFor(rewriteModelField(baseBody, model), n, model)
+					if !capOK {
+						log.Printf("degradation target skipped: model rate limit exhausted (key=%q request_id=%q node=%q model=%q)", keyName, requestID, n.Name, truncateForLog(model, 64))
+						return false
 					}
-					log.Printf("degradation target skipped: model rate limit exhausted (key=%q request_id=%q node=%q model=%q)", keyName, requestID, altNode.Name, truncateForLog(altModel, 64))
+					altBody = b
+					return true
+				}
+				if altNode, altModel, _, altDecision, ok := h.tryLocalDegradationChain(modelName, runtimeFilter, allowLocalDegradation, allowedModels, accept); ok {
+					baseBody = applyLocalDegradation(rw, baseBody, modelName, altModel)
+					modelName = altModel
+					lastFailedNode = node.Name
+					retryCount++
+					nextNode = altNode
+					nextBody = altBody
+					nextDecision = altDecision
+					retryErr = e
+					degradedOnce = true
+					return
 				}
 			}
 			// No alternate nodes - try cloud fallback.
@@ -813,7 +830,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					if exceeded, reason := h.admin.CloudBudgetExceeded(keyName); exceeded {
 						retryErr = errCloudHandled
 						writeAPIError(rw, http.StatusServiceUnavailable, reason, "server_error", "cloud_budget_exceeded")
-						metrics.RequestsTotal(keyName, modelName, "none", "503")
+						metrics.RequestsTotal(keyName, h.metricModel(modelName), "none", "503")
 						return
 					}
 				}
@@ -915,10 +932,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if aborted {
 		metricStatus = "aborted"
 	}
-	metrics.RequestsTotal(keyName, modelName, node.Name, metricStatus)
-	metrics.RequestDuration(modelName, node.Name, duration)
+	metrics.RequestsTotal(keyName, h.metricModel(modelName), node.Name, metricStatus)
+	metrics.RequestDuration(h.metricModel(modelName), node.Name, duration)
 	if ttft := rec.ttft(); ttft > 0 {
-		metrics.RequestTTFT(modelName, node.Name, ttft.Seconds())
+		metrics.RequestTTFT(h.metricModel(modelName), node.Name, ttft.Seconds())
 		// Feed the real observed TTFT into placement scoring's load-shape
 		// weighting - see Router.RecordTTFT and effectiveLoad.
 		h.router.RecordTTFT(node.Name, ttft)
@@ -1064,7 +1081,7 @@ func applyLocalDegradation(w http.ResponseWriter, body []byte, from, alt string)
 // walks one level of one chain per call. Returns ok=false if allowDegradation
 // is false, no chain is declared for modelName, or every eligible candidate
 // is currently unavailable.
-func (h *Handler) tryLocalDegradationChain(modelName, runtimeFilter string, allowDegradation bool, allowedModels []string) (node *router.NodeState, alt string, warm bool, decision *router.RoutingDecision, ok bool) {
+func (h *Handler) tryLocalDegradationChain(modelName, runtimeFilter string, allowDegradation bool, allowedModels []string, accept func(*router.NodeState, string) bool) (node *router.NodeState, alt string, warm bool, decision *router.RoutingDecision, ok bool) {
 	if !allowDegradation {
 		return nil, "", false, nil, false
 	}
@@ -1073,6 +1090,9 @@ func (h *Handler) tryLocalDegradationChain(modelName, runtimeFilter string, allo
 			continue
 		}
 		if n, w, d := h.router.RouteExcluding(candidate, runtimeFilter, nil); n != nil {
+			if accept != nil && !accept(n, candidate) {
+				continue
+			}
 			return n, candidate, w, d, true
 		}
 	}
@@ -1298,7 +1318,7 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 		writeAPIError(w, http.StatusNotImplemented,
 			"the Anthropic cloud provider does not support "+path+" through marbor; use an OpenAI-compatible overflow provider for this endpoint",
 			"invalid_request_error", "unsupported_cloud_endpoint")
-		metrics.RequestsTotal(keyName, modelName, "cloud:"+cloud.Name, "501")
+		metrics.RequestsTotal(keyName, h.metricModel(modelName), "cloud:"+cloud.Name, "501")
 		return
 	}
 
@@ -1363,7 +1383,9 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 		req.URL.Scheme = targetURL.Scheme
 		req.URL.Host = targetURL.Host
 		req.URL.Path = path
-		req.URL.RawQuery = r.URL.RawQuery
+		// The client's query string is not forwarded: a third-party provider has no
+		// use for it, and it can carry credentials meant for marbor.
+		req.URL.RawQuery = ""
 		req.Host = targetURL.Host
 		// Only an allow-list of client headers is forwarded to a third-party
 		// provider. Everything else a client can send (cookies, client-address
@@ -1427,10 +1449,10 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 		status = "aborted"
 		metricStatus = "aborted"
 	}
-	metrics.RequestsTotal(keyName, modelName, nodeName, metricStatus)
-	metrics.RequestDuration(modelName, nodeName, duration)
+	metrics.RequestsTotal(keyName, h.metricModel(modelName), nodeName, metricStatus)
+	metrics.RequestDuration(h.metricModel(modelName), nodeName, duration)
 	if ttft := rec.ttft(); ttft > 0 {
-		metrics.RequestTTFT(modelName, nodeName, ttft.Seconds())
+		metrics.RequestTTFT(h.metricModel(modelName), nodeName, ttft.Seconds())
 	}
 
 	if h.admin != nil {
@@ -1546,64 +1568,89 @@ func canonicalPath(p string) string {
 	return cleaned
 }
 
-// skipJSONValue consumes one JSON value from dec token by token, retaining
-// nothing, so a large value (an image, a long prompt) is not copied into memory
-// just to be thrown away. Returns false on a syntax error.
+// maxBodyJSONDepth bounds how deeply nested a request body may be before it is
+// rejected. Real requests nest a handful of levels; a body that nests
+// thousands deep is an attack on whatever parses it next.
+const maxBodyJSONDepth = 1000
+
+// skipJSONValue consumes one JSON value from dec token by token without
+// building a decoded copy of it, so a large value (an image, a long prompt)
+// is not materialised just to be discarded. It is iterative, with an explicit
+// depth counter, so nesting cannot exhaust the stack. Token() still allocates
+// a transient string for each string token it reads; those are garbage at
+// once. Returns false on a syntax error or when nesting passes
+// maxBodyJSONDepth.
 func skipJSONValue(dec *json.Decoder) bool {
-	tok, err := dec.Token()
-	if err != nil {
-		return false
-	}
-	if d, ok := tok.(json.Delim); ok && (d == '{' || d == '[') {
-		for dec.More() {
-			if d == '{' {
-				if _, err := dec.Token(); err != nil { // the key
+	depth := 0
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			return false
+		}
+		if d, ok := tok.(json.Delim); ok {
+			if d == '{' || d == '[' {
+				depth++
+				if depth > maxBodyJSONDepth {
 					return false
 				}
-			}
-			if !skipJSONValue(dec) {
-				return false
+			} else {
+				depth--
 			}
 		}
-		_, err := dec.Token() // the closing delimiter
-		return err == nil
+		if depth == 0 {
+			return true
+		}
 	}
-	return true
 }
 
-// hasAmbiguousModelKey reports whether a JSON object body names its "model"
-// field in a way different parsers could disagree on: the exact key repeated,
-// or any other key that equals "model" ignoring case (Go's decoder merges
-// those, case-sensitive backends do not). Bodies that are not a JSON object
-// are never ambiguous here - they carry no model for anyone to misread.
-func hasAmbiguousModelKey(body []byte) bool {
+// modelFieldProblem inspects a request body that starts as a JSON object and
+// returns a short reason if it must be rejected, or "" if it is fine. A body
+// is rejected when its "model" field is ambiguous (the exact key repeated, or
+// another key equal to "model" ignoring case, which Go's decoder merges while
+// case-sensitive backends do not), or when the object is malformed, has
+// trailing data, or nests too deeply for the check to read safely. Bodies
+// that are not a JSON object (empty, an array, plain text) are never flagged
+// here: they carry no model for anyone to misread.
+func modelFieldProblem(body []byte) string {
 	dec := json.NewDecoder(bytes.NewReader(body))
 	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
-		return false
+		return ""
 	}
 	exact := 0
 	for dec.More() {
 		tok, err := dec.Token()
 		if err != nil {
-			return false
+			return "invalid JSON"
 		}
 		key, ok := tok.(string)
 		if !ok {
-			return false
+			return "invalid JSON"
 		}
 		if key == "model" {
 			exact++
 			if exact > 1 {
-				return true
+				return "ambiguous model field"
 			}
 		} else if strings.EqualFold(key, "model") {
-			return true
+			return "ambiguous model field"
 		}
 		if !skipJSONValue(dec) {
-			return false
+			return "invalid or too deeply nested JSON"
 		}
 	}
-	return false
+	if _, err := dec.Token(); err != nil { // the closing brace
+		return "invalid JSON"
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		return "invalid JSON"
+	}
+	return ""
+}
+
+// hasAmbiguousModelKey reports whether modelFieldProblem finds anything wrong
+// with the body.
+func hasAmbiguousModelKey(body []byte) bool {
+	return modelFieldProblem(body) != ""
 }
 
 func rewriteModelField(body []byte, model string) []byte {
@@ -1660,6 +1707,7 @@ type statusRecorder struct {
 	tail          []byte    // retained body for token-count parsing - see tailMax
 	sawNewline    bool      // true once a '\n' has appeared in the written body
 	truncatedTail bool      // true if the no-newline tail hit embedTailMax before the response finished
+	heldLine      bool      // true while the tail is one retained line longer than tailMax (see trimTail)
 	start         time.Time // request start, for TTFT; zero value means TTFT is unavailable
 	firstByteAt   time.Time // set on the first Write(); zero until then
 }
@@ -1708,7 +1756,19 @@ func (r *statusRecorder) Write(b []byte) (int, error) {
 			// untouched, but no more bytes are copied or rescanned.
 			r.tail = append(r.tail, b[:n]...)
 			if len(r.tail) > tailMax {
-				r.trimTail()
+				if r.heldLine && bytes.IndexByte(b[:n], '\n') < 0 {
+					// The tail is a single protected line that is still growing:
+					// nothing new to trim or rescan until a newline arrives, only the
+					// embedTailMax bound to enforce. This keeps a long line written in
+					// many small chunks linear instead of rescanning it on every write.
+					if len(r.tail) > embedTailMax {
+						r.tail = nil
+						r.truncatedTail = true
+						r.heldLine = false
+					}
+				} else {
+					r.trimTail()
+				}
 			}
 		}
 	}
@@ -1741,14 +1801,17 @@ func (r *statusRecorder) trimTail() {
 	if len(tail)-start > embedTailMax {
 		r.tail = nil
 		r.truncatedTail = true
+		r.heldLine = false
 		return
 	}
 	if start == 0 {
+		r.heldLine = len(tail) > tailMax
 		return
 	}
 	// Shift in place: no allocation or second copy of the buffer.
 	n := copy(tail, tail[start:])
 	r.tail = tail[:n]
+	r.heldLine = n > tailMax
 }
 
 // lastJSONLineStart returns the offset of the last line in tail that holds a
@@ -1769,6 +1832,43 @@ func lastJSONLineStart(tail []byte) int {
 		end = s - 1
 	}
 	return len(tail)
+}
+
+// usageDoc is the part of a response document that carries a token count.
+type usageDoc struct {
+	EvalCount       int64           `json:"eval_count"`
+	PromptEvalCount int64           `json:"prompt_eval_count"`
+	Embedding       json.RawMessage `json:"embedding"`
+	Usage           struct {
+		TotalTokens int64 `json:"total_tokens"`
+	} `json:"usage"`
+}
+
+// count returns the token count the document reports. final is false when it
+// carries none, so the caller keeps looking; a legacy embeddings reply reports
+// -1 (genuinely no count), never a fake zero.
+func (u usageDoc) count() (n int64, final bool) {
+	if k := u.EvalCount + u.PromptEvalCount; k > 0 {
+		return k, true
+	}
+	if u.Usage.TotalTokens > 0 {
+		return u.Usage.TotalTokens, true
+	}
+	if u.Embedding != nil {
+		return -1, true
+	}
+	return 0, false
+}
+
+// wholeTailJSON decodes the entire retained tail as one JSON object into v.
+// It reports false unless the tail is exactly one object, so NDJSON, SSE and a
+// cut-off tail are left to line-wise parsing.
+func (r *statusRecorder) wholeTailJSON(v any) bool {
+	doc := bytes.TrimSpace(r.tail)
+	if len(doc) == 0 || doc[0] != '{' {
+		return false
+	}
+	return json.Unmarshal(doc, v) == nil
 }
 
 // ttft returns time-to-first-byte: the real wall-clock gap between request
@@ -1793,6 +1893,19 @@ func (r *statusRecorder) ttft() time.Duration {
 // ({"embedding":[...]}, no eval_count/prompt_eval_count/usage field) - that
 // endpoint genuinely reports no token count, so 0 would be a fake zero.
 func (r *statusRecorder) tokenCount(aborted bool) int64 {
+	// A pretty-printed (multi-line) JSON reply is one document, not lines, so
+	// the whole tail is tried as a single value first; line-wise parsing below
+	// is for NDJSON and SSE.
+	var whole usageDoc
+	if r.wholeTailJSON(&whole) {
+		if n, final := whole.count(); final {
+			return n
+		}
+		if aborted {
+			return -1
+		}
+		return 0
+	}
 	lines := bytes.Split(r.tail, []byte("\n"))
 	for i := len(lines) - 1; i >= 0; i-- {
 		line := bytes.TrimSpace(lines[i])
@@ -1800,14 +1913,7 @@ func (r *statusRecorder) tokenCount(aborted bool) int64 {
 		if len(line) == 0 || line[0] != '{' {
 			continue
 		}
-		var t struct {
-			EvalCount       int64           `json:"eval_count"`
-			PromptEvalCount int64           `json:"prompt_eval_count"`
-			Embedding       json.RawMessage `json:"embedding"`
-			Usage           struct {
-				TotalTokens int64 `json:"total_tokens"`
-			} `json:"usage"`
-		}
+		var t usageDoc
 		if err := json.Unmarshal(line, &t); err != nil {
 			// The last JSON-looking line is unreadable (cut off mid-object, or
 			// malformed). An earlier line's count would describe a different
@@ -1844,6 +1950,12 @@ func (r *statusRecorder) tokenCount(aborted bool) int64 {
 // tokenCount, a genuine eval_duration is never 0, so no aborted-vs-zero
 // sentinel distinction is needed here.
 func (r *statusRecorder) evalDurationMs() int64 {
+	var whole struct {
+		EvalDuration int64 `json:"eval_duration"`
+	}
+	if r.wholeTailJSON(&whole) {
+		return whole.EvalDuration / int64(time.Millisecond)
+	}
 	lines := bytes.Split(r.tail, []byte("\n"))
 	for i := len(lines) - 1; i >= 0; i-- {
 		line := bytes.TrimSpace(lines[i])
@@ -1873,6 +1985,12 @@ func (r *statusRecorder) evalDurationMs() int64 {
 // that case). 0 always means "not present", same convention as
 // evalDurationMs.
 func (r *statusRecorder) promptEvalDurationMs() int64 {
+	var whole struct {
+		PromptEvalDuration int64 `json:"prompt_eval_duration"`
+	}
+	if r.wholeTailJSON(&whole) {
+		return whole.PromptEvalDuration / int64(time.Millisecond)
+	}
 	lines := bytes.Split(r.tail, []byte("\n"))
 	for i := len(lines) - 1; i >= 0; i-- {
 		line := bytes.TrimSpace(lines[i])
@@ -1918,4 +2036,33 @@ func (r *statusRecorder) StatusCode() int {
 
 func (r *statusRecorder) Status() string {
 	return fmt.Sprintf("%d", r.StatusCode())
+}
+
+// metricModel returns the model label to use in Prometheus series for name.
+// A model the fleet actually knows (resident on a node, an operator alias, or
+// one with a configured fallback or degradation chain) keeps its name; any
+// other name is client-chosen and shares the single label "unknown", so a
+// caller cannot mint metric series by inventing model names. The check reads
+// only in-memory state, never the network.
+func (h *Handler) metricModel(name string) string {
+	if name == "" {
+		return ""
+	}
+	if _, ok := h.router.ResolveModelAlias(name); ok {
+		return name
+	}
+	if len(h.router.FallbackChainFor(name)) > 0 || len(h.router.LocalDegradationChainFor(name)) > 0 {
+		return name
+	}
+	for _, n := range h.router.Nodes() {
+		n.RLock()
+		for _, m := range n.LoadedModels {
+			if m.Name == name {
+				n.RUnlock()
+				return name
+			}
+		}
+		n.RUnlock()
+	}
+	return "unknown"
 }

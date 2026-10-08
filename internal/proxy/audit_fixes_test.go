@@ -102,6 +102,7 @@ type cloudMock struct {
 	mu      sync.Mutex
 	body    map[string]interface{}
 	headers http.Header
+	query   string
 }
 
 func newCloudMock(t *testing.T) *cloudMock {
@@ -113,6 +114,7 @@ func newCloudMock(t *testing.T) *cloudMock {
 		m.mu.Lock()
 		m.body = b
 		m.headers = r.Header.Clone()
+		m.query = r.URL.RawQuery
 		m.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}],"usage":{"total_tokens":3}}`))
@@ -725,4 +727,10 @@ func activeConns(r *router.Router) int32 {
 		total += atomic.LoadInt32(&n.ActiveConns)
 	}
 	return total
+}
+
+func (m *cloudMock) lastQuery() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.query
 }
