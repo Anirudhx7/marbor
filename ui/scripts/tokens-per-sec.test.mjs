@@ -13,9 +13,40 @@ test('a stale non-zero rate with zero duration is still unmeasured', () => {
   assert.equal(out[0].tps, null);
 });
 
-test('missing fields are unmeasured', () => {
-  const out = toTpsSeries([{ hour: 'h1' }, { hour: 'h2', tokens_per_sec: 40 }, { hour: 'h3', gen_duration_ms: 900 }]);
-  assert.deepEqual(out.map(p => p.tps), [null, null, null]);
+test('an hour with no fields is unmeasured', () => {
+  assert.equal(toTpsSeries([{ hour: 'h1' }])[0].tps, null);
+});
+
+test('a rate with no duration field is unmeasured', () => {
+  assert.equal(toTpsSeries([{ hour: 'h2', tokens_per_sec: 40 }])[0].tps, null);
+});
+
+test('positive duration with the rate absent is unmeasured', () => {
+  assert.equal(toTpsSeries([{ hour: 'h3', gen_duration_ms: 900 }])[0].tps, null);
+});
+
+test('NaN rate with positive duration is unmeasured', () => {
+  assert.equal(toTpsSeries([{ hour: 'h', tokens_per_sec: NaN, gen_duration_ms: 900 }])[0].tps, null);
+});
+
+test('Infinity rate is unmeasured', () => {
+  assert.equal(toTpsSeries([{ hour: 'h', tokens_per_sec: Infinity, gen_duration_ms: 900 }])[0].tps, null);
+});
+
+test('negative duration is unmeasured', () => {
+  assert.equal(toTpsSeries([{ hour: 'h', tokens_per_sec: 40, gen_duration_ms: -5 }])[0].tps, null);
+});
+
+test('NaN duration is unmeasured', () => {
+  assert.equal(toTpsSeries([{ hour: 'h', tokens_per_sec: 40, gen_duration_ms: NaN }])[0].tps, null);
+});
+
+test('an empty array yields an empty series', () => {
+  assert.deepEqual(toTpsSeries([]), []);
+});
+
+test('a measured zero rate with positive duration is a real value, not a gap', () => {
+  assert.equal(toTpsSeries([{ hour: 'h', tokens_per_sec: 0, gen_duration_ms: 900 }])[0].tps, 0);
 });
 
 test('a measured hour passes its value through', () => {

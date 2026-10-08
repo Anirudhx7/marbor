@@ -73,11 +73,11 @@ export function Metrics() {
     const load = () => {
       if (active && currentAppPath() === '/metrics') {
         if (!hasData) setLoading(true);
-        setError(null);
       }
       fetchAnalytics()
         .then(data => {
           if (!active || currentAppPath() !== '/metrics') return;
+          setError(null);
           setAnalytics(data);
           hasData = true;
           setLoading(false);
@@ -122,9 +122,9 @@ export function Metrics() {
         </div>
       )}
 
-      {!loading && !error && analytics && (
+      {!loading && analytics && (
         <div className="bg-card border border-border shadow-sm rounded-xl p-5">
-          <h3 className="text-sm font-semibold text-foreground">Tokens per second per hour (last 24h)</h3>
+          <h2 className="text-sm font-semibold text-foreground">Tokens per second per hour (last 24h)</h2>
           <p className="text-xs text-muted-foreground mt-1 mb-4">
             Ollama-native requests only (other runtimes report no generation timing)
           </p>
@@ -156,7 +156,8 @@ export function Metrics() {
                     fontSize={10}
                     tickLine={false}
                     axisLine={false}
-                    allowDecimals={false}
+                    tickFormatter={(v: number) => `${v} tok/s`}
+                    width={64}
                   />
                   <Tooltip content={<CustomTooltip />} />
                   <Line

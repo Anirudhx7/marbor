@@ -144,9 +144,12 @@ export function Analytics() {
     hour: formatHourLabel(b.hour, tz),
     Local: b.local,
     Cloud: b.cloud,
-    'Saved ($)': b.saved_usd,
+    'Est. saved ($)': b.saved_usd,
     'Spent ($)': b.spent_usd,
   }));
+  const savedSpentAllZero = chartData.every(
+    d => !(d['Est. saved ($)'] > 0) && !(d['Spent ($)'] > 0),
+  );
 
   const totalRequests = (data?.local_requests ?? 0) + (data?.cloud_requests ?? 0);
   const localPct =
@@ -285,9 +288,17 @@ export function Analytics() {
         </p>
         {loading ? (
           <div className="h-64 bg-secondary/30 rounded-lg animate-pulse" />
+        ) : chartData.length === 0 && error && !data ? (
+          <div className="h-64 flex items-center justify-center text-sm text-muted-foreground text-center px-4">
+            Savings and spend data is unavailable right now.
+          </div>
         ) : chartData.length === 0 ? (
           <div className="h-64 flex items-center justify-center text-sm text-muted-foreground text-center px-4">
             No data yet - requests will appear here as traffic flows through the proxy.
+          </div>
+        ) : savedSpentAllZero ? (
+          <div className="h-64 flex items-center justify-center text-sm text-muted-foreground text-center px-4">
+            No savings or cloud spend in this window.
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={260}>
@@ -322,7 +333,7 @@ export function Analytics() {
                 wrapperStyle={{ fontSize: '12px', paddingTop: '16px' }}
                 formatter={(value) => <span className="text-muted-foreground">{value}</span>}
               />
-              <Bar dataKey="Saved ($)" fill="hsl(var(--success))" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="Est. saved ($)" fill="hsl(var(--success))" radius={[4, 4, 0, 0]} />
               <Bar dataKey="Spent ($)" fill="#f59e0b" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
