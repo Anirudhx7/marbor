@@ -1031,6 +1031,11 @@ function makeHourKey(hoursAgo: number): string {
 const _hourlyLocal = [51, 43, 38, 42, 56, 74, 119, 194, 300, 420, 481, 458, 385, 266, 329, 427, 448, 385, 266, 180, 150, 117, 126, 105];
 const _hourlyCloud = [ 1,  0,  0,  1,  0,  1,   2,   6,  10,  16,  19,  17,  12,   8,  11,  18,  21,  13,   8,   6,   4,   2,   4,  2];
 
+// Deterministic generation rates (tokens/sec) per hour; hours 2 and 3 are quiet
+// with no generation timing recorded (duration 0, rate 0 = unmeasured).
+const _hourlyTps =   [52.4, 48.1,  0,  0, 55.2, 57.9, 61.3, 58.6, 49.7, 44.2, 42.8, 46.5, 51.0, 54.3, 56.8, 53.1, 47.9, 45.6, 50.2, 59.4, 62.7, 64.1, 60.5, 56.2];
+const _hourlyGenMs = [310000, 262000, 0, 0, 340000, 365000, 488000, 702000, 905000, 1010000, 1140000, 1080000, 880000, 640000, 760000, 925000, 990000, 870000, 640000, 470000, 390000, 310000, 335000, 280000];
+
 export const mockAnalytics: Analytics = {
   local_requests: 5465,
   cloud_requests: 186,
@@ -1042,6 +1047,9 @@ export const mockAnalytics: Analytics = {
     cloud: _hourlyCloud[i],
     saved_usd: parseFloat((_hourlyLocal[i] * 0.01).toFixed(4)),
     spent_usd: parseFloat((_hourlyCloud[i] * 0.01).toFixed(4)),
+    ...(_hourlyGenMs[i] > 0
+      ? { tokens: Math.round(_hourlyTps[i] * (_hourlyGenMs[i] / 1000)), gen_duration_ms: _hourlyGenMs[i], tokens_per_sec: _hourlyTps[i] }
+      : { tokens: 0, gen_duration_ms: 0, tokens_per_sec: 0 }),
   })),
   by_model: [
     { model: 'deepseek-r1:7b', local: 1830, cloud: 60, saved_usd: 18.30 },
