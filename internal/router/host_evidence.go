@@ -32,6 +32,13 @@ const (
 // hostLogKeyPrefixes lists every rate-limit key prefix; a key is prefix+host.
 var hostLogKeyPrefixes = []string{"truncate:", "oversize:", "read:"}
 
+// hostLogPollKeyPrefixes lists the rate-limit key prefixes for agent poll
+// failures. They are pruned with the others when a host leaves the poll
+// groups, but unlike hostLogKeyPrefixes they are not reset by
+// DropHostEvidence: that runs on every failed poll past the failure threshold,
+// which would defeat the rate limit for exactly the case it is for.
+var hostLogPollKeyPrefixes = []string{"badurl:", "badreq:", "dial:", "mismatch:", "status:", "decode:"}
+
 // lastResortLogPrefix keys the last-resort routing warning by head name and
 // host. It is not in hostLogKeyPrefixes: the head's host often has no polled
 // agent, so pruning by poll group would reset the limit every pass. These keys
@@ -149,10 +156,12 @@ func (r *Router) dropHostEvidenceNotIn(keep map[string][]*NodeState) {
 			}
 			continue
 		}
-		for _, prefix := range hostLogKeyPrefixes {
-			if host, ok := strings.CutPrefix(key, prefix); ok {
-				if _, kept := keep[host]; !kept {
-					delete(r.hostLogAt, key)
+		for _, prefixes := range [][]string{hostLogKeyPrefixes, hostLogPollKeyPrefixes} {
+			for _, prefix := range prefixes {
+				if host, ok := strings.CutPrefix(key, prefix); ok {
+					if _, kept := keep[host]; !kept {
+						delete(r.hostLogAt, key)
+					}
 				}
 			}
 		}

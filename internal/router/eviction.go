@@ -6,10 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
+	"runtime/debug"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -34,8 +38,24 @@ var ErrModelPinned = errors.New("model is pinned; unpin before unloading")
 // a phantom eviction that never actually freed any VRAM.
 var ErrUnloadUnsupported = errors.New("unload not supported for this runtime")
 
+// maxTrackedModelsPerNode bounds the per-node last-used and last-known-size
+// bookkeeping. Model names in these maps can come straight from client
+// requests, so without a cap a client cycling through made-up names would grow
+// them without limit. The cap sits far above any real node's model count.
+const maxTrackedModelsPerNode = 1024
+
+// canonicalModelName folds the bare-name shorthand onto its ":latest" form so
+// "llama3" and "llama3:latest" share one bookkeeping entry, matching
+// ModelNamesEquivalent. Digest-pinned and already-tagged names are unchanged.
+func canonicalModelName(model string) string {
+	if model == "" || strings.Contains(model, "@") || modelNameTagged(model) {
+		return model
+	}
+	return model + ":latest"
+}
+
 // modelKey composes the lastUsed map key for a (node, model) pair.
-func modelKey(node, model string) string { return node + "\x00" + model }
+func modelKey(node, model string) string { return node + "\x00" + canonicalModelName(model) }
 
 // RecordModelUse stamps the last-request time for (node, model). Called from the
 // proxy on every routed request; this timestamp is what drives LRU eviction
@@ -48,8 +68,35 @@ func (r *Router) RecordModelUse(node, model string) {
 	if r.lastUsed == nil {
 		r.lastUsed = make(map[string]time.Time)
 	}
-	r.lastUsed[modelKey(node, model)] = time.Now()
+	key := modelKey(node, model)
+	if _, exists := r.lastUsed[key]; !exists {
+		trimLastUsedLocked(r.lastUsed, node)
+	}
+	r.lastUsed[key] = time.Now()
 	r.lruMu.Unlock()
+}
+
+// trimLastUsedLocked makes room for one new entry for node: when the node is at
+// maxTrackedModelsPerNode it drops that node's least recently used entry. Only
+// the oldest stamp of the over-full node is removed, so eviction ordering for
+// models in real use is unaffected. The caller holds lruMu.
+func trimLastUsedLocked(m map[string]time.Time, node string) {
+	prefix := node + "\x00"
+	count := 0
+	var oldestKey string
+	var oldest time.Time
+	for k, t := range m {
+		if !strings.HasPrefix(k, prefix) {
+			continue
+		}
+		count++
+		if oldestKey == "" || t.Before(oldest) {
+			oldestKey, oldest = k, t
+		}
+	}
+	if count >= maxTrackedModelsPerNode {
+		delete(m, oldestKey)
+	}
 }
 
 // lastUsedAt returns the last-request time for (node, model); the zero time
@@ -73,7 +120,25 @@ func (r *Router) recordLastKnownVRAM(node, model string, bytes int64) {
 	if r.lastKnownVRAM == nil {
 		r.lastKnownVRAM = make(map[string]int64)
 	}
-	r.lastKnownVRAM[modelKey(node, model)] = bytes
+	key := modelKey(node, model)
+	if _, exists := r.lastKnownVRAM[key]; !exists {
+		// Same per-node bound as lastUsed. These entries carry no timestamp, so
+		// the victim is arbitrary; the value is only a size hint and is
+		// re-recorded on the next poll while the model is resident.
+		prefix := node + "\x00"
+		count := 0
+		var victim string
+		for k := range r.lastKnownVRAM {
+			if strings.HasPrefix(k, prefix) {
+				count++
+				victim = k
+			}
+		}
+		if count >= maxTrackedModelsPerNode {
+			delete(r.lastKnownVRAM, victim)
+		}
+	}
+	r.lastKnownVRAM[key] = bytes
 }
 
 // lastKnownVRAMBytes returns the most recent real VRAM size observed for
@@ -276,8 +341,10 @@ func (r *Router) unloadModel(ctx context.Context, n *NodeState, model, reason st
 	if err != nil {
 		return err
 	}
+	// Drain a bounded amount of the reply so the connection can be reused.
+	io.Copy(io.Discard, io.LimitReader(resp.Body, maxUnloadReplyBytes))
 	resp.Body.Close()
-	if resp.StatusCode >= 400 {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("node %s returned %d unloading %q", n.Name, resp.StatusCode, model)
 	}
 	r.recordUnloadSideEffects(n.Name, model, reason)
@@ -408,10 +475,13 @@ func (r *Router) unloadModelViaAgent(ctx context.Context, nodeURL string, cfg Ma
 		OK    bool   `json:"ok"`
 		Error string `json:"error"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return fmt.Errorf("agent unload model: could not decode response (status %d)", resp.StatusCode)
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxUnloadReplyBytes)).Decode(&out); err != nil {
+		return fmt.Errorf("agent unload model: could not decode response (status %d): %w", resp.StatusCode, err)
 	}
-	if !out.OK {
+	// Success needs both: the agent says ok and the HTTP status agrees. An
+	// ok:true body on a non-2xx status is a proxy or misbehaving agent, not a
+	// confirmed unload.
+	if !out.OK || resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		msg := out.Error
 		if msg == "" {
 			msg = fmt.Sprintf("agent returned %d", resp.StatusCode)
@@ -420,6 +490,10 @@ func (r *Router) unloadModelViaAgent(ctx context.Context, nodeURL string, cfg Ma
 	}
 	return nil
 }
+
+// maxUnloadReplyBytes caps how much of an unload reply is read: the useful
+// content is a few bytes of JSON, and nothing here should buffer more.
+const maxUnloadReplyBytes = 1 << 20
 
 // marborAgentUnloadTimeout bounds how long the scheduled-unload path waits for
 // a Marbor agent's POST /v1/models/{name} (unload) response. Matches admin.go's
@@ -445,7 +519,9 @@ func buildAgentUnloadURL(nodeURL string, port int, scheme string, model string) 
 	if scheme == "" {
 		scheme = "http"
 	}
-	return fmt.Sprintf("%s://%s:%d/v1/models/%s", scheme, u.Hostname(), port, escapeModelPathSegments(model)), nil
+	// JoinHostPort re-brackets an IPv6 literal that Hostname() stripped.
+	hostPort := net.JoinHostPort(u.Hostname(), strconv.Itoa(port))
+	return fmt.Sprintf("%s://%s/v1/models/%s", scheme, hostPort, escapeModelPathSegments(model)), nil
 }
 
 // escapeModelPathSegments percent-escapes each "/"-delimited segment of a
@@ -546,7 +622,10 @@ func (r *Router) UnloadModels(ctx context.Context, nodeName string, models []str
 			defer wg.Done()
 			defer func() {
 				if rec := recover(); rec != nil {
-					log.Printf("[router] panic in goroutine: %v", rec)
+					log.Printf("scheduled unload of %q on %s panicked: %v\n%s", m, nodeName, rec, debug.Stack())
+					perr := fmt.Errorf("panic: %v", rec)
+					recordUnloadError(n, m, perr)
+					addFailure(m, perr.Error())
 				}
 			}()
 			if useAgent {
@@ -560,6 +639,7 @@ func (r *Router) UnloadModels(ctx context.Context, nodeName string, models []str
 				// real reachability problem.
 				if !healthy {
 					log.Printf("scheduled unload of %q on %s skipped: node is currently unreachable (down)", m, nodeName)
+					recordUnloadError(n, m, errors.New("node is currently unreachable (down)"))
 					addFailure(m, "node is currently unreachable (down)")
 					return
 				}
@@ -693,6 +773,11 @@ func (r *Router) EvictForHeadroom(ctx context.Context, nodeName, forModel string
 			if r.isPinned(nodeName, m.name) {
 				continue
 			}
+			if m.size <= 0 {
+				// Unknown resident size: unloading it would free nothing we
+				// can account for, so it can never help meet the target.
+				continue
+			}
 			if forModelRanked {
 				if rank, ok := r.warmRank(nodeName, m.name); ok && rank < forModelRank {
 					continue // higher-priority keep-warm model: protected
@@ -735,7 +820,9 @@ func (r *Router) EvictForHeadroom(ctx context.Context, nodeName, forModel string
 			log.Printf("headroom: failed to evict %q from %s: %v", victim.name, nodeName, err)
 			break
 		}
-		free += victim.size
+		// Credit what was freed with the same overhead multiplier that was
+		// charged for it above, so the running total stays consistent.
+		free += int64(float64(victim.size) * FragmentationOverheadMult)
 		loaded = append(loaded[:coldIdx], loaded[coldIdx+1:]...)
 		evicted++
 	}
@@ -777,11 +864,12 @@ func (r *Router) estimateModelSizeBytes(nodeURL, model string, allowFetch bool, 
 	var nodeName, runtime string
 	var overrideMB int64
 	for _, n := range r.nodes {
+		n.mu.RLock()
 		if n.URL != nodeURL {
+			n.mu.RUnlock()
 			continue
 		}
 		nodeName = n.Name
-		n.mu.RLock()
 		overrideMB = n.VRAMOverrides[model]
 		runtime = n.Runtime
 		n.mu.RUnlock()
@@ -798,7 +886,7 @@ func (r *Router) estimateModelSizeBytes(nodeURL, model string, allowFetch bool, 
 	if allowFetch {
 		if tags, err := r.FetchModelTags(nodeURL); err == nil {
 			for _, t := range tags {
-				if t.Name == model {
+				if ModelNamesEquivalent(t.Name, model) {
 					arch, hasArch := r.modelArchFactsFor(model)
 					var archPtr *ModelArchFacts
 					if hasArch {
@@ -992,13 +1080,19 @@ func (r *Router) ModelDownloadedAnyNode(model string) bool {
 	for _, n := range nodes {
 		n.mu.RLock()
 		nodeURL := n.URL
+		healthy := n.Healthy
 		n.mu.RUnlock()
+		if !healthy {
+			// A down node cannot serve the substitute, and querying it would
+			// only add a timeout to the request path.
+			continue
+		}
 		tags, err := r.FetchModelTags(nodeURL)
 		if err != nil {
 			continue
 		}
 		for _, t := range tags {
-			if t.Name == model {
+			if ModelNamesEquivalent(t.Name, model) {
 				return true
 			}
 		}
@@ -1150,21 +1244,32 @@ func (r *Router) ensureHeadroom(ctx context.Context, n *NodeState, model string)
 	if r.lastEvictAt == nil {
 		r.lastEvictAt = make(map[string]time.Time)
 	}
-	if last, ok := r.lastEvictAt[nodeName]; ok && time.Since(last) < evictCooldown {
+	prevEvict, hadPrevEvict := r.lastEvictAt[nodeName]
+	if hadPrevEvict && time.Since(prevEvict) < evictCooldown {
 		r.evictMu.Unlock()
 		return
 	}
+	// Claim the cooldown in the same critical section as the check. Checking
+	// first and stamping after the eviction let two concurrent warmups both
+	// pass the check and each evict, doubling the eviction the guard exists
+	// to prevent.
+	claimedAt := time.Now()
+	r.lastEvictAt[nodeName] = claimedAt
 	r.evictMu.Unlock()
 
-	// Only stamp lastEvictAt (starting the cooldown) once EvictForHeadroom
-	// actually evicted something - stamping it unconditionally before
-	// the call burns the cooldown even when zero models were evicted (all
-	// pinned/higher-priority/in-flight, or an unload error), blocking further
+	// A pass that evicted nothing (all pinned/higher-priority/in-flight, or an
+	// unload error) must not burn the cooldown, which would block further
 	// auto-eviction attempts on this node for the full window while pressure
-	// persists.
-	if evicted := r.EvictForHeadroom(ctx, nodeName, model, est+reservedByOthers); evicted > 0 {
+	// persists - so give the claim back.
+	if evicted := r.EvictForHeadroom(ctx, nodeName, model, est+reservedByOthers); evicted == 0 {
 		r.evictMu.Lock()
-		r.lastEvictAt[nodeName] = time.Now()
+		if cur, ok := r.lastEvictAt[nodeName]; ok && cur.Equal(claimedAt) {
+			if hadPrevEvict {
+				r.lastEvictAt[nodeName] = prevEvict
+			} else {
+				delete(r.lastEvictAt, nodeName)
+			}
+		}
 		r.evictMu.Unlock()
 	}
 }
