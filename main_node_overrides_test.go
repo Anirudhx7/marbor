@@ -192,7 +192,9 @@ func projectNode(t *testing.T, r *router.Router, name string) nodeProj {
 		if n.ReplicaPeers != nil {
 			p.HasReplicaPeers = true
 			p.ReplicaPeers = *n.ReplicaPeers
-			p.ReplicaPeers.Members = append([]string(nil), n.ReplicaPeers.Members...)
+			if n.ReplicaPeers.Members != nil {
+				p.ReplicaPeers.Members = append([]string{}, n.ReplicaPeers.Members...)
+			}
 		}
 		return p
 	}
@@ -222,10 +224,10 @@ func persistAndReload(t *testing.T, name string, ov store.NodeOverride) map[stri
 		ov.TLSFingerprint, ov.ParallelismType, ov.ParallelismWidth, ov.VRAMOverrides, ov.ReplicaPeers); err != nil {
 		t.Fatalf("UpsertNodeOverride: %v", err)
 	}
-	firstClosed = true
 	if err := st.Close(); err != nil {
 		t.Fatalf("first store Close: %v", err)
 	}
+	firstClosed = true
 	st2, err := store.Open(path)
 	if err != nil {
 		t.Fatalf("store.Open (reopen): %v", err)
@@ -317,8 +319,19 @@ func TestBootReloadEdgeCases(t *testing.T) {
 		if !r.PatchNode("node-a", router.NodePatch{GPUIndices: &seeded}) {
 			t.Fatal("PatchNode: node-a not found")
 		}
-		if got := projectNode(t, r, "node-a"); len(got.DeclaredGPUIndices) == 0 || got.VRAMOverrides != nil {
-			t.Fatalf("baseline must have GPU indices and nil VRAMOverrides, got %+v", got)
+		seededPeers := &store.ReplicaPeers{Members: []string{"node-a", "node-b"}, Head: "node-a"}
+		if !r.PatchNode("node-a", router.NodePatch{ReplicaPeers: seededPeers}) {
+			t.Fatal("PatchNode: node-a not found")
+		}
+		got := projectNode(t, r, "node-a")
+		if len(got.DeclaredGPUIndices) == 0 {
+			t.Fatalf("baseline must have GPU indices, got %+v", got)
+		}
+		if got.VRAMOverrides != nil {
+			t.Fatalf("baseline must have nil VRAMOverrides, got %#v", got.VRAMOverrides)
+		}
+		if !got.HasReplicaPeers || len(got.ReplicaPeers.Members) == 0 {
+			t.Fatalf("baseline must have replica peers, got %+v", got.ReplicaPeers)
 		}
 		noIndices, noModels := []int{}, map[string]int64{}
 		applyNodeOverrides(r, persistAndReload(t, "node-a", store.NodeOverride{
@@ -326,7 +339,7 @@ func TestBootReloadEdgeCases(t *testing.T) {
 			VRAMOverrides: &noModels,
 			ReplicaPeers:  &store.ReplicaPeers{},
 		}))
-		got := projectNode(t, r, "node-a")
+		got = projectNode(t, r, "node-a")
 		if len(got.DeclaredGPUIndices) != 0 {
 			t.Errorf("DeclaredGPUIndices = %v, want empty", got.DeclaredGPUIndices)
 		}
@@ -349,6 +362,9 @@ func TestBootReloadEdgeCases(t *testing.T) {
 				}
 				if !r.PatchNode("node-a", router.NodePatch{Runtime: &other}) {
 					t.Fatal("PatchNode: node-a not found")
+				}
+				if got := projectNode(t, r, "node-a").Runtime; got != other {
+					t.Fatalf("baseline Runtime = %q, want %q", got, other)
 				}
 				applyNodeOverrides(r, persistAndReload(t, "node-a", store.NodeOverride{Runtime: &rt}))
 				if got := projectNode(t, r, "node-a").Runtime; got != rt {
