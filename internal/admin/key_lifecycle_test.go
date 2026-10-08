@@ -8,7 +8,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/Anirudhx7/marbor/internal/auth"
+	"github.com/Anirudhx7/marbor/internal/config"
+	"github.com/Anirudhx7/marbor/internal/router"
 )
 
 // TestHandleAddKey_RejectsDuplicateName is the regression test for 571c9b2.
@@ -92,5 +97,44 @@ func TestHandleRotateKey_IssuesNewTokenPreservingPolicy(t *testing.T) {
 	}
 	if len(keys) != 1 || keys[0].Key != rotated.Key {
 		t.Fatalf("stored keys after rotate = %+v, want single key matching rotated token %q", keys, rotated.Key)
+	}
+}
+
+func TestAdmin_PatchKeyRejectsNegativeLimits(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{}, nil)
+	a := auth.NewMiddleware(config.AuthConfig{})
+	s := NewServer(r, a, config.Config{})
+	a.AddKey(config.KeyConfig{Name: "k1", Key: "sk-1", RateLimit: 1000, DailyLimit: 10})
+
+	for _, body := range []string{
+		`{"rate_limit":-1}`, `{"daily_limit":-1}`, `{"monthly_limit":-5}`,
+		`{"daily_usd_cap":-0.5}`, `{"monthly_usd_cap":-2}`,
+	} {
+		req := httptest.NewRequest(http.MethodPatch, "/admin/keys/k1", strings.NewReader(body))
+		req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("PATCH %s: status = %d, want 400", body, rec.Code)
+		}
+	}
+	if _, _, _, _, _, rl, _, _ := a.KeyStats("k1"); rl != 1000 {
+		t.Errorf("rate limit changed to %d by a rejected patch", rl)
+	}
+
+	// Zero (unlimited) and positive values are still accepted.
+	for _, body := range []string{
+		`{"rate_limit":0,"daily_limit":0,"monthly_limit":0,"daily_usd_cap":0,"monthly_usd_cap":0}`,
+		`{"rate_limit":500,"daily_limit":20,"monthly_limit":200,"daily_usd_cap":1.5,"monthly_usd_cap":30}`,
+	} {
+		req := httptest.NewRequest(http.MethodPatch, "/admin/keys/k1", strings.NewReader(body))
+		req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Errorf("PATCH %s: status = %d, want 200, body: %s", body, rec.Code, rec.Body.String())
+		}
 	}
 }

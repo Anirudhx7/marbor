@@ -2086,19 +2086,7 @@ func (s *Server) ReloadFromStore() (nodesAdded, nodesRemoved, authKeys, cloudPro
 		if k.Revoked {
 			continue
 		}
-		keys = append(keys, config.KeyConfig{
-			Name:                  k.Name,
-			Key:                   k.Key,
-			RateLimit:             k.RateLimit,
-			DailyLimit:            k.DailyLimit,
-			MonthlyLimit:          k.MonthlyLimit,
-			DailyUsdCap:           k.DailyUsdCap,
-			MonthlyUsdCap:         k.MonthlyUsdCap,
-			Models:                k.Models,
-			ExpiresAt:             k.ExpiresAt,
-			LocalOnly:             k.LocalOnly,
-			AllowLocalDegradation: k.AllowLocalDegradation,
-		})
+		keys = append(keys, auth.KeyConfigFromRecord(k))
 	}
 
 	providers, cErr := s.st.AllCloudProviders()
@@ -5762,6 +5750,14 @@ func (s *Server) handlePatchKey(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		http.Error(w, `{"error":"invalid JSON"}`, http.StatusBadRequest)
+		return
+	}
+	if (patch.RateLimit != nil && *patch.RateLimit < 0) ||
+		(patch.DailyLimit != nil && *patch.DailyLimit < 0) ||
+		(patch.MonthlyLimit != nil && *patch.MonthlyLimit < 0) ||
+		(patch.DailyUsdCap != nil && *patch.DailyUsdCap < 0) ||
+		(patch.MonthlyUsdCap != nil && *patch.MonthlyUsdCap < 0) {
+		writeJSONError(w, http.StatusBadRequest, "rate_limit, daily_limit, monthly_limit, daily_usd_cap, monthly_usd_cap must be >= 0")
 		return
 	}
 	if patch.ExpiresAt != nil {
