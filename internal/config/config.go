@@ -45,49 +45,106 @@ func ValidateNodeURL(raw string) error {
 	if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return fmt.Errorf("URL must be http(s) with a host: %s", raw)
 	}
-	ip := net.ParseIP(u.Hostname())
-	if ip == nil {
-		// Not a literal dotted-decimal/IPv6 string, but OS resolvers (Windows
-		// getaddrinfo, macOS, cgo) still resolve a bare integer or 0x-prefixed
-		// hex hostname (e.g. "2852039166" for 169.254.169.254) to a real
-		// address - decode it the same way before concluding this isn't a
-		// literal IP at all.
-		ip = parseNumericIP(u.Hostname())
-	}
-	if ip != nil {
-		if ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
-			return fmt.Errorf("URL host %q is a link-local/metadata address, which is not allowed", u.Hostname())
-		}
+	host := u.Hostname()
+	if isLinkLocalHost(host) {
+		return fmt.Errorf("URL host %q is a link-local/metadata address, which is not allowed", host)
 	}
 	return nil
 }
 
-// parseNumericIP decodes an all-digit decimal or 0x-prefixed hex hostname
-// (e.g. "2852039166" or "0xA9FEA9FE", both meaning 169.254.169.254) into a
-// 4-byte IPv4 address, or returns nil if host isn't purely numeric/hex.
-func parseNumericIP(host string) net.IP {
-	if host == "" {
+// Bases for a dotted part that has a leading zero and no 0x prefix.
+const (
+	octalBase   = 8  // inet_aton reading: "010" is 8, "09" is invalid
+	decimalBase = 10 // operator reading: "010" is 10, "0169" is 169
+)
+
+// isLinkLocalIP reports whether ip is a link-local unicast or multicast address.
+func isLinkLocalIP(ip net.IP) bool {
+	return ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast()
+}
+
+// isLinkLocalHost reports whether host is a link-local literal address in any
+// form a C resolver would turn into one. Besides standard IPv4/IPv6 text this
+// covers the legacy IPv4 spellings that some C resolvers (notably glibc)
+// accept: one to four dot-separated decimal, 0x hex or leading-zero parts (for
+// example "2852039166" or "0xA9.0xFE.0xA9.0xFE") where the last part fills the
+// remaining bytes, and one trailing dot. See parseLegacyIPv4 for the grammar.
+func isLinkLocalHost(host string) bool {
+	if ip := net.ParseIP(host); ip != nil {
+		return isLinkLocalIP(ip)
+	}
+	// A part with a leading zero and only decimal digits is ambiguous: C
+	// resolvers read it as octal, but an operator (and an earlier version of
+	// this check) may read it as decimal. Refuse the host if either reading is
+	// link-local. For a dotless all-digit host such as "025177524776" the
+	// decimal reading overflows 32 bits and only the octal reading flags it, so
+	// this must not be reduced to a single reading.
+	if ip := parseLegacyIPv4(host, octalBase); ip != nil && isLinkLocalIP(ip) {
+		return true
+	}
+	if ip := parseLegacyIPv4(host, decimalBase); ip != nil && isLinkLocalIP(ip) {
+		return true
+	}
+	return false
+}
+
+// parseLegacyIPv4 decodes a hostname written in the inet_aton grammar into an
+// IPv4 address (To4 is non-nil), or returns nil if host is not such a literal.
+// One to four dot-separated parts are accepted, each decimal, 0x-prefixed hex
+// or leading-zero in leadingZeroBase (octalBase follows inet_aton); every part
+// but the last must be at most 255 and the last part fills the remaining bytes
+// (so "169.254.43518" is 169.254.169.254). At most one trailing dot is allowed,
+// as in a fully qualified name.
+func parseLegacyIPv4(host string, leadingZeroBase int) net.IP {
+	host = strings.TrimSuffix(host, ".")
+	parts := strings.Split(host, ".")
+	if len(parts) > 4 {
 		return nil
 	}
-	for _, c := range host {
-		if !(c >= '0' && c <= '9') && !(c >= 'a' && c <= 'f') && !(c >= 'A' && c <= 'F') && c != 'x' && c != 'X' {
+	var addr uint64
+	for i, part := range parts {
+		// An empty host or an empty part makes ParseUint("") fail, so it returns nil here.
+		n, ok := parseLegacyIPv4Part(part, leadingZeroBase)
+		if !ok {
 			return nil
 		}
+		if i < len(parts)-1 {
+			if n > 255 {
+				return nil
+			}
+			addr |= n << (24 - 8*uint(i))
+			continue
+		}
+		if n >= 1<<(8*uint(5-len(parts))) {
+			return nil
+		}
+		addr |= n
 	}
-	// Parse explicitly as base 16 (0x-prefixed, stripped since ParseUint's
-	// explicit-base form doesn't strip it itself) or base 10 (plain digits) -
-	// never base 0, which would silently reinterpret a leading-zero all-digit
-	// string (e.g. "0250000000") as octal instead of the decimal value an
-	// operator or attacker actually intended.
-	digits, base := host, 10
-	if len(host) > 1 && host[0] == '0' && (host[1] == 'x' || host[1] == 'X') {
-		digits, base = host[2:], 16
+	return net.IPv4(byte(addr>>24), byte(addr>>16), byte(addr>>8), byte(addr))
+}
+
+// parseLegacyIPv4Part parses one dot-separated part: "0x"/"0X" is base 16, a
+// leading zero with more digits is leadingZeroBase, anything else is base 10. A
+// bare "0x" with no digits is read as 0 so that a resolver that accepts it
+// cannot reach a link-local address; it fails closed and "169.254.0x" is
+// refused. strconv with an explicit base rejects signs,
+// underscores and empty strings, so only digits of the chosen base get through.
+func parseLegacyIPv4Part(part string, leadingZeroBase int) (uint64, bool) {
+	digits, base := part, decimalBase
+	switch {
+	case len(part) >= 2 && part[0] == '0' && (part[1] == 'x' || part[1] == 'X'):
+		if len(part) == 2 {
+			return 0, true
+		}
+		digits, base = part[2:], 16
+	case len(part) > 1 && part[0] == '0':
+		base = leadingZeroBase
 	}
 	n, err := strconv.ParseUint(digits, base, 32)
 	if err != nil {
-		return nil
+		return 0, false
 	}
-	return net.IPv4(byte(n>>24), byte(n>>16), byte(n>>8), byte(n))
+	return n, true
 }
 
 // NormalizeNodeURL returns a canonical form of a node backend URL suitable for
