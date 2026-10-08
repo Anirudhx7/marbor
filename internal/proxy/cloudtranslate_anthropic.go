@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 )
@@ -58,7 +59,7 @@ func (t *anthropicTransport) RoundTrip(req *http.Request) (*http.Response, error
 	// Ollama clients default to streaming when "stream" is absent; OpenAI
 	// clients default to non-streaming. The Director has already rewritten
 	// the path, so translatingTransport marks Ollama-origin requests.
-	_, ollamaOrigin := req.Context().Value(ollamaOriginKey{}).(bool)
+	ollamaOrigin := req.Context().Value(ollamaOriginKey{}) != nil
 	wantsStream := ollamaOrigin
 	var sp struct {
 		Stream *bool `json:"stream"`
@@ -93,6 +94,9 @@ func (t *anthropicTransport) RoundTrip(req *http.Request) (*http.Response, error
 		resp.Body = translateAnthropicSSEToOpenAI(resp.Body)
 		resp.Header.Set("Content-Type", "text/event-stream")
 	} else {
+		if !capCloudResponse(resp, ollamaOrigin) {
+			return resp, nil
+		}
 		resp.Body = translateAnthropicJSONToOpenAI(resp.Body)
 		resp.Header.Set("Content-Type", "application/json")
 	}
@@ -179,21 +183,30 @@ func clampAnthropicTemperature(t *float64) *float64 {
 	if v < 0 {
 		v = 0
 	}
+	if v != *t {
+		log.Printf("anthropic: temperature %v is outside 0..1, clamped to %v", *t, v)
+	}
 	return &v
 }
 
 // openAIFinishReason maps an Anthropic stop_reason to the OpenAI
-// finish_reason vocabulary. Unknown values pass through unchanged.
+// finish_reason vocabulary. An empty reason stays empty and an unknown one
+// becomes "stop". tool_use -> tool_calls is unreachable until tool
+// translation exists; it is mapped so the vocabulary is already correct then.
 func openAIFinishReason(stop string) string {
 	switch stop {
+	case "":
+		return ""
 	case "end_turn", "stop_sequence":
 		return "stop"
 	case "max_tokens":
 		return "length"
 	case "tool_use":
 		return "tool_calls"
+	case "refusal":
+		return "content_filter"
 	default:
-		return stop
+		return "stop"
 	}
 }
 
@@ -235,7 +248,9 @@ func translateOpenAIRequestToAnthropic(body []byte, wantsStream bool) ([]byte, e
 		var system []string
 		for _, m := range in.Messages {
 			if m.Role == "system" || m.Role == "developer" {
-				system = append(system, m.Content)
+				if m.Content != "" {
+					system = append(system, m.Content)
+				}
 				continue
 			}
 			out.Messages = append(out.Messages, anthropicMessage{Role: m.Role, Content: m.Content})
@@ -305,9 +320,9 @@ type openAIChatResponse struct {
 // Unparseable bodies pass through raw so nothing is silently lost.
 func translateAnthropicJSONToOpenAI(src io.ReadCloser) io.ReadCloser {
 	defer src.Close()
-	raw, err := readCappedBody(src)
+	raw, err := io.ReadAll(src)
 	if err != nil {
-		return cloudReadErrorBody(err)
+		return io.NopCloser(strings.NewReader(`{"error":"failed to read cloud response"}` + "\n"))
 	}
 
 	// Anthropic error responses are a distinct envelope shape
@@ -417,6 +432,20 @@ func translateAnthropicSSEToOpenAI(src io.ReadCloser) io.ReadCloser {
 			return err
 		}
 
+		// closeWithErrorChunk emits an OpenAI-style error chunk, then ends the
+		// stream with err so the failure is never mistaken for a clean finish.
+		closeWithErrorChunk := func(errType, errMsg string, err error) {
+			type errBody struct {
+				Type    string `json:"type"`
+				Message string `json:"message"`
+			}
+			b, _ := json.Marshal(struct {
+				Error errBody `json:"error"`
+			}{Error: errBody{Type: errType, Message: errMsg}})
+			pw.Write([]byte("data: " + string(b) + "\n\n")) //nolint:errcheck -- CloseWithError below reports it
+			pw.CloseWithError(err)
+		}
+
 		for scanner.Scan() {
 			payload, ok := sseData(scanner.Text())
 			if !ok {
@@ -456,20 +485,16 @@ func translateAnthropicSSEToOpenAI(src io.ReadCloser) io.ReadCloser {
 						errMsg = evt.Error.Message
 					}
 				}
-				type errBody struct {
-					Type    string `json:"type"`
-					Message string `json:"message"`
-				}
-				b, _ := json.Marshal(struct {
-					Error errBody `json:"error"`
-				}{Error: errBody{Type: errType, Message: errMsg}})
-				pw.Write([]byte("data: " + string(b) + "\n\n")) //nolint:errcheck -- CloseWithError below reports it
-				pw.CloseWithError(fmt.Errorf("anthropic stream error: %s: %s", errType, errMsg))
+				closeWithErrorChunk(errType, errMsg, fmt.Errorf("anthropic stream error: %s: %s", errType, errMsg))
 				return
 			case "message_stop":
 				if stopReason != "" {
-					fin := `{"choices":[{"delta":{},"finish_reason":"` + openAIFinishReason(stopReason) + `"}]}`
-					if _, err := pw.Write([]byte("data: " + fin + "\n\n")); err != nil {
+					fin, _ := json.Marshal(map[string]any{"choices": []map[string]any{{
+						"index":         0,
+						"delta":         map[string]any{},
+						"finish_reason": openAIFinishReason(stopReason),
+					}}})
+					if _, err := pw.Write([]byte("data: " + string(fin) + "\n\n")); err != nil {
 						return
 					}
 				}
@@ -498,7 +523,7 @@ func translateAnthropicSSEToOpenAI(src io.ReadCloser) io.ReadCloser {
 		if err == nil {
 			err = io.ErrUnexpectedEOF
 		}
-		pw.CloseWithError(err)
+		closeWithErrorChunk("api_error", "upstream stream ended unexpectedly", err)
 	}()
 
 	return pr
