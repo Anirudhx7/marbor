@@ -269,13 +269,53 @@ func TestTransportResponseHeaderTimeout(t *testing.T) {
 		t.Errorf("UpstreamTimeout() = %v, want %v", got, wantTimeout)
 	}
 
-	// Verify the transport built from this value has the correct timeout.
-	transport := &http.Transport{
-		ResponseHeaderTimeout: r.UpstreamTimeout(),
+	// The handler's real local transport must carry that timeout.
+	h := NewHandler(r, admin.NewServer(r, nil, config.Config{}), nil)
+	if rt := h.localRoundTripper(); rt.ResponseHeaderTimeout != wantTimeout {
+		t.Errorf("localRoundTripper().ResponseHeaderTimeout = %v, want %v",
+			rt.ResponseHeaderTimeout, wantTimeout)
 	}
-	if transport.ResponseHeaderTimeout != wantTimeout {
-		t.Errorf("Transport.ResponseHeaderTimeout = %v, want %v",
-			transport.ResponseHeaderTimeout, wantTimeout)
+}
+
+// TestUpstreamHeaderTimeoutReturnsGatewayError drives a real request through
+// the handler to an upstream that accepts the connection but never answers.
+// With a small UpstreamTimeout the client must get a 5xx quickly instead of
+// hanging.
+func TestUpstreamHeaderTimeoutReturnsGatewayError(t *testing.T) {
+	release := make(chan struct{})
+	hang := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		select {
+		case <-release:
+		case <-req.Context().Done():
+		}
+	}))
+	defer hang.Close()
+	defer close(release)
+
+	r := router.New(
+		config.RoutingConfig{
+			Strategy:          "warm-first",
+			PollIntervalMs:    2000,
+			UpstreamTimeoutMs: 200,
+			MaxRetries:        0,
+		},
+		[]config.NodeConfig{{Name: "hang", URL: hang.URL, Runtime: "ollama"}},
+		nil,
+	)
+	seedNode(r.Nodes()[0], "llama3")
+	h := NewHandler(r, admin.NewServer(r, nil, config.Config{}), nil)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/generate", bytes.NewReader([]byte(`{"model":"llama3","prompt":"hi","stream":false}`)))
+	start := time.Now()
+	h.ServeHTTP(rec, req)
+	elapsed := time.Since(start)
+
+	if elapsed > 3*time.Second {
+		t.Errorf("request took %v, want it to give up near the 200ms upstream timeout", elapsed)
+	}
+	if rec.Code < 500 {
+		t.Errorf("status = %d, want a 5xx gateway error for a hung upstream", rec.Code)
 	}
 }
 

@@ -267,10 +267,7 @@ func TestAbortedStreamStillRecorded(t *testing.T) {
 		t.Errorf("request log model = %q, want llama3", entries[0].Model)
 	}
 
-	audits, err := al.Query(audit.QueryOptions{})
-	if err != nil {
-		t.Fatalf("audit query: %v", err)
-	}
+	audits := waitForAuditEntries(t, al, 1)
 	if len(audits) != 1 {
 		t.Fatalf("got %d audit entries, want 1 (aborted request must still be audited)", len(audits))
 	}

@@ -22,6 +22,33 @@ func setIfAbsent(m map[string]json.RawMessage, key string, val interface{}) {
 	m[key] = raw
 }
 
+// prependSystemMessage returns the chat messages array with a leading system
+// message added, unless the client already supplied a system message (the
+// client's own always wins) or the value is not a messages array.
+func prependSystemMessage(raw json.RawMessage, system string) json.RawMessage {
+	var msgs []json.RawMessage
+	if err := json.Unmarshal(raw, &msgs); err != nil {
+		return raw
+	}
+	for _, m := range msgs {
+		var probe struct {
+			Role string `json:"role"`
+		}
+		if json.Unmarshal(m, &probe) == nil && probe.Role == "system" {
+			return raw
+		}
+	}
+	sysMsg, err := json.Marshal(map[string]string{"role": "system", "content": system})
+	if err != nil {
+		return raw
+	}
+	out, err := json.Marshal(append([]json.RawMessage{sysMsg}, msgs...))
+	if err != nil {
+		return raw
+	}
+	return out
+}
+
 // injectModelDefaults applies a model's configured default parameters to an
 // outgoing request body, filling only fields the client did not already
 // specify (never overwrites a client-supplied value). runtime selects which
@@ -58,8 +85,13 @@ func injectModelDefaults(body []byte, runtime string, cfg store.ModelConfig) []b
 
 	if runtime == "" || runtime == "ollama" {
 		var opts map[string]json.RawMessage
+		optsInvalid := false
 		if raw, ok := top["options"]; ok {
-			_ = json.Unmarshal(raw, &opts)
+			if err := json.Unmarshal(raw, &opts); err != nil || opts == nil {
+				// Present but not an object (string, array, null): leave the
+				// client's value alone rather than replacing it.
+				optsInvalid = true
+			}
 		}
 		if opts == nil {
 			opts = map[string]json.RawMessage{}
@@ -140,14 +172,20 @@ func injectModelDefaults(body []byte, runtime string, cfg store.ModelConfig) []b
 		}
 		// logit_bias / response_format have no Ollama-native "options" equivalent.
 
-		if len(opts) > 0 {
+		if len(opts) > 0 && !optsInvalid {
 			if raw, err := json.Marshal(opts); err == nil {
 				top["options"] = raw
 			}
 		}
 
 		if cfg.System != nil {
-			setIfAbsent(top, "system", *cfg.System)
+			if rawMsgs, isChat := top["messages"]; isChat {
+				// /api/chat ignores a top-level system field; the profile's
+				// system prompt must be a leading system message instead.
+				top["messages"] = prependSystemMessage(rawMsgs, *cfg.System)
+			} else {
+				setIfAbsent(top, "system", *cfg.System)
+			}
 		}
 		if cfg.Template != nil {
 			setIfAbsent(top, "template", *cfg.Template)

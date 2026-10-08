@@ -142,8 +142,8 @@ func TestTranslateAnthropicJSONToOpenAI(t *testing.T) {
 	if len(got.Choices) != 1 || got.Choices[0].Message.Content != "hello there" {
 		t.Errorf("Choices = %+v, want single choice with content 'hello there'", got.Choices)
 	}
-	if got.Choices[0].FinishReason != "end_turn" {
-		t.Errorf("FinishReason = %q, want end_turn", got.Choices[0].FinishReason)
+	if got.Choices[0].FinishReason != "stop" {
+		t.Errorf("FinishReason = %q, want stop (mapped from end_turn)", got.Choices[0].FinishReason)
 	}
 	if got.Usage.PromptTokens != 11 || got.Usage.CompletionTokens != 22 || got.Usage.TotalTokens != 33 {
 		t.Errorf("Usage = %+v, want prompt=11 completion=22 total=33", got.Usage)

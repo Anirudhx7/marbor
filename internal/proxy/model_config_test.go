@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bytes"
 	"encoding/json"
 	"testing"
 
@@ -417,5 +418,53 @@ func TestInjectModelDefaultsMlxOmitsUnsupportedFields(t *testing.T) {
 	}
 	if _, ok := m["logit_bias"]; !ok {
 		t.Errorf("logit_bias should be injected for mlx: %v", m)
+	}
+}
+
+func TestInjectModelDefaults_NonObjectOptionsNotReplaced(t *testing.T) {
+	temp := 0.5
+	out := injectModelDefaults([]byte(`{"model":"m","options":"bogus"}`), "ollama", store.ModelConfig{Temperature: &temp})
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(out, &top); err != nil {
+		t.Fatal(err)
+	}
+	if string(top["options"]) != `"bogus"` {
+		t.Errorf("non-object options was replaced: %s", out)
+	}
+}
+
+func TestInjectModelDefaults_ChatSystemBecomesMessage(t *testing.T) {
+	sys := "be terse"
+	cfg := store.ModelConfig{System: &sys}
+
+	out := injectModelDefaults([]byte(`{"model":"m","messages":[{"role":"user","content":"hi"}]}`), "ollama", cfg)
+	var got struct {
+		System   *string `json:"system"`
+		Messages []struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.System != nil {
+		t.Errorf("top-level system is ignored by /api/chat and must not be injected: %s", out)
+	}
+	if len(got.Messages) != 2 || got.Messages[0].Role != "system" || got.Messages[0].Content != sys {
+		t.Errorf("want system message prepended, got %s", out)
+	}
+
+	// Client already supplied a system message: leave untouched.
+	in := `{"model":"m","messages":[{"role":"system","content":"mine"},{"role":"user","content":"hi"}]}`
+	out = injectModelDefaults([]byte(in), "ollama", cfg)
+	if bytes.Contains(out, []byte(sys)) {
+		t.Errorf("client system message must win: %s", out)
+	}
+
+	// /api/generate keeps the top-level field.
+	out = injectModelDefaults([]byte(`{"model":"m","prompt":"hi"}`), "ollama", cfg)
+	if !bytes.Contains(out, []byte(`"system":"be terse"`)) {
+		t.Errorf("generate body should get top-level system: %s", out)
 	}
 }
