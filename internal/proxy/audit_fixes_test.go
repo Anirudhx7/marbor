@@ -55,8 +55,9 @@ func newTightVRAMRouter(upstreamURL string, clouds []config.CloudProvider) *rout
 func captureLog(t *testing.T) *bytes.Buffer {
 	t.Helper()
 	var buf bytes.Buffer
+	prev := log.Writer()
 	log.SetOutput(&buf)
-	t.Cleanup(func() { log.SetOutput(io.Discard) })
+	t.Cleanup(func() { log.SetOutput(prev) })
 	return &buf
 }
 
@@ -246,7 +247,8 @@ func TestClientDisconnectMidStreamDoesNotMarkNodeFailed(t *testing.T) {
 	for _, n := range r.Nodes() {
 		seedNode(n, "m")
 	}
-	h := NewHandler(r, admin.NewServer(r, nil, config.Config{}), nil)
+	a := admin.NewServer(r, nil, config.Config{})
+	h := NewHandler(r, a, nil)
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 
@@ -268,15 +270,14 @@ func TestClientDisconnectMidStreamDoesNotMarkNodeFailed(t *testing.T) {
 	n := r.Nodes()[0]
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
-		n.RLock()
-		conns := n.ActiveConns
-		n.RUnlock()
-		if conns == 0 {
+		if atomic.LoadInt32(&n.ActiveConns) == 0 {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	time.Sleep(150 * time.Millisecond)
+	// The request log entry is written after the outcome is recorded, so its
+	// presence proves the handler finished recording.
+	waitForLiveEntries(t, a, 1)
 	n.RLock()
 	defer n.RUnlock()
 	if !n.LastErrorAt.IsZero() {
@@ -352,8 +353,10 @@ func TestRetryNodeEnforcesItsOwnRateLimit(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest("POST", "/api/generate", strings.NewReader(`{"model":"m","prompt":"x"}`)))
-	if rec.Code != http.StatusTooManyRequests {
-		t.Errorf("status = %d, want 429 from the retry node's rpm cap", rec.Code)
+	// A failover node whose cap is spent is skipped, so the client sees the
+	// original upstream failure rather than a 429 about a node it never chose.
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502 (retry node skipped for its rpm cap)", rec.Code)
 	}
 	if atomic.LoadInt32(&hits) != 0 {
 		t.Errorf("retry node was contacted despite its rate cap")
@@ -529,6 +532,9 @@ func TestLocalTransportHasDialTimeoutAndIdleLimits(t *testing.T) {
 	if tr.DialContext == nil {
 		t.Fatal("local transport has no DialContext (no connect timeout)")
 	}
+	if tr.TLSHandshakeTimeout <= 0 {
+		t.Error("local transport has no TLS handshake timeout")
+	}
 	if tr.IdleConnTimeout <= 0 {
 		t.Error("local transport has no idle connection timeout")
 	}
@@ -536,7 +542,10 @@ func TestLocalTransportHasDialTimeoutAndIdleLimits(t *testing.T) {
 		t.Errorf("MaxIdleConnsPerHost = %d, want a pool of at least 8", tr.MaxIdleConnsPerHost)
 	}
 	// A refused dial must fail promptly through the configured dialer.
-	l, _ := net.Listen("tcp", "127.0.0.1:0")
+	l, lerr := net.Listen("tcp", "127.0.0.1:0")
+	if lerr != nil {
+		t.Fatalf("listen: %v", lerr)
+	}
 	addr := l.Addr().String()
 	l.Close()
 	if _, err := tr.DialContext(context.Background(), "tcp", addr); err == nil {
@@ -669,10 +678,51 @@ func TestPanicDuringProxyDoesNotLeakConnectionCounters(t *testing.T) {
 		h.ServeHTTP(panicWriter{httptest.NewRecorder()}, httptest.NewRequest("POST", "/api/generate", strings.NewReader(`{"model":"m","prompt":"x"}`)))
 	}()
 
-	n := r.Nodes()[0]
-	n.RLock()
-	defer n.RUnlock()
-	if n.ActiveConns != 0 {
-		t.Errorf("ActiveConns = %d after a panic, want 0", n.ActiveConns)
+	if got := atomic.LoadInt32(&r.Nodes()[0].ActiveConns); got != 0 {
+		t.Errorf("ActiveConns = %d after a panic, want 0", got)
 	}
+}
+
+func liveEntries(t *testing.T, a *admin.Server) []struct {
+	Status     string `json:"status"`
+	HTTPStatus int    `json:"httpStatus"`
+	Tokens     int64  `json:"tokens"`
+	Latency    int    `json:"latency"`
+} {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/admin/requests/live", nil)
+	req.AddCookie(&http.Cookie{Name: "marbor_session", Value: a.AdminToken()})
+	rec := httptest.NewRecorder()
+	a.Handler().ServeHTTP(rec, req)
+	var entries []struct {
+		Status     string `json:"status"`
+		HTTPStatus int    `json:"httpStatus"`
+		Tokens     int64  `json:"tokens"`
+		Latency    int    `json:"latency"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&entries); err != nil {
+		t.Fatalf("decode live requests: %v", err)
+	}
+	return entries
+}
+
+// waitForLiveEntries polls until the request log holds at least want entries.
+func waitForLiveEntries(t *testing.T, a *admin.Server, want int) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if len(liveEntries(t, a)) >= want {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("request log never reached %d entries", want)
+}
+
+func activeConns(r *router.Router) int32 {
+	var total int32
+	for _, n := range r.Nodes() {
+		total += atomic.LoadInt32(&n.ActiveConns)
+	}
+	return total
 }
