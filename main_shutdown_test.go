@@ -1,9 +1,11 @@
 package main
 
 // Proves via the real main() and SIGTERM that the audit logger closes only
-// after the HTTP servers drain. The test binary re-execs itself (see TestMain).
+// after the HTTP servers drain. TestMain re-execs the test binary as the server
+// because main() installs signal handlers and exits the process, so it cannot run in-process.
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -99,7 +101,7 @@ func freePorts(t *testing.T, n int) []int {
 		if err != nil {
 			t.Fatalf("reserve port: %v", err)
 		}
-		defer l.Close()
+		defer l.Close() // deliberate: hold every port until all are reserved so they stay distinct
 		ports = append(ports, l.Addr().(*net.TCPAddr).Port)
 	}
 	return ports
@@ -224,13 +226,13 @@ func (s *shutdownServer) waitListening(t *testing.T) bool {
 	return false
 }
 
-func chatRequest(addr string) (*http.Request, error) {
+func chatRequest(t *testing.T, addr string) *http.Request {
+	t.Helper()
 	req, err := http.NewRequest(http.MethodPost, "http://"+addr+"/api/chat",
 		strings.NewReader(`{"model":"llama3","messages":[{"role":"user","content":"hi"}],"stream":true}`))
-	if err == nil {
-		req.Header.Set("Authorization", "Bearer "+shutdownKey)
-	}
-	return req, err
+	must(t, err)
+	req.Header.Set("Authorization", "Bearer "+shutdownKey)
+	return req
 }
 
 func (s *shutdownServer) warmUp(t *testing.T) []string {
@@ -238,7 +240,7 @@ func (s *shutdownServer) warmUp(t *testing.T) []string {
 	var ids []string
 	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) && len(ids) < 3 {
-		req, _ := chatRequest(s.proxyAddr)
+		req := chatRequest(t, s.proxyAddr)
 		if resp, err := probeClient.Do(req); err == nil {
 			_, _ = io.Copy(io.Discard, resp.Body)
 			resp.Body.Close()
@@ -264,7 +266,7 @@ func (s *shutdownServer) assertNoDropsYet(t *testing.T, when string) {
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
-	if m := droppedMetric.FindSubmatch(body); m == nil || string(m[1]) != "0" {
+	if m := droppedMetric.FindStringSubmatch(string(body)); m == nil || m[1] != "0" {
 		t.Fatalf("marbor_audit_dropped_total %s = %q, want 0", when, m)
 	}
 }
@@ -277,9 +279,10 @@ func (s *shutdownServer) startInFlight(t *testing.T, backend *slowBackend, n int
 		err  error
 	}
 	results := make(chan result, n)
+	ctx, cancel := context.WithCancel(context.Background())
 	for i := 0; i < n; i++ {
+		req := chatRequest(t, s.proxyAddr).WithContext(ctx)
 		go func() {
-			req, _ := chatRequest(s.proxyAddr)
 			resp, err := streamClient.Do(req)
 			results <- result{resp, err}
 		}()
@@ -287,6 +290,7 @@ func (s *shutdownServer) startInFlight(t *testing.T, backend *slowBackend, n int
 	var ids []string
 	var resps []*http.Response
 	t.Cleanup(func() {
+		cancel() // abort requests still pending so none can deliver an unclosed body later
 		for _, resp := range resps {
 			resp.Body.Close()
 		}
@@ -376,14 +380,10 @@ func TestSignalShutdownFlushesInFlightAuditEntries(t *testing.T) {
 	}
 
 	st, err := store.Open(s.dbPath)
-	if err != nil {
-		t.Fatalf("reopen store: %v", err)
-	}
+	must(t, err)
 	defer st.Close()
 	entries, err := st.QueryAuditLog(store.AuditQuery{Limit: 100000})
-	if err != nil {
-		t.Fatalf("QueryAuditLog: %v", err)
-	}
+	must(t, err)
 	have := map[string]bool{}
 	for _, e := range entries {
 		have[e.RequestID] = true
