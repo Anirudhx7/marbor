@@ -202,7 +202,7 @@ func TestResolveSchedulingRoles_NoDeclarations(t *testing.T) {
 	}
 }
 
-// TestFilterCandidates_ReplicaWorkerExcluded verifies filterCandidates
+// TestFilterCandidates_ReplicaWorkerExcluded verifies filterCandidatesWithFallback
 // excludes a confirmed RoleWorker with ExcludeReasonReplicaWorker, and a
 // RoleUnresolved node with ExcludeReasonReplicaUnresolved, while leaving an
 // unrelated healthy standalone node unaffected. Also verifies existing
@@ -217,7 +217,7 @@ func TestFilterCandidates_ReplicaWorkerExcluded(t *testing.T) {
 	standalone := &NodeState{Name: "standalone", URL: "http://standalone:11434", Healthy: true}
 
 	nodes := []*NodeState{head, worker, unresolvedA, standalone}
-	healthy, excluded, _ := r.filterCandidates(nodes, "", "", nil)
+	healthy, excluded, _ := r.filterCandidatesNoFallback(nodes, "", "", nil)
 
 	healthyNames := map[string]bool{}
 	for _, n := range healthy {
@@ -258,7 +258,7 @@ func TestFilterCandidates_ExistingReasonsWinPrecedence(t *testing.T) {
 	worker := &NodeState{Name: "worker", URL: "http://worker:11434", Healthy: false, ReplicaPeers: peers("head", "head", "worker")} // also fails the existing health check
 	head := &NodeState{Name: "head", URL: "http://head:11434", Healthy: true, ReplicaPeers: peers("head", "head", "worker")}
 
-	_, excluded, _ := r.filterCandidates([]*NodeState{worker, head}, "", "", nil)
+	_, excluded, _ := r.filterCandidatesNoFallback([]*NodeState{worker, head}, "", "", nil)
 	for _, ex := range excluded {
 		if ex.Node == "worker" && ex.Reason != ExcludeReasonUnhealthy {
 			t.Errorf("worker exclude reason = %q, want %q (existing check must win precedence)", ex.Reason, ExcludeReasonUnhealthy)
@@ -269,7 +269,7 @@ func TestFilterCandidates_ExistingReasonsWinPrecedence(t *testing.T) {
 // TestRoute_StickySessionRejectsNowWorkerNode verifies Route's sticky-
 // session inline hard-validation rejects a pinned node that has since
 // become a confirmed replica worker - the sticky shortcut bypasses
-// filterCandidates entirely by design, so it needs its own guard against
+// filterCandidatesWithFallback entirely by design, so it needs its own guard against
 // exactly this: a stale affinity entry must never keep routing to a node
 // that is no longer independently schedulable.
 func TestRoute_StickySessionRejectsNowWorkerNode(t *testing.T) {

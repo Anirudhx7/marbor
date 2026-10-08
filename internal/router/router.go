@@ -646,6 +646,10 @@ type Router struct {
 	// fired per key, so a persistent condition logs once per interval, not per
 	// poll. Guarded by hostEvidenceMu.
 	hostLogAt map[string]time.Time
+	// hostLogNow overrides the clock the log rate limiter and its prune
+	// read; nil means time.Now. Tests set it before any use. Reads happen
+	// under hostEvidenceMu.
+	hostLogNow func() time.Time
 	// nodeControl holds the per-node accepted ControlDriver config,
 	// guarded by r.mu same as marborAgents. Absent (or Configured: false)
 	// means lifecycle actions must return the "no control driver

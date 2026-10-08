@@ -585,7 +585,8 @@ export interface ScoreComponent {
 
 // ExcludedCandidate mirrors router.ExcludedCandidate (Go). reason is a
 // stable, machine-readable identifier (unhealthy, draining,
-// runtime_mismatch, ineligible_model, over_capacity, insufficient_gpu_group)
+// runtime_mismatch, ineligible_model, over_capacity, insufficient_gpu_group,
+// replica_worker, replica_unresolved, replica_member_unreachable)
 // - translated to display text in Requests.tsx, not shown raw.
 export interface ExcludedCandidate {
   node: string;
