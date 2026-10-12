@@ -265,6 +265,9 @@ func newCapRig(t *testing.T, includeC bool, hits map[string]*int32) (*Handler, *
 		t.Fatal(err)
 	}
 	a := admin.NewServer(r, nil, config.Config{}, st)
+	// Registered after the store's Close, so it runs first: the async request
+	// logger must drain before the store closes and the temp dir is removed.
+	t.Cleanup(a.Shutdown)
 	h := NewHandler(r, a, nil)
 	h.modelLimiter.allow("m", "b", &one, nil) // spend b's only request
 	return h, a, r
@@ -320,7 +323,9 @@ func TestInitialRateLimit429HidesNodeNameAndReleasesCounters(t *testing.T) {
 	if err := st.SetModelConfig(store.ModelConfig{Model: "m", Node: "gpu-secret-7", RPM: &one}); err != nil {
 		t.Fatal(err)
 	}
-	h := NewHandler(r, admin.NewServer(r, nil, config.Config{}, st), nil)
+	a := admin.NewServer(r, nil, config.Config{}, st)
+	defer a.Shutdown()
+	h := NewHandler(r, a, nil)
 	h.modelLimiter.allow("m", "gpu-secret-7", &one, nil)
 	buf := captureLog(t)
 
