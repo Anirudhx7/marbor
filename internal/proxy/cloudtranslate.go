@@ -119,15 +119,17 @@ func resetBodyHeaders(h http.Header) {
 	}
 }
 
-// maxLoggedProviderChunk bounds how much of a provider error payload is logged.
+// maxLoggedProviderChunk bounds how much of a provider error payload is logged
+// (a "..." suffix can add 3 bytes beyond it).
 const maxLoggedProviderChunk = 256
 
 // sanitizeLogText makes provider-controlled text safe for a single log line:
-// control characters become spaces and the result is cut to at most max bytes
-// on a UTF-8 boundary.
+// control characters, invalid UTF-8 and the Unicode line and paragraph
+// separators become spaces, and the result is cut to at most max bytes (plus a
+// 3 byte "..." suffix) on a UTF-8 boundary.
 func sanitizeLogText(s string, max int) string {
 	s = strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
+		if unicode.IsControl(r) || r == utf8.RuneError || r == ' ' || r == ' ' {
 			return ' '
 		}
 		return r
@@ -163,7 +165,8 @@ func streamFailureMessage(err error) string {
 // convertOllamaErrorBody rewrites a buffered non-2xx upstream error body
 // (OpenAI {"error":{"message":..}} or Anthropic {"type":"error","error":{..}})
 // into Ollama's {"error":"<message>"} shape, keeping the status. Bodies that
-// are not recognizable errors are left untouched.
+// are not recognizable errors are left untouched. The body must already be
+// buffered (as capCloudResponse leaves it); it is read in full here.
 func convertOllamaErrorBody(resp *http.Response) {
 	// resp.Body is the buffered body capCloudResponse produced, so this read
 	// cannot fail.

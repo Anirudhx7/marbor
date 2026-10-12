@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 func errResp(status int, body string) *http.Response {
@@ -142,15 +143,37 @@ func TestNonStreamDoneReasonDefaultsToStop(t *testing.T) {
 	}
 }
 
-func TestAnthropicJSON_MissingStopReasonDefaultsToStop(t *testing.T) {
+func TestAnthropicJSON_MissingStopReasonInventsNoFinishReason(t *testing.T) {
 	src := `{"content":[{"type":"text","text":"x"}],"usage":{}}`
 	raw, _ := io.ReadAll(translateAnthropicJSONToOpenAI(io.NopCloser(strings.NewReader(src))))
 	var got openAIChatResponse
 	if err := json.Unmarshal(raw, &got); err != nil || len(got.Choices) != 1 {
 		t.Fatalf("bad output %q: %v", raw, err)
 	}
-	if got.Choices[0].FinishReason != "stop" {
-		t.Errorf("finish_reason = %q, want stop", got.Choices[0].FinishReason)
+	if got.Choices[0].FinishReason != "" {
+		t.Errorf("finish_reason = %q, want none invented", got.Choices[0].FinishReason)
+	}
+}
+
+func TestSanitizeLogText(t *testing.T) {
+	in := "a\nb\rc\x07d\xffe f g"
+	if got := sanitizeLogText(in, 100); got != "a b c d e f g" {
+		t.Errorf("sanitize = %q", got)
+	}
+	long := strings.Repeat("é", 50)
+	got := sanitizeLogText(long, 11)
+	if !utf8.ValidString(got) || !strings.HasSuffix(got, "...") || len(got) > 11+3 {
+		t.Errorf("bad truncation %q", got)
+	}
+}
+
+func TestStreamErrorChunk_LiteralNewlineInFrameIsOneLogLine(t *testing.T) {
+	buf := captureLog(t)
+	src := "data: {\"error\":\"a\nb\"}\n\ndata: {\"error\":{\"message\":\"x\\ny\"}}\n\n"
+	out := translateSSEToNDJSON(io.NopCloser(strings.NewReader(src)), "/api/chat", "m")
+	io.ReadAll(out) //nolint:errcheck
+	if strings.Contains(strings.TrimSuffix(buf.String(), "\n"), "\n") {
+		t.Errorf("log has embedded newline: %q", buf.String())
 	}
 }
 
@@ -159,7 +182,10 @@ func TestClampAnthropicTemperature_LogRateLimited(t *testing.T) {
 	oldInterval := temperatureClampLogInterval
 	temperatureClampLogInterval = time.Hour
 	temperatureClampLastLog.Store(0)
-	defer func() { temperatureClampLogInterval = oldInterval }()
+	defer func() {
+		temperatureClampLogInterval = oldInterval
+		temperatureClampLastLog.Store(0)
+	}()
 	for i := 0; i < 5; i++ {
 		v := 1.5 + float64(i)/10
 		if got := clampAnthropicTemperature(&v); *got != 1 {

@@ -176,6 +176,8 @@ type anthropicRequest struct {
 // always sends an out-of-range value does not log on every request.
 var temperatureClampLogInterval = time.Minute
 
+// temperatureClampLastLog is a package-level limiter shared by all requests
+// and providers, so the interval applies to the process, not per provider.
 var temperatureClampLastLog atomic.Int64
 
 func shouldLogTemperatureClamp() bool {
@@ -370,16 +372,11 @@ func translateAnthropicJSONToOpenAI(src io.ReadCloser) io.ReadCloser {
 		}
 	}
 
-	// A normal completion with no stop_reason is "stop", as on the stream path.
-	finishReason := openAIFinishReason(resp.StopReason)
-	if finishReason == "" {
-		finishReason = "stop"
-	}
 	out := openAIChatResponse{
 		Object: "chat.completion",
 		Choices: []openAIChoice{{
 			Message:      openAIChoiceMessage{Content: text.String()},
-			FinishReason: finishReason,
+			FinishReason: openAIFinishReason(resp.StopReason),
 		}},
 		Usage: openAIUsage{
 			PromptTokens:     resp.Usage.InputTokens,
