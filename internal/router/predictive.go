@@ -383,8 +383,12 @@ func (r *Router) runTimeOfDayPrewarm(ctx context.Context, targetHour int, health
 // the same stale snapshot at once.
 func (r *Router) prewarmPredicted(ctx context.Context, n *NodeState, model, keepAlive string) {
 	unlock := r.lockNodeLoad(n.Name)
-	r.ensureHeadroom(ctx, n, model)
-	err := r.pingNode(ctx, n, model, keepAlive)
+	var err error
+	if r.ensureHeadroom(ctx, n, model) {
+		err = r.pingNode(ctx, n, model, keepAlive)
+	} else {
+		err = errNoHeadroom
+	}
 	unlock()
 	if err == nil {
 		metrics.WarmupPing(model, n.Name, "ok")

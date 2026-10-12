@@ -27,7 +27,10 @@ func TestEvictForHeadroomUsesLastKnownSizeWhenRuntimeReportsNone(t *testing.T) {
 	r.RecordModelUse("n", "B")
 	r.recordLastKnownVRAM("n", "no-size", 4*gib)
 
-	needed := freeAfterOverhead(10240, 4*gib) + gib
+	// Both models count as used (4 GiB each, with overhead), so the free figure
+	// starts small; evicting the no-size model credits its own 4 GiB, which is
+	// enough for 5 GiB but not for more.
+	needed := 5 * gib
 	evicted := r.EvictForHeadroom(context.Background(), "n", "X", needed)
 	got := rec.got()
 	if evicted != 1 || len(got) != 1 || got[0] != "no-size" {

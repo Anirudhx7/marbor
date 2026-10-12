@@ -312,8 +312,12 @@ func (r *Router) pingWarmupModels(ctx context.Context) {
 				// Make VRAM room (evict coldest non-pinned) before loading, so
 				// warming several models on a tight node can't OOM.
 				unlock := r.lockNodeLoad(n.Name)
-				r.ensureHeadroom(ctx, n, model)
-				err := r.pingNode(ctx, n, model, keepAlive)
+				var err error
+				if r.ensureHeadroom(ctx, n, model) {
+					err = r.pingNode(ctx, n, model, keepAlive)
+				} else {
+					err = errNoHeadroom
+				}
 				unlock()
 				status := "ok"
 				if err != nil {

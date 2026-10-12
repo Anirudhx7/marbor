@@ -215,7 +215,7 @@ func tagsServer(t *testing.T, sizes map[string]int64) (*httptest.Server, *int32)
 }
 
 func TestLastKnownVRAMMatchesBareAndTaggedNames(t *testing.T) {
-	r := New(config.RoutingConfig{}, nil, nil)
+	r := New(config.RoutingConfig{}, []config.NodeConfig{{Name: "n", URL: "http://example.test:11434"}}, nil)
 	r.recordLastKnownVRAM("n", "llama3:latest", 1234)
 	if got := r.lastKnownVRAMBytes("n", "llama3"); got != 1234 {
 		t.Fatalf("lastKnownVRAMBytes(bare) = %d, want 1234 recorded under the tagged name", got)
@@ -230,7 +230,7 @@ func TestLastKnownVRAMMatchesBareAndTaggedNames(t *testing.T) {
 }
 
 func TestLastUsedMatchesBareAndTaggedNames(t *testing.T) {
-	r := New(config.RoutingConfig{}, nil, nil)
+	r := New(config.RoutingConfig{}, []config.NodeConfig{{Name: "n", URL: "http://example.test:11434"}}, nil)
 	r.RecordModelUse("n", "llama3")
 	if r.lastUsedAt("n", "llama3:latest").IsZero() {
 		t.Fatal("last-used stamp recorded for the bare name must be found by its latest-tag form")
@@ -420,10 +420,11 @@ func TestUnloadModelsPaths(t *testing.T) {
 		t.Error("unknown node must return an error")
 	}
 
-	// Pinned models are skipped without contacting the node.
+	// Pinned models are skipped without contacting the node, and the skip is
+	// reported as a warning so the schedule does not read as a clean run.
 	r.SetPinnedModels("n", []string{"pinned"})
-	if err := r.UnloadModels(ctx, "n", []string{"pinned", ""}); err != nil || len(rec.got()) != 0 {
-		t.Errorf("pinned/empty names: err=%v unloaded=%v, want nil and none", err, rec.got())
+	if err := r.UnloadModels(ctx, "n", []string{"pinned", ""}); err == nil || !strings.Contains(err.Error(), "warning") || !strings.Contains(err.Error(), "pinned") || len(rec.got()) != 0 {
+		t.Errorf("pinned/empty names: err=%v unloaded=%v, want a pinned-skipped warning and none unloaded", err, rec.got())
 	}
 
 	// A failure is recorded, returned and then cleared by a later success.
@@ -490,7 +491,7 @@ func TestUnloadModelsViaAgentSuccessClearsError(t *testing.T) {
 // --- bounded per-node bookkeeping ---
 
 func TestRecordModelUseIsBoundedPerNode(t *testing.T) {
-	r := New(config.RoutingConfig{}, nil, nil)
+	r := New(config.RoutingConfig{}, []config.NodeConfig{{Name: "n", URL: "http://example.test:11434"}, {Name: "other", URL: "http://example.test:11435"}}, nil)
 	r.RecordModelUse("other", "keep-me")
 	for i := 0; i < 5000; i++ {
 		r.RecordModelUse("n", fmt.Sprintf("client-model-%d", i))
@@ -517,7 +518,7 @@ func TestRecordModelUseIsBoundedPerNode(t *testing.T) {
 }
 
 func TestRecordLastKnownVRAMIsBoundedPerNode(t *testing.T) {
-	r := New(config.RoutingConfig{}, nil, nil)
+	r := New(config.RoutingConfig{}, []config.NodeConfig{{Name: "n", URL: "http://example.test:11434"}}, nil)
 	for i := 0; i < 5000; i++ {
 		r.recordLastKnownVRAM("n", fmt.Sprintf("model-%d", i), 100)
 	}

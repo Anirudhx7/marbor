@@ -900,11 +900,11 @@ func TestDiskFitOversizeAgentReplyReadsUnknownFromRealNode(t *testing.T) {
 	agent := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if oversize.Load() {
-			_, _ = w.Write([]byte(`{"agent": {"version": "v1.0.0"}}` + strings.Repeat(" ", 8<<20)))
+			_, _ = w.Write([]byte(`{"agent": {"node_id": "test-agent", "version": "v1.0.0"}}` + strings.Repeat(" ", 8<<20)))
 			return
 		}
 		_ = json.NewEncoder(w).Encode(marboragent.Telemetry{
-			Agent: marboragent.Agent{Version: "v1.0.0", ProtocolVersion: 1},
+			Agent: marboragent.Agent{NodeID: "test-agent", Version: "v1.0.0", ProtocolVersion: 1},
 			Host:  &marboragent.HostTelemetry{DiskFreeGB: 100, DiskTotalGB: 500},
 		})
 	}))

@@ -77,6 +77,11 @@ type ModelInfo struct {
 	// from - not necessarily comparable in format across runtime types, only within one. Empty
 	// when unknown - never fabricated.
 	Digest string `json:"digest,omitempty"`
+	// sizeAttributed is true when SizeVRAM was not reported for this model but
+	// inferred as the node's whole used VRAM (attributeSoleModelVRAM). It is a
+	// placement input, not an observed footprint of the model, so it is never
+	// remembered as the model's last-known size.
+	sizeAttributed bool
 }
 
 type NodeState struct {
@@ -567,7 +572,10 @@ type Router struct {
 	// nvidiaCache holds the last nvidia-smi result per GPU index for local nodes.
 	// Populated by a separate ticker (nvidiaPollInterval) so that nvidia-smi is
 	// never invoked on every /api/ps poll cycle.
-	nvidiaCache        map[int]GPUStats
+	nvidiaCache map[int]GPUStats
+	// nvidiaCacheAt is when nvidiaCache was last refreshed; a zero value means
+	// never stamped and is not treated as expired.
+	nvidiaCacheAt      time.Time
 	nvidiaMu           sync.RWMutex
 	nvidiaPollInterval time.Duration
 	// modelDigests remembers the first-observed content digest per model
@@ -796,7 +804,7 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 			return rr.dialTLSContext(ctx, network, addr)
 		},
 	}
-	client := &http.Client{Timeout: 5 * time.Second, Transport: transport}
+	client := &http.Client{Timeout: 5 * time.Second, Transport: transport, CheckRedirect: noRedirect}
 	nodes := make([]*NodeState, len(nodesCfg))
 	for i, n := range nodesCfg {
 		ns := &NodeState{

@@ -27,6 +27,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/Anirudhx7/marbor/internal/marboragent"
 )
@@ -66,12 +68,12 @@ func derivePrefixCacheHitRate(n *NodeState, queries, hits *float64) *float64 {
 	if deltaQ <= 0 {
 		return nil
 	}
-	rate := (deltaH / deltaQ) * 100
-	if rate < 0 {
-		rate = 0
-	} else if rate > 100 {
-		rate = 100
+	// More hits than queries in one window cannot come from a consistent
+	// counter pair; the rate is unknown, never a clamped 100%.
+	if deltaH > deltaQ {
+		return nil
 	}
+	rate := (deltaH / deltaQ) * 100
 	return &rate
 }
 
@@ -258,6 +260,13 @@ func (r *Router) pollAgentHost(host string, cfg MarborAgentConfig, members []*No
 		err = json.NewDecoder(bytes.NewReader(body)).Decode(&t)
 		if err != nil {
 			r.logAgentPoll(host, "decode", "failed: could not decode status reply: %v", err)
+		} else if t.Agent.NodeID == "" {
+			// Valid JSON that names no agent (null, {}, another service's
+			// reply) is not a healthy marbor agent.
+			err = errors.New("status reply carries no agent node id")
+			r.logAgentPoll(host, "identity", "failed: %v", err)
+		} else {
+			sanitizeTelemetry(&t)
 		}
 	}
 	if err != nil {
@@ -293,27 +302,46 @@ func (r *Router) pollAgentHost(host string, cfg MarborAgentConfig, members []*No
 // agent-supplied message) embedded in a log line or error string.
 const maxLogValueBytes = 256
 
-// truncateForLog cuts s to at most max bytes, marking the cut.
+// truncateForLog makes s safe to embed in one log line: control characters
+// (newlines, escape sequences) become spaces so a hostile value cannot forge a
+// line, invalid UTF-8 becomes the replacement character, and the result is cut
+// to at most max bytes on a character boundary, marking the cut.
 func truncateForLog(s string, max int) string {
-	if len(s) <= max {
-		return s
+	clean := strings.Map(func(c rune) rune {
+		if unicode.IsControl(c) {
+			return ' '
+		}
+		return c
+	}, strings.ToValidUTF8(s, "�"))
+	if len(clean) <= max {
+		return clean
 	}
-	return s[:max] + "..."
+	cut := max
+	for cut > 0 && !utf8.RuneStart(clean[cut]) {
+		cut--
+	}
+	return clean[:cut] + "..."
 }
 
 // agentUnreachableSafe clears the TLS-mismatch flag and records a failed poll
-// for n, recovering its own panic so one bad node cannot stop the rest of the
-// host's members from being marked unreachable.
+// for n. Each step recovers on its own, so a panic in the first cannot skip the
+// second, and one bad node cannot stop the rest of the host's members from
+// being marked unreachable.
 func (r *Router) agentUnreachableSafe(n *NodeState) {
+	r.recoverAgentStep(n, "clearing the TLS mismatch flag", func() { r.setAgentTLSMismatch(n, false) })
+	r.recoverAgentStep(n, "marking its agent unreachable", func() { r.agentUnreachable(n) })
+}
+
+// recoverAgentStep runs step and logs, rate-limited, instead of propagating a panic.
+func (r *Router) recoverAgentStep(n *NodeState, what string, step func()) {
 	defer func() {
 		if rec := recover(); rec != nil {
 			if r.allowHostLog("panic:" + n.Name) {
-				log.Printf("router: recovered panic marking node %q agent unreachable: %s", n.Name, truncateForLog(fmt.Sprint(rec), maxLogValueBytes))
+				log.Printf("router: recovered panic %s for node %q: %s", what, n.Name, truncateForLog(fmt.Sprint(rec), maxLogValueBytes))
 			}
 		}
 	}()
-	r.setAgentTLSMismatch(n, false)
-	r.agentUnreachable(n)
+	step()
 }
 
 // logAgentPoll logs one agent poll failure for host, at most once per
@@ -457,9 +485,16 @@ func (r *Router) applyAgentTelemetryLocked(n *NodeState, t marboragent.Telemetry
 				n.Temperature = primary.TemperatureC
 				// An omitted power reading is unknown (0), never the last one.
 				n.PowerDrawW = derefOr(primary.PowerWatts, 0)
-				if primary.VRAMTotalMB > 0 || primary.VRAMUsedMB > 0 {
-					n.VRAMTotalMB = primary.VRAMTotalMB
-					n.VRAMUsedMB = primary.VRAMUsedMB
+				// A multi-GPU host reports its VRAM as the sum over every device,
+				// not device 0 alone, or a model that spans cards looks too big.
+				var usedMB, totalMB int64
+				for _, d := range t.GPU.Devices {
+					usedMB += d.VRAMUsedMB
+					totalMB += d.VRAMTotalMB
+				}
+				if totalMB > 0 || usedMB > 0 {
+					n.VRAMTotalMB = totalMB
+					n.VRAMUsedMB = usedMB
 					n.VRAMSource = "agent"
 				} else if n.VRAMSource == "agent" {
 					// The device now reports no VRAM at all: the earlier agent

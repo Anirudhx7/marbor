@@ -47,6 +47,7 @@ func attributeSoleModelVRAM(n *NodeState) {
 	updated := make([]ModelInfo, 1)
 	updated[0] = n.LoadedModels[0]
 	updated[0].SizeVRAM = n.VRAMUsedMB * 1024 * 1024
+	updated[0].sizeAttributed = true
 	n.LoadedModels = updated
 }
 
@@ -77,12 +78,14 @@ func (r *Router) pollNvidiaAll() {
 	r.nvidiaMu.Lock()
 	if ok {
 		r.nvidiaCache = gpus
+		r.nvidiaCacheAt = time.Now()
 	}
 	// On failure, keep the previous cache rather than replacing it with an
-	// empty map - the 30s ticker makes one missed sample cheap to retain,
-	// and wiping the cache nils Temperature/zeros PowerDrawW/demotes
-	// VRAMSource for every local node on a single transient nvidia-smi
-	// failure instead of just letting that one poll be stale.
+	// empty map - the ticker makes one missed sample cheap to retain, and
+	// wiping the cache nils Temperature/zeros PowerDrawW/demotes VRAMSource for
+	// every local node on a single transient nvidia-smi failure. Readers drop
+	// the cache once it is older than nvidiaCacheMaxAge (see nvidiaReading), so
+	// a persistent failure cannot keep serving an old reading as current.
 	r.nvidiaMu.Unlock()
 }
 
@@ -263,9 +266,7 @@ func (r *Router) pollNode(n *NodeState) {
 	var gpu GPUStats
 	hasGPU := false
 	if isLocalNode(nodeURL) {
-		r.nvidiaMu.RLock()
-		gpu, hasGPU = r.nvidiaCache[nvidiaIndex]
-		r.nvidiaMu.RUnlock()
+		gpu, hasGPU = r.nvidiaReading(nvidiaIndex)
 	}
 
 	var prevModels []ModelInfo
@@ -377,7 +378,9 @@ func (r *Router) pollNode(n *NodeState) {
 		nowHealthy = n.Healthy
 	}()
 	for _, m := range models {
-		r.recordLastKnownVRAM(nodeName, m.Name, m.SizeVRAM)
+		if !m.sizeAttributed {
+			r.recordLastKnownVRAM(nodeName, m.Name, m.SizeVRAM)
+		}
 		// Residency is now confirmed by real poll data - drop any hot-path or
 		// proactive reservation for this (node, model) so it can't keep
 		// double-counting against the now-real VRAMUsedMB for up to the full
@@ -494,9 +497,11 @@ const localAddrCacheTTL = 30 * time.Second
 const localAddrFailureTTL = 5 * time.Second
 
 var (
-	localAddrMu    sync.RWMutex
-	localAddrCache map[string]struct{}
-	localAddrAt    time.Time
+	localAddrMu sync.RWMutex
+	// localAddrRefreshMu serializes the interface lookup itself.
+	localAddrRefreshMu sync.Mutex
+	localAddrCache     map[string]struct{}
+	localAddrAt        time.Time
 	// localAddrRetryAt, when in the future, holds off another interface lookup
 	// after a failed one, so a persistently failing syscall is not retried at
 	// call rate.
@@ -511,6 +516,27 @@ var (
 // this machine's network interfaces, refreshing the cached set at most once
 // per localAddrCacheTTL.
 func localInterfaceAddrs() map[string]struct{} {
+	localAddrMu.RLock()
+	if localAddrCache != nil && time.Since(localAddrAt) < localAddrCacheTTL {
+		cache := localAddrCache
+		localAddrMu.RUnlock()
+		return cache
+	}
+	if time.Now().Before(localAddrRetryAt) {
+		prev := localAddrCache
+		localAddrMu.RUnlock()
+		if prev == nil {
+			return map[string]struct{}{}
+		}
+		return prev
+	}
+	localAddrMu.RUnlock()
+
+	// One refresh at a time: when the cache expires, every poller reaches here
+	// together, and each running its own lookup is a burst of identical syscalls.
+	// The ones that waited re-check and reuse the winner's result.
+	localAddrRefreshMu.Lock()
+	defer localAddrRefreshMu.Unlock()
 	localAddrMu.RLock()
 	if localAddrCache != nil && time.Since(localAddrAt) < localAddrCacheTTL {
 		cache := localAddrCache
@@ -630,4 +656,30 @@ func (r *Router) markFailure(n *NodeState) {
 			r.fireWebhook("node_down", nodeName, nodeURL)
 		}
 	}
+}
+
+// nvidiaStaleIntervals is how many nvidia-smi poll intervals a cached reading
+// stays usable. Past that, nvidia-smi has been failing for a while and the
+// cached figures no longer describe the GPU.
+const nvidiaStaleIntervals = 3
+
+// nvidiaCacheMaxAge is how long a cached nvidia-smi reading may be used.
+func (r *Router) nvidiaCacheMaxAge() time.Duration {
+	interval := r.nvidiaPollInterval
+	if interval <= 0 {
+		interval = 30 * time.Second
+	}
+	return nvidiaStaleIntervals * interval
+}
+
+// nvidiaReading returns the cached nvidia-smi reading for GPU index idx, or
+// false when there is none or it is older than nvidiaCacheMaxAge.
+func (r *Router) nvidiaReading(idx int) (GPUStats, bool) {
+	r.nvidiaMu.RLock()
+	defer r.nvidiaMu.RUnlock()
+	if !r.nvidiaCacheAt.IsZero() && time.Since(r.nvidiaCacheAt) > r.nvidiaCacheMaxAge() {
+		return GPUStats{}, false
+	}
+	g, ok := r.nvidiaCache[idx]
+	return g, ok
 }

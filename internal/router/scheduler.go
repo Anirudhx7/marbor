@@ -289,8 +289,12 @@ func (r *Router) WarmModels(ctx context.Context, nodeName string, models []strin
 		// prewarm, so concurrent origins never evict from the same stale
 		// snapshot at once (see lockNodeLoad).
 		unlock := r.lockNodeLoad(target.Name)
-		r.ensureHeadroom(ctx, target, m)
-		err := r.pingNode(ctx, target, m, keepAlive)
+		var err error
+		if r.ensureHeadroom(ctx, target, m) {
+			err = r.pingNode(ctx, target, m, keepAlive)
+		} else {
+			err = errNoHeadroom
+		}
 		unlock()
 		status := "ok"
 		if err != nil {

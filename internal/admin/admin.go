@@ -1575,7 +1575,7 @@ func (s *Server) nodeStateToResp(n *router.NodeState, id string, roles map[strin
 		WarmupState:                     warmupState,
 		ActiveConns:                     atomic.LoadInt32(&n.ActiveConns),
 		HealthHistory:                   hist,
-		PendingPrewarmMB:                s.router.PendingPrewarmBytes(n.Name) / (1024 * 1024),
+		PendingPrewarmMB:                s.router.PendingPrewarmReportedBytes(n.Name) / (1024 * 1024),
 		AgentPresent:                    n.AgentPresent,
 		AgentStale:                      n.AgentStale,
 		AgentVersion:                    n.AgentVersion,
@@ -7419,7 +7419,9 @@ func (s *Server) runDirectPull(ctx context.Context, job *pullJob, nodeURL, model
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: nodePullTimeout}
+	// A node's reply is never followed to another host: its address comes from
+	// operator config only.
+	client := &http.Client{Timeout: nodePullTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("runDirectPull: request to node %s failed: %v", job.Node, err)
