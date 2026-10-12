@@ -289,7 +289,7 @@ func (r *Router) RunPredictionCycle(ctx context.Context, now time.Time) {
 				}
 
 				// Log prediction decision
-				log.Printf("[predictive] decision: predicted_model=%s trigger_model=%s was_already_warm=%t warmup_triggered=%t transition_count=%d hour=%d",
+				log.Printf("[predictive] decision: predicted_model=%q trigger_model=%q was_already_warm=%t warmup_triggered=%t transition_count=%d hour=%d",
 					P, W, wasAlreadyWarm, warmupTriggered, count, currentHour)
 				r.recordDecision(PredictiveDecision{
 					Timestamp:       now,
@@ -382,14 +382,7 @@ func (r *Router) runTimeOfDayPrewarm(ctx context.Context, targetHour int, health
 // scheduled warmup (see lockNodeLoad) so concurrent origins never evict from
 // the same stale snapshot at once.
 func (r *Router) prewarmPredicted(ctx context.Context, n *NodeState, model, keepAlive string) {
-	unlock := r.lockNodeLoad(n.Name)
-	var err error
-	if r.ensureHeadroom(ctx, n, model) {
-		err = r.pingNode(ctx, n, model, keepAlive)
-	} else {
-		err = errNoHeadroom
-	}
-	unlock()
+	err := r.loadWithHeadroom(ctx, n, model, keepAlive)
 	if err == nil {
 		metrics.WarmupPing(model, n.Name, "ok")
 		return
@@ -406,7 +399,7 @@ func (r *Router) prewarmPredicted(ctx context.Context, n *NodeState, model, keep
 // Visibility only: the prewarm still proceeds.
 func (r *Router) logPredictiveDigestDrift(n *NodeState, model string) {
 	if r.driftedResidentDigest(n, model) {
-		log.Printf("[predictive] node %s model %s: digest drift - resident copy differs from the fleet's reference digest; still prewarming", n.Name, model)
+		log.Printf("[predictive] node %s model %q: digest drift - resident copy differs from the fleet's reference digest; still prewarming", n.Name, model)
 	}
 }
 

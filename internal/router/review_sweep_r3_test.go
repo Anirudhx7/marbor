@@ -23,6 +23,7 @@ const gibBytes = int64(1) << 30
 
 func TestEvictForHeadroomChargesAndCreditsTheSameLastKnownSize(t *testing.T) {
 	r, _, rec := evictFixture(t, 10240, []ModelInfo{{Name: "g1"}, {Name: "g2"}})
+	setNodeRuntime(r, "")
 	r.recordLastKnownVRAM("n", "g1", 4*gibBytes)
 	r.recordLastKnownVRAM("n", "g2", 4*gibBytes)
 	// Their last-known sizes already take most of the node, so making room for
@@ -308,22 +309,6 @@ func TestPrefixCacheHitRateIsUnknownWhenHitsExceedQueries(t *testing.T) {
 	}
 }
 
-func TestPollAgentRejectsReplyWithoutNodeID(t *testing.T) {
-	for name, body := range map[string]string{"empty object": `{}`, "null": `null`, "other service": `{"status":"ok"}`} {
-		body := body
-		port := agentServerPort(t, func(w http.ResponseWriter, req *http.Request) { w.Write([]byte(body)) })
-		r := New(config.RoutingConfig{}, []config.NodeConfig{{Name: "n", URL: "http://127.0.0.1:11434"}}, nil)
-		r.SetMarborAgent(r.nodes[0].Host, true, port, "tok", "http")
-		r.pollAgentHosts()
-		r.nodes[0].mu.RLock()
-		present, failures := r.nodes[0].AgentPresent, r.nodes[0].AgentFailures
-		r.nodes[0].mu.RUnlock()
-		if present || failures != 1 {
-			t.Errorf("%s: present=%v failures=%d, want an unhealthy agent", name, present, failures)
-		}
-	}
-}
-
 func TestPendingPrewarmReportedBytesExcludesPlaceholder(t *testing.T) {
 	r := New(config.RoutingConfig{}, []config.NodeConfig{{Name: "n", URL: "http://example.test:11434", Runtime: "vllm"}}, nil)
 	r.reserveColdStartBytes("http://example.test:11434", "n", "unsized")
@@ -371,4 +356,13 @@ func TestModelFitsAnyHealthyNodeFailsClosedOnFetchError(t *testing.T) {
 	if r.ModelFitsAnyHealthyNode("some-model", 0) {
 		t.Fatal("a size unknown only because the model list could not be fetched must not count as fitting")
 	}
+}
+
+// setNodeRuntime sets the runtime of the first node, for tests that need a
+// runtime that reports no per-model VRAM size.
+func setNodeRuntime(r *Router, runtime string) {
+	n := r.nodes[0]
+	n.mu.Lock()
+	n.Runtime = runtime
+	n.mu.Unlock()
 }

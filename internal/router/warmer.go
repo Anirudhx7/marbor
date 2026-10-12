@@ -288,7 +288,7 @@ func (r *Router) pingWarmupModels(ctx context.Context) {
 			defer r.finishWarmup(nodeName)
 			defer func() {
 				if r := recover(); r != nil {
-					log.Printf("[router] panic in goroutine: %v", r)
+					log.Printf("[router] panic in goroutine: %v", truncateForLog(fmt.Sprint(r), maxLogValueBytes))
 				}
 			}()
 			// Different nodes still warm fully in parallel (this goroutine is
@@ -311,14 +311,7 @@ func (r *Router) pingWarmupModels(ctx context.Context) {
 				}
 				// Make VRAM room (evict coldest non-pinned) before loading, so
 				// warming several models on a tight node can't OOM.
-				unlock := r.lockNodeLoad(n.Name)
-				var err error
-				if r.ensureHeadroom(ctx, n, model) {
-					err = r.pingNode(ctx, n, model, keepAlive)
-				} else {
-					err = errNoHeadroom
-				}
-				unlock()
+				err := r.loadWithHeadroom(ctx, n, model, keepAlive)
 				status := "ok"
 				if err != nil {
 					status = "error"
@@ -326,7 +319,7 @@ func (r *Router) pingWarmupModels(ctx context.Context) {
 					// letting it block other models' headroom checks for the
 					// remainder of warmReservationTTL.
 					r.clearWarmReservation(n.Name, model)
-					log.Printf("[warmup] node %s model %s: %v", n.Name, model, err)
+					log.Printf("[warmup] node %s model %q: %v", n.Name, model, err)
 					n.Lock()
 					if n.WarmupErrors == nil {
 						n.WarmupErrors = map[string]string{}
@@ -453,7 +446,9 @@ func runtimeErrorDetail(body io.Reader) string {
 	if json.Unmarshal(raw, &out) != nil {
 		return ""
 	}
-	return strings.TrimSpace(out.Error)
+	// The text comes from the node, so it is bounded and cleaned before it can
+	// reach a log line or the dashboard.
+	return truncateForLog(strings.TrimSpace(out.Error), maxLogValueBytes)
 }
 
 // pingEndpoint POSTs payload to path on nodeURL and treats any 4xx/5xx
@@ -475,7 +470,8 @@ func (r *Router) pingEndpoint(ctx context.Context, nodeURL, path string, payload
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
+	// Not 2xx: the client no longer follows redirects, so a 3xx is a failed load.
+	if resp.StatusCode/100 != 2 {
 		return &statusError{status: resp.StatusCode, detail: runtimeErrorDetail(resp.Body)}
 	}
 	return nil
@@ -498,4 +494,16 @@ func nodesForEntry(nodes []*NodeState, allowList []string) []*NodeState {
 		}
 	}
 	return out
+}
+
+// loadWithHeadroom makes VRAM room for model on n and then loads it, all under
+// the node load lock. The lock is released by defer, so a panic in the headroom
+// step or the load cannot leave the node locked for every later warm.
+func (r *Router) loadWithHeadroom(ctx context.Context, n *NodeState, model, keepAlive string) error {
+	unlock := r.lockNodeLoad(n.Name)
+	defer unlock()
+	if err := r.makeHeadroom(ctx, n, model); err != nil {
+		return err
+	}
+	return r.pingNode(ctx, n, model, keepAlive)
 }

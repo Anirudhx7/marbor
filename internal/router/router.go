@@ -678,8 +678,11 @@ type Router struct {
 	// lastUsedCount is the per-node entry count of lastUsed, guarded by lruMu,
 	// so the cap check never scans the whole map.
 	lastUsedCount map[string]int
-	lruMu         sync.Mutex
-	pinned        map[string]map[string]bool
+	// lastUsedKeys is the per-node set of lastUsed keys, guarded by lruMu, so a
+	// trim scans one node instead of every node's entries.
+	lastUsedKeys map[string]map[string]struct{}
+	lruMu        sync.Mutex
+	pinned       map[string]map[string]bool
 	// lastKnownVRAM caches the most recent REAL /api/ps size_vram observed for a
 	// (node, model) pair, keyed by modelKey, surviving after the model is
 	// unloaded/evicted. estimateModelSizeBytes prefers this over the on-disk
@@ -692,6 +695,8 @@ type Router struct {
 	// lastKnownCount is the per-node entry count of lastKnownVRAM, guarded by
 	// vramSeenMu, so the cap check never scans the whole map.
 	lastKnownCount map[string]int
+	// lastKnownKeys is lastUsedKeys for lastKnownVRAM, guarded by vramSeenMu.
+	lastKnownKeys map[string]map[string]struct{}
 	// lastEvictAt throttles auto-eviction per node (thrash guard), guarded by evictMu.
 	evictMu     sync.Mutex
 	lastEvictAt map[string]time.Time
@@ -1142,7 +1147,7 @@ func (r *Router) fireWebhook(event, nodeName, nodeURL string) {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				log.Printf("[router] panic in goroutine: %v", r)
+				log.Printf("[router] panic in goroutine: %v", truncateForLog(fmt.Sprint(r), maxLogValueBytes))
 			}
 		}()
 		payload := map[string]string{
@@ -1168,14 +1173,14 @@ func (r *Router) fireWebhook(event, nodeName, nodeURL string) {
 			sig := hex.EncodeToString(mac.Sum(nil))
 			req.Header.Set("X-Marbor-Signature", fmt.Sprintf("sha256=%s", sig))
 		}
-		client := &http.Client{Timeout: 5 * time.Second}
+		client := &http.Client{Timeout: 5 * time.Second, CheckRedirect: noRedirect}
 		resp, err := client.Do(req)
 		if err != nil {
 			log.Printf("webhook: post %s: %v", strings.TrimRight(cfg.URL, "/"), err)
 			return
 		}
 		resp.Body.Close()
-		if resp.StatusCode >= 400 {
+		if resp.StatusCode/100 != 2 {
 			log.Printf("webhook: server returned %d for event %s", resp.StatusCode, event)
 		}
 	}()
@@ -1358,7 +1363,7 @@ func (r *Router) localNow(now time.Time) time.Time {
 func safeRun(label string, fn func()) {
 	defer func() {
 		if rec := recover(); rec != nil {
-			log.Printf("router: recovered panic in %s: %v", label, rec)
+			log.Printf("router: recovered panic in %s: %v", label, truncateForLog(fmt.Sprint(rec), maxLogValueBytes))
 		}
 	}()
 	fn()
@@ -1725,6 +1730,7 @@ func (r *Router) RemoveNode(name string) {
 	prefix := name + "\x00"
 	r.lruMu.Lock()
 	delete(r.lastUsedCount, name)
+	delete(r.lastUsedKeys, name)
 	for k := range r.lastUsed {
 		if strings.HasPrefix(k, prefix) {
 			delete(r.lastUsed, k)
@@ -1734,6 +1740,7 @@ func (r *Router) RemoveNode(name string) {
 
 	r.vramSeenMu.Lock()
 	delete(r.lastKnownCount, name)
+	delete(r.lastKnownKeys, name)
 	for k := range r.lastKnownVRAM {
 		if strings.HasPrefix(k, prefix) {
 			delete(r.lastKnownVRAM, k)

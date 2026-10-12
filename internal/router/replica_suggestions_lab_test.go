@@ -26,7 +26,7 @@ type fakeAgent struct {
 func newFakeAgent(t *testing.T, hostname string, addrs []string, deps ...marboragent.DeploymentReport) *fakeAgent {
 	t.Helper()
 	fa := &fakeAgent{tel: marboragent.Telemetry{
-		Agent:        marboragent.Agent{NodeID: "test-agent", Version: "test", ProtocolVersion: 1},
+		Agent:        marboragent.Agent{Version: "test", ProtocolVersion: 1},
 		Capabilities: []string{"status", "deployment.report", capTopology},
 		Host:         &marboragent.HostTelemetry{Hostname: hostname, Addrs: addrs},
 		Deployments:  deps,

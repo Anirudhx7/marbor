@@ -114,11 +114,16 @@ func (r *Router) fireSchedule(ctx context.Context, s Schedule) {
 	// models all failed to warm/unload.
 	found := true
 	var asyncErr error
+	var warning string
 	switch s.Action {
 	case "warmup":
 		asyncErr = r.WarmModels(ctx, s.Node, s.Models)
 	case "unload":
-		asyncErr = r.UnloadModels(ctx, s.Node, s.Models)
+		var warnings []string
+		warnings, asyncErr = r.UnloadModelsWithWarnings(ctx, s.Node, s.Models)
+		if len(warnings) > 0 {
+			warning = "warning: " + strings.Join(warnings, "; ")
+		}
 	case "drain":
 		found = r.DrainNode(s.Node, "scheduled", 0)
 		// Persist so a restart doesn't silently undrain a maintenance window
@@ -150,9 +155,11 @@ func (r *Router) fireSchedule(ctx context.Context, s Schedule) {
 		r.auditScheduled(s, "error", asyncErr.Error())
 		return
 	}
-	log.Printf("schedule %q fired: action=%s node=%s models=%v", s.ID, s.Action, s.Node, s.Models)
-	r.recordScheduleRun(s.ID, "ok", "")
-	r.auditScheduled(s, "ok", "")
+	log.Printf("schedule %q fired: action=%s node=%s models=%v %s", s.ID, s.Action, s.Node, s.Models, warning)
+	// A run that did everything it could is ok even when it left pinned models
+	// loaded on purpose; the warning rides along as the note, not as a failure.
+	r.recordScheduleRun(s.ID, "ok", warning)
+	r.auditScheduled(s, "ok", warning)
 }
 
 // auditScheduled writes a system-audit row for a scheduled firing with actor
@@ -167,7 +174,11 @@ func (r *Router) auditScheduled(s Schedule, status, errMsg string) {
 	action := "scheduled_" + s.Action
 	details := fmt.Sprintf("Schedule %s: action=%s node=%s models=%v status=%s", s.ID, s.Action, s.Node, s.Models, status)
 	if errMsg != "" {
-		details += " error=" + errMsg
+		label := " error="
+		if status == "ok" {
+			label = " note="
+		}
+		details += label + errMsg
 	}
 	if err := st.AppendSystemAuditLog(store.SystemAuditEntry{
 		Time:     time.Now().UTC(),
@@ -283,19 +294,12 @@ func (r *Router) WarmModels(ctx context.Context, nodeName string, models []strin
 		// Digest drift is logged, never acted on: the model is still warmed
 		// and the run's status is unaffected.
 		if r.driftedResidentDigest(target, m) {
-			log.Printf("[schedule] node %s model %s: digest drift - resident copy differs from the fleet's reference digest; still warming", target.Name, m)
+			log.Printf("[schedule] node %s model %q: digest drift - resident copy differs from the fleet's reference digest; still warming", target.Name, m)
 		}
 		// Serialized per node with the keep-warm pinger and predictive
 		// prewarm, so concurrent origins never evict from the same stale
 		// snapshot at once (see lockNodeLoad).
-		unlock := r.lockNodeLoad(target.Name)
-		var err error
-		if r.ensureHeadroom(ctx, target, m) {
-			err = r.pingNode(ctx, target, m, keepAlive)
-		} else {
-			err = errNoHeadroom
-		}
-		unlock()
+		err := r.loadWithHeadroom(ctx, target, m, keepAlive)
 		status := "ok"
 		if err != nil {
 			status = "error"

@@ -3160,7 +3160,7 @@ func (s *Server) handleTestCloudProvider(w http.ResponseWriter, r *http.Request)
 		req.Header.Set("Authorization", "Bearer "+body.APIKey)
 	}
 
-	client := &http.Client{Timeout: cloudProviderTestTimeout}
+	client := &http.Client{Timeout: cloudProviderTestTimeout, CheckRedirect: noRedirect}
 	resp, err := client.Do(req)
 	if err != nil {
 		writeCorrelatedError(w, r, http.StatusBadGateway, "could not reach base_url", err)
@@ -3179,7 +3179,7 @@ func (s *Server) handleTestCloudProvider(w http.ResponseWriter, r *http.Request)
 		writeJSONError(w, http.StatusBadGateway, "provider rejected the API key")
 		return
 	}
-	if resp.StatusCode >= 400 {
+	if resp.StatusCode/100 != 2 {
 		writeJSONError(w, http.StatusBadGateway, fmt.Sprintf("provider returned %d", resp.StatusCode))
 		return
 	}
@@ -7421,7 +7421,7 @@ func (s *Server) runDirectPull(ctx context.Context, job *pullJob, nodeURL, model
 
 	// A node's reply is never followed to another host: its address comes from
 	// operator config only.
-	client := &http.Client{Timeout: nodePullTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	client := &http.Client{Timeout: nodePullTimeout, CheckRedirect: noRedirect}
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("runDirectPull: request to node %s failed: %v", job.Node, err)
@@ -7554,7 +7554,7 @@ func (s *Server) verifyModelLoads(ctx context.Context, nodeName, model string) e
 	}()
 
 	target := fmt.Sprintf("http://localhost:%d", s.cfg.Proxy.Port)
-	client := &http.Client{Timeout: pullVerifyTimeout}
+	client := &http.Client{Timeout: pullVerifyTimeout, CheckRedirect: noRedirect}
 	_, err = bench.MeasureChatTTFT(ctx, client, target, model, k.Key)
 	return err
 }

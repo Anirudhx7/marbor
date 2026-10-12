@@ -423,8 +423,12 @@ func TestUnloadModelsPaths(t *testing.T) {
 	// Pinned models are skipped without contacting the node, and the skip is
 	// reported as a warning so the schedule does not read as a clean run.
 	r.SetPinnedModels("n", []string{"pinned"})
-	if err := r.UnloadModels(ctx, "n", []string{"pinned", ""}); err == nil || !strings.Contains(err.Error(), "warning") || !strings.Contains(err.Error(), "pinned") || len(rec.got()) != 0 {
-		t.Errorf("pinned/empty names: err=%v unloaded=%v, want a pinned-skipped warning and none unloaded", err, rec.got())
+	warnings, err := r.UnloadModelsWithWarnings(ctx, "n", []string{"pinned", ""})
+	if err != nil || len(warnings) != 1 || !strings.Contains(warnings[0], "pinned") || len(rec.got()) != 0 {
+		t.Errorf("pinned/empty names: warnings=%v err=%v unloaded=%v, want one pinned-skipped warning, no error, nothing unloaded", warnings, err, rec.got())
+	}
+	if err := r.UnloadModels(ctx, "n", []string{"pinned"}); err != nil {
+		t.Errorf("a pinned skip alone must not be an error, got %v", err)
 	}
 
 	// A failure is recorded, returned and then cleared by a later success.

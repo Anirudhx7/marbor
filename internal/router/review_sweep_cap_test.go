@@ -25,6 +25,7 @@ func TestEvictForHeadroomUsesLastKnownSizeWhenRuntimeReportsNone(t *testing.T) {
 		{Name: "B", SizeVRAM: 4 * gib},
 	})
 	r.RecordModelUse("n", "B")
+	setNodeRuntime(r, "") // a runtime that reports no per-model size
 	r.recordLastKnownVRAM("n", "no-size", 4*gib)
 
 	// Both models count as used (4 GiB each, with overhead), so the free figure
@@ -44,6 +45,7 @@ func TestEvictForHeadroomMultiModelRuntimeWithNoSizesIsEvictable(t *testing.T) {
 		{Name: "m1", SizeVRAM: 0},
 		{Name: "m2", SizeVRAM: 0},
 	})
+	setNodeRuntime(r, "")
 	r.recordLastKnownVRAM("n", "m1", 6*gib)
 	r.recordLastKnownVRAM("n", "m2", 6*gib)
 	if evicted := r.EvictForHeadroom(context.Background(), "n", "X", 12*gib); evicted == 0 || len(rec.got()) == 0 {

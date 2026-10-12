@@ -10,7 +10,7 @@ import (
 	"github.com/Anirudhx7/marbor/internal/config"
 )
 
-const validStatusJSON = `{"agent": {"node_id": "test-agent", "version": "v1.0.0", "protocol_version": 1}}`
+const validStatusJSON = `{"agent": {"version": "v1.0.0", "protocol_version": 1}}`
 
 // paddedStatusBody returns a valid status object padded with trailing
 // whitespace to exactly size bytes.

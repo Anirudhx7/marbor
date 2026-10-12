@@ -162,7 +162,7 @@ func (r *Router) pollNode(n *NodeState) {
 	// the process; the poll loop naturally retries it next interval.
 	defer func() {
 		if rec := recover(); rec != nil {
-			log.Printf("router: recovered panic in pollNode for node %s: %v", n.Name, rec)
+			log.Printf("router: recovered panic in pollNode for node %s: %v", n.Name, truncateForLog(fmt.Sprint(rec), maxLogValueBytes))
 			r.markFailure(n)
 		}
 	}()
@@ -377,15 +377,21 @@ func (r *Router) pollNode(n *NodeState) {
 		nodeName = n.Name
 		nowHealthy = n.Healthy
 	}()
+	// One existence check before and one undo after the whole batch, not a router
+	// lock pair per model.
+	recordSizes := r.nodeExists(nodeName)
 	for _, m := range models {
-		if !m.sizeAttributed {
-			r.recordLastKnownVRAM(nodeName, m.Name, m.SizeVRAM)
+		if recordSizes && !m.sizeAttributed {
+			r.putLastKnownVRAM(nodeName, m.Name, m.SizeVRAM)
 		}
 		// Residency is now confirmed by real poll data - drop any hot-path or
 		// proactive reservation for this (node, model) so it can't keep
 		// double-counting against the now-real VRAMUsedMB for up to the full
 		// warm reservation TTL.
 		r.clearWarmReservation(nodeName, m.Name)
+	}
+	if recordSizes {
+		r.undoIfNodeRemoved(nodeName, r.forgetLastKnownForNode)
 	}
 	if nowHealthy {
 		metrics.NodeHealthy(n.Name, 1)

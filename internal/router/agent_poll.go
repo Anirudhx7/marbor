@@ -22,12 +22,12 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"reflect"
 	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-	"unicode"
 	"unicode/utf8"
 
 	"github.com/Anirudhx7/marbor/internal/marboragent"
@@ -69,7 +69,9 @@ func derivePrefixCacheHitRate(n *NodeState, queries, hits *float64) *float64 {
 		return nil
 	}
 	// More hits than queries in one window cannot come from a consistent
-	// counter pair; the rate is unknown, never a clamped 100%.
+	// counter pair; the rate is unknown, never a clamped 100%. Deliberately
+	// strict: no tolerance for counters sampled a moment apart. Equal deltas
+	// are a true 100%.
 	if deltaH > deltaQ {
 		return nil
 	}
@@ -260,11 +262,14 @@ func (r *Router) pollAgentHost(host string, cfg MarborAgentConfig, members []*No
 		err = json.NewDecoder(bytes.NewReader(body)).Decode(&t)
 		if err != nil {
 			r.logAgentPoll(host, "decode", "failed: could not decode status reply: %v", err)
-		} else if t.Agent.NodeID == "" {
-			// Valid JSON that names no agent (null, {}, another service's
-			// reply) is not a healthy marbor agent.
-			err = errors.New("status reply carries no agent node id")
-			r.logAgentPoll(host, "identity", "failed: %v", err)
+		} else if reflect.DeepEqual(t, marboragent.Telemetry{}) {
+			// Valid JSON that carries nothing a real agent always sends (null, {},
+			// another service reply) is not a healthy marbor agent. This is keyed on
+			// the whole report being empty, not on any one field, because agents
+			// from before a field existed (node_id arrived in v0.17.1) must keep
+			// working through a rolling upgrade.
+			err = errors.New("status reply is empty")
+			r.logAgentPoll(host, "empty", "failed: %v", err)
 		} else {
 			sanitizeTelemetry(&t)
 		}
@@ -302,17 +307,19 @@ func (r *Router) pollAgentHost(host string, cfg MarborAgentConfig, members []*No
 // agent-supplied message) embedded in a log line or error string.
 const maxLogValueBytes = 256
 
-// truncateForLog makes s safe to embed in one log line: control characters
-// (newlines, escape sequences) become spaces so a hostile value cannot forge a
-// line, invalid UTF-8 becomes the replacement character, and the result is cut
-// to at most max bytes on a character boundary, marking the cut.
+// truncateForLog makes s safe to embed in one log line: unsafe characters
+// (control characters, line separators, bidirectional overrides; see
+// isUnsafeRune) become spaces so a hostile value cannot forge a line or
+// disguise one, invalid UTF-8 becomes the replacement character, and the value
+// is cut on a character boundary so that at most max bytes of it remain. The
+// result can be up to 3 bytes longer than max, for the "..." cut marker.
 func truncateForLog(s string, max int) string {
 	clean := strings.Map(func(c rune) rune {
-		if unicode.IsControl(c) {
+		if isUnsafeRune(c) {
 			return ' '
 		}
 		return c
-	}, strings.ToValidUTF8(s, "�"))
+	}, strings.ToValidUTF8(s, "FFFD"))
 	if len(clean) <= max {
 		return clean
 	}
@@ -491,6 +498,13 @@ func (r *Router) applyAgentTelemetryLocked(n *NodeState, t marboragent.Telemetry
 				for _, d := range t.GPU.Devices {
 					usedMB += d.VRAMUsedMB
 					totalMB += d.VRAMTotalMB
+				}
+				// Each device is already capped, but the sum of many is not: cap it too,
+				// and keep used within total, so the byte figures derived from these
+				// never overflow.
+				totalMB, usedMB = clampMB(totalMB), clampMB(usedMB)
+				if totalMB > 0 && usedMB > totalMB {
+					usedMB = totalMB
 				}
 				if totalMB > 0 || usedMB > 0 {
 					n.VRAMTotalMB = totalMB
