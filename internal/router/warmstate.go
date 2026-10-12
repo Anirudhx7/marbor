@@ -175,18 +175,33 @@ func (r *Router) RestoreWarmState() (int, error) {
 		return 0, nil
 	}
 
+	known := make(map[string]bool, len(nodes))
+	for _, n := range nodes {
+		known[n.Name] = true
+	}
+	restored := 0
 	byNode := make(map[string][]ModelInfo)
 	r.lruMu.Lock()
-	if r.lastUsed == nil {
-		r.lastUsed = make(map[string]time.Time)
-	}
 	for _, w := range rows {
+		// A row for a node that is no longer in the pool must not bring its
+		// bookkeeping back: nothing would ever remove it again.
+		if !known[w.Node] {
+			continue
+		}
+		restored++
 		if !w.LastUsed.IsZero() {
-			r.lastUsed[modelKey(w.Node, w.Model)] = w.LastUsed
+			// Same capped writer as live traffic, so a store with more rows
+			// than the per-node cap cannot grow the map past it.
+			r.stampLastUsedLocked(w.Node, w.Model, w.LastUsed, nil)
 		}
 		byNode[w.Node] = append(byNode[w.Node], ModelInfo{Name: w.Model, SizeVRAM: w.VRAMBytes})
 	}
 	r.lruMu.Unlock()
+	// A node removed while the rows were being applied must not keep the stamps
+	// that just landed. No router lock is held here.
+	for node := range byNode {
+		r.undoIfNodeRemoved(node, r.forgetLastUsedForNode)
+	}
 
 	for _, n := range nodes {
 		models, ok := byNode[n.Name]
@@ -201,5 +216,5 @@ func (r *Router) RestoreWarmState() (int, error) {
 		}
 		n.mu.Unlock()
 	}
-	return len(rows), nil
+	return restored, nil
 }

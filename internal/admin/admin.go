@@ -1575,7 +1575,7 @@ func (s *Server) nodeStateToResp(n *router.NodeState, id string, roles map[strin
 		WarmupState:                     warmupState,
 		ActiveConns:                     atomic.LoadInt32(&n.ActiveConns),
 		HealthHistory:                   hist,
-		PendingPrewarmMB:                s.router.PendingPrewarmBytes(n.Name) / (1024 * 1024),
+		PendingPrewarmMB:                s.router.PendingPrewarmReportedBytes(n.Name) / (1024 * 1024),
 		AgentPresent:                    n.AgentPresent,
 		AgentStale:                      n.AgentStale,
 		AgentVersion:                    n.AgentVersion,
@@ -2052,13 +2052,9 @@ func (s *Server) handlePrefixLocalityStats(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) handleWarmupPing(w http.ResponseWriter, r *http.Request) {
-	s.mu.RLock()
-	enabled := s.cfg.Warmup.Enabled
-	s.mu.RUnlock()
-	if !enabled {
-		http.Error(w, `{"error":"warmup not enabled"}`, http.StatusBadRequest)
-		return
-	}
+	// No global-flag gate: keep-warm is also configured per node (and by
+	// schedules), independently of the global warmup setting. The pass is a
+	// fast no-op when nothing is configured anywhere.
 	s.router.TriggerWarmup(r.Context())
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(`{"status":"triggered"}`))
@@ -2086,19 +2082,7 @@ func (s *Server) ReloadFromStore() (nodesAdded, nodesRemoved, authKeys, cloudPro
 		if k.Revoked {
 			continue
 		}
-		keys = append(keys, config.KeyConfig{
-			Name:                  k.Name,
-			Key:                   k.Key,
-			RateLimit:             k.RateLimit,
-			DailyLimit:            k.DailyLimit,
-			MonthlyLimit:          k.MonthlyLimit,
-			DailyUsdCap:           k.DailyUsdCap,
-			MonthlyUsdCap:         k.MonthlyUsdCap,
-			Models:                k.Models,
-			ExpiresAt:             k.ExpiresAt,
-			LocalOnly:             k.LocalOnly,
-			AllowLocalDegradation: k.AllowLocalDegradation,
-		})
+		keys = append(keys, auth.KeyConfigFromRecord(k))
 	}
 
 	providers, cErr := s.st.AllCloudProviders()
@@ -3176,7 +3160,7 @@ func (s *Server) handleTestCloudProvider(w http.ResponseWriter, r *http.Request)
 		req.Header.Set("Authorization", "Bearer "+body.APIKey)
 	}
 
-	client := &http.Client{Timeout: cloudProviderTestTimeout}
+	client := &http.Client{Timeout: cloudProviderTestTimeout, CheckRedirect: noRedirect}
 	resp, err := client.Do(req)
 	if err != nil {
 		writeCorrelatedError(w, r, http.StatusBadGateway, "could not reach base_url", err)
@@ -3195,7 +3179,7 @@ func (s *Server) handleTestCloudProvider(w http.ResponseWriter, r *http.Request)
 		writeJSONError(w, http.StatusBadGateway, "provider rejected the API key")
 		return
 	}
-	if resp.StatusCode >= 400 {
+	if resp.StatusCode/100 != 2 {
 		writeJSONError(w, http.StatusBadGateway, fmt.Sprintf("provider returned %d", resp.StatusCode))
 		return
 	}
@@ -5764,6 +5748,14 @@ func (s *Server) handlePatchKey(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"invalid JSON"}`, http.StatusBadRequest)
 		return
 	}
+	if (patch.RateLimit != nil && *patch.RateLimit < 0) ||
+		(patch.DailyLimit != nil && *patch.DailyLimit < 0) ||
+		(patch.MonthlyLimit != nil && *patch.MonthlyLimit < 0) ||
+		(patch.DailyUsdCap != nil && *patch.DailyUsdCap < 0) ||
+		(patch.MonthlyUsdCap != nil && *patch.MonthlyUsdCap < 0) {
+		writeJSONError(w, http.StatusBadRequest, "rate_limit, daily_limit, monthly_limit, daily_usd_cap, monthly_usd_cap must be >= 0")
+		return
+	}
 	if patch.ExpiresAt != nil {
 		if err := validateExpiresAt(*patch.ExpiresAt); err != nil {
 			writeJSONError(w, http.StatusBadRequest, err.Error())
@@ -7427,7 +7419,9 @@ func (s *Server) runDirectPull(ctx context.Context, job *pullJob, nodeURL, model
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: nodePullTimeout}
+	// A node's reply is never followed to another host: its address comes from
+	// operator config only.
+	client := &http.Client{Timeout: nodePullTimeout, CheckRedirect: noRedirect}
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Printf("runDirectPull: request to node %s failed: %v", job.Node, err)
@@ -7560,7 +7554,7 @@ func (s *Server) verifyModelLoads(ctx context.Context, nodeName, model string) e
 	}()
 
 	target := fmt.Sprintf("http://localhost:%d", s.cfg.Proxy.Port)
-	client := &http.Client{Timeout: pullVerifyTimeout}
+	client := &http.Client{Timeout: pullVerifyTimeout, CheckRedirect: noRedirect}
 	_, err = bench.MeasureChatTTFT(ctx, client, target, model, k.Key)
 	return err
 }
