@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Plus, Trash2, Tags } from 'lucide-react';
+import { Plus, Trash2, Tags, Pencil, Check, X } from 'lucide-react';
 import { Badge } from './Badge';
 import { Modal } from './Modal';
 import { CustomCombobox } from './Select';
@@ -33,6 +33,8 @@ export function ModelAliasesSection({ demoMode, knownModelNames }: ModelAliasesS
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [aliasToRemove, setAliasToRemove] = useState<ModelAlias | null>(null);
+  // Name of the alias currently loaded into the form for editing, if any.
+  const [editing, setEditing] = useState<string | null>(null);
   const mountedRef = useRef(true);
   // Bumped on every reload and on demo-mode change so a slow response from an
   // earlier request can never overwrite newer rows.
@@ -79,8 +81,14 @@ export function ModelAliasesSection({ demoMode, knownModelNames }: ModelAliasesS
       if (row.shadows_model) {
         setNotice(`"${row.alias}" is also a model on the fleet. The alias wins, so requests for it are now served by "${row.target}".`);
       }
+      // Renaming is a save under the new name followed by removing the old one.
+      if (editing && editing !== row.alias) {
+        if (demoMode) deleteMockModelAlias(editing);
+        else await deleteModelAlias(editing);
+      }
       setNewAlias('');
       setNewTarget('');
+      setEditing(null);
       await reload();
     } catch (err: any) {
       if (mountedRef.current) setError(err.message);
@@ -90,6 +98,21 @@ export function ModelAliasesSection({ demoMode, knownModelNames }: ModelAliasesS
         setAliasToOverwrite(null);
       }
     }
+  };
+
+  const startEdit = (row: ModelAlias) => {
+    setEditing(row.alias);
+    setNewAlias(row.alias);
+    setNewTarget(row.target);
+    setError(null);
+    setNotice(null);
+  };
+
+  const cancelEdit = () => {
+    setEditing(null);
+    setNewAlias('');
+    setNewTarget('');
+    setError(null);
   };
 
   const handleAdd = async () => {
@@ -168,6 +191,14 @@ export function ModelAliasesSection({ demoMode, knownModelNames }: ModelAliasesS
                   </div>
                 </div>
                 <button
+                  onClick={() => startEdit(row)}
+                  disabled={saving}
+                  aria-label={`Edit alias ${row.alias}`}
+                  className="p-2 text-muted-foreground hover:text-foreground rounded-md hover:bg-secondary transition-colors disabled:opacity-50 shrink-0 min-h-[40px] min-w-[40px] flex items-center justify-center"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+                <button
                   onClick={() => setAliasToRemove(row)}
                   disabled={saving}
                   aria-label={`Remove alias ${row.alias}`}
@@ -203,11 +234,21 @@ export function ModelAliasesSection({ demoMode, knownModelNames }: ModelAliasesS
         <button
           type="submit"
           disabled={saving}
-          aria-label="Add model alias"
+          aria-label={editing ? 'Save model alias' : 'Add model alias'}
           className="flex items-center justify-center gap-1.5 px-3 py-2 min-h-[40px] min-w-[40px] bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
         >
-          <Plus className="w-4 h-4" />
+          {editing ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
         </button>
+        {editing && (
+          <button
+            type="button"
+            onClick={cancelEdit}
+            aria-label="Cancel editing"
+            className="flex items-center justify-center px-3 py-2 min-h-[40px] min-w-[40px] border border-border text-muted-foreground hover:text-foreground rounded-lg transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
       </form>
       {error && <p role="alert" className="text-sm text-destructive mt-2">{error}</p>}
       {notice && <p role="status" className="text-sm text-warning mt-2">{notice}</p>}
