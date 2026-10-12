@@ -300,7 +300,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Request bodies are read, inspected and forwarded as plain bytes; a
 	// compressed one would be parsed as garbage here and, on a cloud handoff,
 	// sent on with its Content-Encoding header dropped. Refuse it plainly.
-	if enc := strings.TrimSpace(r.Header.Get("Content-Encoding")); enc != "" && !strings.EqualFold(enc, "identity") {
+	if hasNonIdentityEncoding(r.Header.Values("Content-Encoding")) {
 		writeAPIError(w, http.StatusUnsupportedMediaType, "compressed request bodies are not supported", "invalid_request_error", "unsupported_content_encoding")
 		metrics.RequestsTotal(keyName, "", "none", "415")
 		return
@@ -337,6 +337,17 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	modelName := router.ExtractModelName(body)
+	// label memoises the metric label for the name last asked about, so the
+	// several metric sites of one request scan the fleet once per distinct
+	// model name rather than once per call.
+	var labelFor, labelVal string
+	var labelSet bool
+	label := func(name string) string {
+		if !labelSet || labelFor != name {
+			labelFor, labelVal, labelSet = name, h.metricModel(name), true
+		}
+		return labelVal
+	}
 	if len(modelName) > maxModelNameBytes {
 		log.Printf("rejected request (key=%q request_id=%q reason=%q model=%q)", keyName, requestID, "model name too long", truncateForLog(modelName, 64))
 		writeAPIError(w, http.StatusBadRequest, fmt.Sprintf("model name exceeds %d bytes", maxModelNameBytes), "invalid_request_error", "invalid_model")
@@ -451,7 +462,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				writeAPIError(w, http.StatusBadRequest,
 					fmt.Sprintf("request (~%d estimated tokens) exceeds %q's %d-token context window", estTokens, modelName, window),
 					"invalid_request_error", "context_length_exceeded")
-				metrics.RequestsTotal(keyName, h.metricModel(modelName), "none", "400")
+				metrics.RequestsTotal(keyName, label(modelName), "none", "400")
 				return
 			}
 		}
@@ -551,7 +562,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if h.admin != nil {
 				if exceeded, reason := h.admin.CloudBudgetExceeded(keyName); exceeded {
 					writeAPIError(w, http.StatusServiceUnavailable, reason, "server_error", "cloud_budget_exceeded")
-					metrics.RequestsTotal(keyName, h.metricModel(modelName), "none", "503")
+					metrics.RequestsTotal(keyName, label(modelName), "none", "503")
 					return
 				}
 			}
@@ -568,11 +579,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// non-Ollama backends rather than getting a generic 503.
 		if runtimeFilter == "ollama" {
 			writeAPIError(w, http.StatusServiceUnavailable, "no Ollama nodes available; use /v1/ endpoint for non-Ollama backends", "server_error", "no_nodes_available")
-			metrics.RequestsTotal(keyName, h.metricModel(modelName), "none", "503")
+			metrics.RequestsTotal(keyName, label(modelName), "none", "503")
 			return
 		}
 		writeAPIError(w, http.StatusServiceUnavailable, "no healthy nodes available", "server_error", "no_nodes_available")
-		metrics.RequestsTotal(keyName, h.metricModel(modelName), "none", "503")
+		metrics.RequestsTotal(keyName, label(modelName), "none", "503")
 		return
 	}
 
@@ -656,7 +667,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeAPIError(rw, http.StatusTooManyRequests,
 			"model rate limit exceeded (rpm/tpm cap)",
 			"server_error", "model_rate_limited")
-		metrics.RequestsTotal(keyName, h.metricModel(model), n.Name, "429")
+		metrics.RequestsTotal(keyName, label(model), n.Name, "429")
 	}
 	var profiled bool
 	if body, profiled = profileFor(baseBody, node, modelName); !profiled {
@@ -830,7 +841,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					if exceeded, reason := h.admin.CloudBudgetExceeded(keyName); exceeded {
 						retryErr = errCloudHandled
 						writeAPIError(rw, http.StatusServiceUnavailable, reason, "server_error", "cloud_budget_exceeded")
-						metrics.RequestsTotal(keyName, h.metricModel(modelName), "none", "503")
+						metrics.RequestsTotal(keyName, label(modelName), "none", "503")
 						return
 					}
 				}
@@ -932,10 +943,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if aborted {
 		metricStatus = "aborted"
 	}
-	metrics.RequestsTotal(keyName, h.metricModel(modelName), node.Name, metricStatus)
-	metrics.RequestDuration(h.metricModel(modelName), node.Name, duration)
+	metrics.RequestsTotal(keyName, label(modelName), node.Name, metricStatus)
+	metrics.RequestDuration(label(modelName), node.Name, duration)
 	if ttft := rec.ttft(); ttft > 0 {
-		metrics.RequestTTFT(h.metricModel(modelName), node.Name, ttft.Seconds())
+		metrics.RequestTTFT(label(modelName), node.Name, ttft.Seconds())
 		// Feed the real observed TTFT into placement scoring's load-shape
 		// weighting - see Router.RecordTTFT and effectiveLoad.
 		h.router.RecordTTFT(node.Name, ttft)
@@ -1449,10 +1460,11 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 		status = "aborted"
 		metricStatus = "aborted"
 	}
-	metrics.RequestsTotal(keyName, h.metricModel(modelName), nodeName, metricStatus)
-	metrics.RequestDuration(h.metricModel(modelName), nodeName, duration)
+	mLabel := h.metricModel(modelName)
+	metrics.RequestsTotal(keyName, mLabel, nodeName, metricStatus)
+	metrics.RequestDuration(mLabel, nodeName, duration)
 	if ttft := rec.ttft(); ttft > 0 {
-		metrics.RequestTTFT(h.metricModel(modelName), nodeName, ttft.Seconds())
+		metrics.RequestTTFT(mLabel, nodeName, ttft.Seconds())
 	}
 
 	if h.admin != nil {
@@ -1585,6 +1597,15 @@ func skipJSONValue(dec *json.Decoder) bool {
 	for {
 		tok, err := dec.Token()
 		if err != nil {
+			// A number too large for float64 (1e999) is valid JSON; only the
+			// conversion failed, and the decoder has consumed the token.
+			var typeErr *json.UnmarshalTypeError
+			if errors.As(err, &typeErr) && strings.HasPrefix(typeErr.Value, "number ") {
+				if depth == 0 {
+					return true
+				}
+				continue
+			}
 			return false
 		}
 		if d, ok := tok.(json.Delim); ok {
@@ -1635,7 +1656,7 @@ func modelFieldProblem(body []byte) string {
 			return "ambiguous model field"
 		}
 		if !skipJSONValue(dec) {
-			return "invalid or too deeply nested JSON"
+			return "invalid JSON"
 		}
 	}
 	if _, err := dec.Token(); err != nil { // the closing brace
@@ -1647,10 +1668,15 @@ func modelFieldProblem(body []byte) string {
 	return ""
 }
 
-// hasAmbiguousModelKey reports whether modelFieldProblem finds anything wrong
-// with the body.
-func hasAmbiguousModelKey(body []byte) bool {
-	return modelFieldProblem(body) != ""
+// hasNonIdentityEncoding reports whether any Content-Encoding header value,
+// including a repeated header's later values, names a real encoding.
+func hasNonIdentityEncoding(values []string) bool {
+	for _, v := range values {
+		if v = strings.TrimSpace(v); v != "" && !strings.EqualFold(v, "identity") {
+			return true
+		}
+	}
+	return false
 }
 
 func rewriteModelField(body []byte, model string) []byte {
@@ -1775,6 +1801,11 @@ func (r *statusRecorder) Write(b []byte) (int, error) {
 	return n, err
 }
 
+// trimTailHook, when set, is called on every trimTail run. Tests use it to
+// check that a long line written in many small chunks is not rescanned on
+// each write.
+var trimTailHook func()
+
 // trimTail shrinks an over-long line-oriented tail to about tailMax, always on
 // a line boundary and never dropping the final line: that line carries the
 // token count, so cutting it (or cutting inside it) would turn a real count
@@ -1782,6 +1813,9 @@ func (r *statusRecorder) Write(b []byte) (int, error) {
 // whole up to embedTailMax; beyond that the tail is discarded and
 // truncatedTail is set, so the caller reports the count as unknown.
 func (r *statusRecorder) trimTail() {
+	if trimTailHook != nil {
+		trimTailHook()
+	}
 	tail := r.tail
 	if len(tail) <= tailMax {
 		return
@@ -2057,12 +2091,15 @@ func (h *Handler) metricModel(name string) string {
 	for _, n := range h.router.Nodes() {
 		n.RLock()
 		for _, m := range n.LoadedModels {
-			if m.Name == name {
+			if router.ModelNamesEquivalent(m.Name, name) {
 				n.RUnlock()
 				return name
 			}
 		}
 		n.RUnlock()
+	}
+	if h.router.HasCachedInstalledModel(name) {
+		return name
 	}
 	return "unknown"
 }

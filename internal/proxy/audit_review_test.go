@@ -87,8 +87,8 @@ func TestHasAmbiguousModelKey(t *testing.T) {
 		{`{"MODEL":"a"}`, true},
 	}
 	for _, c := range cases {
-		if got := hasAmbiguousModelKey([]byte(c.body)); got != c.want {
-			t.Errorf("hasAmbiguousModelKey(%s) = %v, want %v", c.body, got, c.want)
+		if got := modelFieldProblem([]byte(c.body)) != ""; got != c.want {
+			t.Errorf("modelFieldProblem(%s) flagged = %v, want %v", c.body, got, c.want)
 		}
 	}
 }

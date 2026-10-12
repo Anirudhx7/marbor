@@ -65,6 +65,23 @@ func (r *Router) FleetModelStatuses() map[string]string {
 	return seen
 }
 
+// HasCachedInstalledModel reports whether any node's already-cached /api/tags
+// catalog lists name (bare name and ":latest" form count as the same model).
+// It reads only memory, never the network, and ignores cache age: a stale
+// catalog is still good evidence that a name is a real installed model.
+func (r *Router) HasCachedInstalledModel(name string) bool {
+	r.tagsMu.Lock()
+	defer r.tagsMu.Unlock()
+	for _, c := range r.tagsCache {
+		for _, t := range c.Models {
+			if ModelNamesEquivalent(t.Name, name) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // FleetModelInventory is FleetModelStatuses plus whether the inventory is
 // complete: true only when at least one node is healthy and every healthy
 // node's catalog was fetched. When it is false, a name's absence from the

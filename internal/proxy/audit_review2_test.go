@@ -25,18 +25,80 @@ func newEmptyFleetHandler() *Handler {
 }
 
 func TestDeeplyNestedBodyIsRejectedWithoutCrashing(t *testing.T) {
-	body := `{"model":"m","a":` + strings.Repeat("[", 5<<20)
-	if !hasAmbiguousModelKey([]byte(body)) {
-		t.Error("a 5 MiB nest of arrays should be flagged")
+	// The nests are balanced, so only the depth cap can reject the deep one.
+	nest := func(levels int) string {
+		return `{"model":"m","a":` + strings.Repeat("[", levels) + strings.Repeat("]", levels) + `}`
+	}
+	deep := nest(maxBodyJSONDepth + 1)
+	if modelFieldProblem([]byte(deep)) == "" {
+		t.Error("a balanced nest past the depth cap should be flagged")
 	}
 	rec := httptest.NewRecorder()
-	newEmptyFleetHandler().ServeHTTP(rec, httptest.NewRequest("POST", "/api/generate", strings.NewReader(body)))
+	newEmptyFleetHandler().ServeHTTP(rec, httptest.NewRequest("POST", "/api/generate", strings.NewReader(deep)))
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status %d, want 400", rec.Code)
 	}
-	nested := `{"model":"m","a":` + strings.Repeat("[", 200) + strings.Repeat("]", 200) + `}`
-	if hasAmbiguousModelKey([]byte(nested)) {
-		t.Error("200 levels of nesting is legitimate")
+	if p := modelFieldProblem([]byte(nest(maxBodyJSONDepth - 2))); p != "" {
+		t.Errorf("a nest just under the cap is legitimate, got %q", p)
+	}
+}
+
+func TestHugeNumberInUnrelatedFieldIsAccepted(t *testing.T) {
+	for _, body := range []string{
+		`{"model":"m","x":1e999}`,
+		`{"model":"m","x":[1e999,-1e999,{"y":1e999}],"z":1}`,
+	} {
+		if p := modelFieldProblem([]byte(body)); p != "" {
+			t.Errorf("%s: unexpected problem %q", body, p)
+		}
+	}
+	if p := modelFieldProblem([]byte(`{"model":"m","x":1e999,"x`)); p == "" {
+		t.Error("a truncated body after a huge number must still be flagged")
+	}
+}
+
+func TestMultipleContentEncodingValuesAreRejected(t *testing.T) {
+	h := newEmptyFleetHandler()
+	req := httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(`{"model":"m"}`))
+	req.Header.Add("Content-Encoding", "identity")
+	req.Header.Add("Content-Encoding", "gzip")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnsupportedMediaType {
+		t.Errorf("status %d, want 415", rec.Code)
+	}
+}
+
+func TestMetricModelKeepsLoadedAndColdInstalledModels(t *testing.T) {
+	tags := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"models":[{"name":"cold-model:latest"},{"name":"other:7b"}]}`))
+	}))
+	t.Cleanup(tags.Close)
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{{Name: "n", URL: tags.URL, Runtime: "ollama"}}, nil)
+	for _, n := range r.Nodes() {
+		n.Lock()
+		n.Healthy = true
+		n.LoadedModels = []router.ModelInfo{{Name: "hot-model:latest"}}
+		n.Unlock()
+	}
+	h := NewHandler(r, admin.NewServer(r, nil, config.Config{}), nil)
+
+	if got := h.metricModel("cold-model"); got != "unknown" {
+		t.Fatalf("before the catalog is cached a cold model is not yet known, got %q", got)
+	}
+	if _, err := r.FetchModelTags(tags.URL); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"hot-model:latest", "hot-model", "cold-model", "cold-model:latest", "other:7b"} {
+		if got := h.metricModel(name); got != name {
+			t.Errorf("metricModel(%q) = %q, want its own name", name, got)
+		}
+	}
+	if got := h.metricModel("other:13b"); got != "unknown" {
+		t.Errorf("an uninstalled tag must be unknown, got %q", got)
+	}
+	if got := h.metricModel("invented"); got != "unknown" {
+		t.Errorf("invented name = %q, want unknown", got)
 	}
 }
 
@@ -65,29 +127,35 @@ func TestMalformedObjectBodyIsRejectedButBodylessRequestsAreNot(t *testing.T) {
 
 func TestUnknownModelNamesShareOneMetricLabel(t *testing.T) {
 	h := newEmptyFleetHandler()
-	for i := 0; i < 6; i++ {
-		name := "zz-unk-label-" + strings.Repeat("x", i+1)
-		h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(`{"model":"`+name+`"}`)))
-	}
-	families, err := prometheus.DefaultGatherer.Gather()
-	if err != nil {
-		t.Fatal(err)
-	}
-	sawUnknown := false
-	for _, f := range families {
-		for _, m := range f.GetMetric() {
-			for _, l := range m.GetLabel() {
-				if strings.HasPrefix(l.GetValue(), "zz-unk-label-") {
-					t.Errorf("client-chosen model %q became a label on %s", l.GetValue(), f.GetName())
-				}
-				if l.GetName() == "model" && l.GetValue() == "unknown" {
-					sawUnknown = true
+	// unknownCount sums marbor_requests_total over series labelled "unknown",
+	// and reports any series carrying one of this test's invented names.
+	unknownCount := func() (total float64) {
+		families, err := prometheus.DefaultGatherer.Gather()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, f := range families {
+			for _, m := range f.GetMetric() {
+				for _, l := range m.GetLabel() {
+					if strings.HasPrefix(l.GetValue(), "zz-unk-label-") {
+						t.Errorf("client-chosen model %q became a label on %s", l.GetValue(), f.GetName())
+					}
+					if f.GetName() == "marbor_requests_total" && l.GetName() == "model" && l.GetValue() == "unknown" {
+						total += m.GetCounter().GetValue()
+					}
 				}
 			}
 		}
+		return total
 	}
-	if !sawUnknown {
-		t.Error("expected unknown model names to share the \"unknown\" label")
+	before := unknownCount()
+	const requests = 6
+	for i := 0; i < requests; i++ {
+		name := "zz-unk-label-" + strings.Repeat("x", i+1)
+		h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(`{"model":"`+name+`"}`)))
+	}
+	if delta := unknownCount() - before; delta != requests {
+		t.Errorf("unknown-labelled requests rose by %v, want exactly %d", delta, requests)
 	}
 }
 
@@ -155,11 +223,20 @@ func TestPrettyPrintedReplyKeepsTokenCountAndDurations(t *testing.T) {
 }
 
 func TestLongLineGrownByManySmallWritesKeepsCount(t *testing.T) {
+	trimCalls := 0
+	trimTailHook = func() { trimCalls++ }
+	t.Cleanup(func() { trimTailHook = nil })
 	rec := &statusRecorder{ResponseWriter: httptest.NewRecorder()}
 	rec.Write([]byte("{\"a\":1}\n"))
 	rec.Write([]byte(`{"response":"` + strings.Repeat("x", 3*tailMax)))
-	for i := 0; i < 200; i++ {
+	const smallWrites = 200
+	for i := 0; i < smallWrites; i++ {
 		rec.Write([]byte(strings.Repeat("y", 50)))
+	}
+	// Linear work means the growing line is not rescanned per write: a
+	// handful of trims at most, far below one per small write.
+	if trimCalls > 10 {
+		t.Errorf("trimTail ran %d times for %d small writes; the long line is being rescanned", trimCalls, smallWrites)
 	}
 	rec.Write([]byte(`","eval_count":7,"prompt_eval_count":3}` + "\n"))
 	if got := rec.tokenCount(rec.truncatedTail); got != 10 {
