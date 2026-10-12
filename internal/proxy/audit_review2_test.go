@@ -290,7 +290,9 @@ func TestDegradationTriesLaterChainEntryWhenFirstIsCapped(t *testing.T) {
 	if err := st.SetModelConfig(store.ModelConfig{Model: "model-b", Node: "gpu-0", RPM: &one}); err != nil {
 		t.Fatal(err)
 	}
-	h := NewHandler(r, admin.NewServer(r, nil, config.Config{}, st), nil)
+	a := admin.NewServer(r, nil, config.Config{}, st)
+	defer a.Shutdown()
+	h := NewHandler(r, a, nil)
 	h.modelLimiter.allow("model-b", "gpu-0", &one, nil)
 
 	req := httptest.NewRequest("POST", "/api/generate", strings.NewReader(`{"model":"model-a","prompt":"hi"}`))
