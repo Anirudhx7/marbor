@@ -179,19 +179,35 @@ func TestStreamErrorChunk_EscapedSeparatorsLogOnOneLine(t *testing.T) {
 	frames := []string{
 		"data: {\"error\":{\"message\":\"first\\nline\"}}\n\n",
 		"data: {\"error\":{\"message\":\"left\\u2028right\\u0007bell\"}}\n\n",
+		"data: {\"error\":{\"message\":\"carriage\\rreturn\"}}\n\n",
+		"data: {\"error\":{\"message\":\"" + strings.Repeat("x", 1000) + "\"}}\n\n",
 	}
 	for _, src := range frames {
 		out := translateSSEToNDJSON(io.NopCloser(strings.NewReader(src)), "/api/chat", "m")
 		io.ReadAll(out) //nolint:errcheck
 	}
 	logged := buf.String()
-	if !strings.Contains(logged, "first line") || !strings.Contains(logged, "left right bell") {
-		t.Fatalf("sanitized provider message not logged: %q", logged)
+	for _, want := range []string{"first line", "left right bell", "carriage return"} {
+		if !strings.Contains(logged, want) {
+			t.Fatalf("sanitized provider message %q not logged: %q", want, logged)
+		}
 	}
-	if lines := strings.Count(strings.TrimSuffix(logged, "\n"), "\n") + 1; lines != 2 {
-		t.Errorf("want one line per chunk (2), got %d: %q", lines, logged)
+	lines := strings.Split(strings.TrimSuffix(logged, "\n"), "\n")
+	if len(lines) != 4 {
+		t.Errorf("want one line per chunk (4), got %d: %q", len(lines), logged)
 	}
-	for _, bad := range []string{"\u2028", "\x07", "\r"} {
+	const marker = "upstream error chunk: "
+	for _, line := range lines {
+		i := strings.Index(line, marker)
+		if i < 0 {
+			t.Errorf("line without provider message: %q", line)
+			continue
+		}
+		if n := len(line) - i - len(marker); n > maxLoggedProviderChunk+3 {
+			t.Errorf("logged message not bounded: %d bytes", n)
+		}
+	}
+	for _, bad := range []string{" ", "\x07", "\r"} {
 		if strings.Contains(logged, bad) {
 			t.Errorf("unsanitized %q in log %q", bad, logged)
 		}
@@ -232,5 +248,20 @@ func TestAnthropicJSONToOllama_MissingStopReasonDefaultsDoneReason(t *testing.T)
 	raw, _ := io.ReadAll(translateJSONToSingleOllama(openAI, "/api/chat", "m"))
 	if !strings.Contains(string(raw), `"done_reason":"stop"`) {
 		t.Errorf("done_reason default missing: %s", raw)
+	}
+}
+
+func TestSanitizeLogText_ReplacesGenuineReplacementChar(t *testing.T) {
+	if got := sanitizeLogText("a\xef\xbf\xbdb", 100); got != "a b" {
+		t.Errorf("sanitize = %q", got)
+	}
+}
+
+func TestAnthropicJSONToOllama_Generate_MissingStopReasonDefaultsDoneReason(t *testing.T) {
+	src := `{"content":[{"type":"text","text":"x"}],"usage":{}}`
+	openAI := translateAnthropicJSONToOpenAI(io.NopCloser(strings.NewReader(src)))
+	raw, _ := io.ReadAll(translateJSONToSingleOllama(openAI, "/api/generate", "m"))
+	if !strings.Contains(string(raw), `"done_reason":"stop"`) {
+		t.Errorf("done_reason default missing on /api/generate: %s", raw)
 	}
 }

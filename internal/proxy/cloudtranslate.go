@@ -364,10 +364,14 @@ func translateSSEToNDJSON(src io.ReadCloser, origPath, clientModel string) io.Re
 			// An upstream error chunk: forward its message instead of the
 			// generic truncation text, then end the stream with an error.
 			if len(chunk.Error) > 0 && string(chunk.Error) != "null" {
-				msg := upstreamErrorMessage(chunk.Error, "upstream stream error")
 				// Log the decoded provider message (raw payload if it has no
 				// message), sanitized, so it stays one bounded line.
-				logged := upstreamErrorMessage(chunk.Error, string(chunk.Error))
+				msg := upstreamErrorMessage(chunk.Error, "")
+				logged := msg
+				if msg == "" {
+					msg = "upstream stream error"
+					logged = string(chunk.Error)
+				}
 				logStreamFailure("upstream error chunk", errors.New(sanitizeLogText(logged, maxLoggedProviderChunk)))
 				pw.Write(append(buildErrorNDJSON(msg), '\n')) //nolint:errcheck -- CloseWithError below reports it
 				pw.CloseWithError(fmt.Errorf("upstream stream error: %s", msg))
