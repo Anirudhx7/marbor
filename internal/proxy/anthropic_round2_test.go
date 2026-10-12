@@ -8,22 +8,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/Anirudhx7/marbor/internal/store"
 )
-
-func captureLog(t *testing.T) *bytes.Buffer {
-	t.Helper()
-	var buf bytes.Buffer
-	prev := log.Writer()
-	log.SetOutput(&buf)
-	t.Cleanup(func() { log.SetOutput(prev) })
-	return &buf
-}
 
 func TestCapCloudResponse_ResetsBodyDescribingHeaders(t *testing.T) {
 	old := maxCloudResponseBytes
