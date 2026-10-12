@@ -62,10 +62,14 @@ func TestEvictForHeadroomSkipsRuntimeThatCannotUnload(t *testing.T) {
 func TestEnsureHeadroomPanicClearsWarmReservation(t *testing.T) {
 	r, n, _ := ensureHeadroomFixture(t, nil)
 	r.store = panicDeleteStore{}
+	var recovered interface{}
 	func() {
-		defer func() { _ = recover() }()
+		defer func() { recovered = recover() }()
 		r.ensureHeadroom(context.Background(), n, "X")
 	}()
+	if recovered == nil {
+		t.Fatal("the injected store panic never reached ensureHeadroom, so the test proves nothing")
+	}
 	if got := r.PendingPrewarmBytes("n"); got != 0 {
 		t.Fatalf("PendingPrewarmBytes = %d after a panicked eviction, want the reservation given back", got)
 	}
@@ -121,8 +125,8 @@ func TestTruncateForLogIsUTF8SafeAndStripsControls(t *testing.T) {
 	if got := truncateForLog("a\nb\x1b[31mc\r", 100); strings.ContainsAny(got, "\n\r\x1b") {
 		t.Fatalf("control characters survived: %q", got)
 	}
-	if got := truncateForLog("bad\xffbyte", 100); !utf8.ValidString(got) {
-		t.Fatalf("invalid UTF-8 survived: %q", got)
+	if got, want := truncateForLog("bad\xffbyte", 100), "bad"+string(utf8.RuneError)+"byte"; got != want {
+		t.Fatalf("invalid UTF-8 gave %q, want %q", got, want)
 	}
 	if got := truncateForLog("short", 100); got != "short" {
 		t.Fatalf("got %q", got)
@@ -248,7 +252,7 @@ func TestSanitizeTelemetryClampsHostileValues(t *testing.T) {
 func TestPollAgentClampsHostileVRAM(t *testing.T) {
 	port := agentServerPort(t, func(w http.ResponseWriter, req *http.Request) {
 		json.NewEncoder(w).Encode(marboragent.Telemetry{
-			Agent: marboragent.Agent{NodeID: "a"},
+			Agent: marboragent.Agent{Version: "v0.16.0"},
 			GPU: &marboragent.GPUBlock{Count: 1, Devices: []marboragent.GPUInfo{
 				{VRAMTotalMB: math.MaxInt64, VRAMUsedMB: math.MaxInt64},
 			}},
@@ -287,7 +291,7 @@ func TestAgentVRAMSumsAcrossDevices(t *testing.T) {
 	r := New(config.RoutingConfig{}, []config.NodeConfig{{Name: "n", URL: "http://example.test:11434"}}, nil)
 	n := r.nodes[0]
 	r.applyAgentTelemetry(n, marboragent.Telemetry{
-		Agent: marboragent.Agent{NodeID: "a"},
+		Agent: marboragent.Agent{Version: "v0.16.0"},
 		GPU: &marboragent.GPUBlock{Count: 2, Devices: []marboragent.GPUInfo{
 			{Index: 0, VRAMTotalMB: 24000, VRAMUsedMB: 1000},
 			{Index: 1, VRAMTotalMB: 24000, VRAMUsedMB: 2000},

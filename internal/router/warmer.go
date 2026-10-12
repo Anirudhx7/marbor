@@ -451,8 +451,8 @@ func runtimeErrorDetail(body io.Reader) string {
 	return truncateForLog(strings.TrimSpace(out.Error), maxLogValueBytes)
 }
 
-// pingEndpoint POSTs payload to path on nodeURL and treats any 4xx/5xx
-// response as a *statusError.
+// pingEndpoint POSTs payload to path on nodeURL and treats any response that is
+// not 2xx (including a 3xx, since redirects are not followed) as a *statusError.
 func (r *Router) pingEndpoint(ctx context.Context, nodeURL, path string, payload map[string]any) error {
 	body, _ := json.Marshal(payload)
 

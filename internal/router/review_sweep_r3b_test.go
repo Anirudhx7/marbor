@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,10 +15,14 @@ import (
 func TestLoadWithHeadroomPanicDoesNotWedgeNodeLoadLock(t *testing.T) {
 	r, n, _ := ensureHeadroomFixture(t, nil)
 	r.store = panicDeleteStore{}
+	var recovered interface{}
 	func() {
-		defer func() { _ = recover() }()
+		defer func() { recovered = recover() }()
 		_ = r.loadWithHeadroom(context.Background(), n, "X", "5m")
 	}()
+	if recovered == nil {
+		t.Fatal("the injected store panic never reached loadWithHeadroom, so the test proves nothing")
+	}
 	got := make(chan struct{})
 	go func() {
 		unlock := r.lockNodeLoad("n")
@@ -54,6 +59,8 @@ func TestEffectiveModelBytesAgreesAcrossCallers(t *testing.T) {
 		{"ollama", 2 * gibBytes, 2 * gibBytes},
 		{"vllm", 0, 7 * gibBytes},
 		{"", 0, 7 * gibBytes},
+		{"auto", 0, 7 * gibBytes},
+		{"auto", 2 * gibBytes, 2 * gibBytes},
 		{"vllm", 3 * gibBytes, 3 * gibBytes},
 	}
 	for _, c := range cases {
@@ -226,25 +233,36 @@ func TestTrimNodeEntriesTieBreakIsDeterministic(t *testing.T) {
 		}
 		return m, keys
 	}
-	var first map[string]time.Time
+	dropped := func(m map[string]time.Time) []string {
+		var out []string
+		for i := 0; i < 300; i++ {
+			if _, ok := m[modelKey("n", fmt.Sprintf("m-%03d", i))]; !ok {
+				out = append(out, fmt.Sprintf("m-%03d", i))
+			}
+		}
+		return out
+	}
+	var first []string
 	for run := 0; run < 5; run++ {
 		m, keys := build()
 		trimNodeEntries(m, keys, "n", nil, time.Time{}, func(t time.Time) time.Time { return t })
+		got := dropped(m)
+		if len(got) == 0 {
+			t.Fatal("nothing was dropped")
+		}
 		if first == nil {
-			first = m
+			first = got
+			// Equal stamps drop the lowest names first: a prefix of the name order.
+			for i, name := range got {
+				if want := fmt.Sprintf("m-%03d", i); name != want {
+					t.Fatalf("dropped[%d] = %s, want %s (lowest names first)", i, name, want)
+				}
+			}
 			continue
 		}
-		for k := range first {
-			if _, ok := m[k]; !ok {
-				t.Fatalf("run %d dropped a different set of equal-stamp entries", run)
-			}
+		if strings.Join(got, ",") != strings.Join(first, ",") {
+			t.Fatalf("run %d dropped a different set of equal-stamp entries", run)
 		}
-		if len(m) != len(first) {
-			t.Fatalf("run %d kept %d entries, first kept %d", run, len(m), len(first))
-		}
-	}
-	if _, ok := first[modelKey("n", "m-000")]; ok {
-		t.Fatal("equal stamps must drop the lowest names first")
 	}
 }
 

@@ -377,8 +377,14 @@ func (r *Router) pollNode(n *NodeState) {
 		nodeName = n.Name
 		nowHealthy = n.Healthy
 	}()
-	// One existence check before and one undo after the whole batch, not a router
-	// lock pair per model.
+	// The existence check runs once before the batch and the undo once after it,
+	// not a router lock pair per model. A node removed before the check records
+	// nothing; one removed during the batch is undone below. If it is removed and
+	// a node of the same name is added again inside this one batch window, the
+	// undo sees a live node and leaves these sizes: they are last-known size
+	// hints keyed by node and model name, the new node's first poll overwrites
+	// them with real readings, and they are never charged for a model the node
+	// reports a size for.
 	recordSizes := r.nodeExists(nodeName)
 	for _, m := range models {
 		if recordSizes && !m.sizeAttributed {

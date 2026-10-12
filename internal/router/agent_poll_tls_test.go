@@ -136,7 +136,7 @@ func TestMixedTLSAndPlaintextFleet_BothPollCorrectly(t *testing.T) {
 			return
 		}
 		json.NewEncoder(w).Encode(marboragent.Telemetry{
-			Agent:        marboragent.Agent{NodeID: "node-id-2", Version: "v0.17.0", ProtocolVersion: 1, Platform: "linux", Architecture: "amd64"},
+			Agent:        marboragent.Agent{Version: "v0.17.0", ProtocolVersion: 1, Platform: "linux", Architecture: "amd64"},
 			Capabilities: []string{"status"},
 		})
 	}))

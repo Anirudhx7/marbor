@@ -197,6 +197,11 @@ func (r *Router) RestoreWarmState() (int, error) {
 		byNode[w.Node] = append(byNode[w.Node], ModelInfo{Name: w.Model, SizeVRAM: w.VRAMBytes})
 	}
 	r.lruMu.Unlock()
+	// A node removed while the rows were being applied must not keep the stamps
+	// that just landed. No router lock is held here.
+	for node := range byNode {
+		r.undoIfNodeRemoved(node, r.forgetLastUsedForNode)
+	}
 
 	for _, n := range nodes {
 		models, ok := byNode[n.Name]

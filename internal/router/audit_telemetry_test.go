@@ -357,6 +357,7 @@ func TestMatchRuntimeTiers(t *testing.T) {
 
 func deploymentAgentTelemetry() marboragent.Telemetry {
 	return marboragent.Telemetry{
+		Agent: marboragent.Agent{Version: "v0.16.0"},
 		Deployments: []marboragent.DeploymentReport{
 			{Runtime: "vllm", Port: 0, Parallelism: &marboragent.ParallelismInfo{Type: "tp", Width: 4}},
 		},

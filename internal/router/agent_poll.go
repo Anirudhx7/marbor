@@ -22,7 +22,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"reflect"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -262,14 +261,11 @@ func (r *Router) pollAgentHost(host string, cfg MarborAgentConfig, members []*No
 		err = json.NewDecoder(bytes.NewReader(body)).Decode(&t)
 		if err != nil {
 			r.logAgentPoll(host, "decode", "failed: could not decode status reply: %v", err)
-		} else if reflect.DeepEqual(t, marboragent.Telemetry{}) {
-			// Valid JSON that carries nothing a real agent always sends (null, {},
-			// another service reply) is not a healthy marbor agent. This is keyed on
-			// the whole report being empty, not on any one field, because agents
-			// from before a field existed (node_id arrived in v0.17.1) must keep
-			// working through a rolling upgrade.
-			err = errors.New("status reply is empty")
-			r.logAgentPoll(host, "empty", "failed: %v", err)
+		} else if !looksLikeAgentReport(&t) {
+			// Valid JSON that carries none of the signals a marbor agent always
+			// sends (null, {}, another service reply) is not a healthy agent.
+			err = errors.New("status reply is not an agent report")
+			r.logAgentPoll(host, "notagent", "failed: %v", err)
 		} else {
 			sanitizeTelemetry(&t)
 		}
@@ -310,16 +306,17 @@ const maxLogValueBytes = 256
 // truncateForLog makes s safe to embed in one log line: unsafe characters
 // (control characters, line separators, bidirectional overrides; see
 // isUnsafeRune) become spaces so a hostile value cannot forge a line or
-// disguise one, invalid UTF-8 becomes the replacement character, and the value
-// is cut on a character boundary so that at most max bytes of it remain. The
-// result can be up to 3 bytes longer than max, for the "..." cut marker.
+// disguise one, and invalid UTF-8 becomes the replacement character. When the
+// cleaned value is longer than max bytes it is cut on a character boundary at
+// or below max and the 3-byte "..." marker is appended, so the result is never
+// longer than max+3 bytes.
 func truncateForLog(s string, max int) string {
 	clean := strings.Map(func(c rune) rune {
 		if isUnsafeRune(c) {
 			return ' '
 		}
 		return c
-	}, strings.ToValidUTF8(s, "FFFD"))
+	}, strings.ToValidUTF8(s, string(utf8.RuneError)))
 	if len(clean) <= max {
 		return clean
 	}
@@ -997,4 +994,15 @@ func buildAgentURL(host string, port int, scheme string) (string, error) {
 		host = "[" + host + "]"
 	}
 	return fmt.Sprintf("%s://%s:%d/v1/status", scheme, host, port), nil
+}
+
+// looksLikeAgentReport reports whether t carries at least one signal every
+// marbor agent build emits: the protocol version, platform or version string of
+// the agent block, or the last_updated stamp of the collector snapshot (sent
+// since v0.17.0, before the agent block existed). The check is
+// deliberately a set of signals, not one field, so an agent from before any one
+// of them existed keeps working through a rolling upgrade, while foreign JSON
+// such as {"capabilities":[]} or {"health":{}} is rejected.
+func looksLikeAgentReport(t *marboragent.Telemetry) bool {
+	return t.Agent.ProtocolVersion != 0 || t.Agent.Platform != "" || t.Agent.Version != "" || !t.LastUpdated.IsZero()
 }

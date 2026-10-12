@@ -18,7 +18,9 @@ import (
 const (
 	// maxTelemetryMB caps any MB-denominated size. 1<<30 MB is a petabyte, far
 	// above any real device, and small enough that the sum over the capped
-	// device list, multiplied into bytes, stays well inside an int64.
+	// device, multiplied into bytes, fits an int64. A sum over the up to 64
+	// devices is not bounded by this cap alone, so the router clamps the
+	// aggregate it stores as well.
 	maxTelemetryMB int64 = 1 << 30
 	// maxTelemetryListLen caps every list in a report.
 	maxTelemetryListLen = 64
@@ -97,7 +99,7 @@ func clampPortPtr(p *int) *int {
 
 // clampStr drops unsafe characters and invalid UTF-8, treats a whitespace-only
 // value as empty, and cuts the rest to maxTelemetryStringBytes on a character
-// boundary.
+// boundary. Leading and trailing whitespace of a non-empty value is kept.
 func clampStr(s string) string {
 	s = strings.Map(func(c rune) rune {
 		if isUnsafeRune(c) {
@@ -132,22 +134,20 @@ func clampStrs(in []string) []string {
 	return out
 }
 
-// clampIndices keeps the GPU index values that are in range, up to the list cap.
+// clampIndices returns a copy of in when every value is a valid GPU index and
+// the list is within the cap. Otherwise it returns nil (unknown): keeping only
+// the good entries would leave a shorter group next to a width that still says
+// more.
 func clampIndices(in []int) []int {
-	if in == nil {
+	if in == nil || len(in) > maxTelemetryListLen {
 		return nil
 	}
-	out := make([]int, 0, len(in))
 	for _, v := range in {
 		if v < 0 || v > maxTelemetryGPUIndex {
-			continue
+			return nil
 		}
-		if len(out) == maxTelemetryListLen {
-			break
-		}
-		out = append(out, v)
 	}
-	return out
+	return append([]int(nil), in...)
 }
 
 // clampPercent bounds a percentage to 0-100. A non-finite value is unknown (nil).
@@ -174,9 +174,16 @@ func clampDiskGB(v float64) float64 {
 	return math.Min(v, maxTelemetryDiskGB)
 }
 
-func clampNonNeg64(v int64) int64 {
+// maxTelemetrySeconds caps uptime and boot time (epoch seconds): about 540
+// years, far past any real value.
+const maxTelemetrySeconds int64 = 1 << 34
+
+func clampSeconds(v int64) int64 {
 	if v < 0 {
 		return 0
+	}
+	if v > maxTelemetrySeconds {
+		return maxTelemetrySeconds
 	}
 	return v
 }
@@ -204,11 +211,14 @@ func sanitizeTelemetry(t *marboragent.Telemetry) {
 		h.CPUPercent = clampPercent(h.CPUPercent)
 		h.RAMUsedMB = clampMB(h.RAMUsedMB)
 		h.RAMTotalMB = clampMB(h.RAMTotalMB)
+		if h.RAMUsedMB > h.RAMTotalMB {
+			h.RAMUsedMB = h.RAMTotalMB
+		}
 		h.DiskFreeGB = clampDiskGB(h.DiskFreeGB)
 		h.DiskTotalGB = clampDiskGB(h.DiskTotalGB)
 		h.Hostname = clampStr(h.Hostname)
-		h.UptimeSeconds = clampNonNeg64(h.UptimeSeconds)
-		h.BootTime = clampNonNeg64(h.BootTime)
+		h.UptimeSeconds = clampSeconds(h.UptimeSeconds)
+		h.BootTime = clampSeconds(h.BootTime)
 		h.Addrs = clampStrs(h.Addrs)
 	}
 	if g := t.GPU; g != nil {
@@ -259,6 +269,10 @@ func sanitizeGPU(g *marboragent.GPUBlock) {
 		d.PowerWatts = finiteNonNeg(d.PowerWatts)
 		d.VRAMUsedMB = clampMB(d.VRAMUsedMB)
 		d.VRAMTotalMB = clampMB(d.VRAMTotalMB)
+		// Used never exceeds total (a total of 0 is unknown, so used is too).
+		if d.VRAMUsedMB > d.VRAMTotalMB {
+			d.VRAMUsedMB = d.VRAMTotalMB
+		}
 	}
 	g.Count = clampCount(g.Count)
 	if g.Count > maxTelemetryListLen {

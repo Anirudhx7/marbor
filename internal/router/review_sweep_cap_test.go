@@ -56,10 +56,14 @@ func TestEvictForHeadroomMultiModelRuntimeWithNoSizesIsEvictable(t *testing.T) {
 func TestEnsureHeadroomPanicGivesCooldownClaimBack(t *testing.T) {
 	r, n, _ := ensureHeadroomFixture(t, nil)
 	r.store = panicDeleteStore{}
+	var recovered interface{}
 	func() {
-		defer func() { _ = recover() }()
+		defer func() { recovered = recover() }()
 		r.ensureHeadroom(context.Background(), n, "X")
 	}()
+	if recovered == nil {
+		t.Fatal("the injected store panic never reached ensureHeadroom, so the test proves nothing")
+	}
 	r.evictMu.Lock()
 	_, stamped := r.lastEvictAt["n"]
 	r.evictMu.Unlock()

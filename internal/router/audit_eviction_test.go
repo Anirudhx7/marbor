@@ -435,7 +435,7 @@ func TestUnloadModelsPaths(t *testing.T) {
 	rec.mu.Lock()
 	rec.status = http.StatusInternalServerError
 	rec.mu.Unlock()
-	if err := r.UnloadModels(ctx, "n", []string{"m"}); err == nil || !strings.Contains(err.Error(), "m:") {
+	if err := r.UnloadModels(ctx, "n", []string{"m"}); err == nil || !strings.Contains(err.Error(), `"m":`) {
 		t.Errorf("err = %v, want the failing model named", err)
 	}
 	n.mu.RLock()

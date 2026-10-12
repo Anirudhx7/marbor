@@ -99,9 +99,9 @@ func TestPingEndpointTreatsRedirectAsFailure(t *testing.T) {
 }
 
 func TestRuntimeErrorDetailIsCleaned(t *testing.T) {
-	body := `{"error": "bad\nforged line ‮ reversed ` + strings.Repeat("x", 600) + `"}`
+	body := `{"error": "bad\nforged line ` + bidiOverride + ` reversed ` + strings.Repeat("x", 600) + `"}`
 	got := runtimeErrorDetail(strings.NewReader(body))
-	if strings.ContainsAny(got, "\n‮") {
+	if strings.ContainsAny(got, "\n"+bidiOverride+"") {
 		t.Fatalf("unsafe characters survived: %q", got)
 	}
 	if len(got) > maxLogValueBytes+3 {
@@ -110,8 +110,8 @@ func TestRuntimeErrorDetailIsCleaned(t *testing.T) {
 }
 
 func TestLogCutHandlesBidiAndKeepsBound(t *testing.T) {
-	got := truncateForLog("a‮b c⁦d", 100)
-	if strings.ContainsAny(got, "‮ ⁦") {
+	got := truncateForLog("a"+bidiOverride+"b"+lineSep+"c"+isolate+"d", 100)
+	if strings.ContainsAny(got, bidiOverride+lineSep+isolate) {
 		t.Fatalf("bidi or separator characters survived: %q", got)
 	}
 	long := truncateForLog(strings.Repeat("é", 500), 20)
@@ -178,7 +178,7 @@ func TestSanitizeTelemetryCoversEveryBlock(t *testing.T) {
 			NodeID: strings.Repeat("n", 999), Version: "v1\x1b[31m", Platform: "   ", ProtocolVersion: -4,
 		},
 		Host: &marboragent.HostTelemetry{
-			Hostname: "host‮name", UptimeSeconds: -1, BootTime: -2, DiskFreeGB: big, DiskTotalGB: inf,
+			Hostname: "host" + bidiOverride + "name", UptimeSeconds: -1, BootTime: -2, DiskFreeGB: big, DiskTotalGB: inf,
 		},
 		GPU: &marboragent.GPUBlock{Count: 0, Devices: devs},
 		Runtimes: []marboragent.RuntimeInfo{{
@@ -228,7 +228,7 @@ func TestSanitizeTelemetryCoversEveryBlock(t *testing.T) {
 		t.Errorf("control block not cleaned: %+v", tel.Control)
 	}
 	d := tel.Deployments[0]
-	if d.Port != 0 || len(d.GPUGroup) != 2 || len(d.GPUScope.Indices) != 1 || len(d.GPUScope.Raw) != maxTelemetryStringBytes {
+	if d.Port != 0 || d.GPUGroup != nil || d.GPUScope.Indices != nil || len(d.GPUScope.Raw) != maxTelemetryStringBytes {
 		t.Errorf("deployment not cleaned: %+v scope %+v", d, d.GPUScope)
 	}
 	if d.Parallelism.Width != maxTelemetryCount || d.Parallelism.PipelineWidth != 0 || d.Caps.MaxTPWidth != maxTelemetryCount {
@@ -283,7 +283,7 @@ func TestPollAgentSumOfMaxDevicesStaysSafe(t *testing.T) {
 func TestPollAgentStoresOnlyCleanedStrings(t *testing.T) {
 	port := agentServerPort(t, func(w http.ResponseWriter, req *http.Request) {
 		json.NewEncoder(w).Encode(marboragent.Telemetry{
-			Agent: marboragent.Agent{NodeID: "n1", Version: "v1‮"},
+			Agent: marboragent.Agent{NodeID: "n1", Version: "v1" + bidiOverride},
 			Host:  &marboragent.HostTelemetry{Hostname: "evil\nhost"},
 		})
 	})
@@ -315,3 +315,11 @@ func (l *syncLog) String() string {
 	defer l.mu.Unlock()
 	return l.buf.String()
 }
+
+// Characters that must never survive into stored or logged text, built from code
+// points so the source holds no invisible characters.
+var (
+	bidiOverride = string(rune(0x202e))
+	lineSep      = string(rune(0x2028))
+	isolate      = string(rune(0x2066))
+)

@@ -826,7 +826,7 @@ func (r *Router) UnloadModelsWithWarnings(ctx context.Context, nodeName string, 
 	var pinnedSkipped []string
 	addFailure := func(m, msg string) {
 		mu.Lock()
-		failures = append(failures, fmt.Sprintf("%s: %s", m, msg))
+		failures = append(failures, fmt.Sprintf("%q: %s", m, truncateForLog(msg, maxLogValueBytes)))
 		mu.Unlock()
 	}
 	for _, m := range models {
@@ -891,7 +891,11 @@ func (r *Router) UnloadModelsWithWarnings(ctx context.Context, nodeName string, 
 	}
 	wg.Wait()
 	if len(pinnedSkipped) > 0 {
-		warnings = append(warnings, fmt.Sprintf("%d pinned model(s) skipped, unpin to unload: %s", len(pinnedSkipped), strings.Join(pinnedSkipped, ", ")))
+		quoted := make([]string, len(pinnedSkipped))
+		for i, m := range pinnedSkipped {
+			quoted[i] = fmt.Sprintf("%q", m)
+		}
+		warnings = append(warnings, fmt.Sprintf("%d pinned model(s) skipped, unpin to unload: %s", len(pinnedSkipped), strings.Join(quoted, ", ")))
 	}
 	if len(failures) > 0 {
 		return warnings, fmt.Errorf("%d model(s) failed to unload: %s", len(failures), strings.Join(failures, "; "))
@@ -1267,16 +1271,26 @@ func (r *Router) reserveWarmBytesAs(node, model string, estBytes int64, placehol
 		others += res.bytes
 	}
 	// Model names can come from client requests, so the set is bounded even
-	// inside the TTL: past the cap the oldest reservation makes room.
+	// inside the TTL: past the cap the oldest placeholder reservation makes
+	// room (a placeholder is only a guard, so a flood of made-up names cannot
+	// push out a real size). With no placeholder, the oldest reservation goes.
 	if _, exists := byModel[model]; !exists && len(byModel) >= maxWarmReservationsPerNode {
-		var oldest string
-		var oldestAt time.Time
+		var victim string
+		var victimRes warmReservation
 		for m, res := range byModel {
-			if oldest == "" || res.at.Before(oldestAt) || (res.at.Equal(oldestAt) && m < oldest) {
-				oldest, oldestAt = m, res.at
+			switch {
+			case victim == "":
+			case res.placeholder != victimRes.placeholder:
+				if !res.placeholder {
+					continue
+				}
+			case res.at.After(victimRes.at) || (res.at.Equal(victimRes.at) && m > victim):
+				continue
 			}
+			victim, victimRes = m, res
 		}
-		delete(byModel, oldest)
+		delete(byModel, victim)
+		others -= victimRes.bytes
 	}
 	byModel[model] = warmReservation{bytes: estBytes, at: now, placeholder: placeholder}
 	return others
@@ -1715,7 +1729,10 @@ func (r *Router) releaseEvictClaim(nodeName string, claim evictClaim) {
 // effectiveModelBytes is the VRAM charged to a loaded model. A reported size
 // wins. A runtime that never reports per-model sizes falls back to the last
 // size seen for the model. Ollama reports size_vram, and 0 there can mean the
-// model runs on the CPU, so a stale footprint is never charged to it.
+// model runs on the CPU, so a stale footprint is never charged to it. A node
+// whose runtime is still "auto" (detection pending) or unset is treated like a
+// runtime without per-model sizes, since the real one is not known yet; the
+// first poll resolves it.
 func (r *Router) effectiveModelBytes(node, runtime string, reported int64, model string) int64 {
 	if reported > 0 {
 		return reported

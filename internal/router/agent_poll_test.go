@@ -124,6 +124,7 @@ func TestPollAgentTelemetrySuccess(t *testing.T) {
 			Host: &marboragent.HostTelemetry{
 				CPUPercent: &cpu,
 				RAMUsedMB:  4000,
+				RAMTotalMB: 8000,
 				DiskFreeGB: 100,
 			},
 			Runtime: &marboragent.RuntimeInfo{Name: "ollama"},
@@ -203,6 +204,7 @@ func TestPollAgentTelemetryFillsGPUModelWhenUnset(t *testing.T) {
 
 	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(marboragent.Telemetry{
+			Agent: marboragent.Agent{Version: "v0.16.0"},
 			GPU: &marboragent.GPUBlock{
 				Count:  1,
 				Vendor: "nvidia",

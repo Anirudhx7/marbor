@@ -150,12 +150,22 @@ func (r *Router) fireSchedule(ctx context.Context, s Schedule) {
 		return
 	}
 	if asyncErr != nil {
-		log.Printf("schedule %q fired: action=%s node=%s models=%v - %v", s.ID, s.Action, s.Node, s.Models, asyncErr)
-		r.recordScheduleRun(s.ID, "error", asyncErr.Error())
-		r.auditScheduled(s, "error", asyncErr.Error())
+		// A pinned model left loaded on purpose is still worth knowing next to
+		// the failures, so the warning rides along in the recorded status.
+		errMsg := asyncErr.Error()
+		if warning != "" {
+			errMsg += "; " + warning
+		}
+		log.Printf("schedule %q fired: action=%s node=%s models=%v - %s", s.ID, s.Action, s.Node, s.Models, errMsg)
+		r.recordScheduleRun(s.ID, "error", errMsg)
+		r.auditScheduled(s, "error", errMsg)
 		return
 	}
-	log.Printf("schedule %q fired: action=%s node=%s models=%v %s", s.ID, s.Action, s.Node, s.Models, warning)
+	if warning != "" {
+		log.Printf("schedule %q fired: action=%s node=%s models=%v - %s", s.ID, s.Action, s.Node, s.Models, warning)
+	} else {
+		log.Printf("schedule %q fired: action=%s node=%s models=%v", s.ID, s.Action, s.Node, s.Models)
+	}
 	// A run that did everything it could is ok even when it left pinned models
 	// loaded on purpose; the warning rides along as the note, not as a failure.
 	r.recordScheduleRun(s.ID, "ok", warning)
