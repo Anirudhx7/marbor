@@ -109,6 +109,51 @@ func TestHandleModelRepo_ExcludesMmprojFiles(t *testing.T) {
 	}
 }
 
+// TestHandleModelRepo_OneVariantPerTag covers a repo where two files resolve to
+// the same "repo:quant" tag: an mmproj projector kept in a subfolder, and an
+// auxiliary file sharing the main weights' quant label. The list must hold one
+// row per tag (the largest file), so the Pick badge, matched by tag, lands on
+// a single row.
+func TestHandleModelRepo_OneVariantPerTag(t *testing.T) {
+	fakeHF := `{
+		"id": "unsloth/Qwen3.8-27B-GGUF",
+		"downloads": 1,
+		"likes": 1,
+		"tags": ["text-generation"],
+		"lastModified": "2026-01-01T00:00:00.000Z",
+		"siblings": [
+			{"rfilename": "Qwen3.8-27B-aux-Q4_0.gguf", "size": 1395864371},
+			{"rfilename": "Qwen3.8-27B-Q4_0.gguf", "size": 16106127360},
+			{"rfilename": "BF16/mmproj-BF16.gguf", "size": 1395864371}
+		]
+	}`
+	origTransport := hfHTTPClient.Transport
+	hfHTTPClient.Transport = stubRoundTripper{body: fakeHF}
+	defer func() { hfHTTPClient.Transport = origTransport }()
+
+	ollama := mockOllamaServer(t)
+	defer ollama.Close()
+	s := newModelFitTestServer(ollama.URL)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/models/repo?id=unsloth/Qwen3.8-27B-GGUF", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Variants []ModelVariantFit `json:"variants"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(resp.Variants) != 1 || resp.Variants[0].SizeMB < 15000 {
+		t.Fatalf("variants = %+v, want exactly one Q4_0 row for the ~15 GB main weights", resp.Variants)
+	}
+}
+
 // TestHandleModelRepo_ExcludesShardedGGUF is a regression test for the bug
 // where a sharded multi-part GGUF quant (confirmed against
 // unsloth/Kimi-K2.5-GGUF on 2026-08-04 - "Q3_K_S/Kimi-K2.5-Q3_K_S-00001-of-
@@ -859,7 +904,7 @@ func TestDiskFitOversizeAgentReplyReadsUnknownFromRealNode(t *testing.T) {
 			return
 		}
 		_ = json.NewEncoder(w).Encode(marboragent.Telemetry{
-			Agent: marboragent.Agent{Version: "v1.0.0", ProtocolVersion: 1},
+			Agent: marboragent.Agent{Version: "v1.0.0", ProtocolVersion: 1, NodeID: "node-id-1"},
 			Host:  &marboragent.HostTelemetry{DiskFreeGB: 100, DiskTotalGB: 500},
 		})
 	}))

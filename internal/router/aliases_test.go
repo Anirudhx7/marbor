@@ -76,3 +76,40 @@ func TestSetModelAliases_ConcurrentResolve_Race(t *testing.T) {
 	close(stop)
 	wg.Wait()
 }
+
+func TestHasCachedInstalledModel_ConcurrentWithCacheFillAndRemoval_Race(t *testing.T) {
+	const url = "http://127.0.0.1:1"
+	r := New(config.RoutingConfig{}, []config.NodeConfig{{Name: "n", URL: url, Runtime: "ollama"}}, nil)
+	fill := func() {
+		r.tagsMu.Lock()
+		r.tagsCache[url] = &TagsCache{Models: []TagModel{{Name: "m:latest"}}}
+		r.tagsMu.Unlock()
+	}
+	fill()
+	if !r.HasCachedInstalledModel("m") || r.HasCachedInstalledModel("other") {
+		t.Fatal("expected m (via :latest) cached and other not")
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 500; j++ {
+				r.HasCachedInstalledModel("m")
+			}
+		}()
+	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for j := 0; j < 200; j++ {
+			r.AddNode(config.NodeConfig{Name: "n", URL: url, Runtime: "ollama"})
+			fill()
+			r.RemoveNode("n")
+		}
+	}()
+	wg.Wait()
+	if r.HasCachedInstalledModel("m") {
+		t.Error("removing the node must drop its cached catalog")
+	}
+}
