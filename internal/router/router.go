@@ -519,7 +519,7 @@ type Router struct {
 	prevAgentPresent map[string]bool
 	// tagsCache caches /api/tags results per node URL for 30 seconds.
 	tagsCache map[string]*TagsCache
-	tagsMu    sync.Mutex
+	tagsMu    sync.RWMutex
 	// tagsInflight prevents concurrent fetches to the same node URL (cache stampede).
 	tagsInflight map[string]*tagsInflightEntry
 	// showCache caches FetchModelShow results per "nodeURL|tag" for 30
