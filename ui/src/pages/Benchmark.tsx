@@ -197,27 +197,35 @@ export function Benchmark() {
     // whenever nothing happens to be loaded in VRAM right now.
     if (demoMode) {
       setModels((node?.loadedModels || []).map(m => m.name));
-    } else if (node?.agentCapabilities?.includes('models.list')) {
-      getNodeModels(selectedNode)
-        .then(list => {
-          if (!active) return;
-          setModels(list.filter(m => isChatCapable(m.family)).map(m => m.name));
-        })
-        .catch(() => {
-          if (!active) return;
-          setModels((node.loadedModels || []).map(m => m.name));
-          setModelsError('marbor agent model list unavailable - showing currently-loaded models only.');
-        });
     } else {
-      fetchModels()
-        .then(catalog => {
-          if (!active) return;
-          const names = catalog.models
-            .filter(m => m.nodes.some(n => n.name === selectedNode) && isChatCapable(m.family))
-            .map(m => m.name);
-          setModels(names);
-        })
-        .catch(() => { if (active) setModels((node?.loadedModels || []).map(m => m.name)); });
+      // The catalog aggregation sees every on-disk model without needing the
+      // agent, so it is both the no-agent path and the fallback when the
+      // agent's list call fails.
+      const loadFromCatalog = (agentError?: string) =>
+        fetchModels()
+          .then(catalog => {
+            if (!active) return;
+            const names = catalog.models
+              .filter(m => m.nodes.some(n => n.name === selectedNode) && isChatCapable(m.family))
+              .map(m => m.name);
+            setModels(names);
+            if (agentError) setModelsError(`marbor agent model list failed (${agentError}) - showing models from the node catalog instead.`);
+          })
+          .catch(() => {
+            if (!active) return;
+            setModels((node?.loadedModels || []).map(m => m.name));
+            if (agentError) setModelsError(`marbor agent model list failed (${agentError}) - showing currently-loaded models only.`);
+          });
+      if (node?.agentCapabilities?.includes('models.list')) {
+        getNodeModels(selectedNode)
+          .then(list => {
+            if (!active) return;
+            setModels(list.filter(m => isChatCapable(m.family)).map(m => m.name));
+          })
+          .catch((e: Error) => { if (active) loadFromCatalog(e.message || 'unknown error'); });
+      } else {
+        loadFromCatalog();
+      }
     }
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps

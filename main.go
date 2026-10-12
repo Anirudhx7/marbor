@@ -529,30 +529,10 @@ func main() {
 
 	authMw := auth.NewMiddleware(cfg.Auth)
 
-	// Per-key usage/quota counters persist across restarts via SQLite.
-	if err := authMw.LoadFromStore(st); err != nil {
-		log.Printf("WARNING: could not restore key counters from store: %v", err)
-	}
-
 	// All API keys live in the store now - no config.yaml keys to merge.
 	keyCount := 0
-	if runtimeKeys, err := st.AllKeys(); err == nil {
-		for _, k := range runtimeKeys {
-			if k.Revoked {
-				authMw.RevokeKey(k.Name)
-				continue
-			}
-			authMw.AddKey(config.KeyConfig{
-				Name:         k.Name,
-				Key:          k.Key,
-				RateLimit:    k.RateLimit,
-				DailyLimit:   k.DailyLimit,
-				MonthlyLimit: k.MonthlyLimit,
-				Models:       k.Models,
-				ExpiresAt:    k.ExpiresAt,
-			})
-			keyCount++
-		}
+	if n, err := loadStoredKeys(authMw, st); err == nil {
+		keyCount = n
 		if keyCount > 0 {
 			log.Printf("store: loaded %d API key(s)", keyCount)
 		}
@@ -636,9 +616,7 @@ func main() {
 		log.Printf("WARNING: could not load nodes from store: %v", err)
 	}
 	if overrides, err := st.NodeOverrides(); err == nil {
-		for name, ov := range overrides {
-			r.PatchNode(name, router.NodePatch{VRAMTotalMB: ov.VRAMTotalMB, GPUModel: ov.GPUModel, Runtime: ov.Runtime, GPUIndices: ov.GPUIndices, MaxInFlight: ov.MaxInFlight, TLSFingerprint: ov.TLSFingerprint, ParallelismType: ov.ParallelismType, ParallelismWidth: ov.ParallelismWidth, VRAMOverrides: ov.VRAMOverrides, ReplicaPeers: ov.ReplicaPeers})
-		}
+		applyNodeOverrides(r, overrides)
 	}
 	if drains, err := st.NodeDrainStates(); err == nil {
 		for name, ds := range drains {
@@ -1119,4 +1097,41 @@ func stageRestoreCopy(dbPath, backupPath string) (string, error) {
 	}
 
 	return tmpPath, nil
+}
+
+// applyNodeOverrides re-applies every persisted per-node override to the
+// router at boot, so operator declarations survive a restart. A persisted
+// field that is not copied into the patch below is silently lost on restart,
+// which is why main_node_overrides_test.go pins this mapping field by field.
+func applyNodeOverrides(r *router.Router, overrides map[string]store.NodeOverride) {
+	for name, ov := range overrides {
+		r.PatchNode(name, router.NodePatch{VRAMTotalMB: ov.VRAMTotalMB, GPUModel: ov.GPUModel, Runtime: ov.Runtime, GPUIndices: ov.GPUIndices, MaxInFlight: ov.MaxInFlight, TLSFingerprint: ov.TLSFingerprint, ParallelismType: ov.ParallelismType, ParallelismWidth: ov.ParallelismWidth, VRAMOverrides: ov.VRAMOverrides, ReplicaPeers: ov.ReplicaPeers})
+	}
+}
+
+// loadStoredKeys registers every non-revoked key from the store with the
+// middleware, then restores persisted usage counters. The restore must come
+// after the keys exist: counters are matched to keys by name, and a restore
+// run first finds nothing to restore.
+func loadStoredKeys(authMw *auth.Middleware, st store.Store) (int, error) {
+	// If the key list cannot be read, counters are not restored: there are no
+	// keys to attach them to.
+	runtimeKeys, err := st.AllKeys()
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, k := range runtimeKeys {
+		if k.Revoked {
+			authMw.RevokeKey(k.Name)
+			continue
+		}
+		authMw.AddKey(auth.KeyConfigFromRecord(k))
+		n++
+	}
+	// Per-key usage/quota counters persist across restarts via SQLite.
+	if err := authMw.LoadFromStore(st); err != nil {
+		log.Printf("WARNING: could not restore key counters from store: %v", err)
+	}
+	return n, nil
 }
