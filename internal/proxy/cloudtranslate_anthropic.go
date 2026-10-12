@@ -321,6 +321,9 @@ type openAIChoiceMessage struct {
 	Content string `json:"content"`
 }
 
+// FinishReason is omitted when Anthropic reports no stop_reason: marbor does not
+// invent one for OpenAI-shaped clients (the stream path does the same). Ollama
+// format replies default done_reason to "stop" separately.
 type openAIChoice struct {
 	Message      openAIChoiceMessage `json:"message"`
 	FinishReason string              `json:"finish_reason,omitempty"`

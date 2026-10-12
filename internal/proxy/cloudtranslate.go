@@ -124,12 +124,13 @@ func resetBodyHeaders(h http.Header) {
 const maxLoggedProviderChunk = 256
 
 // sanitizeLogText makes provider-controlled text safe for a single log line:
-// control characters, invalid UTF-8 and the Unicode line and paragraph
-// separators become spaces, and the result is cut to at most max bytes (plus a
+// control characters, invalid UTF-8 (which decodes to U+FFFD, so a genuine
+// U+FFFD is replaced too) and the Unicode line and paragraph separators
+// become spaces, and the result is cut to at most max bytes (plus a
 // 3 byte "..." suffix) on a UTF-8 boundary.
 func sanitizeLogText(s string, max int) string {
 	s = strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) || r == utf8.RuneError || r == ' ' || r == ' ' {
+		if unicode.IsControl(r) || r == utf8.RuneError || r == '\u2028' || r == '\u2029' {
 			return ' '
 		}
 		return r
@@ -364,7 +365,10 @@ func translateSSEToNDJSON(src io.ReadCloser, origPath, clientModel string) io.Re
 			// generic truncation text, then end the stream with an error.
 			if len(chunk.Error) > 0 && string(chunk.Error) != "null" {
 				msg := upstreamErrorMessage(chunk.Error, "upstream stream error")
-				logStreamFailure("upstream error chunk", errors.New(sanitizeLogText(string(chunk.Error), maxLoggedProviderChunk)))
+				// Log the decoded provider message (raw payload if it has no
+				// message), sanitized, so it stays one bounded line.
+				logged := upstreamErrorMessage(chunk.Error, string(chunk.Error))
+				logStreamFailure("upstream error chunk", errors.New(sanitizeLogText(logged, maxLoggedProviderChunk)))
 				pw.Write(append(buildErrorNDJSON(msg), '\n')) //nolint:errcheck -- CloseWithError below reports it
 				pw.CloseWithError(fmt.Errorf("upstream stream error: %s", msg))
 				return

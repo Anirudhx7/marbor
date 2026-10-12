@@ -156,7 +156,7 @@ func TestAnthropicJSON_MissingStopReasonInventsNoFinishReason(t *testing.T) {
 }
 
 func TestSanitizeLogText(t *testing.T) {
-	in := "a\nb\rc\x07d\xffe f g"
+	in := "a\nb\rc\x07d\xffe\u2028f\u2029g"
 	if got := sanitizeLogText(in, 100); got != "a b c d e f g" {
 		t.Errorf("sanitize = %q", got)
 	}
@@ -165,15 +165,36 @@ func TestSanitizeLogText(t *testing.T) {
 	if !utf8.ValidString(got) || !strings.HasSuffix(got, "...") || len(got) > 11+3 {
 		t.Errorf("bad truncation %q", got)
 	}
+	// Exactly max bytes is returned whole, with no suffix.
+	if got := sanitizeLogText("abcde", 5); got != "abcde" {
+		t.Errorf("exact-length input changed: %q", got)
+	}
+	if got := sanitizeLogText("abcdef", 5); got != "abcde..." {
+		t.Errorf("one over max: %q", got)
+	}
 }
 
-func TestStreamErrorChunk_LiteralNewlineInFrameIsOneLogLine(t *testing.T) {
+func TestStreamErrorChunk_EscapedSeparatorsLogOnOneLine(t *testing.T) {
 	buf := captureLog(t)
-	src := "data: {\"error\":\"a\nb\"}\n\ndata: {\"error\":{\"message\":\"x\\ny\"}}\n\n"
-	out := translateSSEToNDJSON(io.NopCloser(strings.NewReader(src)), "/api/chat", "m")
-	io.ReadAll(out) //nolint:errcheck
-	if strings.Contains(strings.TrimSuffix(buf.String(), "\n"), "\n") {
-		t.Errorf("log has embedded newline: %q", buf.String())
+	frames := []string{
+		"data: {\"error\":{\"message\":\"first\\nline\"}}\n\n",
+		"data: {\"error\":{\"message\":\"left\\u2028right\\u0007bell\"}}\n\n",
+	}
+	for _, src := range frames {
+		out := translateSSEToNDJSON(io.NopCloser(strings.NewReader(src)), "/api/chat", "m")
+		io.ReadAll(out) //nolint:errcheck
+	}
+	logged := buf.String()
+	if !strings.Contains(logged, "first line") || !strings.Contains(logged, "left right bell") {
+		t.Fatalf("sanitized provider message not logged: %q", logged)
+	}
+	if lines := strings.Count(strings.TrimSuffix(logged, "\n"), "\n") + 1; lines != 2 {
+		t.Errorf("want one line per chunk (2), got %d: %q", lines, logged)
+	}
+	for _, bad := range []string{"\u2028", "\x07", "\r"} {
+		if strings.Contains(logged, bad) {
+			t.Errorf("unsanitized %q in log %q", bad, logged)
+		}
 	}
 }
 
@@ -199,5 +220,17 @@ func TestClampAnthropicTemperature_LogRateLimited(t *testing.T) {
 	clampAnthropicTemperature(&in)
 	if c := strings.Count(buf.String(), "clamped"); c != 1 {
 		t.Error("in-range value must not log")
+	}
+}
+
+// An Anthropic reply with no stop_reason carries no finish_reason in OpenAI
+// form, but a client replying in Ollama format still gets done_reason "stop",
+// the same default the stream path applies.
+func TestAnthropicJSONToOllama_MissingStopReasonDefaultsDoneReason(t *testing.T) {
+	src := `{"content":[{"type":"text","text":"x"}],"usage":{}}`
+	openAI := translateAnthropicJSONToOpenAI(io.NopCloser(strings.NewReader(src)))
+	raw, _ := io.ReadAll(translateJSONToSingleOllama(openAI, "/api/chat", "m"))
+	if !strings.Contains(string(raw), `"done_reason":"stop"`) {
+		t.Errorf("done_reason default missing: %s", raw)
 	}
 }

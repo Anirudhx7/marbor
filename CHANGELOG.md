@@ -57,7 +57,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **The real cause of a cloud stream failure is now logged on the server.** A dropped connection, an oversized frame or a provider error event is logged with its cause; clients are told when a frame was too large rather than that the stream ended unexpectedly.
 - **Cloud replies larger than 64 MiB, or that cannot be read, now return 502.** Marbor used to return a truncated or partial body with a 200 status; the cause is logged on the server.
 - **A cloud provider's `Retry-After` header is now kept on rate-limit and overload errors.** A 429 or 503 from the provider reaches Ollama clients with its backoff hint; it is dropped only on the 502 that marbor itself returns for an unreadable or oversized cloud reply.
-- **Non-streaming OpenAI-style cloud replies now report `done_reason` `stop` to Ollama clients when the provider names no finish reason**, defaulted by marbor and the same as streamed replies.
+- **Cloud replies in Ollama format now report `done_reason` `stop` when the provider names no finish reason**, for streamed and non-streamed replies alike; marbor defaults it. For OpenAI-shaped (`/v1`) clients, a reply from Anthropic that names no stop reason has no `finish_reason` field, as before.
 - **Cloud error messages are clearer.** A non-streaming provider error with no message now says "upstream error" instead of mentioning a stream, and a provider error chunk is logged once, shortened, on a single line.
 - **The Anthropic temperature limit is now logged at most once a minute**, so a client that always sends a high value no longer fills the log.
 - **Cloud SSE lines written as `data:` with no space are now read.**
