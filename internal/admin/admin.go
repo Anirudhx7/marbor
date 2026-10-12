@@ -2052,13 +2052,9 @@ func (s *Server) handlePrefixLocalityStats(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) handleWarmupPing(w http.ResponseWriter, r *http.Request) {
-	s.mu.RLock()
-	enabled := s.cfg.Warmup.Enabled
-	s.mu.RUnlock()
-	if !enabled {
-		http.Error(w, `{"error":"warmup not enabled"}`, http.StatusBadRequest)
-		return
-	}
+	// No global-flag gate: keep-warm is also configured per node (and by
+	// schedules), independently of the global warmup setting. The pass is a
+	// fast no-op when nothing is configured anywhere.
 	s.router.TriggerWarmup(r.Context())
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(`{"status":"triggered"}`))
