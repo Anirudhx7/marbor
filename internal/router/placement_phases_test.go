@@ -82,7 +82,7 @@ func TestFilterCandidates_NoExclusionsWhenAllEligible(t *testing.T) {
 		{Name: "node-b", URL: "http://node-b:11434", VRAMTotalMB: 8192},
 	}, nil)
 
-	healthy, excluded, excludedTotal := r.filterCandidates(r.nodes, "model-x", "", nil)
+	healthy, excluded, excludedTotal := r.filterCandidatesNoFallback(r.nodes, "model-x", "", nil)
 	if len(healthy) != 2 {
 		t.Fatalf("healthy = %d nodes, want 2", len(healthy))
 	}
@@ -112,7 +112,7 @@ func TestFilterCandidates_ReasonsMatchFailingCondition(t *testing.T) {
 		r.nodes[0].Healthy = false
 		r.nodes[0].mu.Unlock()
 
-		_, excluded, total := r.filterCandidates(r.nodes, "model-x", "", nil)
+		_, excluded, total := r.filterCandidatesNoFallback(r.nodes, "model-x", "", nil)
 		mustExcludeOne(t, excluded, total, "node-a", ExcludeReasonUnhealthy)
 	})
 
@@ -124,7 +124,7 @@ func TestFilterCandidates_ReasonsMatchFailingCondition(t *testing.T) {
 		r.nodes[0].Draining = true
 		r.nodes[0].mu.Unlock()
 
-		_, excluded, total := r.filterCandidates(r.nodes, "model-x", "", nil)
+		_, excluded, total := r.filterCandidatesNoFallback(r.nodes, "model-x", "", nil)
 		mustExcludeOne(t, excluded, total, "node-a", ExcludeReasonDraining)
 	})
 
@@ -133,7 +133,7 @@ func TestFilterCandidates_ReasonsMatchFailingCondition(t *testing.T) {
 			{Name: "node-a", URL: "http://node-a:11434", VRAMTotalMB: 8192, Runtime: "ollama"},
 		}, nil)
 
-		_, excluded, total := r.filterCandidates(r.nodes, "model-x", "vllm", nil)
+		_, excluded, total := r.filterCandidatesNoFallback(r.nodes, "model-x", "vllm", nil)
 		mustExcludeOne(t, excluded, total, "node-a", ExcludeReasonRuntimeMismatch)
 	})
 
@@ -144,7 +144,7 @@ func TestFilterCandidates_ReasonsMatchFailingCondition(t *testing.T) {
 		// vLLM has no on-demand load path, so it must already report
 		// modelName in LoadedModels or isEligibleForModel returns false.
 
-		_, excluded, total := r.filterCandidates(r.nodes, "model-x", "", nil)
+		_, excluded, total := r.filterCandidatesNoFallback(r.nodes, "model-x", "", nil)
 		mustExcludeOne(t, excluded, total, "node-a", ExcludeReasonIneligibleModel)
 	})
 
@@ -157,7 +157,7 @@ func TestFilterCandidates_ReasonsMatchFailingCondition(t *testing.T) {
 		r.nodes[0].mu.Unlock()
 		r.nodes[0].ActiveConns = 1 // at cap
 
-		_, excluded, total := r.filterCandidates(r.nodes, "model-x", "", nil)
+		_, excluded, total := r.filterCandidatesNoFallback(r.nodes, "model-x", "", nil)
 		mustExcludeOne(t, excluded, total, "node-a", ExcludeReasonOverCapacity)
 	})
 
@@ -170,7 +170,7 @@ func TestFilterCandidates_ReasonsMatchFailingCondition(t *testing.T) {
 		r.nodes[0].ParallelismWidth = 4             // but 4 required
 		r.nodes[0].mu.Unlock()
 
-		_, excluded, total := r.filterCandidates(r.nodes, "model-x", "", nil)
+		_, excluded, total := r.filterCandidatesNoFallback(r.nodes, "model-x", "", nil)
 		mustExcludeOne(t, excluded, total, "node-a", ExcludeReasonInsufficientGPUGroup)
 	})
 }
@@ -192,7 +192,7 @@ func TestFilterCandidates_CapsExcludedListAndReportsTotal(t *testing.T) {
 		n.mu.Unlock()
 	}
 
-	_, excluded, total := r.filterCandidates(r.nodes, "model-x", "", nil)
+	_, excluded, total := r.filterCandidatesNoFallback(r.nodes, "model-x", "", nil)
 	if len(excluded) != maxExcludedCandidates {
 		t.Fatalf("len(excluded) = %d, want %d (capped)", len(excluded), maxExcludedCandidates)
 	}

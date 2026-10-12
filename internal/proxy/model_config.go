@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bytes"
 	"encoding/json"
 	"sync"
 	"time"
@@ -20,6 +21,36 @@ func setIfAbsent(m map[string]json.RawMessage, key string, val interface{}) {
 		return
 	}
 	m[key] = raw
+}
+
+// prependSystemMessage returns the chat messages array with a leading system
+// message added, unless the client already supplied a system message (the
+// client's own always wins) or the value is not a messages array.
+func prependSystemMessage(raw json.RawMessage, system string) json.RawMessage {
+	if system == "" || string(bytes.TrimSpace(raw)) == "null" {
+		return raw
+	}
+	var msgs []json.RawMessage
+	if err := json.Unmarshal(raw, &msgs); err != nil {
+		return raw
+	}
+	for _, m := range msgs {
+		var probe struct {
+			Role string `json:"role"`
+		}
+		if json.Unmarshal(m, &probe) == nil && probe.Role == "system" {
+			return raw
+		}
+	}
+	sysMsg, err := json.Marshal(map[string]string{"role": "system", "content": system})
+	if err != nil {
+		return raw
+	}
+	out, err := json.Marshal(append([]json.RawMessage{sysMsg}, msgs...))
+	if err != nil {
+		return raw
+	}
+	return out
 }
 
 // injectModelDefaults applies a model's configured default parameters to an
@@ -58,8 +89,17 @@ func injectModelDefaults(body []byte, runtime string, cfg store.ModelConfig) []b
 
 	if runtime == "" || runtime == "ollama" {
 		var opts map[string]json.RawMessage
-		if raw, ok := top["options"]; ok {
-			_ = json.Unmarshal(raw, &opts)
+		optsInvalid := false
+		// "options":null is treated as absent (Ollama treats null as unset),
+		// so profile defaults apply and replace the null.
+		if raw, ok := top["options"]; ok && string(bytes.TrimSpace(raw)) != "null" {
+			if err := json.Unmarshal(raw, &opts); err != nil || opts == nil {
+				// Present but not an object (string, array, number): leave the
+				// client's value alone rather than replacing it. By design the
+				// profile's option defaults are then not applied to this
+				// request; the upstream decides what to do with the bad value.
+				optsInvalid = true
+			}
 		}
 		if opts == nil {
 			opts = map[string]json.RawMessage{}
@@ -140,14 +180,20 @@ func injectModelDefaults(body []byte, runtime string, cfg store.ModelConfig) []b
 		}
 		// logit_bias / response_format have no Ollama-native "options" equivalent.
 
-		if len(opts) > 0 {
+		if len(opts) > 0 && !optsInvalid {
 			if raw, err := json.Marshal(opts); err == nil {
 				top["options"] = raw
 			}
 		}
 
 		if cfg.System != nil {
-			setIfAbsent(top, "system", *cfg.System)
+			if rawMsgs, isChat := top["messages"]; isChat {
+				// /api/chat ignores a top-level system field; the profile's
+				// system prompt must be a leading system message instead.
+				top["messages"] = prependSystemMessage(rawMsgs, *cfg.System)
+			} else {
+				setIfAbsent(top, "system", *cfg.System)
+			}
 		}
 		if cfg.Template != nil {
 			setIfAbsent(top, "template", *cfg.Template)
@@ -194,26 +240,7 @@ func injectModelDefaults(body []byte, runtime string, cfg store.ModelConfig) []b
 		// system message (never overwrite a client-supplied value).
 		if cfg.System != nil {
 			if rawMsgs, ok := top["messages"]; ok {
-				var msgs []map[string]json.RawMessage
-				if err := json.Unmarshal(rawMsgs, &msgs); err == nil {
-					hasSystem := false
-					for _, m := range msgs {
-						var role string
-						if roleRaw, ok := m["role"]; ok && json.Unmarshal(roleRaw, &role) == nil && role == "system" {
-							hasSystem = true
-							break
-						}
-					}
-					if !hasSystem {
-						roleBytes, _ := json.Marshal("system")
-						contentBytes, _ := json.Marshal(*cfg.System)
-						sysMsg := map[string]json.RawMessage{"role": roleBytes, "content": contentBytes}
-						newMsgs := append([]map[string]json.RawMessage{sysMsg}, msgs...)
-						if raw, err := json.Marshal(newMsgs); err == nil {
-							top["messages"] = raw
-						}
-					}
-				}
+				top["messages"] = prependSystemMessage(rawMsgs, *cfg.System)
 			}
 		}
 

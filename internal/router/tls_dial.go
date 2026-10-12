@@ -28,6 +28,12 @@ func CertFingerprintSHA256(rawCert []byte) string {
 	return "SHA256:" + hex.EncodeToString(sum[:])
 }
 
+// noRedirect makes a client hand back a 3xx reply as-is instead of following
+// it. Node and agent addresses come from operator config only; following a
+// redirect would let a compromised or misconfigured peer steer the router (and
+// the agent bearer token on the request) to a host nobody configured.
+func noRedirect(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+
 // HTTPClientForNode returns an *http.Client sharing the Router's single
 // TLS-pinning-aware Transport (see dialTLSContext below), with the given
 // per-call timeout. Every HTTP client that talks to a Marbor Agent - the poll
@@ -39,7 +45,7 @@ func CertFingerprintSHA256(rawCert []byte) string {
 // whichever call sites happened to be updated: poll and action paths ship
 // together, not staged.
 func (r *Router) HTTPClientForNode(timeout time.Duration) *http.Client {
-	client := &http.Client{Timeout: timeout}
+	client := &http.Client{Timeout: timeout, CheckRedirect: noRedirect}
 	if r.tlsTransport != nil {
 		// Do not assign a nil *http.Transport into the Transport interface
 		// field even when this Router was constructed directly (bypassing

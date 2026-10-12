@@ -585,7 +585,8 @@ export interface ScoreComponent {
 
 // ExcludedCandidate mirrors router.ExcludedCandidate (Go). reason is a
 // stable, machine-readable identifier (unhealthy, draining,
-// runtime_mismatch, ineligible_model, over_capacity, insufficient_gpu_group)
+// runtime_mismatch, ineligible_model, over_capacity, insufficient_gpu_group,
+// replica_worker, replica_unresolved, replica_member_unreachable)
 // - translated to display text in Requests.tsx, not shown raw.
 export interface ExcludedCandidate {
   node: string;
@@ -613,6 +614,11 @@ export interface HourlyBucket {
   cloud: number;
   saved_usd: number;
   spent_usd: number;
+  // Generation timing, present for Ollama-native requests only. tokens_per_sec
+  // is meaningful only when gen_duration_ms > 0.
+  tokens?: number;
+  gen_duration_ms?: number;
+  tokens_per_sec?: number;
 }
 
 export interface ModelStat {

@@ -77,6 +77,11 @@ type ModelInfo struct {
 	// from - not necessarily comparable in format across runtime types, only within one. Empty
 	// when unknown - never fabricated.
 	Digest string `json:"digest,omitempty"`
+	// sizeAttributed is true when SizeVRAM was not reported for this model but
+	// inferred as the node's whole used VRAM (attributeSoleModelVRAM). It is a
+	// placement input, not an observed footprint of the model, so it is never
+	// remembered as the model's last-known size.
+	sizeAttributed bool
 }
 
 type NodeState struct {
@@ -260,11 +265,16 @@ type NodeState struct {
 	// distinguishable from "deliberately agentless" - that difference is the
 	// whole point; the dashboard's fleet-health strip alerts on the former
 	// only, never nagging fleets that chose to run without agents.
-	AgentStale   bool
-	AgentVersion string
-	FanPercent   *float64
-	RAMUsedMB    int64
-	DiskFreeGB   float64
+	AgentStale bool
+	// AgentTelemetryUnknown is true only while the agent answers but its
+	// status reply exceeded the size cap, so none of its live readings can be
+	// trusted. The node stays reachable and routable; cleared on the next
+	// normal reply. Guarded by mu.
+	AgentTelemetryUnknown bool
+	AgentVersion          string
+	FanPercent            *float64
+	RAMUsedMB             int64
+	DiskFreeGB            float64
 	// AgentCapabilities lists what the polled agent build actually supports
 	// (e.g. "status", "models.pull") - the marbor/UI must gate any
 	// agent-dependent feature on this list rather than assuming every agent
@@ -303,6 +313,8 @@ type NodeState struct {
 	// for admin API serialization; the marbor's own routing/placement fields
 	// above (VRAMTotalMB etc.) stay the single-value aggregate they always
 	// were, unaffected by this addition.
+	// AgentGPUCount is static identity (how many devices), not a live reading,
+	// so an oversize status reply leaves it in place.
 	AgentGPUCount int
 	AgentGPUs     []marboragent.GPUInfo
 	DriverVersion string
@@ -512,7 +524,7 @@ type Router struct {
 	prevAgentPresent map[string]bool
 	// tagsCache caches /api/tags results per node URL for 30 seconds.
 	tagsCache map[string]*TagsCache
-	tagsMu    sync.Mutex
+	tagsMu    sync.RWMutex
 	// tagsInflight prevents concurrent fetches to the same node URL (cache stampede).
 	tagsInflight map[string]*tagsInflightEntry
 	// showCache caches FetchModelShow results per "nodeURL|tag" for 30
@@ -560,7 +572,10 @@ type Router struct {
 	// nvidiaCache holds the last nvidia-smi result per GPU index for local nodes.
 	// Populated by a separate ticker (nvidiaPollInterval) so that nvidia-smi is
 	// never invoked on every /api/ps poll cycle.
-	nvidiaCache        map[int]GPUStats
+	nvidiaCache map[int]GPUStats
+	// nvidiaCacheAt is when nvidiaCache was last refreshed; a zero value means
+	// never stamped and is not treated as expired.
+	nvidiaCacheAt      time.Time
 	nvidiaMu           sync.RWMutex
 	nvidiaPollInterval time.Duration
 	// modelDigests remembers the first-observed content digest per model
@@ -639,6 +654,13 @@ type Router struct {
 	// fired per key, so a persistent condition logs once per interval, not per
 	// poll. Guarded by hostEvidenceMu.
 	hostLogAt map[string]time.Time
+	// hostLogNow overrides the clock the log rate limiter and its prune
+	// read; nil means time.Now. Tests set it before any use. Reads happen
+	// under hostEvidenceMu.
+	hostLogNow func() time.Time
+	// applyTelemetryHook, when set, runs inside the locked telemetry apply so a
+	// test can inject a panic there.
+	applyTelemetryHook func()
 	// nodeControl holds the per-node accepted ControlDriver config,
 	// guarded by r.mu same as marborAgents. Absent (or Configured: false)
 	// means lifecycle actions must return the "no control driver
@@ -653,8 +675,14 @@ type Router struct {
 	// guarded by lruMu (hot path). pinned holds never-evict models per node,
 	// guarded by r.mu.
 	lastUsed map[string]time.Time
-	lruMu    sync.Mutex
-	pinned   map[string]map[string]bool
+	// lastUsedCount is the per-node entry count of lastUsed, guarded by lruMu,
+	// so the cap check never scans the whole map.
+	lastUsedCount map[string]int
+	// lastUsedKeys is the per-node set of lastUsed keys, guarded by lruMu, so a
+	// trim scans one node instead of every node's entries.
+	lastUsedKeys map[string]map[string]struct{}
+	lruMu        sync.Mutex
+	pinned       map[string]map[string]bool
 	// lastKnownVRAM caches the most recent REAL /api/ps size_vram observed for a
 	// (node, model) pair, keyed by modelKey, surviving after the model is
 	// unloaded/evicted. estimateModelSizeBytes prefers this over the on-disk
@@ -664,9 +692,18 @@ type Router struct {
 	// reservation for it without bound. Guarded by vramSeenMu.
 	vramSeenMu    sync.Mutex
 	lastKnownVRAM map[string]int64
+	// lastKnownCount is the per-node entry count of lastKnownVRAM, guarded by
+	// vramSeenMu, so the cap check never scans the whole map.
+	lastKnownCount map[string]int
+	// lastKnownKeys is lastUsedKeys for lastKnownVRAM, guarded by vramSeenMu.
+	lastKnownKeys map[string]map[string]struct{}
 	// lastEvictAt throttles auto-eviction per node (thrash guard), guarded by evictMu.
 	evictMu     sync.Mutex
 	lastEvictAt map[string]time.Time
+	// evictClaimID/evictClaimSeq tag each cooldown claim so a release never
+	// undoes a newer claim; guarded by evictMu.
+	evictClaimID  map[string]uint64
+	evictClaimSeq uint64
 	// warmReserved tracks VRAM bytes reserved for warmup loads that have started
 	// but aren't yet reflected in a node's LoadedModels (populated only by the
 	// next /api/ps poll). Keyed by node -> model. Guarded by evictMu. See
@@ -772,7 +809,7 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 			return rr.dialTLSContext(ctx, network, addr)
 		},
 	}
-	client := &http.Client{Timeout: 5 * time.Second, Transport: transport}
+	client := &http.Client{Timeout: 5 * time.Second, Transport: transport, CheckRedirect: noRedirect}
 	nodes := make([]*NodeState, len(nodesCfg))
 	for i, n := range nodesCfg {
 		ns := &NodeState{
@@ -919,7 +956,13 @@ func (r *Router) Timezone() string {
 
 // TriggerWarmup fires an immediate warmup ping cycle for all configured models.
 // Safe to call concurrently; each (model, node) pair runs in its own goroutine.
+//
+// The cycle runs in the background after TriggerWarmup returns, so it must not
+// be tied to the caller's cancellation: an HTTP handler's request context ends
+// the moment the response is written, which aborted every in-flight warmup ping
+// with "context canceled". Values are kept, cancellation is not inherited.
 func (r *Router) TriggerWarmup(ctx context.Context) {
+	ctx = context.WithoutCancel(ctx)
 	go safeRun("pingWarmupModels", func() { r.pingWarmupModels(ctx) })
 }
 
@@ -1104,7 +1147,7 @@ func (r *Router) fireWebhook(event, nodeName, nodeURL string) {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				log.Printf("[router] panic in goroutine: %v", r)
+				log.Printf("[router] panic in goroutine: %v", truncateForLog(fmt.Sprint(r), maxLogValueBytes))
 			}
 		}()
 		payload := map[string]string{
@@ -1130,14 +1173,14 @@ func (r *Router) fireWebhook(event, nodeName, nodeURL string) {
 			sig := hex.EncodeToString(mac.Sum(nil))
 			req.Header.Set("X-Marbor-Signature", fmt.Sprintf("sha256=%s", sig))
 		}
-		client := &http.Client{Timeout: 5 * time.Second}
+		client := &http.Client{Timeout: 5 * time.Second, CheckRedirect: noRedirect}
 		resp, err := client.Do(req)
 		if err != nil {
 			log.Printf("webhook: post %s: %v", strings.TrimRight(cfg.URL, "/"), err)
 			return
 		}
 		resp.Body.Close()
-		if resp.StatusCode >= 400 {
+		if resp.StatusCode/100 != 2 {
 			log.Printf("webhook: server returned %d for event %s", resp.StatusCode, event)
 		}
 	}()
@@ -1320,7 +1363,7 @@ func (r *Router) localNow(now time.Time) time.Time {
 func safeRun(label string, fn func()) {
 	defer func() {
 		if rec := recover(); rec != nil {
-			log.Printf("router: recovered panic in %s: %v", label, rec)
+			log.Printf("router: recovered panic in %s: %v", label, truncateForLog(fmt.Sprint(rec), maxLogValueBytes))
 		}
 	}()
 	fn()
@@ -1686,6 +1729,8 @@ func (r *Router) RemoveNode(name string) {
 	// a different node whose name happens to start with this one's.
 	prefix := name + "\x00"
 	r.lruMu.Lock()
+	delete(r.lastUsedCount, name)
+	delete(r.lastUsedKeys, name)
 	for k := range r.lastUsed {
 		if strings.HasPrefix(k, prefix) {
 			delete(r.lastUsed, k)
@@ -1694,6 +1739,8 @@ func (r *Router) RemoveNode(name string) {
 	r.lruMu.Unlock()
 
 	r.vramSeenMu.Lock()
+	delete(r.lastKnownCount, name)
+	delete(r.lastKnownKeys, name)
 	for k := range r.lastKnownVRAM {
 		if strings.HasPrefix(k, prefix) {
 			delete(r.lastKnownVRAM, k)
@@ -1703,8 +1750,10 @@ func (r *Router) RemoveNode(name string) {
 
 	r.evictMu.Lock()
 	delete(r.lastEvictAt, name)
+	delete(r.evictClaimID, name)
 	delete(r.warmReserved, name)
 	r.evictMu.Unlock()
+	r.dropNodeLogKeys(name)
 
 	// B1 ROUTER-05: warmupSuppressed (keyed by node name) and showCache
 	// (keyed by "nodeURL|tag") used to survive RemoveNode entirely - a ghost

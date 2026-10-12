@@ -124,6 +124,7 @@ func TestPollAgentTelemetrySuccess(t *testing.T) {
 			Host: &marboragent.HostTelemetry{
 				CPUPercent: &cpu,
 				RAMUsedMB:  4000,
+				RAMTotalMB: 8000,
 				DiskFreeGB: 100,
 			},
 			Runtime: &marboragent.RuntimeInfo{Name: "ollama"},
@@ -203,6 +204,7 @@ func TestPollAgentTelemetryFillsGPUModelWhenUnset(t *testing.T) {
 
 	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(marboragent.Telemetry{
+			Agent: marboragent.Agent{NodeID: "node-id-1", Version: "v0.16.0"},
 			GPU: &marboragent.GPUBlock{
 				Count:  1,
 				Vendor: "nvidia",
@@ -279,7 +281,7 @@ func TestPollAgentTelemetryDisabledClearsStaleFields(t *testing.T) {
 	fan := 61.0
 	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(marboragent.Telemetry{
-			Agent:        marboragent.Agent{Version: "v0.16.0", ProtocolVersion: 1, Platform: "linux", Architecture: "amd64"},
+			Agent:        marboragent.Agent{NodeID: "node-id-1", Version: "v0.16.0", ProtocolVersion: 1, Platform: "linux", Architecture: "amd64"},
 			Capabilities: []string{"status"},
 			GPU:          &marboragent.GPUBlock{Count: 1, Vendor: "nvidia", Devices: []marboragent.GPUInfo{{Index: 0, FanPercent: &fan}}},
 		})
@@ -343,7 +345,7 @@ func TestPollAgentTelemetryTransientGPUErrorClearsStaleReadings(t *testing.T) {
 		callCount++
 		if callCount == 1 {
 			json.NewEncoder(w).Encode(marboragent.Telemetry{
-				Agent: marboragent.Agent{Version: "v0.17.0", ProtocolVersion: 1},
+				Agent: marboragent.Agent{NodeID: "node-id-1", Version: "v0.17.0", ProtocolVersion: 1},
 				GPU: &marboragent.GPUBlock{
 					Count: 1, Vendor: "nvidia",
 					Devices: []marboragent.GPUInfo{{Index: 0, TemperatureC: &temp, PowerWatts: &power, VRAMUsedMB: 8000, VRAMTotalMB: 16000}},
@@ -352,7 +354,7 @@ func TestPollAgentTelemetryTransientGPUErrorClearsStaleReadings(t *testing.T) {
 			return
 		}
 		json.NewEncoder(w).Encode(marboragent.Telemetry{
-			Agent: marboragent.Agent{Version: "v0.17.0", ProtocolVersion: 1},
+			Agent: marboragent.Agent{NodeID: "node-id-1", Version: "v0.17.0", ProtocolVersion: 1},
 			GPU:   &marboragent.GPUBlock{Count: 0, Vendor: "nvidia", Devices: []marboragent.GPUInfo{}},
 		})
 	}))
@@ -413,6 +415,7 @@ func TestPollAgentTelemetryForwardCompatUnknownFieldsIgnored(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{
 			"agent": {
+				"node_id": "node-id-1",
 				"version": "v99.0.0",
 				"protocol_version": 1,
 				"platform": "linux",
@@ -471,7 +474,7 @@ func TestPollAgentTelemetryBackwardCompatMissingFieldsAreUnknown(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		// Simulates a very early agent response shape, before
 		// capabilities/platform/architecture/gpu/runtime existed.
-		w.Write([]byte(`{"agent": {"version": "v0.15.0", "protocol_version": 1}, "last_updated": "2026-07-17T00:00:00Z"}`))
+		w.Write([]byte(`{"agent": {"node_id": "node-id-1", "version": "v0.15.0", "protocol_version": 1}, "last_updated": "2026-07-17T00:00:00Z"}`))
 	}))
 	defer agentSrv.Close()
 	agentPort := mustPort(t, agentSrv.URL)
@@ -509,7 +512,7 @@ func TestPollAgentTelemetryNewerProtocolVersionLoggedOnce(t *testing.T) {
 
 	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(marboragent.Telemetry{
-			Agent: marboragent.Agent{Version: "v99.0.0", ProtocolVersion: marboragent.ProtocolVersion + 1},
+			Agent: marboragent.Agent{NodeID: "node-id-1", Version: "v99.0.0", ProtocolVersion: marboragent.ProtocolVersion + 1},
 		})
 	}))
 	defer agentSrv.Close()
@@ -569,7 +572,7 @@ func TestAgentDownUpWebhookFiresOnTransition(t *testing.T) {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
-		json.NewEncoder(w).Encode(marboragent.Telemetry{Agent: marboragent.Agent{Version: "v0.16.0", ProtocolVersion: 1}})
+		json.NewEncoder(w).Encode(marboragent.Telemetry{Agent: marboragent.Agent{NodeID: "node-id-1", Version: "v0.16.0", ProtocolVersion: 1}})
 	}))
 	defer agentSrv.Close()
 	agentPort := mustPort(t, agentSrv.URL)
@@ -662,7 +665,7 @@ func TestPollAgentTelemetry_ContinuityHysteresisKeepsTelemetryBelowThreshold(t *
 			return
 		}
 		json.NewEncoder(w).Encode(marboragent.Telemetry{
-			Agent: marboragent.Agent{Version: "v0.17.0", ProtocolVersion: 1},
+			Agent: marboragent.Agent{NodeID: "node-id-1", Version: "v0.17.0", ProtocolVersion: 1},
 			GPU:   &marboragent.GPUBlock{Count: 1, Devices: []marboragent.GPUInfo{{Index: 0, FanPercent: &fan}}},
 		})
 	}))
@@ -735,7 +738,7 @@ func TestAgentProtocolWarned_ContinuityWarnsOnceAcrossDownUpCycle(t *testing.T) 
 			return
 		}
 		json.NewEncoder(w).Encode(marboragent.Telemetry{
-			Agent: marboragent.Agent{Version: "v99.0.0", ProtocolVersion: marboragent.ProtocolVersion + 1},
+			Agent: marboragent.Agent{NodeID: "node-id-1", Version: "v99.0.0", ProtocolVersion: marboragent.ProtocolVersion + 1},
 		})
 	}))
 	defer agentSrv.Close()
@@ -791,7 +794,7 @@ func TestPollAgentTelemetryStillPolledWhenAPIPSFails(t *testing.T) {
 	fan := 61.0
 	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(marboragent.Telemetry{
-			Agent: marboragent.Agent{Version: "v0.16.0", ProtocolVersion: 1},
+			Agent: marboragent.Agent{NodeID: "node-id-1", Version: "v0.16.0", ProtocolVersion: 1},
 			GPU:   &marboragent.GPUBlock{Count: 1, Devices: []marboragent.GPUInfo{{Index: 0, FanPercent: &fan}}},
 		})
 	}))
@@ -847,7 +850,7 @@ func TestAgentStale_DistinguishesConfiguredDownFromNeverConfigured(t *testing.T)
 			return
 		}
 		json.NewEncoder(w).Encode(marboragent.Telemetry{
-			Agent: marboragent.Agent{Version: "v0.17.0", ProtocolVersion: 1},
+			Agent: marboragent.Agent{NodeID: "node-id-1", Version: "v0.17.0", ProtocolVersion: 1},
 		})
 	}))
 	defer agentSrv.Close()
@@ -917,44 +920,6 @@ func TestAgentStale_DistinguishesConfiguredDownFromNeverConfigured(t *testing.T)
 	}
 }
 
-// TestPollAgentTelemetryOversizeBodyIsUnreachable proves a status response
-// larger than the body cap is treated as a failed poll (agent unreachable),
-// never decoded: a valid JSON object followed by padding past the cap must not
-// sneak through on the strength of its valid prefix.
-func TestPollAgentTelemetryOversizeBodyIsUnreachable(t *testing.T) {
-	psSrv := nodePSServer()
-	defer psSrv.Close()
-
-	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write(paddedStatusBody(maxAgentStatusBodyBytes + 1024))
-	}))
-	defer agentSrv.Close()
-	agentPort := mustPort(t, agentSrv.URL)
-
-	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000}, []config.NodeConfig{
-		{Name: "gpu-0", URL: psSrv.URL},
-	}, nil)
-	r.SetMarborAgent(r.nodes[0].Host, true, agentPort, "tok", "http")
-
-	logBuf := captureLog(t)
-
-	r.pollAgentHosts()
-	r.pollAgentHosts()
-
-	r.nodes[0].mu.RLock()
-	defer r.nodes[0].mu.RUnlock()
-	if r.nodes[0].AgentPresent {
-		t.Error("AgentPresent = true, want false for an oversize status body")
-	}
-	if r.nodes[0].AgentFailures != 2 {
-		t.Errorf("AgentFailures = %d, want 2 (each oversize poll is a failed poll)", r.nodes[0].AgentFailures)
-	}
-	if got := strings.Count(logBuf.String(), "status response exceeds"); got != 1 {
-		t.Errorf("oversize log appeared %d times across 2 polls, want 1 (rate-limited)\n%s", got, logBuf.String())
-	}
-}
-
 // TestPollAgentTelemetryUnderCapBodyWithUnknownFieldsDecodes proves the cap
 // does not break the forward-compat contract: a body well under the cap with
 // fields this binary does not know still decodes and counts as reachable.
@@ -964,7 +929,7 @@ func TestPollAgentTelemetryUnderCapBodyWithUnknownFieldsDecodes(t *testing.T) {
 
 	agentSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"agent": {"version": "v9.0.0", "protocol_version": 1, "future": 1}, "unknown_block": {"a": [1,2,3]}}`))
+		_, _ = w.Write([]byte(`{"agent": {"node_id": "node-id-1", "version": "v9.0.0", "protocol_version": 1, "future": 1}, "unknown_block": {"a": [1,2,3]}}`))
 		_, _ = w.Write(bytes.Repeat([]byte(" "), 64*1024))
 	}))
 	defer agentSrv.Close()

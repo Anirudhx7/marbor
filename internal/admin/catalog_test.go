@@ -1,12 +1,16 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Anirudhx7/marbor/internal/config"
 	"github.com/Anirudhx7/marbor/internal/marboragent"
@@ -102,6 +106,51 @@ func TestHandleModelRepo_ExcludesMmprojFiles(t *testing.T) {
 	}
 	if len(resp.Variants) != 2 {
 		t.Errorf("got %d variants, want exactly 2 (the real BF16 and Q6_K files) - the three mmproj files must all be filtered out", len(resp.Variants))
+	}
+}
+
+// TestHandleModelRepo_OneVariantPerTag covers a repo where two files resolve to
+// the same "repo:quant" tag: an mmproj projector kept in a subfolder, and an
+// auxiliary file sharing the main weights' quant label. The list must hold one
+// row per tag (the largest file), so the Pick badge, matched by tag, lands on
+// a single row.
+func TestHandleModelRepo_OneVariantPerTag(t *testing.T) {
+	fakeHF := `{
+		"id": "unsloth/Qwen3.8-27B-GGUF",
+		"downloads": 1,
+		"likes": 1,
+		"tags": ["text-generation"],
+		"lastModified": "2026-01-01T00:00:00.000Z",
+		"siblings": [
+			{"rfilename": "Qwen3.8-27B-aux-Q4_0.gguf", "size": 1395864371},
+			{"rfilename": "Qwen3.8-27B-Q4_0.gguf", "size": 16106127360},
+			{"rfilename": "BF16/mmproj-BF16.gguf", "size": 1395864371}
+		]
+	}`
+	origTransport := hfHTTPClient.Transport
+	hfHTTPClient.Transport = stubRoundTripper{body: fakeHF}
+	defer func() { hfHTTPClient.Transport = origTransport }()
+
+	ollama := mockOllamaServer(t)
+	defer ollama.Close()
+	s := newModelFitTestServer(ollama.URL)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/models/repo?id=unsloth/Qwen3.8-27B-GGUF", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Variants []ModelVariantFit `json:"variants"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(resp.Variants) != 1 || resp.Variants[0].SizeMB < 15000 {
+		t.Fatalf("variants = %+v, want exactly one Q4_0 row for the ~15 GB main weights", resp.Variants)
 	}
 }
 
@@ -825,5 +874,89 @@ func TestExtractQuantization(t *testing.T) {
 		if got := extractQuantization(c.filename); got != c.want {
 			t.Errorf("extractQuantization(%q) = %q, want %q", c.filename, got, c.want)
 		}
+	}
+}
+
+// TestClassifyDiskFitOversizeClearedShapeIsUnknown pins how a node whose
+// agent is present but whose live disk readings were cleared (an oversize
+// status reply zeroes DiskFreeGB and DiskTotalGB) is read: "unknown", never a
+// fabricated "insufficient" from comparing a model size to zero free space.
+func TestClassifyDiskFitOversizeClearedShapeIsUnknown(t *testing.T) {
+	if !diskTelemetryUnknown(0, true) {
+		t.Error("diskTelemetryUnknown(0, true) = false, want true")
+	}
+	if got := classifyDiskFit(4096, 0, 0, true); got != "unknown" {
+		t.Errorf("classifyDiskFit with cleared disk and agent present = %q, want unknown", got)
+	}
+}
+
+// TestDiskFitOversizeAgentReplyReadsUnknownFromRealNode drives the disk-fit
+// classification from a real node state: a node whose agent first reported
+// disk figures and then went oversize must classify as unknown (never a
+// fabricated insufficient), while the same node before going oversize
+// classifies from its real figures.
+func TestDiskFitOversizeAgentReplyReadsUnknownFromRealNode(t *testing.T) {
+	var oversize atomic.Bool
+	agent := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if oversize.Load() {
+			_, _ = w.Write([]byte(`{"agent": {"version": "v1.0.0"}}` + strings.Repeat(" ", 8<<20)))
+			return
+		}
+		_ = json.NewEncoder(w).Encode(marboragent.Telemetry{
+			Agent: marboragent.Agent{Version: "v1.0.0", ProtocolVersion: 1, NodeID: "node-id-1"},
+			Host:  &marboragent.HostTelemetry{DiskFreeGB: 100, DiskTotalGB: 500},
+		})
+	}))
+	defer agent.Close()
+	agentPort, err := strconv.Atoi(strings.TrimPrefix(agent.URL, "http://127.0.0.1:"))
+	if err != nil {
+		t.Fatalf("parse agent port from %q: %v", agent.URL, err)
+	}
+
+	r := router.New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 50}, []config.NodeConfig{
+		{Name: "gpu-0", URL: "http://127.0.0.1:1"},
+	}, nil)
+	host, _ := r.NodeHost("gpu-0")
+	r.SetMarborAgent(host, true, agentPort, "tok", "http")
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { defer close(done); r.Start(ctx) }()
+	defer func() { cancel(); <-done }()
+
+	waitDisk := func(wantUnknown bool) (free, total float64, present bool) {
+		t.Helper()
+		deadline := time.Now().Add(10 * time.Second)
+		for time.Now().Before(deadline) {
+			free, total, present = nodeDiskState(r.Nodes(), "gpu-0")
+			// Unknown disk telemetry reads as a zero total.
+			if present {
+				if wantUnknown && total == 0 {
+					return
+				}
+				if !wantUnknown && total > 0 {
+					return
+				}
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		t.Fatalf("node never reached disk state with unknown=%v (free=%v total=%v present=%v)", wantUnknown, free, total, present)
+		return
+	}
+
+	free, total, present := waitDisk(false)
+	if got := classifyDiskFit(4096, free, total, present); got != "ok" {
+		t.Fatalf("setup: classifyDiskFit with real figures %v/%v = %q, want ok", free, total, got)
+	}
+	oversize.Store(true)
+	free, total, present = waitDisk(true)
+	if !present {
+		t.Fatal("agent must stay present on an oversize reply")
+	}
+	if got := classifyDiskFit(4096, free, total, present); got != "unknown" {
+		t.Errorf("classifyDiskFit after an oversize reply = %q, want unknown", got)
+	}
+	if got := classifyUnknownSizeDiskFit(free, total, present); got != "unknown" {
+		t.Errorf("classifyUnknownSizeDiskFit after an oversize reply = %q, want unknown", got)
 	}
 }

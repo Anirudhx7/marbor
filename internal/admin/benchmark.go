@@ -457,7 +457,7 @@ func (s *Server) runBenchmarkJob(ctx context.Context, job *benchmarkJob, apiKey 
 	}()
 
 	target := fmt.Sprintf("http://localhost:%d", s.cfg.Proxy.Port)
-	client := &http.Client{Timeout: benchmarkSampleTimeout}
+	client := &http.Client{Timeout: benchmarkSampleTimeout, CheckRedirect: noRedirect}
 
 	fail := func(err error) {
 		job.finish("error", err.Error(), nil)
@@ -626,3 +626,8 @@ func (s *Server) handleListBenchmarkRuns(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"runs": runs})
 }
+
+// noRedirect makes an outbound client hand a 3xx reply back as-is instead of
+// following it, so a configured address cannot steer the request (and any
+// credential on it) to a host nobody configured.
+func noRedirect(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }

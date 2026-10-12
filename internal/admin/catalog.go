@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path"
 	"regexp"
 	"sort"
 	"strconv"
@@ -1764,6 +1765,7 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 	// .safetensors sibling sizes into one variant instead.
 	variants := []ModelVariantFit{}
 	if ggufOnlyRuntime(runtime) {
+		seenTag := map[string]int{}
 		for _, sib := range repo.Siblings {
 			lowerName := strings.ToLower(sib.Rfilename)
 			if !strings.HasSuffix(lowerName, ".gguf") {
@@ -1778,7 +1780,9 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 			// fetches a repo's mmproj file automatically alongside the main
 			// GGUF when one exists - there is never a reason to list it here
 			// as its own pullable variant.
-			if strings.HasPrefix(lowerName, "mmproj") {
+			// Match on the base name: repos often keep the projector in a
+			// subfolder (e.g. "BF16/mmproj-BF16.gguf").
+			if strings.HasPrefix(path.Base(lowerName), "mmproj") {
 				continue
 			}
 			// A sharded GGUF quant (e.g. "Q3_K_S/Kimi-K2.5-Q3_K_S-00001-of-
@@ -1879,7 +1883,7 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 			// Formula (Estimated fallback): VRAMEstMB = sizeMB*1.10 + ctxLen*0.15
 			estBytes, fitResult, cf := computeContextFeasibility(sizeMB, ctxLen, ggufOverheadMult, ggufPerTokenMBFallback, vramTotalBytes, vramSource, arch, caveat)
 
-			variants = append(variants, ModelVariantFit{
+			v := ModelVariantFit{
 				Tag:                tag,
 				Quantization:       quant,
 				VRAMEstMB:          estBytes / (1024 * 1024),
@@ -1888,7 +1892,20 @@ func (s *Server) handleModelRepo(w http.ResponseWriter, r *http.Request) {
 				DiskFit:            classifyDiskFit(sizeMB, diskFreeGB, diskTotalGB, agentPresent),
 				Downloaded:         isDl,
 				ContextFeasibility: cf,
-			})
+			}
+			// Several files can map to one quant label (e.g. a draft or
+			// auxiliary file next to the main weights), but the pull tag is
+			// "repo:quant" so they are one pullable variant. Keep the largest
+			// file, which is the main model, so the list never shows two rows
+			// with the same tag and the Pick badge lands on one row only.
+			if i, dup := seenTag[tag]; dup {
+				if v.SizeMB > variants[i].SizeMB {
+					variants[i] = v
+				}
+				continue
+			}
+			seenTag[tag] = len(variants)
+			variants = append(variants, v)
 		}
 	} else {
 		var totalSize int64

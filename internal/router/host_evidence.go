@@ -32,6 +32,31 @@ const (
 // hostLogKeyPrefixes lists every rate-limit key prefix; a key is prefix+host.
 var hostLogKeyPrefixes = []string{"truncate:", "oversize:", "read:"}
 
+// hostLogAgedKeyPrefixes lists the rate-limit keys whose subject (a node, a
+// docker URL, a panic site) has no per-pass keep set to compare against, so
+// dropHostEvidenceNotIn removes them once they are older than hostLogInterval,
+// the point where the limiter would let the next log through anyway. Prefix
+// match, so "docker-discovery" (no suffix) is covered too.
+var hostLogAgedKeyPrefixes = []string{"tags:", "probe:", "docker-add:", "docker-discovery", "panic:"}
+
+// hostLogPollKeyPrefixes lists the rate-limit key prefixes for agent poll
+// failures. They are pruned with the others when a host leaves the poll
+// groups, but unlike hostLogKeyPrefixes they are not reset by
+// DropHostEvidence: that runs on every failed poll past the failure threshold,
+// which would defeat the rate limit for exactly the case it is for.
+var hostLogPollKeyPrefixes = []string{"badurl:", "badreq:", "dial:", "mismatch:", "status:", "decode:"}
+
+// lastResortLogPrefix keys the last-resort routing warning by head name and
+// host. It is not in hostLogKeyPrefixes: the head's host often has no polled
+// agent, so pruning by poll group would reset the limit every pass. These keys
+// are only removed once they are older than hostLogInterval.
+const lastResortLogPrefix = "lastresort:"
+
+// lastResortNoneKey is the rate-limit key suffix for the warning that
+// selection found no node among the last-resort heads. It contains no "@", so
+// it cannot collide with a head@host key.
+const lastResortNoneKey = "none"
+
 // HostEvidence is one agent's latest host-level report. Host is the same key
 // pollAgentHosts groups nodes by (the raw NodeState.Host string).
 type HostEvidence struct {
@@ -78,9 +103,9 @@ func (r *Router) RecordHostEvidence(ev HostEvidence) {
 // rate-limit map shares hostEvidenceMu on purpose: the critical section is a
 // single map lookup and write, so a separate mutex would add nothing.
 func (r *Router) allowHostLog(key string) bool {
-	now := time.Now()
 	r.hostEvidenceMu.Lock()
 	defer r.hostEvidenceMu.Unlock()
+	now := r.hostLogClock()
 	if r.hostLogAt == nil {
 		r.hostLogAt = make(map[string]time.Time)
 	}
@@ -89,6 +114,15 @@ func (r *Router) allowHostLog(key string) bool {
 	}
 	r.hostLogAt[key] = now
 	return true
+}
+
+// hostLogClock returns the current time for the log rate limiter. The caller
+// holds hostEvidenceMu.
+func (r *Router) hostLogClock() time.Time {
+	if r.hostLogNow != nil {
+		return r.hostLogNow()
+	}
+	return time.Now()
 }
 
 // DropHostEvidence forgets the snapshot for host. Exported for the same
@@ -102,6 +136,15 @@ func (r *Router) DropHostEvidence(host string) {
 	r.hostEvidenceMu.Unlock()
 }
 
+// dropHostEvidenceOnly forgets the snapshot for host but leaves the log
+// rate-limit keys alone, so a warning that fires on every poll of a
+// persistent condition (an oversize reply) stays rate-limited.
+func (r *Router) dropHostEvidenceOnly(host string) {
+	r.hostEvidenceMu.Lock()
+	delete(r.hostEvidence, host)
+	r.hostEvidenceMu.Unlock()
+}
+
 // dropHostEvidenceNotIn forgets every snapshot whose host is not a key of keep.
 // Run after each agent poll pass so a host that lost its last node row, or
 // whose agent was removed or disabled, stops feeding address identity.
@@ -112,16 +155,56 @@ func (r *Router) dropHostEvidenceNotIn(keep map[string][]*NodeState) {
 			delete(r.hostEvidence, host)
 		}
 	}
-	for key := range r.hostLogAt {
-		for _, prefix := range hostLogKeyPrefixes {
-			if host, ok := strings.CutPrefix(key, prefix); ok {
-				if _, kept := keep[host]; !kept {
-					delete(r.hostLogAt, key)
+	now := r.hostLogClock()
+	for key, at := range r.hostLogAt {
+		if hasAnyPrefix(key, hostLogAgedKeyPrefixes) {
+			if now.Sub(at) >= hostLogInterval {
+				delete(r.hostLogAt, key)
+			}
+			continue
+		}
+		if strings.HasPrefix(key, lastResortLogPrefix) {
+			if now.Sub(at) >= hostLogInterval {
+				delete(r.hostLogAt, key)
+			}
+			continue
+		}
+		for _, prefixes := range [][]string{hostLogKeyPrefixes, hostLogPollKeyPrefixes} {
+			for _, prefix := range prefixes {
+				if host, ok := strings.CutPrefix(key, prefix); ok {
+					if _, kept := keep[host]; !kept {
+						delete(r.hostLogAt, key)
+					}
 				}
 			}
 		}
 	}
 	r.hostEvidenceMu.Unlock()
+}
+
+func hasAnyPrefix(s string, prefixes []string) bool {
+	for _, p := range prefixes {
+		if strings.HasPrefix(s, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// dropNodeLogKeys forgets the rate-limit keys that are keyed by node name, for
+// a node that was removed.
+func (r *Router) dropNodeLogKeys(name string) {
+	r.hostEvidenceMu.Lock()
+	defer r.hostEvidenceMu.Unlock()
+	for _, k := range []string{"tags:" + name, "probe:" + name, "panic:" + name} {
+		delete(r.hostLogAt, k)
+	}
+	modelPrefix := "panic:" + name + "/"
+	for k := range r.hostLogAt {
+		if strings.HasPrefix(k, modelPrefix) {
+			delete(r.hostLogAt, k)
+		}
+	}
 }
 
 // snapshotHostEvidence returns the current snapshots. Stored values are never
