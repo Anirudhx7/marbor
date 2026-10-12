@@ -1090,7 +1090,7 @@ func TestOversizeThenAgentDisabledClearsEverything(t *testing.T) {
 // oversize reply is never parsed, so a node whose first poll is oversize has
 // no agent version.
 func TestOversizeFirstPollNeverReadsBodyPrefix(t *testing.T) {
-	const prefix = `{"agent": {"version": "v9.9.9", "protocol_version": 1}}`
+	const prefix = `{"agent": {"node_id": "node-id-1", "version": "v9.9.9", "protocol_version": 1}}`
 	body := []byte(prefix + strings.Repeat(" ", maxAgentStatusBodyBytes+1024-len(prefix)))
 	r := pollOneAgent(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

@@ -268,6 +268,12 @@ func (r *Router) pollAgentHost(host string, cfg MarborAgentConfig, members []*No
 			r.logAgentPoll(host, "notagent", "failed: %v", err)
 		} else {
 			sanitizeTelemetry(&t)
+			// Every pollable agent sends a node_id (it ships with the status
+			// endpoint), so a reply without one is not a healthy agent.
+			if strings.TrimSpace(t.Agent.NodeID) == "" {
+				err = errors.New("status reply has no node_id")
+				r.logAgentPoll(host, "nonodeid", "failed: %v", err)
+			}
 		}
 	}
 	if err != nil {
@@ -996,13 +1002,11 @@ func buildAgentURL(host string, port int, scheme string) (string, error) {
 	return fmt.Sprintf("%s://%s:%d/v1/status", scheme, host, port), nil
 }
 
-// looksLikeAgentReport reports whether t carries at least one signal every
-// marbor agent build emits: the protocol version, platform or version string of
-// the agent block, or the last_updated stamp of the collector snapshot (sent
-// since v0.17.0, before the agent block existed). The check is
-// deliberately a set of signals, not one field, so an agent from before any one
-// of them existed keeps working through a rolling upgrade, while foreign JSON
-// such as {"capabilities":[]} or {"health":{}} is rejected.
+// looksLikeAgentReport reports whether t carries at least one signal a marbor
+// agent always emits: the protocol version, platform or version string of the
+// agent block, or the last_updated stamp of the collector snapshot. The check is
+// a set of signals, not one field, so foreign JSON such as {"capabilities":[]}
+// or {"health":{}} is rejected without depending on any single field.
 func looksLikeAgentReport(t *marboragent.Telemetry) bool {
 	return t.Agent.ProtocolVersion != 0 || t.Agent.Platform != "" || t.Agent.Version != "" || !t.LastUpdated.IsZero()
 }

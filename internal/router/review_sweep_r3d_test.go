@@ -23,7 +23,7 @@ import (
 // fillHostile sets every settable field reachable from v to a hostile value:
 // long strings with control and bidi characters, 200-entry lists, huge or
 // negative numbers, NaN and infinite floats, and non-nil pointers.
-func fillHostile(v reflect.Value) {
+func fillHostile(t *testing.T, v reflect.Value) {
 	switch v.Kind() {
 	case reflect.String:
 		v.SetString("a" + string(rune(0x1b)) + "[31m" + string(rune(0x202e)) + "b\nc" + strings.Repeat("z", 999))
@@ -35,11 +35,11 @@ func fillHostile(v reflect.Value) {
 		v.SetBool(true)
 	case reflect.Ptr:
 		v.Set(reflect.New(v.Type().Elem()))
-		fillHostile(v.Elem())
+		fillHostile(t, v.Elem())
 	case reflect.Slice:
 		s := reflect.MakeSlice(v.Type(), 200, 200)
 		for i := 0; i < s.Len(); i++ {
-			fillHostile(s.Index(i))
+			fillHostile(t, s.Index(i))
 		}
 		v.Set(s)
 	case reflect.Struct:
@@ -48,9 +48,11 @@ func fillHostile(v reflect.Value) {
 		}
 		for i := 0; i < v.NumField(); i++ {
 			if v.Field(i).CanSet() {
-				fillHostile(v.Field(i))
+				fillHostile(t, v.Field(i))
 			}
 		}
+	default:
+		t.Fatalf("fillHostile does not handle kind %s; extend it and checkBounded", v.Kind())
 	}
 }
 
@@ -102,6 +104,9 @@ func checkBounded(t *testing.T, path string, v reflect.Value) {
 		for i := 0; i < v.NumField(); i++ {
 			checkBounded(t, path+"."+v.Type().Field(i).Name, v.Field(i))
 		}
+	case reflect.Bool:
+	default:
+		t.Errorf("%s: checkBounded does not handle kind %s; extend it", path, v.Kind())
 	}
 }
 
@@ -109,7 +114,7 @@ func checkBounded(t *testing.T, path string, v reflect.Value) {
 // reflection, so a field added later without a clamp fails here.
 func TestSanitizeTelemetryBoundsEveryField(t *testing.T) {
 	var tel marboragent.Telemetry
-	fillHostile(reflect.ValueOf(&tel).Elem())
+	fillHostile(t, reflect.ValueOf(&tel).Elem())
 	sanitizeTelemetry(&tel)
 	checkBounded(t, "Telemetry", reflect.ValueOf(tel))
 }
@@ -127,7 +132,12 @@ func TestSanitizeTelemetryUsedNeverExceedsTotal(t *testing.T) {
 	if tel.Host.RAMUsedMB != 100 {
 		t.Errorf("RAMUsedMB = %d, want clamped to the total 100", tel.Host.RAMUsedMB)
 	}
-	want := []int64{100, 0, 3}
+	noTotal := marboragent.Telemetry{Host: &marboragent.HostTelemetry{RAMUsedMB: 50}}
+	sanitizeTelemetry(&noTotal)
+	if noTotal.Host.RAMUsedMB != 50 {
+		t.Errorf("RAMUsedMB = %d with no total, want the reading kept", noTotal.Host.RAMUsedMB)
+	}
+	want := []int64{100, 7, 3} // total 0 leaves the used reading as read
 	for i, d := range tel.GPU.Devices {
 		if d.VRAMUsedMB != want[i] {
 			t.Errorf("device %d VRAMUsedMB = %d, want %d", i, d.VRAMUsedMB, want[i])
@@ -315,9 +325,20 @@ func TestFireScheduleQuotesModelNames(t *testing.T) {
 // a function literal, is not counted outside it.
 func TestUndoIfNodeRemovedCallersHoldNoLock(t *testing.T) {
 	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, ".", func(fi os.FileInfo) bool { return !strings.HasSuffix(fi.Name(), "_test.go") }, 0)
+	entries, err := os.ReadDir(".")
 	if err != nil {
 		t.Fatal(err)
+	}
+	var files []*ast.File
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
+			continue
+		}
+		f, err := parser.ParseFile(fset, e.Name(), nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		files = append(files, f)
 	}
 	callers := 0
 	callName := func(s ast.Stmt) string {
@@ -376,14 +397,24 @@ func TestUndoIfNodeRemovedCallersHoldNoLock(t *testing.T) {
 			})
 		}
 	}
-	for _, pkg := range pkgs {
-		for _, f := range pkg.Files {
-			for _, decl := range f.Decls {
-				if fn, ok := decl.(*ast.FuncDecl); ok && fn.Body != nil && fn.Name.Name != "undoIfNodeRemoved" {
-					check(fn.Name.Name, fn.Body.List, 0, false)
-				}
+	idents := 0
+	for _, f := range files {
+		ast.Inspect(f, func(n ast.Node) bool {
+			if id, ok := n.(*ast.Ident); ok && id.Name == "undoIfNodeRemoved" {
+				idents++
+			}
+			return true
+		})
+		for _, decl := range f.Decls {
+			if fn, ok := decl.(*ast.FuncDecl); ok && fn.Body != nil && fn.Name.Name != "undoIfNodeRemoved" {
+				check(fn.Name.Name, fn.Body.List, 0, false)
 			}
 		}
+	}
+	// Every mention other than the declaration must be a call the walk saw, so a
+	// call in an expression, or the function passed as a value, cannot slip by.
+	if idents != callers+1 {
+		t.Fatalf("%d mentions of undoIfNodeRemoved but the walk checked %d calls (plus the declaration); a call in an unchecked position", idents, callers)
 	}
 	if callers == 0 {
 		t.Fatal("found no callers; the scan is not reading the package")

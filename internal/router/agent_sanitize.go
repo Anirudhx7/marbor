@@ -211,7 +211,7 @@ func sanitizeTelemetry(t *marboragent.Telemetry) {
 		h.CPUPercent = clampPercent(h.CPUPercent)
 		h.RAMUsedMB = clampMB(h.RAMUsedMB)
 		h.RAMTotalMB = clampMB(h.RAMTotalMB)
-		if h.RAMUsedMB > h.RAMTotalMB {
+		if h.RAMTotalMB > 0 && h.RAMUsedMB > h.RAMTotalMB {
 			h.RAMUsedMB = h.RAMTotalMB
 		}
 		h.DiskFreeGB = clampDiskGB(h.DiskFreeGB)
@@ -269,8 +269,9 @@ func sanitizeGPU(g *marboragent.GPUBlock) {
 		d.PowerWatts = finiteNonNeg(d.PowerWatts)
 		d.VRAMUsedMB = clampMB(d.VRAMUsedMB)
 		d.VRAMTotalMB = clampMB(d.VRAMTotalMB)
-		// Used never exceeds total (a total of 0 is unknown, so used is too).
-		if d.VRAMUsedMB > d.VRAMTotalMB {
+		// Used never exceeds a known total. With no total reported the used reading
+		// is left as read: some collectors report the two independently.
+		if d.VRAMTotalMB > 0 && d.VRAMUsedMB > d.VRAMTotalMB {
 			d.VRAMUsedMB = d.VRAMTotalMB
 		}
 	}

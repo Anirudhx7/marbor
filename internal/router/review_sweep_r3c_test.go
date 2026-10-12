@@ -101,7 +101,7 @@ func TestPingEndpointTreatsRedirectAsFailure(t *testing.T) {
 func TestRuntimeErrorDetailIsCleaned(t *testing.T) {
 	body := `{"error": "bad\nforged line ` + bidiOverride + ` reversed ` + strings.Repeat("x", 600) + `"}`
 	got := runtimeErrorDetail(strings.NewReader(body))
-	if strings.ContainsAny(got, "\n"+bidiOverride+"") {
+	if strings.ContainsAny(got, "\n"+bidiOverride) {
 		t.Fatalf("unsafe characters survived: %q", got)
 	}
 	if len(got) > maxLogValueBytes+3 {
@@ -132,19 +132,25 @@ func TestPrefixCacheHitRateEqualDeltasAndFirstCall(t *testing.T) {
 	}
 }
 
-// An agent from before node_id existed must stay a healthy agent.
-func TestPollAgentOldStyleReplyWithoutNodeIDStaysPresent(t *testing.T) {
-	port := agentServerPort(t, func(w http.ResponseWriter, req *http.Request) {
-		w.Write([]byte(`{"agent": {"version": "v0.15.0"}, "last_updated": "2026-07-17T00:00:00Z"}`))
-	})
-	r := New(config.RoutingConfig{}, []config.NodeConfig{{Name: "n", URL: "http://127.0.0.1:11434"}}, nil)
-	r.SetMarborAgent(r.nodes[0].Host, true, port, "tok", "http")
-	r.pollAgentHosts()
-	n := r.nodes[0]
-	n.mu.RLock()
-	defer n.mu.RUnlock()
-	if !n.AgentPresent || n.AgentFailures != 0 || n.AgentVersion != "v0.15.0" {
-		t.Fatalf("present=%v failures=%d version=%q, want a healthy old agent", n.AgentPresent, n.AgentFailures, n.AgentVersion)
+// node_id ships with the /v1/status endpoint (since v0.17.1), so every agent
+// that can be polled sends it. A reply without one is not a healthy agent, even
+// when it carries other agent signals.
+func TestPollAgentReplyWithoutNodeIDIsRejected(t *testing.T) {
+	for name, body := range map[string]string{
+		"no node id":    `{"agent": {"version": "v0.17.1", "protocol_version": 1}}`,
+		"blank node id": `{"agent": {"node_id": "   ", "version": "v0.17.1"}}`,
+	} {
+		body := body
+		port := agentServerPort(t, func(w http.ResponseWriter, req *http.Request) { w.Write([]byte(body)) })
+		r := New(config.RoutingConfig{}, []config.NodeConfig{{Name: "n", URL: "http://127.0.0.1:11434"}}, nil)
+		r.SetMarborAgent(r.nodes[0].Host, true, port, "tok", "http")
+		r.pollAgentHosts()
+		r.nodes[0].mu.RLock()
+		present, failures := r.nodes[0].AgentPresent, r.nodes[0].AgentFailures
+		r.nodes[0].mu.RUnlock()
+		if present || failures != 1 {
+			t.Errorf("%s: present=%v failures=%d, want an unhealthy agent", name, present, failures)
+		}
 	}
 }
 
@@ -262,7 +268,7 @@ func TestPollAgentSumOfMaxDevicesStaysSafe(t *testing.T) {
 	}
 	port := agentServerPort(t, func(w http.ResponseWriter, req *http.Request) {
 		json.NewEncoder(w).Encode(marboragent.Telemetry{
-			Agent: marboragent.Agent{Version: "v1"},
+			Agent: marboragent.Agent{NodeID: "node-id-1", Version: "v1"},
 			GPU:   &marboragent.GPUBlock{Count: 64, Devices: devs},
 		})
 	})
