@@ -67,24 +67,30 @@ var rawErrRefPattern = regexp.MustCompile(`\berr\b`)
 // Do not add a new entry here without a documented reason - a genuine new
 // leak found by this test should be fixed by routing through
 // writeServerError/writeCorrelatedError, not exempted.
-var errorLeakExceptions = map[string]bool{
-	"internal/admin/admin.go:2773": true,
-	"internal/admin/admin.go:2906": true,
-	"internal/admin/admin.go:3507": true,
-	"internal/admin/admin.go:7793": true,
-	"internal/admin/admin.go:8093": true,
-	"internal/admin/admin.go:8456": true,
-	"internal/admin/admin.go:3523": true,
-	"internal/admin/admin.go:3527": true,
-	"internal/admin/admin.go:4108": true,
-	"internal/admin/admin.go:4120": true,
-	"internal/admin/admin.go:5635": true,
-	"internal/admin/admin.go:5769": true,
-	"internal/admin/admin.go:5903": true,
-	"internal/admin/admin.go:6047": true,
-	"internal/admin/admin.go:8875": true,
-	"internal/admin/admin.go:8987": true,
+var errorLeakExceptions = map[string]int{
+	"internal/admin/admin.go|handleNodeRuntimeAction|writeJSONError(w, http.StatusBadGateway, err.Error())":                                          1,
+	"internal/admin/admin.go|handleNodeRuntimeLogs|writeJSONError(w, http.StatusBadGateway, err.Error())":                                            1,
+	"internal/admin/admin.go|handleUnloadModel|writeJSONError(w, http.StatusBadGateway, err.Error())":                                                1,
+	"internal/admin/admin.go|handleUnloadModel|writeJSONError(w, http.StatusConflict, err.Error())":                                                  1,
+	"internal/admin/admin.go|handleUnloadModel|writeJSONError(w, http.StatusUnprocessableEntity, err.Error())":                                       1,
+	"internal/admin/admin.go|handleNodeModels|writeJSONError(w, http.StatusBadGateway, err.Error())":                                                 1,
+	"internal/admin/admin.go|deleteSingleNodeModel|writeJSONError(w, http.StatusBadGateway, err.Error())":                                            1,
+	"internal/admin/admin.go|handleNodeHealthCheck|writeJSONError(w, http.StatusBadGateway, err.Error())":                                            1,
+	"internal/admin/admin.go|handlePatchNode|writeJSONError(w, status, err.Error())":                                                                 2,
+	"internal/admin/admin.go|handleAddKey|writeJSONError(w, http.StatusBadRequest, err.Error())":                                                     1,
+	"internal/admin/admin.go|handlePatchKey|writeJSONError(w, http.StatusBadRequest, err.Error())":                                                   1,
+	"internal/admin/admin.go|handleSetRoutingStrategy|writeJSONError(w, http.StatusBadRequest, err.Error())":                                         1,
+	"internal/admin/admin.go|handleUpdateSettings|writeJSONError(w, http.StatusBadRequest, \"validation failed: \"+err.Error())":                     1,
+	"internal/admin/admin.go|handleRestoreBackup|writeJSONError(w, http.StatusUnprocessableEntity, \"backup file failed validation: \"+err.Error())": 1,
+	"internal/admin/admin.go|handleUploadBackup|writeJSONError(w, http.StatusUnprocessableEntity, \"not a valid marbor.db backup: \"+err.Error())":   1,
 }
+
+// funcDeclPattern matches a top-level func declaration (method or plain) and
+// captures its name. Exceptions are keyed by file, enclosing function and the
+// exact trimmed line - not by line number - so edits elsewhere in the file
+// never invalidate them. The count is how many identical lines that function
+// may contain, so a new copy of an exempted line still fails.
+var funcDeclPattern = regexp.MustCompile(`^func (?:\([^)]*\) )?(\w+)`)
 
 // adminGoFiles returns the repo root and every non-test .go file tracked
 // under internal/admin (absolute paths), via `git ls-files`.
@@ -140,18 +146,25 @@ func TestNoRawErrorLeaksToClient(t *testing.T) {
 		}
 		rel := strings.TrimPrefix(path, rootDir+"/")
 		lines := strings.Split(string(data), "\n")
+		seen := map[string]int{}
+		fn := ""
 		for i, line := range lines {
+			if m := funcDeclPattern.FindStringSubmatch(line); m != nil {
+				fn = m[1]
+			}
 			if !errorLeakSinkPattern.MatchString(line) {
 				continue
 			}
 			if !rawErrRefPattern.MatchString(line) {
 				continue
 			}
-			key := rel + ":" + strconv.Itoa(i+1)
-			if errorLeakExceptions[key] {
+			trimmed := strings.TrimSpace(line)
+			key := rel + "|" + fn + "|" + trimmed
+			seen[key]++
+			if seen[key] <= errorLeakExceptions[key] {
 				continue
 			}
-			t.Errorf("%s: raw error leaked to client: %q - route through writeServerError/writeCorrelatedError instead", key, strings.TrimSpace(line))
+			t.Errorf("%s:%s (%s): raw error leaked to client: %q - route through writeServerError/writeCorrelatedError instead", rel, strconv.Itoa(i+1), fn, trimmed)
 		}
 	}
 }

@@ -20,8 +20,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
+	"sync/atomic"
+	"time"
 )
 
 // anthropicVersion is the API version header Anthropic requires on every
@@ -55,7 +58,17 @@ func (t *anthropicTransport) RoundTrip(req *http.Request) (*http.Response, error
 		}
 	}
 
-	wantsStream := clientWantsStream(body)
+	// Ollama clients default to streaming when "stream" is absent; OpenAI
+	// clients default to non-streaming. The Director has already rewritten
+	// the path, so translatingTransport marks Ollama-origin requests.
+	ollamaOrigin := req.Context().Value(ollamaOriginKey{}) != nil
+	wantsStream := ollamaOrigin
+	var sp struct {
+		Stream *bool `json:"stream"`
+	}
+	if json.Unmarshal(body, &sp) == nil && sp.Stream != nil {
+		wantsStream = *sp.Stream
+	}
 	anthropicBody, err := translateOpenAIRequestToAnthropic(body, wantsStream)
 	if err != nil {
 		return nil, err
@@ -83,6 +96,9 @@ func (t *anthropicTransport) RoundTrip(req *http.Request) (*http.Response, error
 		resp.Body = translateAnthropicSSEToOpenAI(resp.Body)
 		resp.Header.Set("Content-Type", "text/event-stream")
 	} else {
+		if !capCloudResponse(resp, ollamaOrigin) {
+			return resp, nil
+		}
 		resp.Body = translateAnthropicJSONToOpenAI(resp.Body)
 		resp.Header.Set("Content-Type", "application/json")
 	}
@@ -156,6 +172,67 @@ type anthropicRequest struct {
 	TopP          *float64           `json:"top_p,omitempty"`
 }
 
+// temperatureClampLogInterval spaces out the clamp log line so a client that
+// always sends an out-of-range value does not log on every request.
+var temperatureClampLogInterval = time.Minute
+
+// temperatureClampLastLog is a package-level limiter shared by all requests
+// and providers, so the interval applies to the process, not per provider.
+var temperatureClampLastLog atomic.Int64
+
+func shouldLogTemperatureClamp() bool {
+	now := time.Now().UnixNano()
+	last := temperatureClampLastLog.Load()
+	if last != 0 && now-last < int64(temperatureClampLogInterval) {
+		return false
+	}
+	return temperatureClampLastLog.CompareAndSwap(last, now)
+}
+
+// clampAnthropicTemperature limits temperature to Anthropic's 0..1 range
+// (OpenAI allows up to 2).
+func clampAnthropicTemperature(t *float64) *float64 {
+	if t == nil {
+		return nil
+	}
+	v := *t
+	if v > 1 {
+		v = 1
+	}
+	if v < 0 {
+		v = 0
+	}
+	if v != *t && shouldLogTemperatureClamp() {
+		log.Printf("anthropic: temperature %v is outside 0..1, clamped to %v", *t, v)
+	}
+	return &v
+}
+
+// openAIFinishReason maps an Anthropic stop_reason to the OpenAI
+// finish_reason vocabulary. An empty reason stays empty and an unknown one
+// becomes "stop". tool_use -> tool_calls is unreachable until tool
+// translation exists; it is mapped so the vocabulary is already correct then.
+// Unknown values are logged so a new Anthropic stop reason is noticed.
+func openAIFinishReason(stop string) string {
+	switch stop {
+	case "":
+		// No stop_reason reported: emit no finish_reason at all rather than
+		// inventing one.
+		return ""
+	case "end_turn", "stop_sequence":
+		return "stop"
+	case "max_tokens":
+		return "length"
+	case "tool_use":
+		return "tool_calls"
+	case "refusal":
+		return "content_filter"
+	default:
+		log.Printf("anthropic: unknown stop_reason %q mapped to \"stop\"", stop)
+		return "stop"
+	}
+}
+
 // translateOpenAIRequestToAnthropic converts an OpenAI-shaped chat/completion
 // request body into Anthropic's /v1/messages schema. Returns an error rather
 // than the body unchanged when it can't be understood - previously an
@@ -175,7 +252,8 @@ func translateOpenAIRequestToAnthropic(body []byte, wantsStream bool) ([]byte, e
 	out := anthropicRequest{
 		Model:         in.Model,
 		Stream:        wantsStream,
-		Temperature:   in.Temperature,
+		Messages:      []anthropicMessage{},
+		Temperature:   clampAnthropicTemperature(in.Temperature),
 		StopSequences: in.Stop,
 		TopP:          in.TopP,
 	}
@@ -192,8 +270,10 @@ func translateOpenAIRequestToAnthropic(body []byte, wantsStream bool) ([]byte, e
 	if len(in.Messages) > 0 {
 		var system []string
 		for _, m := range in.Messages {
-			if m.Role == "system" {
-				system = append(system, m.Content)
+			if m.Role == "system" || m.Role == "developer" {
+				if m.Content != "" {
+					system = append(system, m.Content)
+				}
 				continue
 			}
 			out.Messages = append(out.Messages, anthropicMessage{Role: m.Role, Content: m.Content})
@@ -241,6 +321,9 @@ type openAIChoiceMessage struct {
 	Content string `json:"content"`
 }
 
+// FinishReason is omitted when Anthropic reports no stop_reason: marbor does not
+// invent one for OpenAI-shaped clients (the stream path does the same). Ollama
+// format replies default done_reason to "stop" separately.
 type openAIChoice struct {
 	Message      openAIChoiceMessage `json:"message"`
 	FinishReason string              `json:"finish_reason,omitempty"`
@@ -263,10 +346,9 @@ type openAIChatResponse struct {
 // Unparseable bodies pass through raw so nothing is silently lost.
 func translateAnthropicJSONToOpenAI(src io.ReadCloser) io.ReadCloser {
 	defer src.Close()
-	raw, err := io.ReadAll(src)
-	if err != nil {
-		return io.NopCloser(strings.NewReader(`{"error":"failed to read cloud response"}` + "\n"))
-	}
+	// src is the buffered body from capCloudResponse (the single read point);
+	// this read cannot fail.
+	raw, _ := io.ReadAll(src)
 
 	// Anthropic error responses are a distinct envelope shape
 	// ({"type":"error","error":{...}}), not a zero-valued success body -
@@ -297,7 +379,7 @@ func translateAnthropicJSONToOpenAI(src io.ReadCloser) io.ReadCloser {
 		Object: "chat.completion",
 		Choices: []openAIChoice{{
 			Message:      openAIChoiceMessage{Content: text.String()},
-			FinishReason: resp.StopReason,
+			FinishReason: openAIFinishReason(resp.StopReason),
 		}},
 		Usage: openAIUsage{
 			PromptTokens:     resp.Usage.InputTokens,
@@ -317,9 +399,14 @@ func translateAnthropicJSONToOpenAI(src io.ReadCloser) io.ReadCloser {
 type anthropicSSEEvent struct {
 	Type  string `json:"type"`
 	Delta struct {
-		Type string `json:"type"`
-		Text string `json:"text"`
+		Type       string `json:"type"`
+		Text       string `json:"text"`
+		StopReason string `json:"stop_reason"`
 	} `json:"delta"`
+	Error *struct {
+		Type    string `json:"type"`
+		Message string `json:"message"`
+	} `json:"error"`
 	Message *struct {
 		Usage anthropicUsage `json:"usage"`
 	} `json:"message"`
@@ -348,6 +435,7 @@ func translateAnthropicSSEToOpenAI(src io.ReadCloser) io.ReadCloser {
 		var (
 			inputTokens  int64
 			outputTokens int64
+			stopReason   string
 		)
 
 		writeChunk := func(content string) error {
@@ -369,12 +457,26 @@ func translateAnthropicSSEToOpenAI(src io.ReadCloser) io.ReadCloser {
 			return err
 		}
 
+		// closeWithErrorChunk emits an OpenAI-style error chunk, then ends the
+		// stream with err so the failure is never mistaken for a clean finish.
+		closeWithErrorChunk := func(errType, errMsg string, err error) {
+			type errBody struct {
+				Type    string `json:"type"`
+				Message string `json:"message"`
+			}
+			b, _ := json.Marshal(struct {
+				Error errBody `json:"error"`
+			}{Error: errBody{Type: errType, Message: errMsg}})
+			logStreamFailure(errType+": "+errMsg, err)
+			pw.Write([]byte("data: " + string(b) + "\n\n")) //nolint:errcheck -- CloseWithError below reports it
+			pw.CloseWithError(err)
+		}
+
 		for scanner.Scan() {
-			line := scanner.Text()
-			if !strings.HasPrefix(line, "data: ") {
+			payload, ok := sseData(scanner.Text())
+			if !ok {
 				continue
 			}
-			payload := strings.TrimPrefix(line, "data: ")
 
 			var evt anthropicSSEEvent
 			if err := json.Unmarshal([]byte(payload), &evt); err != nil {
@@ -396,17 +498,44 @@ func translateAnthropicSSEToOpenAI(src io.ReadCloser) io.ReadCloser {
 				if evt.Usage != nil {
 					outputTokens = evt.Usage.OutputTokens
 				}
+				if evt.Delta.StopReason != "" {
+					stopReason = evt.Delta.StopReason
+				}
+			case "error":
+				errType, errMsg := "api_error", "upstream stream error"
+				if evt.Error != nil {
+					if evt.Error.Type != "" {
+						errType = evt.Error.Type
+					}
+					if evt.Error.Message != "" {
+						errMsg = evt.Error.Message
+					}
+				}
+				closeWithErrorChunk(errType, errMsg, fmt.Errorf("anthropic stream error: %s: %s", errType, errMsg))
+				return
 			case "message_stop":
+				if stopReason != "" {
+					fin, _ := json.Marshal(map[string]any{"choices": []map[string]any{{
+						"index":         0,
+						"delta":         map[string]any{},
+						"finish_reason": openAIFinishReason(stopReason),
+					}}})
+					if _, err := pw.Write([]byte("data: " + string(fin) + "\n\n")); err != nil {
+						return
+					}
+				}
 				usageChunk := struct {
 					Choices []struct{} `json:"choices"`
 					Usage   struct {
 						PromptTokens     int64 `json:"prompt_tokens"`
 						CompletionTokens int64 `json:"completion_tokens"`
+						TotalTokens      int64 `json:"total_tokens"`
 					} `json:"usage"`
 				}{}
 				usageChunk.Choices = []struct{}{}
 				usageChunk.Usage.PromptTokens = inputTokens
 				usageChunk.Usage.CompletionTokens = outputTokens
+				usageChunk.Usage.TotalTokens = inputTokens + outputTokens
 				b, _ := json.Marshal(usageChunk)
 				pw.Write([]byte("data: " + string(b) + "\n\n")) //nolint:errcheck
 				pw.Write([]byte("data: [DONE]\n\n"))            //nolint:errcheck
@@ -414,9 +543,13 @@ func translateAnthropicSSEToOpenAI(src io.ReadCloser) io.ReadCloser {
 			}
 		}
 
-		if err := scanner.Err(); err != nil {
-			pw.CloseWithError(err)
+		// Reaching here means the stream ended without message_stop: a
+		// truncated stream, reported as an error rather than a clean close.
+		err := scanner.Err()
+		if err == nil {
+			err = io.ErrUnexpectedEOF
 		}
+		closeWithErrorChunk("api_error", streamFailureMessage(err), err)
 	}()
 
 	return pr

@@ -7,6 +7,17 @@ import (
 	"strings"
 )
 
+// HealthStatusError is returned by the /health based probes when the endpoint
+// answered with a status other than 200. Callers match it with errors.As
+// instead of searching the error text.
+type HealthStatusError struct {
+	StatusCode int
+}
+
+func (e *HealthStatusError) Error() string {
+	return fmt.Sprintf("/health returned %d", e.StatusCode)
+}
+
 // checkHealth performs GET {nodeURL}/health and returns an error if the
 // response status is not 200 OK. Used by vLLM, TGI, and llama.cpp probes.
 func checkHealth(ctx context.Context, client *http.Client, nodeURL string) error {
@@ -21,7 +32,7 @@ func checkHealth(ctx context.Context, client *http.Client, nodeURL string) error
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("/health returned %d", resp.StatusCode)
+		return &HealthStatusError{StatusCode: resp.StatusCode}
 	}
 	return nil
 }
