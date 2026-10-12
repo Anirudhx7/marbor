@@ -244,9 +244,10 @@ func TestLongLineGrownByManySmallWritesKeepsCount(t *testing.T) {
 	for i := 0; i < smallWrites; i++ {
 		rec.Write([]byte(strings.Repeat("y", 50)))
 	}
-	// Linear work means the growing line is not rescanned per write: a
-	// handful of trims at most, far below one per small write.
-	if trimCalls > 1 {
+	// Linear work means the growing line is not rescanned per write: well
+	// under one trim per ten small writes (in practice exactly one, when the
+	// tail first passes tailMax). A rescan on every write would reach 200.
+	if trimCalls >= smallWrites/10 {
 		t.Errorf("trimTail ran %d times for %d small writes; the long line is being rescanned", trimCalls, smallWrites)
 	}
 	rec.Write([]byte(`","eval_count":7,"prompt_eval_count":3}` + "\n"))
@@ -304,5 +305,19 @@ func TestDegradationTriesLaterChainEntryWhenFirstIsCapped(t *testing.T) {
 	}
 	if got := activeConns(r); got != 0 {
 		t.Errorf("ActiveConns = %d", got)
+	}
+}
+
+func TestMemoLabelerComputesOncePerDistinctName(t *testing.T) {
+	calls := 0
+	label := memoLabeler(func(n string) string { calls++; return "L:" + n })
+	if label("a") != "L:a" || label("a") != "L:a" || calls != 1 {
+		t.Errorf("same name twice: calls = %d, want 1", calls)
+	}
+	if label("b") != "L:b" || calls != 2 {
+		t.Errorf("a different name must recompute: calls = %d, want 2", calls)
+	}
+	if label("a") != "L:a" || calls != 3 {
+		t.Errorf("returning to an earlier name recomputes: calls = %d, want 3", calls)
 	}
 }

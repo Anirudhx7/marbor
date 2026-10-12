@@ -339,7 +339,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	modelName := router.ExtractModelName(body)
 	// label memoises the metric label for the name last asked about, so the
 	// several metric sites of one request scan the fleet once per distinct
-	// model name rather than once per call. It is not safe for concurrent
+	// model name rather than once per call. It covers the metric sites in
+	// this function; the single-use sites in the local-only refusal helper
+	// and the Anthropic 501 path each label once and call metricModel
+	// directly. It is not safe for concurrent
 	// use: every caller (including the rate-limit and retry closures, which
 	// ReverseProxy runs on this goroutine) stays on the request goroutine.
 	label := h.newMetricLabeler()
@@ -2071,11 +2074,17 @@ func (r *statusRecorder) Status() string {
 // the same name cost one fleet scan. The returned function must stay on one
 // goroutine.
 func (h *Handler) newMetricLabeler() func(string) string {
+	return memoLabeler(h.metricModel)
+}
+
+// memoLabeler wraps compute so asking twice in a row for the same name
+// computes once.
+func memoLabeler(compute func(string) string) func(string) string {
 	var lastName, lastLabel string
 	var have bool
 	return func(name string) string {
 		if !have || lastName != name {
-			lastName, lastLabel, have = name, h.metricModel(name), true
+			lastName, lastLabel, have = name, compute(name), true
 		}
 		return lastLabel
 	}
