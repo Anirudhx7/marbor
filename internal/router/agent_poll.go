@@ -22,9 +22,12 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"runtime/debug"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Anirudhx7/marbor/internal/marboragent"
 )
@@ -64,12 +67,14 @@ func derivePrefixCacheHitRate(n *NodeState, queries, hits *float64) *float64 {
 	if deltaQ <= 0 {
 		return nil
 	}
-	rate := (deltaH / deltaQ) * 100
-	if rate < 0 {
-		rate = 0
-	} else if rate > 100 {
-		rate = 100
+	// More hits than queries in one window cannot come from a consistent
+	// counter pair; the rate is unknown, never a clamped 100%. Deliberately
+	// strict: no tolerance for counters sampled a moment apart. Equal deltas
+	// are a true 100%.
+	if deltaH > deltaQ {
+		return nil
 	}
+	rate := (deltaH / deltaQ) * 100
 	return &rate
 }
 
@@ -104,6 +109,7 @@ func (r *Router) pollAgentHosts() {
 		// disabled.
 		clearAgentTelemetry(n)
 		r.setAgentStale(n, false)
+		r.setAgentTLSMismatch(n, false)
 		r.mu.Lock()
 		delete(r.prevAgentPresent, n.Name)
 		r.mu.Unlock()
@@ -136,6 +142,20 @@ func (r *Router) pollAgentHost(host string, cfg MarborAgentConfig, members []*No
 		return
 	}
 
+	// Same reliability boundary as pollNode: this runs on its own goroutine, so
+	// a panic from one host's poll must not be able to take down the whole
+	// process. Treat it as a failed poll for every node on the host.
+	defer func() {
+		if rec := recover(); rec != nil {
+			if r.allowHostLog("panic:" + host) {
+				log.Printf("router: recovered panic polling agent on host %q: %s\n%s", host, truncateForLog(fmt.Sprint(rec), maxLogValueBytes), debug.Stack())
+			}
+			for _, n := range members {
+				r.agentUnreachableSafe(n)
+			}
+		}
+	}()
+
 	// scheme is the agent's OWN transport scheme (cfg.Scheme) - independent
 	// of any member's runtime URL scheme. Marbor Agent URL construction used
 	// to derive this from the runtime URL instead, which meant enabling
@@ -149,7 +169,9 @@ func (r *Router) pollAgentHost(host string, cfg MarborAgentConfig, members []*No
 
 	agentURL, err := buildAgentURL(host, cfg.Port, scheme)
 	if err != nil {
+		r.logAgentPoll(host, "badurl", "skipped: invalid agent address: %v", err)
 		for _, n := range members {
+			r.setAgentTLSMismatch(n, false)
 			r.agentUnreachable(n)
 		}
 		return
@@ -159,7 +181,9 @@ func (r *Router) pollAgentHost(host string, cfg MarborAgentConfig, members []*No
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, agentURL, nil)
 	if err != nil {
+		r.logAgentPoll(host, "badreq", "skipped: cannot build request: %v", err)
 		for _, n := range members {
+			r.setAgentTLSMismatch(n, false)
 			r.agentUnreachable(n)
 		}
 		return
@@ -176,6 +200,11 @@ func (r *Router) pollAgentHost(host string, cfg MarborAgentConfig, members []*No
 		// failure so the dashboard can surface it as its own status instead
 		// of generic "unreachable".
 		mismatch := errors.Is(err, ErrTLSFingerprintMismatch)
+		if mismatch {
+			r.logAgentPoll(host, "mismatch", "refused: TLS fingerprint mismatch: %v", err)
+		} else {
+			r.logAgentPoll(host, "dial", "failed: %v", err)
+		}
 		for _, n := range members {
 			r.setAgentTLSMismatch(n, mismatch)
 			r.agentUnreachable(n)
@@ -184,6 +213,7 @@ func (r *Router) pollAgentHost(host string, cfg MarborAgentConfig, members []*No
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
+		r.logAgentPoll(host, "status", "failed: agent answered status %d", resp.StatusCode)
 		for _, n := range members {
 			r.setAgentTLSMismatch(n, false)
 			r.agentUnreachable(n)
@@ -229,6 +259,22 @@ func (r *Router) pollAgentHost(host string, cfg MarborAgentConfig, members []*No
 		// Default decoding on purpose: fields this binary does not know are
 		// ignored so a newer agent keeps working.
 		err = json.NewDecoder(bytes.NewReader(body)).Decode(&t)
+		if err != nil {
+			r.logAgentPoll(host, "decode", "failed: could not decode status reply: %v", err)
+		} else if !looksLikeAgentReport(&t) {
+			// Valid JSON that carries none of the signals a marbor agent always
+			// sends (null, {}, another service reply) is not a healthy agent.
+			err = errors.New("status reply is not an agent report")
+			r.logAgentPoll(host, "notagent", "failed: %v", err)
+		} else {
+			sanitizeTelemetry(&t)
+			// Every pollable agent sends a node_id (it ships with the status
+			// endpoint), so a reply without one is not a healthy agent.
+			if strings.TrimSpace(t.Agent.NodeID) == "" {
+				err = errors.New("status reply has no node_id")
+				r.logAgentPoll(host, "nonodeid", "failed: %v", err)
+			}
+		}
 	}
 	if err != nil {
 		for _, n := range members {
@@ -254,9 +300,70 @@ func (r *Router) pollAgentHost(host string, cfg MarborAgentConfig, members []*No
 
 	for _, n := range members {
 		r.setAgentTLSMismatch(n, false)
-		r.applyAgentTelemetry(n, t)
+		r.applyAgentTelemetryForHost(n, t, len(members))
 		r.agentReachable(n.Name)
 	}
+}
+
+// maxLogValueBytes caps an untrusted or arbitrary value (a panic value, an
+// agent-supplied message) embedded in a log line or error string.
+const maxLogValueBytes = 256
+
+// truncateForLog makes s safe to embed in one log line: unsafe characters
+// (control characters, line separators, bidirectional overrides; see
+// isUnsafeRune) become spaces so a hostile value cannot forge a line or
+// disguise one, and invalid UTF-8 becomes the replacement character. When the
+// cleaned value is longer than max bytes it is cut on a character boundary at
+// or below max and the 3-byte "..." marker is appended, so the result is never
+// longer than max+3 bytes.
+func truncateForLog(s string, max int) string {
+	clean := strings.Map(func(c rune) rune {
+		if isUnsafeRune(c) {
+			return ' '
+		}
+		return c
+	}, strings.ToValidUTF8(s, string(utf8.RuneError)))
+	if len(clean) <= max {
+		return clean
+	}
+	cut := max
+	for cut > 0 && !utf8.RuneStart(clean[cut]) {
+		cut--
+	}
+	return clean[:cut] + "..."
+}
+
+// agentUnreachableSafe clears the TLS-mismatch flag and records a failed poll
+// for n. Each step recovers on its own, so a panic in the first cannot skip the
+// second, and one bad node cannot stop the rest of the host's members from
+// being marked unreachable.
+func (r *Router) agentUnreachableSafe(n *NodeState) {
+	r.recoverAgentStep(n, "clearing the TLS mismatch flag", func() { r.setAgentTLSMismatch(n, false) })
+	r.recoverAgentStep(n, "marking its agent unreachable", func() { r.agentUnreachable(n) })
+}
+
+// recoverAgentStep runs step and logs, rate-limited, instead of propagating a panic.
+func (r *Router) recoverAgentStep(n *NodeState, what string, step func()) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			if r.allowHostLog("panic:" + n.Name) {
+				log.Printf("router: recovered panic %s for node %q: %s", what, n.Name, truncateForLog(fmt.Sprint(rec), maxLogValueBytes))
+			}
+		}
+	}()
+	step()
+}
+
+// logAgentPoll logs one agent poll failure for host, at most once per
+// hostLogInterval per kind and host. Polls repeat every interval, so an
+// unconditional line would flood the log for an agent that stays down. The
+// messages carry the status code or error only; the agent token is never part
+// of them.
+func (r *Router) logAgentPoll(host, kind, format string, args ...any) {
+	if !r.allowHostLog(kind + ":" + host) {
+		return
+	}
+	log.Printf("router: agent poll for host %q "+format, append([]any{host}, args...)...)
 }
 
 // setAgentTLSMismatch updates n's AgentTLSMismatch flag under its own lock -
@@ -283,15 +390,34 @@ func (r *Router) setAgentStale(n *NodeState, stale bool) {
 // snapshot: the shared host/GPU/capability fields identically, and this
 // member's own runtime-specific fields matched out of t.Runtimes.
 func (r *Router) applyAgentTelemetry(n *NodeState, t marboragent.Telemetry) {
-	n.mu.RLock()
+	r.applyAgentTelemetryForHost(n, t, 1)
+}
+
+// applyAgentTelemetryForHost is applyAgentTelemetry for a host that has
+// hostMembers nodes sharing it; the count decides whether a deployment report
+// with no port can be attributed to this node (see matchDeployment).
+func (r *Router) applyAgentTelemetryForHost(n *NodeState, t marboragent.Telemetry, hostMembers int) {
+	n.mu.Lock()
+	// Deferred so a panic in the body cannot leave the node lock held: the
+	// poll's recover path locks the same node again.
+	defer n.mu.Unlock()
+	r.applyAgentTelemetryLocked(n, t, hostMembers)
+}
+
+// applyAgentTelemetryLocked is the body of applyAgentTelemetryForHost; the
+// caller holds n.mu.
+func (r *Router) applyAgentTelemetryLocked(n *NodeState, t marboragent.Telemetry, hostMembers int) {
+	// One critical section for the reads that steer the writes below: a
+	// separate read lock first let a concurrent poll change the VRAM source or
+	// the runtime pin between the decision and the write.
+	if r.applyTelemetryHook != nil {
+		r.applyTelemetryHook()
+	}
 	hasGPU := n.VRAMSource == "nvidia"
 	pinnedID := n.AgentRuntimeID
-	nodePort := portOf(n.URL)
-	n.mu.RUnlock()
-
+	nodePort := portOfOrDefault(n.URL)
 	entry, matchedID := matchRuntime(t, pinnedID, nodePort)
 
-	n.mu.Lock()
 	n.AgentFailures = 0
 	n.AgentPresent = true
 	n.AgentStale = false
@@ -315,6 +441,8 @@ func (r *Router) applyAgentTelemetry(n *NodeState, t marboragent.Telemetry) {
 		log.Printf("node %s: agent reports /v1/status protocol_version %d, newer than this marbor understands (%d) - some new agent fields may not be recognized until marbor is upgraded", n.Name, t.Agent.ProtocolVersion, marboragent.ProtocolVersion)
 	}
 	if t.Host != nil {
+		// A host block that omits CPU keeps the earlier value on purpose (see
+		// derefOr); a report with no host block at all is handled below.
 		n.CPUPercent = derefOr(t.Host.CPUPercent, n.CPUPercent)
 		n.RAMUsedMB = t.Host.RAMUsedMB
 		n.DiskFreeGB = t.Host.DiskFreeGB
@@ -324,6 +452,7 @@ func (r *Router) applyAgentTelemetry(n *NodeState, t marboragent.Telemetry) {
 		n.UptimeSeconds = t.Host.UptimeSeconds
 		n.BootTime = t.Host.BootTime
 	} else {
+		n.CPUPercent = 0
 		n.RAMUsedMB = 0
 		n.DiskFreeGB = 0
 		n.RAMTotalMB = 0
@@ -364,13 +493,30 @@ func (r *Router) applyAgentTelemetry(n *NodeState, t marboragent.Telemetry) {
 			// Hierarchy: one live source, not two).
 			if !hasGPU {
 				n.Temperature = primary.TemperatureC
-				if primary.PowerWatts != nil {
-					n.PowerDrawW = *primary.PowerWatts
+				// An omitted power reading is unknown (0), never the last one.
+				n.PowerDrawW = derefOr(primary.PowerWatts, 0)
+				// A multi-GPU host reports its VRAM as the sum over every device,
+				// not device 0 alone, or a model that spans cards looks too big.
+				var usedMB, totalMB int64
+				for _, d := range t.GPU.Devices {
+					usedMB += d.VRAMUsedMB
+					totalMB += d.VRAMTotalMB
 				}
-				if primary.VRAMTotalMB > 0 || primary.VRAMUsedMB > 0 {
-					n.VRAMTotalMB = primary.VRAMTotalMB
-					n.VRAMUsedMB = primary.VRAMUsedMB
+				// Each device is already capped, but the sum of many is not: cap it too,
+				// and keep used within total, so the byte figures derived from these
+				// never overflow.
+				totalMB, usedMB = clampMB(totalMB), clampMB(usedMB)
+				if totalMB > 0 && usedMB > totalMB {
+					usedMB = totalMB
+				}
+				if totalMB > 0 || usedMB > 0 {
+					n.VRAMTotalMB = totalMB
+					n.VRAMUsedMB = usedMB
 					n.VRAMSource = "agent"
+				} else if n.VRAMSource == "agent" {
+					// The device now reports no VRAM at all: the earlier agent
+					// figure is stale, so fall back like every other path.
+					fallBackAgentVRAM(n)
 				}
 			}
 		} else {
@@ -397,6 +543,15 @@ func (r *Router) applyAgentTelemetry(n *NodeState, t marboragent.Telemetry) {
 		n.DriverVersion = ""
 		n.CUDAVersion = ""
 		n.FanPercent = nil
+		// No GPU block: every agent-derived GPU reading is stale, same as the
+		// no-devices case above.
+		if !hasGPU {
+			n.Temperature = nil
+			n.PowerDrawW = 0
+			if n.VRAMSource == "agent" {
+				fallBackAgentVRAM(n)
+			}
+		}
 	}
 	if entry != nil {
 		n.AgentRuntime = entry.Name
@@ -436,7 +591,7 @@ func (r *Router) applyAgentTelemetry(n *NodeState, t marboragent.Telemetry) {
 	// Per-runtime deployment auto-discovery (port/ID matched, not Host).
 	// One deployment report per runtime instance means two vLLM on same host
 	// with different TP widths do not fan the wrong 8 GPUs to both nodes.
-	if dep := matchDeployment(t.Deployments, pinnedID, nodePort); dep != nil {
+	if dep := matchDeploymentForHost(t.Deployments, pinnedID, nodePort, hostMembers); dep != nil {
 		n.DetectedRuntime = dep.Runtime
 		if dep.Parallelism != nil {
 			n.DetectedParallelismType = dep.Parallelism.Type
@@ -492,7 +647,6 @@ func (r *Router) applyAgentTelemetry(n *NodeState, t marboragent.Telemetry) {
 	// (non-Ollama: always-zero) API on its next poll cycle without ever
 	// re-deriving this attribution.
 	attributeSoleModelVRAM(n)
-	n.mu.Unlock()
 }
 
 // matchRuntime picks the *marboragent.RuntimeInfo (from t.Runtimes, or the
@@ -535,6 +689,14 @@ func matchRuntime(t marboragent.Telemetry, pinnedID string, nodePort int) (*marb
 // :8000 TP=8 and :8001 TP=4 must not fan a single host-level report to both
 // nodes blind - each node gets the report keyed by its own port/ID.
 func matchDeployment(deployments []marboragent.DeploymentReport, pinnedID string, nodePort int) *marboragent.DeploymentReport {
+	return matchDeploymentForHost(deployments, pinnedID, nodePort, 1)
+}
+
+// matchDeploymentForHost is matchDeployment for a host with hostMembers nodes
+// sharing it. A report with no port can only be attributed when the host has
+// exactly one node: with several, "the only report" says nothing about which
+// of them it describes.
+func matchDeploymentForHost(deployments []marboragent.DeploymentReport, pinnedID string, nodePort, hostMembers int) *marboragent.DeploymentReport {
 	if pinnedID != "" {
 		for i := range deployments {
 			if deployments[i].RuntimeID == pinnedID {
@@ -555,26 +717,48 @@ func matchDeployment(deployments []marboragent.DeploymentReport, pinnedID string
 	// misattribute a vLLM TP=8 on :8000 to an Ollama node on :11434 on the
 	// same host (e.g. host with Ollama :11434 + vLLM :8000 but ps only saw
 	// vLLM). Port-specific reports must stay port-specific.
-	if len(deployments) == 1 && deployments[0].Port == 0 {
+	if hostMembers == 1 && len(deployments) == 1 && deployments[0].Port == 0 {
 		return &deployments[0]
 	}
 	return nil
 }
 
-// portOf returns rawURL's port as an int, or 0 if it can't be parsed - used
-// only as a one-time bootstrap heuristic for matchRuntime, never as
-// identity (see NodeState.AgentRuntimeID's field comment).
+// portOf returns rawURL's explicit port as an int, or 0 if there is none or it
+// can't be determined.
 func portOf(rawURL string) int {
+	return parsePort(rawURL, false)
+}
+
+// portOfOrDefault is portOf but returns 80/443 for an http/https URL with no
+// explicit port - used only as a one-time bootstrap heuristic for matchRuntime
+// and matchDeployment, never as identity (see NodeState.AgentRuntimeID's field
+// comment).
+func portOfOrDefault(rawURL string) int {
+	return parsePort(rawURL, true)
+}
+
+func parsePort(rawURL string, schemeDefault bool) int {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return 0
 	}
 	p := u.Port()
 	if p == "" {
+		if !schemeDefault {
+			return 0
+		}
+		// No explicit port: the scheme's default is the port the node is
+		// really on.
+		switch u.Scheme {
+		case "http":
+			return 80
+		case "https":
+			return 443
+		}
 		return 0
 	}
-	var port int
-	if _, err := fmt.Sscanf(p, "%d", &port); err != nil {
+	port, err := strconv.Atoi(p)
+	if err != nil {
 		return 0
 	}
 	return port
@@ -615,11 +799,15 @@ func (r *Router) agentUnreachable(n *NodeState) {
 	nodeName := n.Name
 	exists := r.nodeExistsLocked(nodeName)
 	prev, seen := r.prevAgentPresent[nodeName]
-	if exists {
+	wentDown := exists && seen && prev
+	// Only a real up -> down transition is recorded. Writing "down" for an
+	// agent that was never reached would make its first success look like a
+	// recovery and fire a spurious agent_up.
+	if wentDown {
 		r.prevAgentPresent[nodeName] = false
 	}
 	r.mu.Unlock()
-	if exists && seen && prev {
+	if wentDown {
 		r.fireWebhook("agent_down", nodeName, nodeURL)
 	}
 }
@@ -701,6 +889,9 @@ func clearAgentTelemetry(n *NodeState) {
 	n.DetectedCaps = nil
 	n.DetectedRuntime = ""
 	n.AgentTelemetryUnknown = false
+	n.AgentControlDiscoveredDriver = ""
+	n.AgentControlDiscoveredIdentifier = ""
+	n.AgentControlDiscoveredEvidence = nil
 	if wasAgentSourced {
 		fallBackAgentVRAM(n)
 		n.Temperature = nil
@@ -809,4 +1000,13 @@ func buildAgentURL(host string, port int, scheme string) (string, error) {
 		host = "[" + host + "]"
 	}
 	return fmt.Sprintf("%s://%s:%d/v1/status", scheme, host, port), nil
+}
+
+// looksLikeAgentReport reports whether t carries at least one signal a marbor
+// agent always emits: the protocol version, platform or version string of the
+// agent block, or the last_updated stamp of the collector snapshot. The check is
+// a set of signals, not one field, so foreign JSON such as {"capabilities":[]}
+// or {"health":{}} is rejected without depending on any single field.
+func looksLikeAgentReport(t *marboragent.Telemetry) bool {
+	return t.Agent.ProtocolVersion != 0 || t.Agent.Platform != "" || t.Agent.Version != "" || !t.LastUpdated.IsZero()
 }

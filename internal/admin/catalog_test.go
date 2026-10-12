@@ -904,7 +904,7 @@ func TestDiskFitOversizeAgentReplyReadsUnknownFromRealNode(t *testing.T) {
 			return
 		}
 		_ = json.NewEncoder(w).Encode(marboragent.Telemetry{
-			Agent: marboragent.Agent{Version: "v1.0.0", ProtocolVersion: 1},
+			Agent: marboragent.Agent{Version: "v1.0.0", ProtocolVersion: 1, NodeID: "node-id-1"},
 			Host:  &marboragent.HostTelemetry{DiskFreeGB: 100, DiskTotalGB: 500},
 		})
 	}))
