@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -423,9 +425,32 @@ func (r *Router) pingNode(ctx context.Context, n *NodeState, model, keepAlive st
 
 // statusError wraps a non-2xx HTTP response so callers can branch on the
 // status code without parsing the error string.
-type statusError struct{ status int }
+type statusError struct {
+	status int
+	detail string // the runtime's own error text, when it sent one
+}
 
-func (e *statusError) Error() string { return fmt.Sprintf("returned %d", e.status) }
+func (e *statusError) Error() string {
+	if e.detail != "" {
+		return fmt.Sprintf("returned %d: %s", e.status, e.detail)
+	}
+	return fmt.Sprintf("returned %d", e.status)
+}
+
+// runtimeErrorDetail extracts the {"error": "..."} message Ollama puts in a
+// failed response (e.g. a model that needs more memory than the node has), so a
+// warmup failure says why instead of only the status code. Bounded read, and ""
+// when the body is not that shape.
+func runtimeErrorDetail(body io.Reader) string {
+	raw, _ := io.ReadAll(io.LimitReader(body, 1024))
+	var out struct {
+		Error string `json:"error"`
+	}
+	if json.Unmarshal(raw, &out) != nil {
+		return ""
+	}
+	return strings.TrimSpace(out.Error)
+}
 
 // pingEndpoint POSTs payload to path on nodeURL and treats any 4xx/5xx
 // response as a *statusError.
@@ -445,9 +470,9 @@ func (r *Router) pingEndpoint(ctx context.Context, nodeURL, path string, payload
 	if err != nil {
 		return err
 	}
-	resp.Body.Close()
+	defer resp.Body.Close()
 	if resp.StatusCode >= 400 {
-		return &statusError{status: resp.StatusCode}
+		return &statusError{status: resp.StatusCode, detail: runtimeErrorDetail(resp.Body)}
 	}
 	return nil
 }

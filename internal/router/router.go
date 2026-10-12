@@ -930,7 +930,13 @@ func (r *Router) Timezone() string {
 
 // TriggerWarmup fires an immediate warmup ping cycle for all configured models.
 // Safe to call concurrently; each (model, node) pair runs in its own goroutine.
+//
+// The cycle runs in the background after TriggerWarmup returns, so it must not
+// be tied to the caller's cancellation: an HTTP handler's request context ends
+// the moment the response is written, which aborted every in-flight warmup ping
+// with "context canceled". Values are kept, cancellation is not inherited.
 func (r *Router) TriggerWarmup(ctx context.Context) {
+	ctx = context.WithoutCancel(ctx)
 	go safeRun("pingWarmupModels", func() { r.pingWarmupModels(ctx) })
 }
 
