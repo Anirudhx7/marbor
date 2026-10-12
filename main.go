@@ -636,9 +636,7 @@ func main() {
 		log.Printf("WARNING: could not load nodes from store: %v", err)
 	}
 	if overrides, err := st.NodeOverrides(); err == nil {
-		for name, ov := range overrides {
-			r.PatchNode(name, router.NodePatch{VRAMTotalMB: ov.VRAMTotalMB, GPUModel: ov.GPUModel, Runtime: ov.Runtime, GPUIndices: ov.GPUIndices, MaxInFlight: ov.MaxInFlight, TLSFingerprint: ov.TLSFingerprint, ParallelismType: ov.ParallelismType, ParallelismWidth: ov.ParallelismWidth, VRAMOverrides: ov.VRAMOverrides, ReplicaPeers: ov.ReplicaPeers})
-		}
+		applyNodeOverrides(r, overrides)
 	}
 	if drains, err := st.NodeDrainStates(); err == nil {
 		for name, ds := range drains {
@@ -1119,4 +1117,14 @@ func stageRestoreCopy(dbPath, backupPath string) (string, error) {
 	}
 
 	return tmpPath, nil
+}
+
+// applyNodeOverrides re-applies every persisted per-node override to the
+// router at boot, so operator declarations survive a restart. A persisted
+// field that is not copied into the patch below is silently lost on restart,
+// which is why main_node_overrides_test.go pins this mapping field by field.
+func applyNodeOverrides(r *router.Router, overrides map[string]store.NodeOverride) {
+	for name, ov := range overrides {
+		r.PatchNode(name, router.NodePatch{VRAMTotalMB: ov.VRAMTotalMB, GPUModel: ov.GPUModel, Runtime: ov.Runtime, GPUIndices: ov.GPUIndices, MaxInFlight: ov.MaxInFlight, TLSFingerprint: ov.TLSFingerprint, ParallelismType: ov.ParallelismType, ParallelismWidth: ov.ParallelismWidth, VRAMOverrides: ov.VRAMOverrides, ReplicaPeers: ov.ReplicaPeers})
+	}
 }
