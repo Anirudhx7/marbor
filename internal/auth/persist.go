@@ -7,8 +7,11 @@ package auth
 // quota state. A crash loses at most one flush interval of counts.
 
 import (
+	"errors"
+	"fmt"
 	"time"
 
+	"github.com/Anirudhx7/marbor/internal/config"
 	storemod "github.com/Anirudhx7/marbor/internal/store"
 )
 
@@ -43,7 +46,9 @@ func (c *keyCounter) restore(s counterSnapshot) {
 	c.month = s.Month
 	c.tokensToday = s.TokensToday
 	c.tokensMonth = s.TokensMonth
-	c.lastReset = s.LastReset
+	// The store returns UTC; the day and month rollover checks compare in local
+	// time, so convert or a restored counter rolls over at the wrong hour.
+	c.lastReset = s.LastReset.Local()
 }
 
 // SaveToStore persists per-key usage counters to the SQLite store.
@@ -55,6 +60,7 @@ func (m *Middleware) SaveToStore(st storemod.Store) error {
 	}
 	m.mu.RUnlock()
 
+	var errs []error
 	for name, snap := range snaps {
 		if err := st.SaveKeyCounters(name, storemod.KeyCounterSnapshot{
 			Today:       snap.Today,
@@ -63,10 +69,10 @@ func (m *Middleware) SaveToStore(st storemod.Store) error {
 			TokensMonth: snap.TokensMonth,
 			LastReset:   snap.LastReset,
 		}); err != nil {
-			return err
+			errs = append(errs, fmt.Errorf("save counters for key %q: %w", name, err))
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 // LoadFromStore restores per-key usage counters from the SQLite store on startup.
@@ -89,4 +95,22 @@ func (m *Middleware) LoadFromStore(st storemod.Store) error {
 		}
 	}
 	return nil
+}
+
+// KeyConfigFromRecord converts a persisted key record into the middleware's
+// key config. Startup and reload both use it so the two paths cannot drift.
+func KeyConfigFromRecord(k storemod.KeyRecord) config.KeyConfig {
+	return config.KeyConfig{
+		Name:                  k.Name,
+		Key:                   k.Key,
+		RateLimit:             k.RateLimit,
+		DailyLimit:            k.DailyLimit,
+		MonthlyLimit:          k.MonthlyLimit,
+		DailyUsdCap:           k.DailyUsdCap,
+		MonthlyUsdCap:         k.MonthlyUsdCap,
+		Models:                k.Models,
+		ExpiresAt:             k.ExpiresAt,
+		LocalOnly:             k.LocalOnly,
+		AllowLocalDegradation: k.AllowLocalDegradation,
+	}
 }
