@@ -25,6 +25,8 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // maxCloudResponseBytes caps how much of a non-streaming cloud response the
@@ -99,6 +101,9 @@ func capCloudResponse(resp *http.Response, ollamaShape bool) bool {
 	resp.StatusCode = http.StatusBadGateway
 	resp.Status = "502 Bad Gateway"
 	resetBodyHeaders(resp.Header)
+	// The 502 is marbor's own answer, so the upstream's backoff hint does not
+	// apply to it.
+	resp.Header.Del("Retry-After")
 	resp.Header.Set("Content-Type", "application/json")
 	resp.ContentLength = -1
 	resp.Body = io.NopCloser(bytes.NewReader(append(body, '\n')))
@@ -106,11 +111,35 @@ func capCloudResponse(resp *http.Response, ollamaShape bool) bool {
 }
 
 // resetBodyHeaders removes headers that describe the original upstream body,
-// which no longer matches a body marbor synthesized.
+// which no longer matches a body marbor rewrote. Retry-After is kept: it
+// describes the upstream status, which passes through unchanged.
 func resetBodyHeaders(h http.Header) {
-	for _, k := range []string{"Content-Length", "Content-Encoding", "Content-Range", "ETag", "Retry-After"} {
+	for _, k := range []string{"Content-Length", "Content-Encoding", "Content-Range", "ETag"} {
 		h.Del(k)
 	}
+}
+
+// maxLoggedProviderChunk bounds how much of a provider error payload is logged.
+const maxLoggedProviderChunk = 256
+
+// sanitizeLogText makes provider-controlled text safe for a single log line:
+// control characters become spaces and the result is cut to at most max bytes
+// on a UTF-8 boundary.
+func sanitizeLogText(s string, max int) string {
+	s = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, s)
+	if len(s) <= max {
+		return s
+	}
+	cut := max
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + "..."
 }
 
 // logStreamFailure logs the real cause of a mid-stream failure server-side.
@@ -136,11 +165,9 @@ func streamFailureMessage(err error) string {
 // into Ollama's {"error":"<message>"} shape, keeping the status. Bodies that
 // are not recognizable errors are left untouched.
 func convertOllamaErrorBody(resp *http.Response) {
-	raw, err := io.ReadAll(resp.Body)
-	if err != nil {
-		resp.Body = io.NopCloser(bytes.NewReader(raw))
-		return
-	}
+	// resp.Body is the buffered body capCloudResponse produced, so this read
+	// cannot fail.
+	raw, _ := io.ReadAll(resp.Body)
 	var env struct {
 		Error json.RawMessage `json:"error"`
 	}
@@ -148,7 +175,7 @@ func convertOllamaErrorBody(resp *http.Response) {
 		resp.Body = io.NopCloser(bytes.NewReader(raw))
 		return
 	}
-	body := append(buildErrorNDJSON(upstreamErrorMessage(env.Error)), '\n')
+	body := append(buildErrorNDJSON(upstreamErrorMessage(env.Error, "upstream error")), '\n')
 	resetBodyHeaders(resp.Header)
 	resp.Header.Set("Content-Type", "application/json")
 	resp.ContentLength = -1
@@ -333,8 +360,8 @@ func translateSSEToNDJSON(src io.ReadCloser, origPath, clientModel string) io.Re
 			// An upstream error chunk: forward its message instead of the
 			// generic truncation text, then end the stream with an error.
 			if len(chunk.Error) > 0 && string(chunk.Error) != "null" {
-				msg := upstreamErrorMessage(chunk.Error)
-				logStreamFailure("upstream error chunk: "+string(chunk.Error), errors.New(msg))
+				msg := upstreamErrorMessage(chunk.Error, "upstream stream error")
+				logStreamFailure("upstream error chunk", errors.New(sanitizeLogText(string(chunk.Error), maxLoggedProviderChunk)))
 				pw.Write(append(buildErrorNDJSON(msg), '\n')) //nolint:errcheck -- CloseWithError below reports it
 				pw.CloseWithError(fmt.Errorf("upstream stream error: %s", msg))
 				return
@@ -448,15 +475,19 @@ func translateJSONToNDJSON(src io.ReadCloser, origPath, clientModel string) io.R
 		if content == "" {
 			content = resp.Choices[0].Text
 		}
+		doneReason := resp.Choices[0].FinishReason
+		if doneReason == "" {
+			doneReason = "stop"
+		}
 		var contentLine, finalLine []byte
 		if origPath == "/api/chat" {
 			contentLine = buildChatNDJSON(clientModel, content, false, 0, 0, "")
 			finalLine = buildChatNDJSON(clientModel, "", true,
-				resp.Usage.CompletionTokens, resp.Usage.PromptTokens, resp.Choices[0].FinishReason)
+				resp.Usage.CompletionTokens, resp.Usage.PromptTokens, doneReason)
 		} else {
 			contentLine = buildGenerateNDJSON(clientModel, content, false, 0, 0, "")
 			finalLine = buildGenerateNDJSON(clientModel, "", true,
-				resp.Usage.CompletionTokens, resp.Usage.PromptTokens, resp.Choices[0].FinishReason)
+				resp.Usage.CompletionTokens, resp.Usage.PromptTokens, doneReason)
 		}
 		buf.Write(append(contentLine, '\n'))
 		buf.Write(append(finalLine, '\n'))
@@ -499,6 +530,10 @@ func translateJSONToSingleOllama(src io.ReadCloser, origPath, clientModel string
 	if content == "" {
 		content = resp.Choices[0].Text
 	}
+	doneReason := resp.Choices[0].FinishReason
+	if doneReason == "" {
+		doneReason = "stop"
+	}
 	var line []byte
 	if origPath == "/api/chat" {
 		obj := ollamaChatLine{
@@ -507,11 +542,11 @@ func translateJSONToSingleOllama(src io.ReadCloser, origPath, clientModel string
 			Done:            true,
 			EvalCount:       resp.Usage.CompletionTokens,
 			PromptEvalCount: resp.Usage.PromptTokens,
-			DoneReason:      resp.Choices[0].FinishReason,
+			DoneReason:      doneReason,
 		}
 		line, _ = json.Marshal(obj)
 	} else {
-		line = buildGenerateNDJSON(clientModel, content, true, resp.Usage.CompletionTokens, resp.Usage.PromptTokens, resp.Choices[0].FinishReason)
+		line = buildGenerateNDJSON(clientModel, content, true, resp.Usage.CompletionTokens, resp.Usage.PromptTokens, doneReason)
 	}
 	return io.NopCloser(bytes.NewReader(line))
 }
@@ -545,7 +580,9 @@ type ollamaGenerateLine struct {
 
 // upstreamErrorMessage extracts a human message from an OpenAI-style error
 // value, which is either an object with "message" or a bare string.
-func upstreamErrorMessage(raw json.RawMessage) string {
+// fallback is returned when the value carries no message; the caller picks
+// wording that fits its path (stream or not).
+func upstreamErrorMessage(raw json.RawMessage, fallback string) string {
 	var obj struct {
 		Message string `json:"message"`
 	}
@@ -556,7 +593,7 @@ func upstreamErrorMessage(raw json.RawMessage) string {
 	if json.Unmarshal(raw, &s) == nil && s != "" {
 		return s
 	}
-	return "upstream stream error"
+	return fallback
 }
 
 // buildChatNDJSON builds one /api/chat line. doneReason (the OpenAI

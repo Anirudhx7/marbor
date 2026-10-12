@@ -23,6 +23,8 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync/atomic"
+	"time"
 )
 
 // anthropicVersion is the API version header Anthropic requires on every
@@ -170,6 +172,21 @@ type anthropicRequest struct {
 	TopP          *float64           `json:"top_p,omitempty"`
 }
 
+// temperatureClampLogInterval spaces out the clamp log line so a client that
+// always sends an out-of-range value does not log on every request.
+var temperatureClampLogInterval = time.Minute
+
+var temperatureClampLastLog atomic.Int64
+
+func shouldLogTemperatureClamp() bool {
+	now := time.Now().UnixNano()
+	last := temperatureClampLastLog.Load()
+	if last != 0 && now-last < int64(temperatureClampLogInterval) {
+		return false
+	}
+	return temperatureClampLastLog.CompareAndSwap(last, now)
+}
+
 // clampAnthropicTemperature limits temperature to Anthropic's 0..1 range
 // (OpenAI allows up to 2).
 func clampAnthropicTemperature(t *float64) *float64 {
@@ -183,8 +200,7 @@ func clampAnthropicTemperature(t *float64) *float64 {
 	if v < 0 {
 		v = 0
 	}
-	// Logged on every clamped request (one line per request), not deduplicated.
-	if v != *t {
+	if v != *t && shouldLogTemperatureClamp() {
 		log.Printf("anthropic: temperature %v is outside 0..1, clamped to %v", *t, v)
 	}
 	return &v
@@ -354,11 +370,16 @@ func translateAnthropicJSONToOpenAI(src io.ReadCloser) io.ReadCloser {
 		}
 	}
 
+	// A normal completion with no stop_reason is "stop", as on the stream path.
+	finishReason := openAIFinishReason(resp.StopReason)
+	if finishReason == "" {
+		finishReason = "stop"
+	}
 	out := openAIChatResponse{
 		Object: "chat.completion",
 		Choices: []openAIChoice{{
 			Message:      openAIChoiceMessage{Content: text.String()},
-			FinishReason: openAIFinishReason(resp.StopReason),
+			FinishReason: finishReason,
 		}},
 		Usage: openAIUsage{
 			PromptTokens:     resp.Usage.InputTokens,
