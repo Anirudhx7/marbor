@@ -307,7 +307,7 @@ func agentWithDeployment(t *testing.T, port int, extra string) *httptest.Server 
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprintf(w, `{
-			"agent": {"version": "v9.9.9", "protocol_version": 1, "platform": "linux", "architecture": "amd64"},
+			"agent": {"node_id": "node-id-1", "version": "v9.9.9", "protocol_version": 1, "platform": "linux", "architecture": "amd64"},
 			"capabilities": ["status", "deployment.report", "deployment.topology"],
 			"host": {"hostname": "h1", "addrs": ["10.0.0.5", "fd00::5"]},
 			"health": {"runtime_reachable": true},
