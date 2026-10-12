@@ -69,6 +69,17 @@ func TestMultipleContentEncodingValuesAreRejected(t *testing.T) {
 	}
 }
 
+func TestContentEncodingCommaListIsParsed(t *testing.T) {
+	for v, want := range map[string]bool{
+		"identity": false, "identity, identity": false, " ": false,
+		"gzip": true, "identity, gzip": true, "gzip,identity": true,
+	} {
+		if got := hasNonIdentityEncoding([]string{v}); got != want {
+			t.Errorf("hasNonIdentityEncoding(%q) = %v, want %v", v, got, want)
+		}
+	}
+}
+
 func TestMetricModelKeepsLoadedAndColdInstalledModels(t *testing.T) {
 	tags := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"models":[{"name":"cold-model:latest"},{"name":"other:7b"}]}`))
@@ -154,8 +165,10 @@ func TestUnknownModelNamesShareOneMetricLabel(t *testing.T) {
 		name := "zz-unk-label-" + strings.Repeat("x", i+1)
 		h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/v1/chat/completions", strings.NewReader(`{"model":"`+name+`"}`)))
 	}
-	if delta := unknownCount() - before; delta != requests {
-		t.Errorf("unknown-labelled requests rose by %v, want exactly %d", delta, requests)
+	// At least, not exactly: the registry is process-global and other tests
+	// running in this package may also add unknown-labelled requests.
+	if delta := unknownCount() - before; delta < requests {
+		t.Errorf("unknown-labelled requests rose by %v, want at least %d", delta, requests)
 	}
 }
 
@@ -224,9 +237,7 @@ func TestPrettyPrintedReplyKeepsTokenCountAndDurations(t *testing.T) {
 
 func TestLongLineGrownByManySmallWritesKeepsCount(t *testing.T) {
 	trimCalls := 0
-	trimTailHook = func() { trimCalls++ }
-	t.Cleanup(func() { trimTailHook = nil })
-	rec := &statusRecorder{ResponseWriter: httptest.NewRecorder()}
+	rec := &statusRecorder{ResponseWriter: httptest.NewRecorder(), onTrim: func() { trimCalls++ }}
 	rec.Write([]byte("{\"a\":1}\n"))
 	rec.Write([]byte(`{"response":"` + strings.Repeat("x", 3*tailMax)))
 	const smallWrites = 200
@@ -235,7 +246,7 @@ func TestLongLineGrownByManySmallWritesKeepsCount(t *testing.T) {
 	}
 	// Linear work means the growing line is not rescanned per write: a
 	// handful of trims at most, far below one per small write.
-	if trimCalls > 10 {
+	if trimCalls > 1 {
 		t.Errorf("trimTail ran %d times for %d small writes; the long line is being rescanned", trimCalls, smallWrites)
 	}
 	rec.Write([]byte(`","eval_count":7,"prompt_eval_count":3}` + "\n"))

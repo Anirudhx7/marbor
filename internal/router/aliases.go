@@ -70,8 +70,8 @@ func (r *Router) FleetModelStatuses() map[string]string {
 // It reads only memory, never the network, and ignores cache age: a stale
 // catalog is still good evidence that a name is a real installed model.
 func (r *Router) HasCachedInstalledModel(name string) bool {
-	r.tagsMu.Lock()
-	defer r.tagsMu.Unlock()
+	r.tagsMu.RLock()
+	defer r.tagsMu.RUnlock()
 	for _, c := range r.tagsCache {
 		for _, t := range c.Models {
 			if ModelNamesEquivalent(t.Name, name) {

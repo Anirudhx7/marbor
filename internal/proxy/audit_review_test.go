@@ -69,7 +69,7 @@ func TestPercentEncodedTraversalWithRawPathIsBlockedAndNormalized(t *testing.T) 
 	}
 }
 
-func TestHasAmbiguousModelKey(t *testing.T) {
+func TestModelFieldProblemFlagsAmbiguousKeys(t *testing.T) {
 	cases := []struct {
 		body string
 		want bool

@@ -14,6 +14,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Analytics gains a "Saved vs spent per hour" chart.** It plots estimated savings (against cloud list rates) next to actual cloud spend for each of the last 24 hours.
 
 ### Fixed
+- **Model metrics keep the real name of installed models.** A model that is installed on a node but not currently loaded, or written with or without `:latest`, now keeps its own label in request metrics instead of being counted as "unknown". A model reads "unknown" until its node's model list has been fetched once.
+- **Repeated Content-Encoding headers are rejected.** A compressed request body is now refused with a 415 even when the encoding is on a second header line or in a comma-separated list.
+- **A huge number in an unrelated JSON field no longer fails the request.** A value such as `1e999` outside the `model` field is accepted instead of being reported as invalid JSON.
 - **A request body that starts with `{` but is malformed now gets a 400.** Truncated, duplicated-key or too deeply nested JSON objects used to be forwarded with an empty or guessed model name; they are now refused up front. Requests with no body are unaffected.
 - **Hugging Face GGUF model picker: one row per quantization, so "Pick" lands on a single row.** A multimodal projector file in a subfolder (for example `BF16/mmproj-BF16.gguf`) was listed as if it were a model quantization, and two files sharing one quant label produced two rows with the same pull tag, both marked "Pick". Projector files are now excluded by base name and files sharing a tag collapse to the largest one.
 - **"Ping warmup" no longer fails with "warmup not enabled" when only per-node keep-warm is configured.** The button was blocked by the global warmup setting even though per-node keep-warm works without it.

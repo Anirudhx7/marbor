@@ -339,15 +339,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	modelName := router.ExtractModelName(body)
 	// label memoises the metric label for the name last asked about, so the
 	// several metric sites of one request scan the fleet once per distinct
-	// model name rather than once per call.
-	var labelFor, labelVal string
-	var labelSet bool
-	label := func(name string) string {
-		if !labelSet || labelFor != name {
-			labelFor, labelVal, labelSet = name, h.metricModel(name), true
-		}
-		return labelVal
-	}
+	// model name rather than once per call. It is not safe for concurrent
+	// use: every caller (including the rate-limit and retry closures, which
+	// ReverseProxy runs on this goroutine) stays on the request goroutine.
+	label := h.newMetricLabeler()
 	if len(modelName) > maxModelNameBytes {
 		log.Printf("rejected request (key=%q request_id=%q reason=%q model=%q)", keyName, requestID, "model name too long", truncateForLog(modelName, 64))
 		writeAPIError(w, http.StatusBadRequest, fmt.Sprintf("model name exceeds %d bytes", maxModelNameBytes), "invalid_request_error", "invalid_model")
@@ -1460,11 +1455,11 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 		status = "aborted"
 		metricStatus = "aborted"
 	}
-	mLabel := h.metricModel(modelName)
-	metrics.RequestsTotal(keyName, mLabel, nodeName, metricStatus)
-	metrics.RequestDuration(mLabel, nodeName, duration)
+	label := h.newMetricLabeler()
+	metrics.RequestsTotal(keyName, label(modelName), nodeName, metricStatus)
+	metrics.RequestDuration(label(modelName), nodeName, duration)
 	if ttft := rec.ttft(); ttft > 0 {
-		metrics.RequestTTFT(mLabel, nodeName, ttft.Seconds())
+		metrics.RequestTTFT(label(modelName), nodeName, ttft.Seconds())
 	}
 
 	if h.admin != nil {
@@ -1669,11 +1664,14 @@ func modelFieldProblem(body []byte) string {
 }
 
 // hasNonIdentityEncoding reports whether any Content-Encoding header value,
-// including a repeated header's later values, names a real encoding.
+// including a repeated header's later values and comma-separated lists, names
+// a real encoding.
 func hasNonIdentityEncoding(values []string) bool {
-	for _, v := range values {
-		if v = strings.TrimSpace(v); v != "" && !strings.EqualFold(v, "identity") {
-			return true
+	for _, line := range values {
+		for _, v := range strings.Split(line, ",") {
+			if v = strings.TrimSpace(v); v != "" && !strings.EqualFold(v, "identity") {
+				return true
+			}
 		}
 	}
 	return false
@@ -1733,6 +1731,7 @@ type statusRecorder struct {
 	tail          []byte    // retained body for token-count parsing - see tailMax
 	sawNewline    bool      // true once a '\n' has appeared in the written body
 	truncatedTail bool      // true if the no-newline tail hit embedTailMax before the response finished
+	onTrim        func()    // test hook: called on every trimTail run
 	heldLine      bool      // true while the tail is one retained line longer than tailMax (see trimTail)
 	start         time.Time // request start, for TTFT; zero value means TTFT is unavailable
 	firstByteAt   time.Time // set on the first Write(); zero until then
@@ -1801,11 +1800,6 @@ func (r *statusRecorder) Write(b []byte) (int, error) {
 	return n, err
 }
 
-// trimTailHook, when set, is called on every trimTail run. Tests use it to
-// check that a long line written in many small chunks is not rescanned on
-// each write.
-var trimTailHook func()
-
 // trimTail shrinks an over-long line-oriented tail to about tailMax, always on
 // a line boundary and never dropping the final line: that line carries the
 // token count, so cutting it (or cutting inside it) would turn a real count
@@ -1813,8 +1807,8 @@ var trimTailHook func()
 // whole up to embedTailMax; beyond that the tail is discarded and
 // truncatedTail is set, so the caller reports the count as unknown.
 func (r *statusRecorder) trimTail() {
-	if trimTailHook != nil {
-		trimTailHook()
+	if r.onTrim != nil {
+		r.onTrim()
 	}
 	tail := r.tail
 	if len(tail) <= tailMax {
@@ -2072,12 +2066,31 @@ func (r *statusRecorder) Status() string {
 	return fmt.Sprintf("%d", r.StatusCode())
 }
 
+// newMetricLabeler returns a function that maps a model name to its metric
+// label through metricModel, remembering the last answer so repeated asks for
+// the same name cost one fleet scan. The returned function must stay on one
+// goroutine.
+func (h *Handler) newMetricLabeler() func(string) string {
+	var lastName, lastLabel string
+	var have bool
+	return func(name string) string {
+		if !have || lastName != name {
+			lastName, lastLabel, have = name, h.metricModel(name), true
+		}
+		return lastLabel
+	}
+}
+
 // metricModel returns the model label to use in Prometheus series for name.
 // A model the fleet actually knows (resident on a node, an operator alias, or
 // one with a configured fallback or degradation chain) keeps its name; any
 // other name is client-chosen and shares the single label "unknown", so a
 // caller cannot mint metric series by inventing model names. The check reads
-// only in-memory state, never the network.
+// only in-memory state, never the network. Label cardinality is therefore
+// bounded by the fleet's loaded models, aliases, chains and the cached
+// per-node catalogs (dropped when a node is removed or its URL changes). A
+// model installed on a node but not loaded reads "unknown" until that node's
+// catalog has been fetched once.
 func (h *Handler) metricModel(name string) string {
 	if name == "" {
 		return ""
