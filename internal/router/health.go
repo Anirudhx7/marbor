@@ -4,11 +4,12 @@ package router
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 	"net/url"
-	"strings"
 	"sync"
 	"time"
 
@@ -40,7 +41,14 @@ func attributeSoleModelVRAM(n *NodeState) {
 	if n.LoadedModels[0].SizeVRAM > 0 {
 		return
 	}
-	n.LoadedModels[0].SizeVRAM = n.VRAMUsedMB * 1024 * 1024
+	// Replace the slice instead of editing its element: readers (pollNode's
+	// own post-unlock loops, snapshots taken by other goroutines) may still be
+	// iterating the old backing array, and an in-place write would race them.
+	updated := make([]ModelInfo, 1)
+	updated[0] = n.LoadedModels[0]
+	updated[0].SizeVRAM = n.VRAMUsedMB * 1024 * 1024
+	updated[0].sizeAttributed = true
+	n.LoadedModels = updated
 }
 
 // pollNvidiaAll refreshes nvidia-smi stats for all local nodes and stores
@@ -54,7 +62,10 @@ func (r *Router) pollNvidiaAll() {
 
 	hasLocal := false
 	for _, n := range nodes {
-		if isLocalNode(n.URL) {
+		n.mu.RLock()
+		nodeURL := n.URL
+		n.mu.RUnlock()
+		if isLocalNode(nodeURL) {
 			hasLocal = true
 			break
 		}
@@ -67,12 +78,14 @@ func (r *Router) pollNvidiaAll() {
 	r.nvidiaMu.Lock()
 	if ok {
 		r.nvidiaCache = gpus
+		r.nvidiaCacheAt = time.Now()
 	}
 	// On failure, keep the previous cache rather than replacing it with an
-	// empty map - the 30s ticker makes one missed sample cheap to retain,
-	// and wiping the cache nils Temperature/zeros PowerDrawW/demotes
-	// VRAMSource for every local node on a single transient nvidia-smi
-	// failure instead of just letting that one poll be stale.
+	// empty map - the ticker makes one missed sample cheap to retain, and
+	// wiping the cache nils Temperature/zeros PowerDrawW/demotes VRAMSource for
+	// every local node on a single transient nvidia-smi failure. Readers drop
+	// the cache once it is older than nvidiaCacheMaxAge (see nvidiaReading), so
+	// a persistent failure cannot keep serving an old reading as current.
 	r.nvidiaMu.Unlock()
 }
 
@@ -89,7 +102,12 @@ func (r *Router) discoverAndAddDockerNodes() {
 
 	found, err := discoverDockerNodes(socket)
 	if err != nil {
-		// Docker not available or socket missing - log silently, don't crash.
+		// Docker not available or socket missing: never fatal, but an operator
+		// who enabled discovery needs to see why nothing is found. Rate limited
+		// because this runs every interval.
+		if r.allowHostLog("docker-discovery") {
+			log.Printf("router: docker discovery failed: %v", err)
+		}
 		return
 	}
 	for _, n := range found {
@@ -108,6 +126,8 @@ func (r *Router) discoverAndAddDockerNodes() {
 			r.mu.Lock()
 			r.discoveredURLs[n.URL] = struct{}{}
 			r.mu.Unlock()
+		} else if r.allowHostLog("docker-add:" + n.URL) {
+			log.Printf("router: docker-discovered node %q at %s was not added (see the rejection reason above)", n.Name, n.URL)
 		}
 	}
 }
@@ -142,7 +162,7 @@ func (r *Router) pollNode(n *NodeState) {
 	// the process; the poll loop naturally retries it next interval.
 	defer func() {
 		if rec := recover(); rec != nil {
-			log.Printf("router: recovered panic in pollNode for node %s: %v", n.Name, rec)
+			log.Printf("router: recovered panic in pollNode for node %s: %v", n.Name, truncateForLog(fmt.Sprint(rec), maxLogValueBytes))
 			r.markFailure(n)
 		}
 	}()
@@ -213,10 +233,16 @@ func (r *Router) pollNode(n *NodeState) {
 		func() {
 			n.mu.Lock()
 			defer n.mu.Unlock()
-			if n.Runtime == "llamacpp" && strings.Contains(err.Error(), "/health returned 404") {
+			var healthErr *runtimepkg.HealthStatusError
+			if n.Runtime == "llamacpp" && errors.As(err, &healthErr) && healthErr.StatusCode == http.StatusNotFound {
 				n.RuntimeMismatchHint = "currently running as llamacpp, but /health returned 404 (no such route) - this is the exact signature of an MLX (mlx_lm.server) node, which cannot be auto-detected and must be set manually via runtime: mlx (a 404 here could also mean a llama.cpp build without /health, or a broken reverse proxy)"
 			}
 		}()
+		// Rate limited per node: the poll repeats every interval, so an
+		// unconditional line would flood the log for a node that stays down.
+		if r.allowHostLog("probe:" + n.Name) {
+			log.Printf("router: probe of node %q failed: %v", n.Name, err)
+		}
 		r.markFailure(n)
 		return
 	}
@@ -240,9 +266,7 @@ func (r *Router) pollNode(n *NodeState) {
 	var gpu GPUStats
 	hasGPU := false
 	if isLocalNode(nodeURL) {
-		r.nvidiaMu.RLock()
-		gpu, hasGPU = r.nvidiaCache[nvidiaIndex]
-		r.nvidiaMu.RUnlock()
+		gpu, hasGPU = r.nvidiaReading(nvidiaIndex)
 	}
 
 	var prevModels []ModelInfo
@@ -312,14 +336,23 @@ func (r *Router) pollNode(n *NodeState) {
 			// wins regardless - it is this poll's own live, non-guessed
 			// measurement and must never be shadowed by a possibly-stale agent
 			// figure.
-			n.PowerDrawW = 0
-			n.Temperature = nil
+			//
+			// Temperature and power are only unknown here when no agent
+			// supplies them: an agent reading is just as live as a local
+			// one, and zeroing it on every poll would make it flicker.
+			if !n.AgentPresent {
+				n.PowerDrawW = 0
+				n.Temperature = nil
+			}
 			if psUsedMB > 0 {
 				n.VRAMUsedMB = psUsedMB
 			} else if n.VRAMSource != "agent" {
 				n.VRAMUsedMB = 0
 			}
-			if psUsedMB > 0 || n.VRAMSource != "agent" {
+			// An agent-sourced total is the real device capacity: when the
+			// runtime also reports used VRAM, only the used figure is taken
+			// from it and the agent's total and source stay.
+			if n.VRAMSource != "agent" {
 				if n.VRAMTotalMBConfig > 0 {
 					n.VRAMTotalMB = n.VRAMTotalMBConfig
 					n.VRAMSource = "declared"
@@ -334,6 +367,9 @@ func (r *Router) pollNode(n *NodeState) {
 			}
 		}
 		attributeSoleModelVRAM(n)
+		// Work from a private copy from here on so the loops below never read
+		// the slice other goroutines can see through n.LoadedModels.
+		models = append([]ModelInfo(nil), n.LoadedModels...)
 		n.HealthHistory = append(n.HealthHistory, 100.0)
 		if len(n.HealthHistory) > 60 {
 			n.HealthHistory = n.HealthHistory[len(n.HealthHistory)-60:]
@@ -341,13 +377,27 @@ func (r *Router) pollNode(n *NodeState) {
 		nodeName = n.Name
 		nowHealthy = n.Healthy
 	}()
+	// The existence check runs once before the batch and the undo once after it,
+	// not a router lock pair per model. A node removed before the check records
+	// nothing; one removed during the batch is undone below. If it is removed and
+	// a node of the same name is added again inside this one batch window, the
+	// undo sees a live node and leaves these sizes: they are last-known size
+	// hints keyed by node and model name, the new node's first poll overwrites
+	// them with real readings, and they are never charged for a model the node
+	// reports a size for.
+	recordSizes := r.nodeExists(nodeName)
 	for _, m := range models {
-		r.recordLastKnownVRAM(nodeName, m.Name, m.SizeVRAM)
+		if recordSizes && !m.sizeAttributed {
+			r.putLastKnownVRAM(nodeName, m.Name, m.SizeVRAM)
+		}
 		// Residency is now confirmed by real poll data - drop any hot-path or
 		// proactive reservation for this (node, model) so it can't keep
 		// double-counting against the now-real VRAMUsedMB for up to the full
 		// warm reservation TTL.
 		r.clearWarmReservation(nodeName, m.Name)
+	}
+	if recordSizes {
+		r.undoIfNodeRemoved(nodeName, r.forgetLastKnownForNode)
 	}
 	if nowHealthy {
 		metrics.NodeHealthy(n.Name, 1)
@@ -455,10 +505,23 @@ func (r *Router) ProbeNodeOnDemand(ctx context.Context, name string) (ok bool, e
 // window is rare and self-corrects on the next refresh.
 const localAddrCacheTTL = 30 * time.Second
 
+// localAddrFailureTTL is how long a failed interface lookup suppresses retries.
+const localAddrFailureTTL = 5 * time.Second
+
 var (
-	localAddrMu    sync.RWMutex
-	localAddrCache map[string]struct{}
-	localAddrAt    time.Time
+	localAddrMu sync.RWMutex
+	// localAddrRefreshMu serializes the interface lookup itself.
+	localAddrRefreshMu sync.Mutex
+	localAddrCache     map[string]struct{}
+	localAddrAt        time.Time
+	// localAddrRetryAt, when in the future, holds off another interface lookup
+	// after a failed one, so a persistently failing syscall is not retried at
+	// call rate.
+	localAddrRetryAt time.Time
+
+	// interfaceAddrs is the interface lookup, a variable so a test can make
+	// it fail.
+	interfaceAddrs = net.InterfaceAddrs
 )
 
 // localInterfaceAddrs returns the set of IP addresses (string form) bound to
@@ -471,21 +534,63 @@ func localInterfaceAddrs() map[string]struct{} {
 		localAddrMu.RUnlock()
 		return cache
 	}
+	if time.Now().Before(localAddrRetryAt) {
+		prev := localAddrCache
+		localAddrMu.RUnlock()
+		if prev == nil {
+			return map[string]struct{}{}
+		}
+		return prev
+	}
 	localAddrMu.RUnlock()
 
-	addrs, err := net.InterfaceAddrs()
+	// One refresh at a time: when the cache expires, every poller reaches here
+	// together, and each running its own lookup is a burst of identical syscalls.
+	// The ones that waited re-check and reuse the winner's result.
+	localAddrRefreshMu.Lock()
+	defer localAddrRefreshMu.Unlock()
+	localAddrMu.RLock()
+	if localAddrCache != nil && time.Since(localAddrAt) < localAddrCacheTTL {
+		cache := localAddrCache
+		localAddrMu.RUnlock()
+		return cache
+	}
+	if time.Now().Before(localAddrRetryAt) {
+		prev := localAddrCache
+		localAddrMu.RUnlock()
+		if prev == nil {
+			return map[string]struct{}{}
+		}
+		return prev
+	}
+	localAddrMu.RUnlock()
+
+	addrs, err := interfaceAddrs()
+	if err != nil {
+		// A failed lookup says nothing about which addresses are local, so
+		// never cache an empty set (it would make every local node look
+		// remote for a full TTL). Keep serving the previous set, if any, and
+		// retry only after localAddrFailureTTL.
+		localAddrMu.Lock()
+		prev := localAddrCache
+		localAddrRetryAt = time.Now().Add(localAddrFailureTTL)
+		localAddrMu.Unlock()
+		if prev == nil {
+			return map[string]struct{}{}
+		}
+		return prev
+	}
 	set := make(map[string]struct{}, len(addrs))
-	if err == nil {
-		for _, a := range addrs {
-			if ipNet, ok := a.(*net.IPNet); ok {
-				set[ipNet.IP.String()] = struct{}{}
-			}
+	for _, a := range addrs {
+		if ipNet, ok := a.(*net.IPNet); ok {
+			set[ipNet.IP.String()] = struct{}{}
 		}
 	}
 
 	localAddrMu.Lock()
 	localAddrCache = set
 	localAddrAt = time.Now()
+	localAddrRetryAt = time.Time{}
 	localAddrMu.Unlock()
 	return set
 }
@@ -563,4 +668,30 @@ func (r *Router) markFailure(n *NodeState) {
 			r.fireWebhook("node_down", nodeName, nodeURL)
 		}
 	}
+}
+
+// nvidiaStaleIntervals is how many nvidia-smi poll intervals a cached reading
+// stays usable. Past that, nvidia-smi has been failing for a while and the
+// cached figures no longer describe the GPU.
+const nvidiaStaleIntervals = 3
+
+// nvidiaCacheMaxAge is how long a cached nvidia-smi reading may be used.
+func (r *Router) nvidiaCacheMaxAge() time.Duration {
+	interval := r.nvidiaPollInterval
+	if interval <= 0 {
+		interval = 30 * time.Second
+	}
+	return nvidiaStaleIntervals * interval
+}
+
+// nvidiaReading returns the cached nvidia-smi reading for GPU index idx, or
+// false when there is none or it is older than nvidiaCacheMaxAge.
+func (r *Router) nvidiaReading(idx int) (GPUStats, bool) {
+	r.nvidiaMu.RLock()
+	defer r.nvidiaMu.RUnlock()
+	if !r.nvidiaCacheAt.IsZero() && time.Since(r.nvidiaCacheAt) > r.nvidiaCacheMaxAge() {
+		return GPUStats{}, false
+	}
+	g, ok := r.nvidiaCache[idx]
+	return g, ok
 }

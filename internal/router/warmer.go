@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -286,7 +288,7 @@ func (r *Router) pingWarmupModels(ctx context.Context) {
 			defer r.finishWarmup(nodeName)
 			defer func() {
 				if r := recover(); r != nil {
-					log.Printf("[router] panic in goroutine: %v", r)
+					log.Printf("[router] panic in goroutine: %v", truncateForLog(fmt.Sprint(r), maxLogValueBytes))
 				}
 			}()
 			// Different nodes still warm fully in parallel (this goroutine is
@@ -309,10 +311,7 @@ func (r *Router) pingWarmupModels(ctx context.Context) {
 				}
 				// Make VRAM room (evict coldest non-pinned) before loading, so
 				// warming several models on a tight node can't OOM.
-				unlock := r.lockNodeLoad(n.Name)
-				r.ensureHeadroom(ctx, n, model)
-				err := r.pingNode(ctx, n, model, keepAlive)
-				unlock()
+				err := r.loadWithHeadroom(ctx, n, model, keepAlive)
 				status := "ok"
 				if err != nil {
 					status = "error"
@@ -320,7 +319,7 @@ func (r *Router) pingWarmupModels(ctx context.Context) {
 					// letting it block other models' headroom checks for the
 					// remainder of warmReservationTTL.
 					r.clearWarmReservation(n.Name, model)
-					log.Printf("[warmup] node %s model %s: %v", n.Name, model, err)
+					log.Printf("[warmup] node %s model %q: %v", n.Name, model, err)
 					n.Lock()
 					if n.WarmupErrors == nil {
 						n.WarmupErrors = map[string]string{}
@@ -423,12 +422,37 @@ func (r *Router) pingNode(ctx context.Context, n *NodeState, model, keepAlive st
 
 // statusError wraps a non-2xx HTTP response so callers can branch on the
 // status code without parsing the error string.
-type statusError struct{ status int }
+type statusError struct {
+	status int
+	detail string // the runtime's own error text, when it sent one
+}
 
-func (e *statusError) Error() string { return fmt.Sprintf("returned %d", e.status) }
+func (e *statusError) Error() string {
+	if e.detail != "" {
+		return fmt.Sprintf("returned %d: %s", e.status, e.detail)
+	}
+	return fmt.Sprintf("returned %d", e.status)
+}
 
-// pingEndpoint POSTs payload to path on nodeURL and treats any 4xx/5xx
-// response as a *statusError.
+// runtimeErrorDetail extracts the {"error": "..."} message Ollama puts in a
+// failed response (e.g. a model that needs more memory than the node has), so a
+// warmup failure says why instead of only the status code. Bounded read, and ""
+// when the body is not that shape.
+func runtimeErrorDetail(body io.Reader) string {
+	raw, _ := io.ReadAll(io.LimitReader(body, 1024))
+	var out struct {
+		Error string `json:"error"`
+	}
+	if json.Unmarshal(raw, &out) != nil {
+		return ""
+	}
+	// The text comes from the node, so it is bounded and cleaned before it can
+	// reach a log line or the dashboard.
+	return truncateForLog(strings.TrimSpace(out.Error), maxLogValueBytes)
+}
+
+// pingEndpoint POSTs payload to path on nodeURL and treats any response that is
+// not 2xx (including a 3xx, since redirects are not followed) as a *statusError.
 func (r *Router) pingEndpoint(ctx context.Context, nodeURL, path string, payload map[string]any) error {
 	body, _ := json.Marshal(payload)
 
@@ -445,9 +469,10 @@ func (r *Router) pingEndpoint(ctx context.Context, nodeURL, path string, payload
 	if err != nil {
 		return err
 	}
-	resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		return &statusError{status: resp.StatusCode}
+	defer resp.Body.Close()
+	// Not 2xx: the client no longer follows redirects, so a 3xx is a failed load.
+	if resp.StatusCode/100 != 2 {
+		return &statusError{status: resp.StatusCode, detail: runtimeErrorDetail(resp.Body)}
 	}
 	return nil
 }
@@ -469,4 +494,16 @@ func nodesForEntry(nodes []*NodeState, allowList []string) []*NodeState {
 		}
 	}
 	return out
+}
+
+// loadWithHeadroom makes VRAM room for model on n and then loads it, all under
+// the node load lock. The lock is released by defer, so a panic in the headroom
+// step or the load cannot leave the node locked for every later warm.
+func (r *Router) loadWithHeadroom(ctx context.Context, n *NodeState, model, keepAlive string) error {
+	unlock := r.lockNodeLoad(n.Name)
+	defer unlock()
+	if err := r.makeHeadroom(ctx, n, model); err != nil {
+		return err
+	}
+	return r.pingNode(ctx, n, model, keepAlive)
 }

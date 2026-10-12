@@ -493,6 +493,8 @@ func (m *Middleware) swapKeys(cfg config.AuthConfig) []malformedExpiry {
 				createdAt:             time.Now(),
 				dailyLimit:            k.DailyLimit,
 				monthlyLimit:          k.MonthlyLimit,
+				dailyUsdCap:           k.DailyUsdCap,
+				monthlyUsdCap:         k.MonthlyUsdCap,
 				localOnly:             k.LocalOnly,
 				allowLocalDegradation: k.AllowLocalDegradation,
 			}
