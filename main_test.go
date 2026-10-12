@@ -456,8 +456,9 @@ func TestBootRestoresNodeDrainState(t *testing.T) {
 	}
 	r := router.New(cfg, nodes, nil)
 
-	// This is main.go:596-602's actual restore loop, reproduced verbatim -
-	// if that loop is ever edited, this test's copy must be kept in sync.
+	// This reproduces the drain restore loop in main()'s server-start
+	// sequence verbatim - if that loop is ever edited, this test's copy must
+	// be kept in sync.
 	if drains, err := st.NodeDrainStates(); err == nil {
 		for name, ds := range drains {
 			if ds.Draining {
