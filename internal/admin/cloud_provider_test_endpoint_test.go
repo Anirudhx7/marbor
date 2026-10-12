@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -72,5 +73,32 @@ func TestHandleTestCloudProvider_MapsProviderAuthRejectionTo502(t *testing.T) {
 
 	if rec.Code != http.StatusBadGateway {
 		t.Fatalf("status = %d, want 502 (provider auth rejection must not surface as 400, which the old code did to dodge the UI's 401 force-logout)", rec.Code)
+	}
+}
+
+// The key under test must never be sent on to a host the operator did not
+// type: a redirect from base_url is not followed, and a 3xx is not a pass.
+func TestHandleTestCloudProvider_DoesNotFollowRedirects(t *testing.T) {
+	s := newRealStoreTestServer(t)
+	var sawKey int32
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "" {
+			atomic.AddInt32(&sawKey, 1)
+		}
+	}))
+	defer target.Close()
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusFound)
+	}))
+	defer redirector.Close()
+
+	body := `{"provider":"openai","base_url":"` + redirector.URL + `","api_key":"sk-secret"}`
+	rec := httptest.NewRecorder()
+	s.handleTestCloudProvider(rec, httptest.NewRequest(http.MethodPost, "/admin/cloud/providers/test", bytes.NewReader([]byte(body))))
+	if atomic.LoadInt32(&sawKey) != 0 {
+		t.Fatal("the API key was forwarded to the redirect target")
+	}
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502 for a redirecting provider, body=%s", rec.Code, rec.Body.String())
 	}
 }

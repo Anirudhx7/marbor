@@ -1,6 +1,9 @@
 package router
 
-import "sort"
+import (
+	"log"
+	"sort"
+)
 
 // SetModelAliases replaces the alias map (client-facing name -> real model).
 // The input is copied, and the copy is published with a single atomic swap,
@@ -65,6 +68,23 @@ func (r *Router) FleetModelStatuses() map[string]string {
 	return seen
 }
 
+// HasCachedInstalledModel reports whether any node's already-cached /api/tags
+// catalog lists name (bare name and ":latest" form count as the same model).
+// It reads only memory, never the network, and ignores cache age: a stale
+// catalog is still good evidence that a name is a real installed model.
+func (r *Router) HasCachedInstalledModel(name string) bool {
+	r.tagsMu.RLock()
+	defer r.tagsMu.RUnlock()
+	for _, c := range r.tagsCache {
+		for _, t := range c.Models {
+			if ModelNamesEquivalent(t.Name, name) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // FleetModelInventory is FleetModelStatuses plus whether the inventory is
 // complete: true only when at least one node is healthy and every healthy
 // node's catalog was fetched. When it is false, a name's absence from the
@@ -78,6 +98,7 @@ func (r *Router) FleetModelInventory() (map[string]string, bool) {
 		healthy := n.Healthy
 		loaded := n.LoadedModels
 		nodeURL := n.URL
+		nodeName := n.Name
 		n.RUnlock()
 		if !healthy {
 			continue
@@ -89,6 +110,11 @@ func (r *Router) FleetModelInventory() (map[string]string, bool) {
 		tags, err := r.FetchModelTags(nodeURL)
 		if err != nil {
 			complete = false
+			// Rate limited: this runs on every inventory read, which the
+			// dashboard repeats.
+			if r.allowHostLog("tags:" + nodeName) {
+				log.Printf("router: model catalog fetch for node %q failed: %v; the fleet model inventory is incomplete", nodeName, err)
+			}
 			continue
 		}
 		for _, t := range tags {
