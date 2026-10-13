@@ -17,6 +17,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Analytics gains a "Saved vs spent per hour" chart.** It plots estimated savings (against cloud list rates) next to actual cloud spend for each of the last 24 hours.
 
 ### Fixed
+- **The published Docker image ran the agent, not marbor.** `ghcr.io/anirudhx7/marbor:latest` and the version tags carried the `marbor-agent` binary in place of the control plane, because both release builds name their output `marbor` and the image picked up the wrong one. `docker run ghcr.io/anirudhx7/marbor` did not start the dashboard or the proxy. The next release's image contains the control plane. Until then, use the install script or a release binary, or build the image from the repo's `Dockerfile`. A new pre-release check now starts the built image and fails the release if it does not report `marbor` and answer `/health`.
 - **Model metrics keep the real name of installed models.** A model that is installed on a node but not currently loaded, or written with or without `:latest`, now keeps its own label in request metrics instead of being counted as "unknown". A model reads "unknown" until its node's model list has been fetched once.
 - **Repeated Content-Encoding headers are rejected.** A compressed request body is now refused with a 415 even when the encoding is on a second header line or in a comma-separated list.
 - **A huge number in an unrelated JSON field no longer fails the request.** A value such as `1e999` outside the `model` field is accepted instead of being reported as invalid JSON.
