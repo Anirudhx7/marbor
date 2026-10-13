@@ -229,9 +229,27 @@ func TestIsLocalNodeMatchesOwnLANInterfaceIP(t *testing.T) {
 		t.Skip("no non-loopback interface address available in this environment")
 	}
 
-	url := "http://" + ownIP + ":11434"
+	url := "http://" + net.JoinHostPort(ownIP, "11434")
 	if got := isLocalNode(url); !got {
 		t.Errorf("isLocalNode(%q) = %v, want true (matches this machine's own interface IP)", url, got)
+	}
+
+	// Bracketed IPv6 literals, with and without a zone, must match too.
+	for _, a := range addrs {
+		ipNet, ok := a.(*net.IPNet)
+		if !ok || ipNet.IP.IsLoopback() || ipNet.IP.To4() != nil {
+			continue
+		}
+		v6 := ipNet.IP.String()
+		for _, u := range []string{
+			"http://" + net.JoinHostPort(v6, "11434"),
+			"http://[" + v6 + "%25eth0]:11434",
+		} {
+			if !isLocalNode(u) {
+				t.Errorf("isLocalNode(%q) = false, want true (own IPv6 address)", u)
+			}
+		}
+		break
 	}
 
 	// A LAN IP that is not one of this machine's own addresses must still be
