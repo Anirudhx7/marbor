@@ -11,7 +11,14 @@ permissions:
   actions: write
 
 jobs:
+  # Build and verify the release without publishing it (release-check.yml). The
+  # real release below waits for it, so a tag that would ship a broken asset
+  # set, installer or Docker image stops here.
+  release-check:
+    uses: ./.github/workflows/release-check.yml
+
   release:
+    needs: release-check
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
