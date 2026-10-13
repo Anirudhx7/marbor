@@ -19,7 +19,7 @@ COPY . .
 # go:embed web/dist requires the built UI; take it from the ui stage so the image
 # never depends on a pre-built dist in the checkout (clean CI checkouts have none).
 COPY --from=ui /app/internal/admin/web/dist ./internal/admin/web/dist
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o marbor .
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o marbor ./cmd/marbor
 
 # Final stage
 FROM alpine:latest

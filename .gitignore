@@ -1,7 +1,9 @@
-marbor
-marbor.exe
-marbor-agent
-marbor-agent.exe
+# Anchored to the repo root: a bare "marbor" would also ignore cmd/marbor/ (and
+# cmd/marbor-agent/), silently dropping new source files added under them.
+/marbor
+/marbor.exe
+/marbor-agent
+/marbor-agent.exe
 ui/node_modules/
 internal/admin/web/dist/
 *.exe
