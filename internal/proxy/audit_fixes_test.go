@@ -312,7 +312,11 @@ func newProfileRetryRig(t *testing.T, good *httptest.Server, cfgs ...store.Model
 			t.Fatal(err)
 		}
 	}
-	return NewHandler(r, admin.NewServer(r, nil, config.Config{}, st), nil)
+	a := admin.NewServer(r, nil, config.Config{}, st)
+	// Registered after the store's Close, so it runs first: the async request
+	// logger must drain before the store closes and the temp dir is removed.
+	t.Cleanup(a.Shutdown)
+	return NewHandler(r, a, nil)
 }
 
 func TestRetryNodeGetsItsOwnModelProfile(t *testing.T) {

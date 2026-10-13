@@ -258,6 +258,9 @@ func TestProxyCloudBudgetExceededBlocksFallback(t *testing.T) {
 	a := admin.NewServer(r, nil, config.Config{
 		CloudBudget: config.CloudBudgetConfig{DailyUSDCap: 1.0},
 	}, st)
+	// Registered after the store's Close, so it runs first: the async request
+	// logger must drain before the store closes and the temp dir is removed.
+	t.Cleanup(a.Shutdown)
 	// $2.00 spent already, over the $1.00 daily cap.
 	a.TrackCloudCostModel("testkey", "openai", "gpt-4o", 2.0, 1000)
 
