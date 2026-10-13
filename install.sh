@@ -376,38 +376,64 @@ install_man_pages() {
   MAN_BASE_URL="https://github.com/${REPO}/releases/latest/download"
   MAN_ARCHIVE="marbor-man-pages.tar.gz"
   MAN_TMP_DIR="$(mktemp -d)" || return 0
+  trap 'rm -rf "$MAN_TMP_DIR"' EXIT INT TERM
   MAN_STAGE="$MAN_TMP_DIR/man1"
   mkdir -p "$MAN_STAGE" || return 0
+  MAN_SKIPPED=false
 
   if fetch_quiet "$MAN_BASE_URL/$MAN_ARCHIVE" "$MAN_TMP_DIR/$MAN_ARCHIVE"; then
-    # The release has the archive: unpack it only if it verifies and tar is
-    # there. It extracts to $MAN_TMP_DIR/man1, which is MAN_STAGE.
-    if man_archive_verified "$MAN_TMP_DIR/$MAN_ARCHIVE" "$MAN_ARCHIVE" && command -v tar >/dev/null 2>&1; then
-      tar -xzf "$MAN_TMP_DIR/$MAN_ARCHIVE" -C "$MAN_TMP_DIR" >/dev/null 2>&1 || true
-    else
-      echo "  [!] Skipped man pages: could not verify $MAN_ARCHIVE against checksums.txt."
+    # The release has the archive. Unpack only its man1/ directory, and only
+    # once it verifies. It lands in $MAN_TMP_DIR/man1, which is MAN_STAGE.
+    if ! command -v tar >/dev/null 2>&1; then
+      MAN_SKIPPED=true; echo "  [!] Skipped man pages: tar is not available."
+    elif ! man_archive_verified "$MAN_TMP_DIR/$MAN_ARCHIVE" "$MAN_ARCHIVE"; then
+      MAN_SKIPPED=true; echo "  [!] Skipped man pages: could not verify $MAN_ARCHIVE against checksums.txt."
+    elif ! tar -xzf "$MAN_TMP_DIR/$MAN_ARCHIVE" -C "$MAN_TMP_DIR" man1 >/dev/null 2>&1; then
+      MAN_SKIPPED=true; echo "  [!] Skipped man pages: could not unpack $MAN_ARCHIVE."
+      rm -f "$MAN_STAGE"/*  # a partial unpack must not be installed
     fi
   else
     install_man_pages_legacy
   fi
 
+  # Keep only regular files with a plain marbor*.1 name. A symlink or an odd
+  # name in the archive is dropped here, so cp never follows a link and the
+  # uninstall marker below only ever lists names uninstall.sh accepts.
   INSTALLED_PAGES=""
   for page in "$MAN_STAGE"/*.1; do
-    [ -f "$page" ] && INSTALLED_PAGES="$INSTALLED_PAGES $(basename "$page")"
+    name="$(basename "$page")"
+    if [ -h "$page" ] || [ ! -f "$page" ]; then
+      rm -f "$page"
+      continue
+    fi
+    case "$name" in
+      *[!A-Za-z0-9._-]*|-*) rm -f "$page"; continue ;;
+      marbor*.1) ;;
+      *) rm -f "$page"; continue ;;
+    esac
+    INSTALLED_PAGES="$INSTALLED_PAGES $name"
   done
 
-  if [ -n "$INSTALLED_PAGES" ]; then
+  if [ -z "$INSTALLED_PAGES" ]; then
+    [ "$MAN_SKIPPED" = true ] || echo "  [!] Skipped man pages: none could be downloaded from this release."
+  else
     if [ -w "$MAN_DIR" ] || { [ ! -d "$MAN_DIR" ] && mkdir -p "$MAN_DIR" 2>/dev/null; }; then
-      cp "$MAN_STAGE"/*.1 "$MAN_DIR/" 2>/dev/null && echo "Installed man pages to $MAN_DIR (try: man marbor)"
-      # Record exactly which filenames THIS install placed in MAN_DIR, so
-      # uninstall.sh can remove exactly those files later instead of a broad
-      # wildcard - this is the only place that actually knows the real list;
-      # uninstall.sh has no source tree and no manifest of its own to consult.
-      printf '%s\n' $INSTALLED_PAGES > "$MAN_DIR/.marbor-installed-manifest" 2>/dev/null || true
+      if cp "$MAN_STAGE"/*.1 "$MAN_DIR/" 2>/dev/null; then
+        echo "Installed man pages to $MAN_DIR (try: man marbor)"
+        # Record exactly which filenames THIS install placed in MAN_DIR, so
+        # uninstall.sh can remove exactly those files later instead of a broad
+        # wildcard - this is the only place that actually knows the real list;
+        # uninstall.sh has no source tree and no manifest of its own to consult.
+        printf '%s
+' $INSTALLED_PAGES > "$MAN_DIR/.marbor-installed-manifest" 2>/dev/null || true
+      fi
     elif command -v sudo >/dev/null 2>&1; then
       sudo mkdir -p "$MAN_DIR" 2>/dev/null
-      sudo cp "$MAN_STAGE"/*.1 "$MAN_DIR/" 2>/dev/null && echo "Installed man pages to $MAN_DIR (try: man marbor)"
-      printf '%s\n' $INSTALLED_PAGES | sudo tee "$MAN_DIR/.marbor-installed-manifest" >/dev/null 2>&1 || true
+      if sudo cp "$MAN_STAGE"/*.1 "$MAN_DIR/" 2>/dev/null; then
+        echo "Installed man pages to $MAN_DIR (try: man marbor)"
+        printf '%s
+' $INSTALLED_PAGES | sudo tee "$MAN_DIR/.marbor-installed-manifest" >/dev/null 2>&1 || true
+      fi
     fi
     if command -v mandb >/dev/null 2>&1; then
       mandb >/dev/null 2>&1 || sudo mandb >/dev/null 2>&1 || true
