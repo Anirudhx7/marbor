@@ -533,6 +533,9 @@ func defaultModelID(runtime string) string {
 	return "mock-model"
 }
 
+// simEngine is non-nil only when SIM_KV=1 (see kvsim.go).
+var simEngine *kvSim
+
 func runOpenAICompatMock(runtime, nodeName, port string, latencyMs int) {
 	modelID := envOrDefault("MODEL_ID", defaultModelID(runtime))
 
@@ -574,6 +577,12 @@ func runOpenAICompatMock(runtime, nodeName, port string, latencyMs int) {
 				},
 			})
 		})
+	}
+
+	simEngine = newKVSimFromEnv()
+	if simEngine != nil {
+		log.Printf("[%s] SIM_KV=1: simulated prefix cache and bounded slots enabled (harness validation only)", nodeName)
+		mux.HandleFunc("/sim/stats", simEngine.statsHandler(nodeName))
 	}
 
 	mux.HandleFunc("/v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
@@ -630,18 +639,54 @@ func handleOpenAIChatCompletion(w http.ResponseWriter, r *http.Request, nodeName
 	id := fmt.Sprintf("chatcmpl-mock-%d", time.Now().UnixNano())
 	created := time.Now().Unix()
 
-	time.Sleep(time.Duration(latencyMs) * time.Millisecond)
+	// SIM_KV=1 replaces the fixed latency with the simulated engine (prefix
+	// cache, bounded slots); see kvsim.go. Off by default, behavior unchanged.
+	var run *simRun
+	cachedTokens := 0
+	if simEngine != nil {
+		var sb strings.Builder
+		for _, m := range req.Messages {
+			sb.WriteString(m.Role)
+			sb.WriteString(": ")
+			sb.WriteString(m.Content)
+			sb.WriteString("\n")
+		}
+		run = simEngine.begin(r.Context(), sb.String())
+		if run == nil {
+			return
+		}
+		defer run.finish(r.Context())
+		promptTokens = run.promptTokens
+		cachedTokens = run.cachedTokens
+		tokens = make([]string, run.outTokens)
+		for i := range tokens {
+			tokens[i] = " tok"
+		}
+	} else {
+		time.Sleep(time.Duration(latencyMs) * time.Millisecond)
+	}
 	w.Header().Set("X-Node-Name", nodeName)
 
 	if !stream {
+		if run != nil {
+			for range tokens {
+				if !run.decodeStep(r.Context()) {
+					return
+				}
+			}
+		}
 		full := strings.Join(tokens, "")
 		w.Header().Set("Content-Type", "application/json")
+		usage := map[string]interface{}{"prompt_tokens": promptTokens, "completion_tokens": len(tokens), "total_tokens": promptTokens + len(tokens)}
+		if run != nil {
+			usage["prompt_tokens_details"] = map[string]int{"cached_tokens": cachedTokens}
+		}
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"id": id, "object": "chat.completion", "created": created, "model": req.Model,
 			"choices": []map[string]interface{}{
 				{"index": 0, "message": map[string]string{"role": "assistant", "content": full}, "finish_reason": "stop"},
 			},
-			"usage": map[string]int{"prompt_tokens": promptTokens, "completion_tokens": len(tokens), "total_tokens": promptTokens + len(tokens)},
+			"usage": usage,
 		})
 		return
 	}
@@ -671,6 +716,12 @@ func handleOpenAIChatCompletion(w http.ResponseWriter, r *http.Request, nodeName
 	writeChunk(map[string]interface{}{"role": "assistant"}, nil)
 	for _, tok := range tokens {
 		writeChunk(map[string]interface{}{"content": tok}, nil)
+		if run != nil {
+			if !run.decodeStep(r.Context()) {
+				return
+			}
+			continue
+		}
 		time.Sleep(15 * time.Millisecond)
 	}
 	writeChunk(map[string]interface{}{}, "stop")
