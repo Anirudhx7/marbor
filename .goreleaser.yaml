@@ -83,14 +83,20 @@ archives:
 checksum:
   name_template: 'checksums.txt'
 
+# Both builds above write a binary called "marbor" (the agent build has no
+# binary: override), and an image's build context is filled by binary name. With
+# no ids filter the agent overwrote the control plane and the published image
+# shipped marbor-agent. ids: [marbor] keeps the image to the control plane.
 dockers:
-  - image_templates:
+  - ids: [marbor]
+    image_templates:
       - ghcr.io/anirudhx7/marbor:{{ .Version }}-amd64
     dockerfile: Dockerfile.goreleaser
     goarch: amd64
     build_flag_templates:
       - --platform=linux/amd64
-  - image_templates:
+  - ids: [marbor]
+    image_templates:
       - ghcr.io/anirudhx7/marbor:{{ .Version }}-arm64
     dockerfile: Dockerfile.goreleaser
     goarch: arm64
