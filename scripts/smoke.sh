@@ -5,7 +5,7 @@ set -uo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-COMPOSE="docker compose -f docker-compose.demo.yml"
+COMPOSE="docker compose -f demo/docker-compose.yml"
 ADMIN_TOKEN="demo-admin-token"
 BAD_KEY="not-a-real-key"
 
@@ -37,12 +37,12 @@ else
   go build -o "$check_bin" ./cmd/marbor || fail "build for marbor.demo.db drift check failed"
   "$check_bin" -db "$check_db" -seed-node "name=_schema_init,url=http://init,runtime=ollama" >/dev/null 2>&1 \
     || fail "seed-node step failed against freshly migrated schema"
-  sqlite3 "$check_db" < scripts/seed_demo.sql || fail "seed_demo.sql failed against freshly migrated schema"
+  sqlite3 "$check_db" < demo/seed_demo.sql || fail "seed_demo.sql failed against freshly migrated schema"
   # Compare sqlite_master DDL rows directly (one row per statement, already
   # newline-free) rather than parsing `.schema` dot-command text - immune to
   # any future sqlite3 CLI formatting changes in how it prints ".schema".
   normalize() { sqlite3 "$1" "SELECT sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY name" | tr -s ' \t'; }
-  if ! diff <(normalize scripts/marbor.demo.db) <(normalize "$check_db") >/dev/null; then
+  if ! diff <(normalize demo/marbor.demo.db) <(normalize "$check_db") >/dev/null; then
     fail "marbor.demo.db schema has drifted from current migrate()/seed_demo.sql - run 'make demo-db' to regenerate and commit the result"
   fi
 fi

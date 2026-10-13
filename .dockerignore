@@ -17,6 +17,6 @@ marbor
 *.prof
 usage-state.json
 usage-state.json.tmp
-scripts/marbor.demo.db.tmp
-scripts/marbor.demo.db.tmp.key
+demo/marbor.demo.db.tmp
+demo/marbor.demo.db.tmp.key
 *.db.key

@@ -41,6 +41,7 @@ usage-state.json.tmp
 /demotraffic
 /mockollama
 /demo
+!/demo/
 nul
 
 # Git worktrees
