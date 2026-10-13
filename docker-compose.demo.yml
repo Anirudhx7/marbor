@@ -138,7 +138,7 @@ services:
 
     command: sh -c "cp /demo/marbor.demo.db /root/marbor.db && exec ./marbor"
     volumes:
-      - ./marbor.demo.db:/demo/marbor.demo.db:ro
+      - ./scripts/marbor.demo.db:/demo/marbor.demo.db:ro
     ports:
       - "11434:11434"
       - "8080:8080"

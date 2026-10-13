@@ -42,7 +42,7 @@ else
   # newline-free) rather than parsing `.schema` dot-command text - immune to
   # any future sqlite3 CLI formatting changes in how it prints ".schema".
   normalize() { sqlite3 "$1" "SELECT sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY name" | tr -s ' \t'; }
-  if ! diff <(normalize marbor.demo.db) <(normalize "$check_db") >/dev/null; then
+  if ! diff <(normalize scripts/marbor.demo.db) <(normalize "$check_db") >/dev/null; then
     fail "marbor.demo.db schema has drifted from current migrate()/seed_demo.sql - run 'make demo-db' to regenerate and commit the result"
   fi
 fi
