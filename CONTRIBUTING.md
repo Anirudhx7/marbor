@@ -7,7 +7,7 @@
 docker run --rm -v "$(pwd):/app" -w /app -e GOFLAGS=-buildvcs=false golang:1.25 sh -c "go build ./..."
 ```
 
-**Locally (requires Go 1.21+ and Node 20+):**
+**Locally (requires Go 1.21+ and Node 22.12+; CI and releases build the UI on Node 26):**
 ```bash
 make build      # UI + Go binary
 make backend    # Go only (fast iteration)
