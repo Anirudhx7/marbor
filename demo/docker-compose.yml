@@ -1,8 +1,12 @@
+# Local demo stack, built from this checkout (`make demo`). The project name is
+# pinned so it does not depend on the directory this file lives in.
+name: marbor-demo
+
 services:
   ollama-node-a:
     build:
-      context: .
-      dockerfile: Dockerfile.mocknode
+      context: ..
+      dockerfile: demo/Dockerfile.mocknode
     environment:
       RUNTIME: ollama
       NODE_NAME: node-a
@@ -21,8 +25,8 @@ services:
 
   ollama-node-b:
     build:
-      context: .
-      dockerfile: Dockerfile.mocknode
+      context: ..
+      dockerfile: demo/Dockerfile.mocknode
     environment:
       RUNTIME: ollama
       NODE_NAME: node-b
@@ -46,8 +50,8 @@ services:
   # routing/auth/streaming across all 4 supported runtimes, not just Ollama.
   vllm-node:
     build:
-      context: .
-      dockerfile: Dockerfile.mocknode
+      context: ..
+      dockerfile: demo/Dockerfile.mocknode
     environment:
       RUNTIME: vllm
       NODE_NAME: vllm-node
@@ -64,8 +68,8 @@ services:
 
   tgi-node:
     build:
-      context: .
-      dockerfile: Dockerfile.mocknode
+      context: ..
+      dockerfile: demo/Dockerfile.mocknode
     environment:
       RUNTIME: tgi
       NODE_NAME: tgi-node
@@ -82,8 +86,8 @@ services:
 
   llamacpp-node:
     build:
-      context: .
-      dockerfile: Dockerfile.mocknode
+      context: ..
+      dockerfile: demo/Dockerfile.mocknode
     environment:
       RUNTIME: llamacpp
       NODE_NAME: llamacpp-node
@@ -100,8 +104,8 @@ services:
 
   mlx-node:
     build:
-      context: .
-      dockerfile: Dockerfile.mocknode
+      context: ..
+      dockerfile: demo/Dockerfile.mocknode
     environment:
       RUNTIME: mlx
       NODE_NAME: mlx-node
@@ -128,7 +132,7 @@ services:
   # explicitly with `--wait` instead of relying on depends_on for this.
   marbor:
     build:
-      context: .
+      context: ..
       dockerfile: Dockerfile
     depends_on:
       ollama-node-a:
@@ -138,7 +142,7 @@ services:
 
     command: sh -c "cp /demo/marbor.demo.db /root/marbor.db && exec ./marbor"
     volumes:
-      - ./scripts/marbor.demo.db:/demo/marbor.demo.db:ro
+      - ./marbor.demo.db:/demo/marbor.demo.db:ro
     ports:
       - "11434:11434"
       - "8080:8080"
@@ -154,8 +158,8 @@ services:
   # never a local Go toolchain. Started on demand via `docker compose run`.
   demotraffic:
     build:
-      context: .
-      dockerfile: Dockerfile.demotraffic
+      context: ..
+      dockerfile: demo/Dockerfile.demotraffic
     depends_on:
       marbor:
         condition: service_healthy
@@ -178,7 +182,7 @@ services:
     ports:
       - "9091:9090"
     volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     depends_on:
       marbor:
         condition: service_healthy
@@ -189,8 +193,8 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - ./grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./grafana/marbor.json:/var/lib/grafana/dashboards/marbor.json:ro
+      - ../grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../grafana/marbor.json:/var/lib/grafana/dashboards/marbor.json:ro
     depends_on:
       - prometheus
 
