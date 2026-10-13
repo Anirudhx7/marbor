@@ -4,10 +4,10 @@
 
 **With Docker (no local Go required):**
 ```bash
-docker run --rm -v "$(pwd):/app" -w /app -e GOFLAGS=-buildvcs=false golang:1.25 sh -c "go build ./..."
+docker run --rm -v "$(pwd):/app" -w /app -e GOFLAGS=-buildvcs=false golang:1.26 sh -c "go build ./..."
 ```
 
-**Locally (requires Go 1.21+ and Node 22.12+; CI and releases build the UI on Node 26):**
+**Locally (requires Go 1.26+ and Node 22.12+; CI and releases build the UI on Node 26):**
 ```bash
 make build      # UI + Go binary
 make backend    # Go only (fast iteration)
