@@ -8,7 +8,7 @@ ui:
 	copy grafana\marbor.json internal\admin\web\dist\grafana\marbor.json
 
 backend:
-	go build -o marbor .
+	go build -o marbor ./cmd/marbor
 	go build -o marbor-agent ./cmd/marbor-agent
 
 build: ui backend
