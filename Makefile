@@ -40,13 +40,13 @@ demo: demo-build ## Spin up demo stack (all 4 runtimes), send 20 real requests, 
 demo-down: ## Stop and remove demo stack
 	docker compose -f docker-compose.demo.yml down -v
 
-demo-db: backend ## Regenerate marbor.demo.db from live schema (migrate()) + scripts/seed_demo.sql
-	rm -f marbor.demo.db.tmp marbor.demo.db.tmp.key
-	./marbor -db marbor.demo.db.tmp -seed-node "name=_schema_init,url=http://init,runtime=ollama"
-	sqlite3 marbor.demo.db.tmp < scripts/seed_demo.sql
-	mv marbor.demo.db.tmp marbor.demo.db
-	rm -f marbor.demo.db.tmp.key
-	@echo "marbor.demo.db regenerated - review with 'git diff marbor.demo.db' before committing"
+demo-db: backend ## Regenerate scripts/marbor.demo.db from live schema (migrate()) + scripts/seed_demo.sql
+	rm -f scripts/marbor.demo.db.tmp scripts/marbor.demo.db.tmp.key
+	./marbor -db scripts/marbor.demo.db.tmp -seed-node "name=_schema_init,url=http://init,runtime=ollama"
+	sqlite3 scripts/marbor.demo.db.tmp < scripts/seed_demo.sql
+	mv scripts/marbor.demo.db.tmp scripts/marbor.demo.db
+	rm -f scripts/marbor.demo.db.tmp.key
+	@echo "scripts/marbor.demo.db regenerated - review with 'git diff scripts/marbor.demo.db' before committing"
 
 smoke: ## Gate the demo path: build, run, assert auth/routing/streaming/admin/metrics, tear down
 	bash scripts/smoke.sh
