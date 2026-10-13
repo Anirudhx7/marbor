@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-10-13
+
 ### Added
 - **Model aliases can be edited in place.** A pencil button on each alias loads it into the form so you can change its target or rename it (a rename saves the new name and then removes the old one). Changing the target of an existing alias still asks for confirmation first.
 
