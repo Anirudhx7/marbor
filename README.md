@@ -59,7 +59,7 @@ Experience the complete gateway and monitoring stack locally in 5 minutes using 
    git clone https://github.com/Anirudhx7/marbor && cd marbor
    make demo
    ```
-   This spins up `marbor`, two mock Ollama backend nodes, Prometheus, and Grafana, then runs a 20-request benchmark to generate live telemetry.
+   This spins up `marbor`, two mock Ollama backend nodes, Prometheus, and Grafana, then runs a 20-request benchmark to generate live telemetry. Everything the demo uses (compose files, Dockerfiles, the seeded database) is in [`demo/`](demo/).
 
 2. **Access the dashboards**:
    * **Marbor Dashboard**: [http://localhost:8080](http://localhost:8080) (Credentials: `admin` / `admin`)

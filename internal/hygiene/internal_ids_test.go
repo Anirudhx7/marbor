@@ -176,17 +176,17 @@ var internalIDFileExceptions = map[string]map[string]string{
 	// ticket ID. Scoped (not global) so a genuine same-shaped queue cite
 	// anywhere else still fails.
 	"P50": {
-		"docker-compose.demo.standalone.yml": "Latency percentile notation in Grafana dashboard panel titles/legends, not a ticket ID",
+		"demo/docker-compose.standalone.yml": "Latency percentile notation in Grafana dashboard panel titles/legends, not a ticket ID",
 		"grafana/README.md":                  "Latency percentile notation in Grafana dashboard panel titles/legends, not a ticket ID",
 		"grafana/marbor.json":                "Latency percentile notation in Grafana dashboard panel titles/legends, not a ticket ID",
 	},
 	"P95": {
-		"docker-compose.demo.standalone.yml": "Latency percentile notation in Grafana dashboard panel titles/legends, not a ticket ID",
+		"demo/docker-compose.standalone.yml": "Latency percentile notation in Grafana dashboard panel titles/legends, not a ticket ID",
 		"grafana/README.md":                  "Latency percentile notation in Grafana dashboard panel titles/legends, not a ticket ID",
 		"grafana/marbor.json":                "Latency percentile notation in Grafana dashboard panel titles/legends, not a ticket ID",
 	},
 	"P99": {
-		"docker-compose.demo.standalone.yml": "Latency percentile notation in Grafana dashboard panel titles/legends, not a ticket ID",
+		"demo/docker-compose.standalone.yml": "Latency percentile notation in Grafana dashboard panel titles/legends, not a ticket ID",
 		"grafana/README.md":                  "Latency percentile notation in Grafana dashboard panel titles/legends, not a ticket ID",
 		"grafana/marbor.json":                "Latency percentile notation in Grafana dashboard panel titles/legends, not a ticket ID",
 	},

@@ -1,11 +1,14 @@
+# Project name pinned so it does not depend on the directory this file lives in.
+name: marbor-demo
+
 # Self-contained public demo. Copy just this one file (no repo clone) and run:
-#   docker compose -f docker-compose.demo.standalone.yml up -d
+#   docker compose -f docker-compose.standalone.yml up -d
 # All node/marbor/traffic-gen images are pulled from GHCR; the demo database
 # and all config files (Prometheus scrape config, Grafana provisioning +
 # dashboard) are inlined below via Compose 'configs: content:' - nothing
 # extra to fetch.
 #
-# For local development, use docker-compose.demo.yml + `make demo` instead -
+# For local development, use demo/docker-compose.yml + `make demo` instead -
 # that one builds from source so it tests your working tree.
 services:
   ollama-node-a:
@@ -49,7 +52,7 @@ services:
   # package comment), not each project's full real API surface. Not part of
   # smoke.sh's default gate (that only checks the 2 Ollama nodes + marbor);
   # started via `make demo` or explicitly with `docker compose -f
-  # docker-compose.demo.yml up -d vllm-node tgi-node llamacpp-node`.
+  # demo/docker-compose.yml up -d vllm-node tgi-node llamacpp-node`.
   vllm-node:
     image: ghcr.io/anirudhx7/marbor-mocknode:latest
     environment:
@@ -146,7 +149,7 @@ services:
       PROXY_URL: http://marbor:11434
       API_KEY: demo-api-key
       REQUEST_COUNT: "20"
-      # See docker-compose.demo.yml's identical setting for why: this
+      # See demo/docker-compose.yml's identical setting for why: this
       # targets the "marbor" compose service's Docker DNS name, still the
       # same self-contained local stack demotraffic's localhost guard exists
       # to protect against pointing at a real live instance.

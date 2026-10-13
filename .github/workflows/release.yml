@@ -66,15 +66,15 @@ jobs:
           PREV_TAG=$(git describe --tags --abbrev=0 "${{ github.ref_name }}^" 2>/dev/null || true)
           CHANGED=""
           [ -n "$PREV_TAG" ] && CHANGED=$(git diff --name-only "$PREV_TAG" "${{ github.ref_name }}")
-          echo "mocknode=$(check_changed marbor-mocknode '^(cmd/mocknode/|Dockerfile\.mocknode$|go\.mod$|go\.sum$)')" >> "$GITHUB_OUTPUT"
-          echo "demotraffic=$(check_changed marbor-demotraffic '^(cmd/demotraffic/|Dockerfile\.demotraffic$|go\.mod$|go\.sum$)')" >> "$GITHUB_OUTPUT"
+          echo "mocknode=$(check_changed marbor-mocknode '^(cmd/mocknode/|demo/Dockerfile\.mocknode$|go\.mod$|go\.sum$)')" >> "$GITHUB_OUTPUT"
+          echo "demotraffic=$(check_changed marbor-demotraffic '^(cmd/demotraffic/|demo/Dockerfile\.demotraffic$|go\.mod$|go\.sum$)')" >> "$GITHUB_OUTPUT"
 
       - name: Build and push mocknode image
         if: steps.demo-changes.outputs.mocknode == 'true'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
-          file: Dockerfile.mocknode
+          file: demo/Dockerfile.mocknode
           push: true
           tags: |
             ghcr.io/anirudhx7/marbor-mocknode:latest
@@ -85,7 +85,7 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
-          file: Dockerfile.demotraffic
+          file: demo/Dockerfile.demotraffic
           push: true
           tags: |
             ghcr.io/anirudhx7/marbor-demotraffic:latest

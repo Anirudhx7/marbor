@@ -25,28 +25,28 @@ dev-ui:
 
 ## Demo targets - spin up mock Ollama/vLLM/TGI/llama.cpp nodes + marbor, send real traffic
 demo-build: ## Build demo Docker images (mocknode runtimes + marbor)
-	docker compose -f docker-compose.demo.yml build
+	docker compose -f demo/docker-compose.yml build
 
 demo: demo-build ## Spin up demo stack (all 4 runtimes), send 20 real requests, show dashboard URL (Docker only, no Go needed)
 	@echo "Starting demo stack (mock Ollama x2 + vLLM + TGI + llama.cpp + marbor + Prometheus + Grafana)..."
-	docker compose -f docker-compose.demo.yml up -d ollama-node-a ollama-node-b vllm-node tgi-node llamacpp-node marbor prometheus grafana
+	docker compose -f demo/docker-compose.yml up -d ollama-node-a ollama-node-b vllm-node tgi-node llamacpp-node marbor prometheus grafana
 	@echo "Sending demo traffic (20 requests, runs in Docker - no local Go needed)..."
-	docker compose -f docker-compose.demo.yml run --rm demotraffic
+	docker compose -f demo/docker-compose.yml run --rm demotraffic
 	@echo ""
 	@echo "Dashboard: http://localhost:8080  (credentials: admin / admin)"
 	@echo "Proxy:     http://localhost:11434 (key:   demo-api-key)"
 	@echo "Grafana:   http://localhost:3000"
 
 demo-down: ## Stop and remove demo stack
-	docker compose -f docker-compose.demo.yml down -v
+	docker compose -f demo/docker-compose.yml down -v
 
-demo-db: backend ## Regenerate scripts/marbor.demo.db from live schema (migrate()) + scripts/seed_demo.sql
-	rm -f scripts/marbor.demo.db.tmp scripts/marbor.demo.db.tmp.key
-	./marbor -db scripts/marbor.demo.db.tmp -seed-node "name=_schema_init,url=http://init,runtime=ollama"
-	sqlite3 scripts/marbor.demo.db.tmp < scripts/seed_demo.sql
-	mv scripts/marbor.demo.db.tmp scripts/marbor.demo.db
-	rm -f scripts/marbor.demo.db.tmp.key
-	@echo "scripts/marbor.demo.db regenerated - review with 'git diff scripts/marbor.demo.db' before committing"
+demo-db: backend ## Regenerate demo/marbor.demo.db from live schema (migrate()) + demo/seed_demo.sql
+	rm -f demo/marbor.demo.db.tmp demo/marbor.demo.db.tmp.key
+	./marbor -db demo/marbor.demo.db.tmp -seed-node "name=_schema_init,url=http://init,runtime=ollama"
+	sqlite3 demo/marbor.demo.db.tmp < demo/seed_demo.sql
+	mv demo/marbor.demo.db.tmp demo/marbor.demo.db
+	rm -f demo/marbor.demo.db.tmp.key
+	@echo "demo/marbor.demo.db regenerated - review with 'git diff demo/marbor.demo.db' before committing"
 
 smoke: ## Gate the demo path: build, run, assert auth/routing/streaming/admin/metrics, tear down
 	bash scripts/smoke.sh
