@@ -229,7 +229,7 @@ func TestIsLocalNodeMatchesOwnLANInterfaceIP(t *testing.T) {
 		t.Skip("no non-loopback interface address available in this environment")
 	}
 
-	url := "http://" + ownIP + ":11434"
+	url := "http://" + net.JoinHostPort(ownIP, "11434")
 	if got := isLocalNode(url); !got {
 		t.Errorf("isLocalNode(%q) = %v, want true (matches this machine's own interface IP)", url, got)
 	}
