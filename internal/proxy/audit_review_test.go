@@ -11,8 +11,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/Anirudhx7/marbor/internal/admin"
 	"github.com/Anirudhx7/marbor/internal/auth"
@@ -523,6 +525,26 @@ func TestTokenCountUnparseableLastLineDoesNotFallBackToEarlierLine(t *testing.T)
 	}
 }
 
+// lockedBuilder is a strings.Builder that is safe to read while a server
+// goroutine is still writing to it. AccessLogger serialises its own writes,
+// but a test reading the destination directly is not covered by that mutex.
+type lockedBuilder struct {
+	mu sync.Mutex
+	b  strings.Builder
+}
+
+func (l *lockedBuilder) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+
+func (l *lockedBuilder) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.String()
+}
+
 func TestAbortedStreamIsRecordedBeforeClientSeesIt(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -539,7 +561,7 @@ func TestAbortedStreamIsRecordedBeforeClientSeesIt(t *testing.T) {
 	}
 	a := admin.NewServer(r, nil, config.Config{})
 	h := NewHandler(r, a, nil)
-	var access strings.Builder
+	var access lockedBuilder
 	h.SetAccessLogger(NewAccessLogger(&access, true))
 	srv := httptest.NewServer(h)
 	defer srv.Close()
@@ -555,6 +577,12 @@ func TestAbortedStreamIsRecordedBeforeClientSeesIt(t *testing.T) {
 	es := liveEntries(t, a)
 	if len(es) != 1 || es[0].Status != "aborted" {
 		t.Errorf("request log = %+v, want one aborted entry recorded before the abort reached the client", es)
+	}
+	// The request log entry is recorded before the abort reaches the client; the
+	// access log line is written when the handler returns, which can be just
+	// after the client has seen the abort, so wait briefly for it.
+	for deadline := time.Now().Add(2 * time.Second); !strings.Contains(access.String(), `"model":"m"`) && time.Now().Before(deadline); {
+		time.Sleep(5 * time.Millisecond)
 	}
 	if !strings.Contains(access.String(), `"model":"m"`) {
 		t.Errorf("access log empty or missing the request: %q", access.String())
