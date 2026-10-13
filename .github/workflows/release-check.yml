@@ -4,15 +4,22 @@ name: Release check
 # binaries, man-page archive, checksums and the Docker images) and checks what
 # came out with scripts/release-check.sh. Nothing is published.
 #
-# Two uses:
+# Three triggers, none of which need anyone to remember anything:
 #   - release.yml calls this before it publishes, so a tag that would ship a
 #     broken release stops here instead of reaching users.
-#   - it runs on pull requests that touch release packaging, so the problem
-#     shows up in review rather than at tag time.
+#   - it runs on pull requests that touch release packaging (including the
+#     version bump in a release PR), so the problem shows up in review rather
+#     than at tag time.
+#   - it runs weekly on main, so drift nobody is touching the packaging for (a
+#     new base image, a goreleaser or action update, a dependency change) is
+#     caught between releases instead of on the day of one. A failed scheduled
+#     run is reported to the repository admins by GitHub.
 
 on:
   workflow_call:
   workflow_dispatch:
+  schedule:
+    - cron: '17 6 * * 1'
   pull_request:
     paths:
       - '.goreleaser.yaml'
@@ -26,6 +33,8 @@ on:
       - 'cmd/marbor-agent/**'
       - 'go.mod'
       - 'go.sum'
+      - 'ui/package.json'
+      - 'ui/package-lock.json'
       - 'scripts/release-check.sh'
       - '.github/workflows/release-check.yml'
       - '.github/workflows/release.yml'
