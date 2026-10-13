@@ -373,24 +373,33 @@ install_man_pages_legacy() {
 
 install_man_pages() {
   MAN_DIR="/usr/local/share/man/man1"
+  MAN_MARKER="$MAN_DIR/.marbor-installed-manifest"
   MAN_BASE_URL="https://github.com/${REPO}/releases/latest/download"
   MAN_ARCHIVE="marbor-man-pages.tar.gz"
   MAN_TMP_DIR="$(mktemp -d)" || return 0
-  trap 'rm -rf "$MAN_TMP_DIR"' EXIT INT TERM
+  # Remove the temp dir on any exit; an interrupt must also stop the install
+  # of man pages rather than resume after the handler runs.
+  trap 'rm -rf "$MAN_TMP_DIR"' EXIT
+  trap 'exit 1' INT TERM
   MAN_STAGE="$MAN_TMP_DIR/man1"
   mkdir -p "$MAN_STAGE" || return 0
   MAN_SKIPPED=false
 
   if fetch_quiet "$MAN_BASE_URL/$MAN_ARCHIVE" "$MAN_TMP_DIR/$MAN_ARCHIVE"; then
-    # The release has the archive. Unpack only its man1/ directory, and only
-    # once it verifies. It lands in $MAN_TMP_DIR/man1, which is MAN_STAGE.
+    # The release has the archive. Unpack it whole into its own directory
+    # (no reliance on how a given tar treats member arguments), and only once
+    # it verifies. Its pages are then read from <unpack>/man1 alone.
+    MAN_UNPACK="$MAN_TMP_DIR/unpack"
     if ! command -v tar >/dev/null 2>&1; then
       MAN_SKIPPED=true; echo "  [!] Skipped man pages: tar is not available."
     elif ! man_archive_verified "$MAN_TMP_DIR/$MAN_ARCHIVE" "$MAN_ARCHIVE"; then
       MAN_SKIPPED=true; echo "  [!] Skipped man pages: could not verify $MAN_ARCHIVE against checksums.txt."
-    elif ! tar -xzf "$MAN_TMP_DIR/$MAN_ARCHIVE" -C "$MAN_TMP_DIR" man1 >/dev/null 2>&1; then
+    elif ! mkdir -p "$MAN_UNPACK" || ! tar -xzf "$MAN_TMP_DIR/$MAN_ARCHIVE" -C "$MAN_UNPACK" >/dev/null 2>&1; then
       MAN_SKIPPED=true; echo "  [!] Skipped man pages: could not unpack $MAN_ARCHIVE."
-      rm -f "$MAN_STAGE"/*  # a partial unpack must not be installed
+    elif [ -h "$MAN_UNPACK/man1" ]; then
+      MAN_SKIPPED=true; echo "  [!] Skipped man pages: $MAN_ARCHIVE has an unexpected layout."
+    else
+      MAN_STAGE="$MAN_UNPACK/man1"
     fi
   else
     install_man_pages_legacy
@@ -417,29 +426,28 @@ install_man_pages() {
   if [ -z "$INSTALLED_PAGES" ]; then
     [ "$MAN_SKIPPED" = true ] || echo "  [!] Skipped man pages: none could be downloaded from this release."
   else
+    # Record exactly which filenames installs placed in MAN_DIR, so uninstall.sh
+    # can remove exactly those files later instead of a broad wildcard - this is
+    # the only place that knows the real list; uninstall.sh has no source tree
+    # and no manifest of its own. Merged with the previous marker so a page an
+    # older install placed (and a newer release no longer ships) stays listed.
+    MAN_ALL="$( { cat "$MAN_MARKER" 2>/dev/null; printf '%s\n' $INSTALLED_PAGES; } | grep -E '^[A-Za-z0-9._][A-Za-z0-9._-]*$' | sort -u)"
     if [ -w "$MAN_DIR" ] || { [ ! -d "$MAN_DIR" ] && mkdir -p "$MAN_DIR" 2>/dev/null; }; then
       if cp "$MAN_STAGE"/*.1 "$MAN_DIR/" 2>/dev/null; then
         echo "Installed man pages to $MAN_DIR (try: man marbor)"
-        # Record exactly which filenames THIS install placed in MAN_DIR, so
-        # uninstall.sh can remove exactly those files later instead of a broad
-        # wildcard - this is the only place that actually knows the real list;
-        # uninstall.sh has no source tree and no manifest of its own to consult.
-        printf '%s
-' $INSTALLED_PAGES > "$MAN_DIR/.marbor-installed-manifest" 2>/dev/null || true
+        printf '%s\n' "$MAN_ALL" > "$MAN_MARKER" 2>/dev/null || true
       fi
     elif command -v sudo >/dev/null 2>&1; then
       sudo mkdir -p "$MAN_DIR" 2>/dev/null
       if sudo cp "$MAN_STAGE"/*.1 "$MAN_DIR/" 2>/dev/null; then
         echo "Installed man pages to $MAN_DIR (try: man marbor)"
-        printf '%s
-' $INSTALLED_PAGES | sudo tee "$MAN_DIR/.marbor-installed-manifest" >/dev/null 2>&1 || true
+        printf '%s\n' "$MAN_ALL" | sudo tee "$MAN_MARKER" >/dev/null 2>&1 || true
       fi
     fi
     if command -v mandb >/dev/null 2>&1; then
       mandb >/dev/null 2>&1 || sudo mandb >/dev/null 2>&1 || true
     fi
   fi
-  rm -rf "$MAN_TMP_DIR"
   return 0
 }
 if [ "$ROLE" != "agent" ]; then
