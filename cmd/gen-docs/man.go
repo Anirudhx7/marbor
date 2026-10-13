@@ -62,18 +62,9 @@ func writeManExamples(b *strings.Builder, examples []string) {
 	}
 }
 
-// manifestName is the release-asset manifest listing exactly which man page
-// filenames this run generated - part of the CLI hardening work that made
-// man page delivery robust against partial or stale release assets.
-// install.sh (running on an end user's machine, with no Go toolchain
-// and no access to the registry) fetches this file from a release FIRST and,
-// if that succeeds, uses it to know which other man page files to fetch,
-// instead of relying on its own hardcoded MAN_PAGES list. That hardcoded list
-// stays only as a fallback for older releases published before this file
-// existed. Written deterministically (declaration order, one filename per
-// line) so two consecutive generator runs produce a byte-identical manifest.
-const manifestName = "MANIFEST.txt"
-
+// generateManPages writes every page into docs/man. Releases ship the whole
+// directory as one archive (marbor-man-pages.tar.gz, see .goreleaser.yaml), so
+// there is no separate file list to keep in sync: the archive is the list.
 func generateManPages(root *cli.Command) error {
 	if err := os.MkdirAll(filepath.Join("docs", "man"), 0755); err != nil {
 		return err
@@ -83,19 +74,12 @@ func generateManPages(root *cli.Command) error {
 	if err := os.WriteFile(filepath.Join("docs", "man", rootPage), []byte(genRootMan(root)), 0644); err != nil {
 		return err
 	}
-	names := []string{rootPage}
 	for _, g := range groupPageCommands(root) {
 		name := pageSlug(root, g) + ".1"
 		path := filepath.Join("docs", "man", name)
 		if err := os.WriteFile(path, []byte(genGroupMan(root, g)), 0644); err != nil {
 			return err
 		}
-		names = append(names, name)
-	}
-
-	manifest := strings.Join(names, "\n") + "\n"
-	if err := os.WriteFile(filepath.Join("docs", "man", manifestName), []byte(manifest), 0644); err != nil {
-		return err
 	}
 	return nil
 }
