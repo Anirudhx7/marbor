@@ -1,0 +1,66 @@
+name: Release check
+
+# Builds the release the way the release workflow would (goreleaser snapshot:
+# binaries, man-page archive, checksums and the Docker images) and checks what
+# came out with scripts/release-check.sh. Nothing is published.
+#
+# Two uses:
+#   - release.yml calls this before it publishes, so a tag that would ship a
+#     broken release stops here instead of reaching users.
+#   - it runs on pull requests that touch release packaging, so the problem
+#     shows up in review rather than at tag time.
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.goreleaser.yaml'
+      - 'Dockerfile'
+      - 'Dockerfile.goreleaser'
+      - 'install.sh'
+      - 'uninstall.sh'
+      - 'docs/man/**'
+      - 'cmd/gen-docs/**'
+      - 'cmd/marbor/**'
+      - 'cmd/marbor-agent/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'scripts/release-check.sh'
+      - '.github/workflows/release-check.yml'
+      - '.github/workflows/release.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  release-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: '1.26'
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '20'
+
+      - name: Set up QEMU
+        # The release builds an arm64 image on an amd64 runner.
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        with:
+          platforms: arm64
+
+      - name: Build the release without publishing it
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7
+        with:
+          version: '~> v2'
+          args: release --snapshot --clean --skip=announce
+
+      - name: Check the built release
+        run: bash scripts/release-check.sh
