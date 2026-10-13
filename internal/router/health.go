@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -613,6 +614,9 @@ func isLocalNode(rawURL string) bool {
 	// literals against this host's own interface addresses - no DNS
 	// resolution here, since that would add latency to a hot-path call for
 	// every plain hostname (including genuinely remote ones).
+	// An IPv6 link-local literal may carry a zone (fe80::1%eth0); the interface
+	// address set is zone-less, so drop the zone before parsing.
+	host, _, _ = strings.Cut(host, "%")
 	ip := net.ParseIP(host)
 	if ip == nil {
 		return false
