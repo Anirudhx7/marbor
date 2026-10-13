@@ -49,9 +49,11 @@ fi
 # A root-level file's dirname is "." - go test needs that exact form, not "./.".
 packages=$(echo "$changed_files" | xargs -n1 dirname | sort -u | awk '{ if ($0 == ".") print "."; else print "./" $0 }')
 
-# A change that deletes a whole package leaves a changed path with no directory
-# behind it, and `go test` on it fails setup. Only test packages that still exist.
-packages=$(echo "$packages" | while read -r p; do [ -d "$p" ] && echo "$p"; done || true)
+# A change that deletes or moves a whole package leaves a changed path whose
+# directory is gone - or still exists but holds no .go files any more (the repo
+# root after its package main moved to cmd/marbor) - and `go test` on either
+# fails setup. Only test packages that still contain Go source.
+packages=$(echo "$packages" | while read -r p; do ls "$p"/*.go >/dev/null 2>&1 && echo "$p"; done || true)
 if [ -z "$packages" ]; then
   echo "Sanity: every changed package was deleted - skipping (nothing left to test)."
   exit 0

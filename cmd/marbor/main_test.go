@@ -275,7 +275,7 @@ func goListDeps(t *testing.T, importPath string) map[string]bool {
 // API - proven here by showing the capability isn't even compiled into the
 // binary, not merely unreachable at runtime.
 func TestAgentBinary_HasNoControlPlaneCapability(t *testing.T) {
-	deps := goListDeps(t, "./cmd/marbor-agent")
+	deps := goListDeps(t, "github.com/Anirudhx7/marbor/cmd/marbor-agent")
 	for _, forbidden := range controlPlaneOnlyPackages {
 		if deps[forbidden] {
 			t.Errorf("cmd/marbor-agent depends on %s - the agent binary must never be capable of starting the Marbor control plane", forbidden)
@@ -308,12 +308,12 @@ func TestAgentBinary_HasNoControlPlaneCapability(t *testing.T) {
 // signal than a package-level import that Go's model can't help but retain
 // anyway.
 func TestServerBinary_DoesNotDependOnAgentRuntime(t *testing.T) {
-	rootGoFiles, err := filepath.Glob("*.go")
+	goFiles, err := filepath.Glob("*.go")
 	if err != nil {
-		t.Fatalf("globbing root .go files: %v", err)
+		t.Fatalf("globbing .go files in the marbor command's package dir: %v", err)
 	}
 	forbiddenCalls := []string{"marboragent.Run(", "service.New()"}
-	for _, path := range rootGoFiles {
+	for _, path := range goFiles {
 		if strings.HasSuffix(path, "_test.go") {
 			continue // this file itself references these strings in comments/assertions above.
 		}

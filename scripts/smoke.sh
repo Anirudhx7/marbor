@@ -34,7 +34,7 @@ else
   check_db="$(mktemp)" || fail "mktemp failed while creating check_db"
   mv "$check_db" "$check_db.db" || fail "failed to add .db suffix to check_db"
   check_db="$check_db.db"
-  go build -o "$check_bin" . || fail "build for marbor.demo.db drift check failed"
+  go build -o "$check_bin" ./cmd/marbor || fail "build for marbor.demo.db drift check failed"
   "$check_bin" -db "$check_db" -seed-node "name=_schema_init,url=http://init,runtime=ollama" >/dev/null 2>&1 \
     || fail "seed-node step failed against freshly migrated schema"
   sqlite3 "$check_db" < scripts/seed_demo.sql || fail "seed_demo.sql failed against freshly migrated schema"
@@ -113,7 +113,7 @@ if ! command -v go &>/dev/null; then
   echo "go not found on PATH, skipping marbor CLI check" >&2
 else
   cli_bin="$(mktemp)" || fail "mktemp failed while creating cli_bin"
-  go build -o "$cli_bin" . || fail "build for marbor CLI check failed"
+  go build -o "$cli_bin" ./cmd/marbor || fail "build for marbor CLI check failed"
 
   "$cli_bin" status --server "http://localhost:8080" >/dev/null \
     || fail "marbor status against live demo stack failed"
