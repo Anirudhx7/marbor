@@ -4,6 +4,9 @@
 /marbor.exe
 /marbor-agent
 /marbor-agent.exe
+# Same names if someone runs a bare `go build` inside a cmd directory.
+/cmd/marbor/marbor
+/cmd/marbor-agent/marbor-agent
 ui/node_modules/
 internal/admin/web/dist/
 *.exe
