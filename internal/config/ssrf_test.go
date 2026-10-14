@@ -43,6 +43,9 @@ func TestValidateNodeURL(t *testing.T) {
 		"http://123456",     // 0.1.226.64
 		"http://1e3.lan",
 		"http://0x1.example.com",
+		"http://[::1%25lo]:11434",     // zoned loopback stays allowed
+		"http://[fd00::1%25eth0]/",    // zoned unique-local (private) stays allowed
+		"http://[2001:db8::1%25eth0]", // zoned global stays allowed
 	}
 	for _, u := range allowed {
 		if err := ValidateNodeURL(u); err != nil {
@@ -121,6 +124,13 @@ func TestValidateNodeURL(t *testing.T) {
 		"http://0xE0.0.0.1",
 		"http://[ff02::1]",
 		"http://[fe80::1]",
+
+		// A zone ID does not change which address the OS reaches (RFC 6874
+		// %25 form).
+		"http://[fe80::1%25eth0]:11434",
+		"http://[fe80::1%25eth0]/",
+		"http://[ff02::1%25eth0]/",
+		"http://[::ffff:169.254.169.254%25eth0]/",
 
 		// A bare 0x reads as 0, so these are 169.254.169.0 and 169.254.0.0. A
 		// resolver that accepts a bare 0x must not reach link-local, so they

@@ -68,8 +68,14 @@ func isLinkLocalIP(ip net.IP) bool {
 // covers the legacy IPv4 spellings that some C resolvers (notably glibc)
 // accept: one to four dot-separated decimal, 0x hex or leading-zero parts (for
 // example "2852039166" or "0xA9.0xFE.0xA9.0xFE") where the last part fills the
-// remaining bytes, and one trailing dot. See parseLegacyIPv4 for the grammar.
+// remaining bytes, one trailing dot, and an IPv6 zone suffix. See parseLegacyIPv4 for the grammar.
 func isLinkLocalHost(host string) bool {
+	// net.ParseIP rejects a zone ("fe80::1%eth0", which url.Parse returns
+	// from "[fe80::1%25eth0]"), yet the OS resolver accepts it and reaches
+	// the same link-local address, so judge the address alone.
+	if addr, _, ok := strings.Cut(host, "%"); ok {
+		host = addr
+	}
 	if ip := net.ParseIP(host); ip != nil {
 		return isLinkLocalIP(ip)
 	}
