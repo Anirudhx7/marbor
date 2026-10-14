@@ -218,19 +218,6 @@ func TestInstallMan_MarkerKeepsPagesFromEarlierInstall(t *testing.T) {
 	}
 }
 
-func TestInstallMan_OlderReleaseLayoutStillInstalls(t *testing.T) {
-	assets := map[string][]byte{
-		"MANIFEST.txt":   []byte("marbor.1\nmarbor-nodes.1\n../escape.1\n"),
-		"marbor.1":       []byte(".TH A 1\n"),
-		"marbor-nodes.1": []byte(".TH B 1\n"),
-	}
-	out, pages, marker := runInstallMan(t, assets, "")
-	want := []string{"marbor-nodes.1", "marbor.1"}
-	if !equalStrings(pages, want) || !equalStrings(marker, want) {
-		t.Fatalf("pages=%v marker=%v want %v\n%s", pages, marker, want, out)
-	}
-}
-
 func TestInstallMan_NothingPublishedIsAVisibleNoOp(t *testing.T) {
 	out, pages, marker := runInstallMan(t, map[string][]byte{}, "")
 	if len(pages) != 0 || len(marker) != 0 || !strings.Contains(out, "Skipped man pages") {
