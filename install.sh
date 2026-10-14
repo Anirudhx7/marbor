@@ -312,11 +312,6 @@ fi
 # into MAN_DIR. Never fails the overall install: every step is guarded, and
 # the whole function runs in a subshell with "|| true" on top so a `set -e`
 # failure inside it can't abort the rest of the install.
-#
-# Releases cut before that archive existed published every page as its own
-# asset plus a MANIFEST.txt listing them. install_man_pages_legacy still
-# fetches those, so installing while "latest" is such a release keeps working.
-# Delete it once no release in use has the old layout.
 
 # fetch_quiet <url> <dest>: silent download with curl or wget; false on any
 # failure or an empty result.
@@ -351,26 +346,6 @@ man_archive_verified() {
   [ "$MV_EXPECTED" = "$MV_ACTUAL" ]
 }
 
-# install_man_pages_legacy: stage pages from a pre-archive release into
-# MAN_STAGE, one download per page. MANIFEST.txt lists the pages; the short
-# built-in list is only for a release that lacks even that.
-install_man_pages_legacy() {
-  MAN_PAGES_FALLBACK="marbor.1 marbor-models.1 marbor-runtime.1 marbor-nodes.1 marbor-node.1 marbor-key.1 marbor-requests.1"
-  if fetch_quiet "$MAN_BASE_URL/MANIFEST.txt" "$MAN_TMP_DIR/MANIFEST.txt"; then
-    MAN_PAGES="$(tr '\n' ' ' < "$MAN_TMP_DIR/MANIFEST.txt")"
-  else
-    MAN_PAGES="$MAN_PAGES_FALLBACK"
-  fi
-  for page in $MAN_PAGES; do
-    case "$page" in
-      */*|*..*) continue ;;
-      marbor*.1) ;;
-      *) continue ;;
-    esac
-    fetch_quiet "$MAN_BASE_URL/$page" "$MAN_STAGE/$page" || rm -f "$MAN_STAGE/$page"
-  done
-}
-
 install_man_pages() {
   MAN_DIR="/usr/local/share/man/man1"
   MAN_MARKER="$MAN_DIR/.marbor-installed-manifest"
@@ -402,7 +377,7 @@ install_man_pages() {
       MAN_STAGE="$MAN_UNPACK/man1"
     fi
   else
-    install_man_pages_legacy
+    MAN_SKIPPED=true; echo "  [!] Skipped man pages: $MAN_ARCHIVE is not published with this release."
   fi
 
   # Keep only regular files with a plain marbor*.1 name. A symlink or an odd
