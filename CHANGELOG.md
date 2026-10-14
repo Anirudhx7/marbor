@@ -6,6 +6,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **A node URL with an IPv6 zone ID can no longer reach a link-local address.** `http://[fe80::1%25eth0]:11434` was accepted as a node URL even though `http://[fe80::1]:11434` is refused, because the zone suffix hid the address from the link-local check. The check now ignores the zone, so both forms are refused.
+- **The standalone demo's built-in database matches the demo fixture again.** `demo/docker-compose.standalone.yml` carries its own copy of the demo database and it had drifted from `demo/marbor.demo.db`. `make demo-db` now regenerates both, and a test fails if they differ.
+
+### Changed
+- **`install.sh` no longer installs man pages from releases older than v0.25.0.** Those publish them as loose files rather than the archive; the installer now says the archive is missing and skips the man pages (the binary install is unaffected).
+
 ## [0.25.0] - 2026-10-13
 
 ### Added
