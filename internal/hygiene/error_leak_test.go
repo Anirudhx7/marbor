@@ -42,22 +42,24 @@ var rawErrRefPattern = regexp.MustCompile(`\berr\b`)
 //
 // The agent action call sites (runtime start/stop/restart/logs, list/delete
 // node models, health check, unload model) all dispatch to a *ViaAgent
-// helper whose error can be either a clean agent-reported domain message
-// (e.g. "unsupported: no unload primitive for runtime \"vllm\"", or a
-// systemd/process driver failure text) that is deliberately meant to surface
-// to the client - locked in by TestHandleNodeRuntimeAction_AgentErrorPassthrough,
+// helper whose error is one of two things. Either a clean agent-reported
+// domain message (e.g. "unsupported: no unload primitive for runtime
+// \"vllm\"", or a systemd/process driver failure text) that is deliberately
+// meant to surface to the client - locked in by
+// TestHandleNodeRuntimeAction_AgentErrorPassthrough,
 // TestHandleNodeRuntimeLogs_AgentErrorPassthrough, and
 // TestHandleUnloadModel_AgentUnsupportedRuntimeReturnsError - or a
-// transport-level failure (dial/TLS/timeout) reaching the agent. Those
-// forms can't be told apart once collapsed into a single Go `error` at this call
-// site, so the fix is applied at the source instead: every *ViaAgent
-// helper's HTTP-client Do() failure branch already logs the real error
-// server-side and returns a generic sentinel message (see
-// runtimeActionViaAgent, runtimeLogsViaAgent, listModelsViaAgent,
-// deleteModelViaAgent, healthCheckViaAgent, unloadModelViaAgent) - so
-// err.Error() at these call sites is always one of those safe forms,
-// never raw network/TLS internals. TestAgentHelpersDoNotWrapTransportError
-// guards that those helpers keep their side of this bargain.
+// transport-level failure (dial/TLS/timeout) reaching the agent.
+//
+// The two cannot be told apart once collapsed into a single Go error at the
+// call site, so the fix is applied at the source: every *ViaAgent helper's
+// HTTP-client Do() failure branch logs the real error server-side and returns
+// a generic sentinel message (runtimeActionViaAgent, runtimeLogsViaAgent,
+// listModelsViaAgent, deleteModelViaAgent, healthCheckViaAgent,
+// unloadModelViaAgent). So err.Error() at these call sites is always one of
+// the safe forms, never raw network/TLS internals.
+// TestAgentHelpersDoNotWrapTransportError guards that those helpers keep their
+// side of this bargain.
 //
 // The remaining entries are domain/validation-shaped errors that are
 // legitimately meant to reach the client as-is: key-expiry validation,
@@ -83,6 +85,8 @@ var rawErrRefPattern = regexp.MustCompile(`\berr\b`)
 //     observes, and the entry must be removed or reduced (never raised). This
 //     closes drift, not a deliberate swap of one exempted line for a
 //     different leaking line under the same key text.
+//   - When any file cannot be read or parsed, stale detection is skipped for
+//     ALL entries (the observed counts are incomplete), and the report says so.
 //   - A count of zero or less is rejected.
 //   - The enclosing function is the top-level function declaration, found
 //     with the Go parser. Closures count as their enclosing function; code
@@ -166,16 +170,28 @@ type leakReport struct {
 	ParseErrors []string
 	// ReadErrors name each file that could not be read.
 	ReadErrors []string
+	// StaleSkipped is set when stale detection did not run because of read or
+	// parse errors.
+	StaleSkipped bool
 }
 
-// Problems returns every finding in a stable order.
+const staleSkippedNotice = "stale-exception check skipped because of read or parse errors"
+
+// Problems returns every finding in a stable order: read errors (sorted),
+// parse errors, invalid entries, violations, stale entries, then the
+// skipped-stale notice when it applies.
 func (r leakReport) Problems() []string {
 	var out []string
-	out = append(out, r.ReadErrors...)
+	readErrs := append([]string(nil), r.ReadErrors...)
+	sort.Strings(readErrs)
+	out = append(out, readErrs...)
 	out = append(out, r.ParseErrors...)
 	out = append(out, r.Invalid...)
 	out = append(out, r.Violations...)
 	out = append(out, r.Stale...)
+	if r.StaleSkipped {
+		out = append(out, staleSkippedNotice)
+	}
 	return out
 }
 
@@ -278,16 +294,10 @@ func invalidExceptionCounts(allowed map[string]int) []string {
 
 // runErrorLeakScan scans every file (keyed by forward-slash relative path)
 // against allowed and aggregates all findings in one deterministic report.
-// Stale detection is skipped when a file failed to parse, since the observed
-// counts would be incomplete.
-func runErrorLeakScan(files map[string][]byte, allowed map[string]int) leakReport {
-	return runErrorLeakScanWithReadErrors(files, allowed, nil)
-}
-
-// runErrorLeakScanWithReadErrors is runErrorLeakScan for a caller that could
-// not read some files: those errors are reported, and stale detection is
-// skipped for the same reason as for a parse failure.
-func runErrorLeakScanWithReadErrors(files map[string][]byte, allowed map[string]int, readErrors []string) leakReport {
+// readErrors are files the caller could not read; they are reported as-is.
+// Stale detection is skipped for all entries when any file failed to read or
+// parse, since the observed counts would be incomplete.
+func runErrorLeakScan(files map[string][]byte, allowed map[string]int, readErrors []string) leakReport {
 	rels := make([]string, 0, len(files))
 	for rel := range files {
 		rels = append(rels, rel)
@@ -309,8 +319,28 @@ func runErrorLeakScanWithReadErrors(files map[string][]byte, allowed map[string]
 	r.Invalid = invalidExceptionCounts(allowed)
 	if len(r.ParseErrors) == 0 && len(r.ReadErrors) == 0 {
 		r.Stale = staleExceptions(allowed, r.Observed)
+	} else {
+		r.StaleSkipped = true
 	}
 	return r
+}
+
+// readAdminFiles reads every path through read and returns the contents keyed
+// by repo-relative path, plus one message per unreadable file (also by
+// repo-relative path).
+func readAdminFiles(rootDir string, paths []string, read func(string) ([]byte, error)) (map[string][]byte, []string) {
+	files := map[string][]byte{}
+	var readErrors []string
+	for _, path := range paths {
+		rel := strings.TrimPrefix(path, rootDir+"/")
+		data, err := read(path)
+		if err != nil {
+			readErrors = append(readErrors, fmt.Sprintf("reading %s: %v", rel, err))
+			continue
+		}
+		files[rel] = data
+	}
+	return files, readErrors
 }
 
 // TestNoRawErrorLeaksToClient is the standing guard for the bug class fixed
@@ -330,18 +360,8 @@ func TestNoRawErrorLeaksToClient(t *testing.T) {
 		t.Fatal("adminGoFiles returned nothing - check the git invocation, not the pattern")
 	}
 
-	files := map[string][]byte{}
-	var readErrors []string
-	for _, path := range paths {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			readErrors = append(readErrors, fmt.Sprintf("reading %s: %v", path, err))
-			continue
-		}
-		files[strings.TrimPrefix(path, rootDir+"/")] = data
-	}
-
-	for _, p := range runErrorLeakScanWithReadErrors(files, errorLeakExceptions, readErrors).Problems() {
+	files, readErrors := readAdminFiles(rootDir, paths, os.ReadFile)
+	for _, p := range runErrorLeakScan(files, errorLeakExceptions, readErrors).Problems() {
 		t.Error(p)
 	}
 }
@@ -425,8 +445,26 @@ const (
 
 func leakKey(file, fn, text string) string { return file + "|" + fn + "|" + text }
 
+// leakDecl renders a function whose signature (name and receiver) is sig.
+func leakDecl(sig string, lines ...string) string {
+	return "func " + sig + " {\n\t" + strings.Join(lines, "\n\t") + "\n}\n"
+}
+
 func leakFunc(name string, lines ...string) string {
-	return "func " + name + "() {\n\t" + strings.Join(lines, "\n\t") + "\n}\n"
+	return leakDecl(name+"()", lines...)
+}
+
+// lineOf returns the 1-based number of the first line of src whose trimmed
+// text is text.
+func lineOf(t *testing.T, src []byte, text string) int {
+	t.Helper()
+	for i, l := range strings.Split(string(src), "\n") {
+		if strings.TrimSpace(l) == text {
+			return i + 1
+		}
+	}
+	t.Fatalf("line %q not found in fixture", text)
+	return 0
 }
 
 func leakFile(funcs ...string) []byte {
@@ -435,7 +473,7 @@ func leakFile(funcs ...string) []byte {
 
 func scanOne(t *testing.T, file string, src []byte, allowed map[string]int) leakReport {
 	t.Helper()
-	return runErrorLeakScan(map[string][]byte{file: src}, allowed)
+	return runErrorLeakScan(map[string][]byte{file: src}, allowed, nil)
 }
 
 func requireClean(t *testing.T, r leakReport) {
@@ -504,7 +542,7 @@ func TestScanErrorLeaks_SameTextInOtherFileFails(t *testing.T) {
 	r := runErrorLeakScan(map[string][]byte{
 		leakFilePath:             src,
 		"internal/admin/more.go": src,
-	}, allowed)
+	}, allowed, nil)
 	requireProblem(t, r.Violations, "internal/admin/more.go")
 	if len(r.Stale) != 0 {
 		t.Fatalf("unexpected stale: %v", r.Stale)
@@ -589,7 +627,9 @@ func TestScanErrorLeaks_CRLFSourceKeysIdentical(t *testing.T) {
 func TestScanErrorLeaks_ParseErrorNamesFile(t *testing.T) {
 	t.Parallel()
 	r := scanOne(t, "internal/admin/broken.go", []byte("package admin\nfunc {{{\n"), nil)
-	requireProblem(t, r.Problems(), "internal/admin/broken.go", "parse")
+	if len(r.ParseErrors) != 1 || !strings.HasPrefix(r.ParseErrors[0], "internal/admin/broken.go: parse: ") {
+		t.Fatalf("expected one parse error prefixed with the file name, got %v", r.ParseErrors)
+	}
 }
 
 func TestScanErrorLeaks_CountNonPositiveRejected(t *testing.T) {
@@ -659,32 +699,104 @@ func TestScanErrorLeaks_PhysicalLinesIgnoreLineDirective(t *testing.T) {
 	}
 }
 
-func TestScanErrorLeaks_ReadErrorSuppressesStale(t *testing.T) {
+func TestScanErrorLeaks_ReadErrorSkipsStale(t *testing.T) {
 	t.Parallel()
 	key := leakKey(leakFilePath, "handleA", leakLine)
 	files := map[string][]byte{"internal/admin/other.go": leakFile(leakFunc("handleNew", leakLine))}
-	r := runErrorLeakScanWithReadErrors(files, map[string]int{key: 1}, []string{"reading internal/admin/admin.go: boom"})
+	r := runErrorLeakScan(files, map[string]int{key: 1}, []string{"reading internal/admin/admin.go: boom"})
 	if len(r.Stale) != 0 {
-		t.Fatalf("stale must be suppressed after a read error, got %v", r.Stale)
+		t.Fatalf("stale must be skipped after a read error, got %v", r.Stale)
 	}
-	requireProblem(t, r.Problems(), "reading internal/admin/admin.go: boom", "handleNew")
+	requireProblem(t, r.Problems(), "reading internal/admin/admin.go: boom", "handleNew", staleSkippedNotice)
 
-	// Control: without the read error the same input reports the stale entry.
-	requireProblem(t, runErrorLeakScan(files, map[string]int{key: 1}).Stale, key)
+	// Control: without the read error the same input reports the stale entry
+	// and no skipped notice.
+	c := runErrorLeakScan(files, map[string]int{key: 1}, nil)
+	requireProblem(t, c.Stale, key)
+	if c.StaleSkipped || strings.Contains(strings.Join(c.Problems(), "\n"), staleSkippedNotice) {
+		t.Fatalf("skipped notice must not appear when stale ran, got %v", c.Problems())
+	}
 }
 
-func TestScanErrorLeaks_ParseErrorSuppressesStaleButOthersStillScanned(t *testing.T) {
+func TestScanErrorLeaks_ParseErrorSkipsStale(t *testing.T) {
 	t.Parallel()
 	key := leakKey(leakFilePath, "handleA", leakLine)
 	r := runErrorLeakScan(map[string][]byte{
 		"internal/admin/broken.go": []byte("package admin\nfunc {{{\n"),
 		"internal/admin/other.go":  leakFile(leakFunc("handleNew", leakLine)),
-	}, map[string]int{key: 1})
+	}, map[string]int{key: 1}, nil)
 	if len(r.Stale) != 0 {
-		t.Fatalf("stale must be suppressed after a parse error, got %v", r.Stale)
+		t.Fatalf("stale must be skipped after a parse error, got %v", r.Stale)
 	}
 	requireProblem(t, r.ParseErrors, "internal/admin/broken.go")
 	requireProblem(t, r.Violations, "internal/admin/other.go", "handleNew")
+	requireProblem(t, r.Problems(), staleSkippedNotice)
+}
+
+func TestReadAdminFiles_ReadFailureIsReportedByRelativePath(t *testing.T) {
+	t.Parallel()
+	root := "/repo"
+	paths := []string{root + "/internal/admin/a.go", root + "/internal/admin/b.go"}
+	read := func(p string) ([]byte, error) {
+		if p == paths[1] {
+			return nil, errors.New("boom")
+		}
+		return []byte("package admin\n"), nil
+	}
+	files, readErrors := readAdminFiles(root, paths, read)
+	if _, ok := files["internal/admin/a.go"]; !ok || len(files) != 1 {
+		t.Fatalf("expected only a.go to be read, got %v", files)
+	}
+	want := []string{"reading internal/admin/b.go: boom"}
+	if !reflect.DeepEqual(readErrors, want) {
+		t.Fatalf("read errors: got %v want %v", readErrors, want)
+	}
+	// Wired through the scan, the failure surfaces and stale is skipped.
+	r := runErrorLeakScan(files, map[string]int{leakKey(leakFilePath, "h", leakLine): 1}, readErrors)
+	requireProblem(t, r.Problems(), want[0], staleSkippedNotice)
+}
+
+func TestLeakReport_ProblemsOrder(t *testing.T) {
+	t.Parallel()
+	r := leakReport{
+		ReadErrors:   []string{"read-b", "read-a"},
+		ParseErrors:  []string{"parse-1"},
+		Invalid:      []string{"invalid-1"},
+		Violations:   []string{"violation-1"},
+		Stale:        []string{"stale-1"},
+		StaleSkipped: true,
+	}
+	want := []string{"read-a", "read-b", "parse-1", "invalid-1", "violation-1", "stale-1", staleSkippedNotice}
+	if got := r.Problems(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("problem order:\n got %v\nwant %v", got, want)
+	}
+	if !reflect.DeepEqual(r.ReadErrors, []string{"read-b", "read-a"}) {
+		t.Fatalf("Problems must not reorder the report's own slice, got %v", r.ReadErrors)
+	}
+}
+
+func TestExitStderr(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"stderr is trimmed", &exec.ExitError{Stderr: []byte("  fatal: boom\n")}, ": fatal: boom"},
+		{"wrapped exit error", fmt.Errorf("wrap: %w", &exec.ExitError{Stderr: []byte("bad\n")}), ": bad"},
+		{"empty stderr", &exec.ExitError{}, ""},
+		{"whitespace-only stderr", &exec.ExitError{Stderr: []byte(" \n\t")}, ""},
+		{"not an exit error", errors.New("plain"), ""},
+		{"nil error", nil, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := exitStderr(tc.err); got != tc.want {
+				t.Fatalf("exitStderr = %q, want %q", got, tc.want)
+			}
+		})
+	}
 }
 
 func TestScanErrorLeaks_ParseErrorIsWrapped(t *testing.T) {
@@ -699,11 +811,15 @@ func TestScanErrorLeaks_ParseErrorIsWrapped(t *testing.T) {
 func TestScanErrorLeaks_ViolationsOrderedByFileThenLine(t *testing.T) {
 	t.Parallel()
 	src := leakFile(leakFunc("h", leakLine, leakLineAlt))
-	r := runErrorLeakScan(map[string][]byte{"b.go": src, "a.go": src}, nil)
+	r := runErrorLeakScan(map[string][]byte{"b.go": src, "a.go": src}, nil, nil)
 	if len(r.Violations) != 4 {
 		t.Fatalf("expected 4 violations, got %v", r.Violations)
 	}
-	prefixes := []string{"a.go:4", "a.go:5", "b.go:4", "b.go:5"}
+	l1, l2 := lineOf(t, src, leakLine), lineOf(t, src, leakLineAlt)
+	prefixes := []string{
+		fmt.Sprintf("a.go:%d", l1), fmt.Sprintf("a.go:%d", l2),
+		fmt.Sprintf("b.go:%d", l1), fmt.Sprintf("b.go:%d", l2),
+	}
 	for i, p := range prefixes {
 		if !strings.HasPrefix(r.Violations[i], p+" ") {
 			t.Fatalf("violation %d should start with %q, got %q", i, p, r.Violations[i])
@@ -717,6 +833,9 @@ func TestScanErrorLeaks_ZeroCountWithObservedLeakIsViolationAndInvalid(t *testin
 	r := scanOne(t, leakFilePath, leakFile(leakFunc("handleA", leakLine)), allowed)
 	requireProblem(t, r.Violations, "handleA", "raw error leaked")
 	requireProblem(t, r.Invalid, "positive")
+	if len(r.Stale) != 0 {
+		t.Fatalf("a non-positive count must not also be reported stale, got %v", r.Stale)
+	}
 }
 
 func TestScanErrorLeaks_SinkDetection(t *testing.T) {
@@ -724,6 +843,9 @@ func TestScanErrorLeaks_SinkDetection(t *testing.T) {
 	const encodeLine = `json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})`
 	const httpErrLine = "http.Error(w, err.Error(), 500)"
 	const commentLine = "// writeJSONError(w, 400, err.Error())"
+	const encodeNoErr = `json.NewEncoder(w).Encode(map[string]string{"error": "bad"})`
+	const wordBoundaryLine = `writeJSONError(w, 400, errs.Message+myerr+Err)`
+	const twoSinkLine = "writeJSONError(w, 400, err.Error()); http.Error(w, err.Error(), 500)"
 	cases := []struct {
 		name string
 		body []string
@@ -732,6 +854,10 @@ func TestScanErrorLeaks_SinkDetection(t *testing.T) {
 		{"sink without err", []string{`writeJSONError(w, 400, "bad request")`}, map[string]int{}},
 		{"err without sink", []string{"x := err"}, map[string]int{}},
 		{"safe helper with err", []string{`writeServerError(w, r, "failed", err)`}, map[string]int{}},
+		{"Encode error field without err", []string{encodeNoErr}, map[string]int{}},
+		{"http.Error without err", []string{`http.Error(w, "bad", 500)`}, map[string]int{}},
+		{"err only as part of longer identifiers", []string{wordBoundaryLine}, map[string]int{}},
+		{"two sinks on one line count once", []string{twoSinkLine}, map[string]int{leakKey("p.go", "h", twoSinkLine): 1}},
 		{"http.Error", []string{httpErrLine}, map[string]int{leakKey("p.go", "h", httpErrLine): 1}},
 		{"inline Encode error field", []string{encodeLine}, map[string]int{leakKey("p.go", "h", encodeLine): 1}},
 		// Known limits, pinned so a change in behavior is a conscious decision.
@@ -752,15 +878,22 @@ func TestScanErrorLeaks_SinkDetection(t *testing.T) {
 
 func TestScanErrorLeaks_SameMethodNameOnDifferentReceiversSharesBudget(t *testing.T) {
 	t.Parallel()
-	src := []byte("package admin\n\nfunc (a *A) Same() {\n\t" + leakLine + "\n}\n\nfunc (b *B) Same() {\n\t" + leakLine + "\n}\n")
-	requireClean(t, scanOne(t, "p.go", src, map[string]int{leakKey("p.go", "Same", leakLine): 2}))
-	r := scanOne(t, "p.go", src, map[string]int{leakKey("p.go", "Same", leakLine): 1})
-	requireProblem(t, r.Violations, "Same")
+	src := leakFile(leakDecl("(a *A) Same()", leakLine), leakDecl("(b *B) Same()", leakLine))
+	key := leakKey("p.go", "Same", leakLine)
+	requireClean(t, scanOne(t, "p.go", src, map[string]int{key: 2}))
+
+	r := scanOne(t, "p.go", src, map[string]int{key: 1})
+	if !reflect.DeepEqual(r.Observed, map[string]int{key: 2}) {
+		t.Fatalf("both receivers must share one key, got %v", r.Observed)
+	}
+	if len(r.Violations) != 1 || !strings.Contains(r.Violations[0], "(Same)") {
+		t.Fatalf("expected exactly one violation for the second copy, got %v", r.Violations)
+	}
 }
 
 func TestScanErrorLeaks_SinkOutsideFunctionsIsPkgLevel(t *testing.T) {
 	t.Parallel()
-	src := []byte("package admin\n\nfunc A() {}\n\nvar x = writeJSONError(w, 1, err.Error())\n\n// writeJSONError(w, 2, err.Error())\nfunc B() {}\n")
+	src := leakFile("func A() {}\n", "var x = writeJSONError(w, 1, err.Error())\n", "// writeJSONError(w, 2, err.Error())\nfunc B() {}\n")
 	r := scanOne(t, "p.go", src, nil)
 	want := map[string]int{
 		"p.go|<pkg-level>|var x = writeJSONError(w, 1, err.Error())": 1,
