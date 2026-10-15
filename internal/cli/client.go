@@ -644,16 +644,20 @@ func (c *Client) Health() (*HealthResp, error) {
 // consumer cares about (a strict subset; unknown fields are ignored so this
 // stays forward-compatible with new fields the server adds later).
 type NodeResp struct {
-	ID            string            `json:"id"`
-	Name          string            `json:"name"`
-	Host          string            `json:"host"`
-	Port          int               `json:"port"`
-	GPUModel      string            `json:"gpuModel"`
-	VRAMTotalMB   int64             `json:"vramTotalMB"`
-	VRAMUsedMB    int64             `json:"vramUsedMB"`
-	Runtime       string            `json:"runtime"`
-	Health        string            `json:"health"`
-	Draining      bool              `json:"draining"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Host        string `json:"host"`
+	Port        int    `json:"port"`
+	GPUModel    string `json:"gpuModel"`
+	VRAMTotalMB int64  `json:"vramTotalMB"`
+	VRAMUsedMB  int64  `json:"vramUsedMB"`
+	Runtime     string `json:"runtime"`
+	Health      string `json:"health"`
+	Draining    bool   `json:"draining"`
+	// Signals are the placement signals the server says this node matches
+	// (healthy, degraded, draining, down, agent, warm, pressure). Absent
+	// from servers that predate filtering, which is how the CLI tells.
+	Signals       []string          `json:"signals,omitempty"`
 	LoadedModels  []json.RawMessage `json:"loadedModels"`
 	ActiveConns   int32             `json:"activeConns"`
 	RequestsTotal int64             `json:"requestsTotal"`
@@ -823,7 +827,26 @@ func (c *Client) NodeTLSProbe(name string) (string, error) {
 
 // Nodes calls GET /admin/v1/nodes (session-authed).
 func (c *Client) Nodes() ([]NodeResp, error) {
-	resp, err := c.doRequest(http.MethodGet, "/admin/v1/nodes", true)
+	return c.NodesFiltered("", "")
+}
+
+// NodesFiltered calls GET /admin/v1/nodes with the server-side filter
+// parameters: signals is a comma list (any match keeps a node) and search is
+// a case-insensitive substring of the node name or GPU model. Empty values
+// are not sent, so an unfiltered call is the plain list request.
+func (c *Client) NodesFiltered(signals, search string) ([]NodeResp, error) {
+	path := "/admin/v1/nodes"
+	q := url.Values{}
+	if signals != "" {
+		q.Set("signal", signals)
+	}
+	if search != "" {
+		q.Set("q", search)
+	}
+	if len(q) > 0 {
+		path += "?" + q.Encode()
+	}
+	resp, err := c.doRequest(http.MethodGet, path, true)
 	if err != nil {
 		return nil, err
 	}

@@ -60,7 +60,27 @@ show the CLI's saved identity (live-verified)
 
 list nodes known to marbor
 
+With --signal, lists only nodes that match any of the given signals, the same ones as the dashboard's filter chips: healthy,
+degraded, draining, down, agent, warm, pressure. healthy and degraded leave out draining nodes; a node that is down and draining
+matches both down and draining; agent means a live marbor agent is reporting; warm means a model is loaded; pressure means used
+VRAM is at least 90% of a known total (a node without measured VRAM never matches, so "no pressure" there means unknown, not ok).
+--search keeps nodes whose name or GPU model contains the text, ignoring case, and combines with --signal. Giving --signal more
+than once adds to the list. No match is an empty table (header only) or [] with --json and still exits 0, so scripts that act on
+matches should count rows rather than check the exit status.
+
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--signal string` - only nodes matching any of these signals, comma-separated or repeated: healthy, degraded, draining, down, agent, warm, pressure
+- `--search string` - only nodes whose name or GPU model contains this text (case-insensitive)
+
+Examples:
+
+```bash
+marbor nodes --signal degraded,down --json | jq length
+marbor nodes --signal pressure --search a100
+```
 
 requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).
 

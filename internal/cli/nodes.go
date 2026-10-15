@@ -96,15 +96,24 @@ func runNodesConfirmTLS(flags *globalFlags, name, fingerprint string, stdout, st
 }
 
 // runNodes implements `marbor nodes` - GET /admin/v1/nodes, session-authed.
-func runNodes(flags *globalFlags, stdout, stderr io.Writer) int {
+// --signal and --search are passed to the server as-is; the server owns the
+// signal definitions and rejects an unknown id, so the CLI keeps no copy.
+func runNodes(ctx *RunCtx) int {
+	flags, stdout, stderr := ctx.Flags, ctx.Stdout, ctx.Stderr
+	signals := strings.Trim(ctx.String("signal"), ",")
+	search := ctx.String("search")
+
 	client, err := authenticatedClient(flags)
 	if err != nil {
 		return reportError(err, stderr)
 	}
 
-	nodes, err := client.Nodes()
+	nodes, err := client.NodesFiltered(signals, search)
 	if err != nil {
 		return reportError(err, stderr)
+	}
+	if (ctx.IsSet("signal") || ctx.IsSet("search")) && lacksSignals(nodes) {
+		return reportError(serverErrorf("this server is too old for filtering nodes; upgrade marbor on the server, or run marbor nodes without --signal/--search"), stderr)
 	}
 
 	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, nodes); handled {
@@ -137,6 +146,19 @@ func runNodes(flags *globalFlags, stdout, stderr io.Writer) int {
 	}
 	printWarmupWarnings(stdout, nodes)
 	return ExitOK
+}
+
+// lacksSignals reports whether any node came back without a signals field at
+// all (not even an empty array), which only a server that predates node
+// filtering does. Such a server also ignores the filter parameters, so a
+// filtered request would silently return every node.
+func lacksSignals(nodes []NodeResp) bool {
+	for _, n := range nodes {
+		if n.Signals == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // printWarmupWarnings lists every node's keep-warm warnings under the table,

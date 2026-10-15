@@ -95,6 +95,12 @@ func TestHelpGoldens(t *testing.T) {
 		checkGolden(t, "key", buf.Bytes())
 	})
 
+	t.Run("nodes", func(t *testing.T) {
+		var buf bytes.Buffer
+		writeHelp(&buf, findCommand(root(), "nodes"))
+		checkGolden(t, "nodes", buf.Bytes())
+	})
+
 	t.Run("requests", func(t *testing.T) {
 		var buf bytes.Buffer
 		printRequestsUsage(&buf)

@@ -159,6 +159,14 @@ The session saved by "marbor login" (mode 0600), under the OS user config dir - 
 .SH EXAMPLES
 .PP
 .nf
+marbor nodes \-\-signal degraded,down \-\-json | jq length
+.fi
+.PP
+.nf
+marbor nodes \-\-signal pressure \-\-search a100
+.fi
+.PP
+.nf
 marbor fit
 .fi
 .PP
