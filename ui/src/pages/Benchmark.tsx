@@ -17,6 +17,7 @@ import { useDemoMode } from '../hooks/useDemoMode';
 import { useTimezone } from '../hooks/useTimezone';
 import { formatDateTimeInZone } from '../lib/time';
 import { Modal } from '../components/Modal';
+import { Button } from '../components/Button';
 import { EmptyState } from '../components/EmptyState';
 
 function fmtMs(ms: number): string {
@@ -315,10 +316,10 @@ export function Benchmark() {
             {runError && <p className="text-sm text-destructive">{runError}</p>}
             <div className="flex gap-2">
               {!running ? (
-                <button onClick={handleRun} disabled={!selectedNode || !selectedModel}
-                  className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors shadow-sm">
+                <Button onClick={handleRun} disabled={!selectedNode || !selectedModel}
+                  className="flex items-center gap-2">
                   <Zap className="w-4 h-4" /> Run Benchmark
-                </button>
+                </Button>
               ) : (
                 <button onClick={cancel}
                   className="flex items-center gap-2 px-4 py-2 bg-destructive text-destructive-foreground text-sm font-medium rounded-lg hover:bg-destructive/90 transition-colors shadow-sm">
@@ -416,12 +417,11 @@ export function Benchmark() {
             >
               Cancel
             </button>
-            <button
+            <Button
               onClick={confirmRun}
-              className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
             >
               Run Benchmark
-            </button>
+            </Button>
           </div>
         </div>
       </Modal>

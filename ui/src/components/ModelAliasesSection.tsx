@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Plus, Trash2, Tags, Pencil, Check, X } from 'lucide-react';
 import { Badge } from './Badge';
 import { Modal } from './Modal';
+import { Button } from './Button';
 import { CustomCombobox } from './Select';
 import { fetchModelAliases, setModelAlias, deleteModelAlias } from '../lib/api';
 import { getMockModelAliases, setMockModelAlias, deleteMockModelAlias } from '../lib/mockData';
@@ -274,14 +275,13 @@ export function ModelAliasesSection({ demoMode, knownModelNames }: ModelAliasesS
             >
               Cancel
             </button>
-            <button
+            <Button
               type="button"
               onClick={() => aliasToOverwrite && saveAlias(aliasToOverwrite.existing.alias, aliasToOverwrite.target)}
               disabled={saving}
-              className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm disabled:opacity-50"
             >
               Re-point alias
-            </button>
+            </Button>
           </div>
         </div>
       </Modal>

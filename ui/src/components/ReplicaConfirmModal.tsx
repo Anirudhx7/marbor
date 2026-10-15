@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Modal } from './Modal';
+import { buttonClasses } from '../lib/buttonClasses';
 import type { ReplicaSuggestion } from '../lib/api';
 import type { GPUNode } from '../types';
 import { driftRows, launcherLabel, outsideDeclarers, roleChangeLine, workersOf } from '../lib/replicaGroups';
@@ -23,7 +24,7 @@ interface ReplicaConfirmModalProps {
 }
 
 const cancelClass = 'px-4 py-2 min-h-[40px] text-sm font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
-const submitClass = 'px-4 py-2 min-h-[40px] bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm';
+const submitClass = `${buttonClasses('primary', 'md')} min-h-[40px]`;
 
 function ConfirmBody({ s }: { s: ReplicaSuggestion }) {
   const workers = workersOf(s);

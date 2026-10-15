@@ -18,6 +18,7 @@ import { Badge } from '../components/Badge';
 import { EmptyState } from '../components/EmptyState';
 import { StatusDot } from '../components/StatusDot';
 import { Modal } from '../components/Modal';
+import { Button } from '../components/Button';
 import { CustomSelect, CustomCombobox, CustomTagCombobox } from '../components/Select';
 import { SavingsCard } from '../components/SavingsCard';
 import { Toggle } from '../components/Toggle';
@@ -672,13 +673,13 @@ export function Routing() {
           <h2 className="text-lg font-semibold text-foreground">Override rules</h2>
           <p className="text-sm text-muted-foreground">Fine-grained control for specific models or API keys</p>
         </div>
-        <button
+        <Button
           onClick={() => setIsCreateModalOpen(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm self-start sm:self-auto"
+          className="flex items-center gap-2 self-start sm:self-auto"
         >
           <Plus className="w-4 h-4" />
           Add Rule
-        </button>
+        </Button>
       </div>
 
       {/* Rules Table */}
@@ -1080,12 +1081,11 @@ export function Routing() {
             >
               Cancel
             </button>
-            <button
+            <Button
               onClick={handleCreateRule}
-              className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
             >
               Add Rule
-            </button>
+            </Button>
           </div>
         </div>
       </Modal>
@@ -1141,12 +1141,11 @@ export function Routing() {
             >
               Cancel
             </button>
-            <button
+            <Button
               onClick={handleToggleRule}
-              className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
             >
               {ruleToToggle?.enabled ? 'Disable Rule' : 'Enable Rule'}
-            </button>
+            </Button>
           </div>
         </div>
       </Modal>
@@ -1263,14 +1262,14 @@ export function Routing() {
               <button onClick={() => { setCloudModalOpen(false); setEditingProvider(null); }} disabled={cloudSaving || cloudTesting} className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50">
                 Cancel
               </button>
-              <button
+              <Button
                 onClick={() => handleSaveCloudProvider(!cloudProviders.some(p => p.name === editingProvider.name))}
                 disabled={cloudSaving || cloudTesting}
-                className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm disabled:opacity-50"
+                className="flex items-center gap-2"
               >
                 {(cloudSaving || cloudTesting) && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
                 {cloudTesting ? 'Testing key...' : cloudSaving ? 'Saving...' : 'Save'}
-              </button>
+              </Button>
             </div>
           </div>
         )}
