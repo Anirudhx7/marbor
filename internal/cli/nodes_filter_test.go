@@ -210,3 +210,69 @@ func TestRun_NodesTableUnchangedWithoutFlags(t *testing.T) {
 		t.Errorf("table output changed:\n got: %q\nwant: %q", a, want)
 	}
 }
+
+func TestRun_NodesJSONKeepsEmptySignalsArray(t *testing.T) {
+	var queries []string
+	srv := nodesFilterServer(t, http.StatusOK, `[{"name":"gpu-0","health":"down","signals":[]}]`, &queries)
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"nodes", "--json", "--server", srv.URL}, &stdout, &stderr); code != ExitOK {
+		t.Fatalf("exit %d (stderr: %s)", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), `"signals": []`) {
+		t.Errorf("json output must carry an empty signals array, got: %s", stdout.String())
+	}
+}
+
+func TestRun_NodesEmptySignalFlagIsUsageError(t *testing.T) {
+	for _, val := range []string{"", ",", ",,", " , "} {
+		var queries []string
+		srv := nodesFilterServer(t, http.StatusOK, twoNodesWithSignals, &queries)
+		var stdout, stderr bytes.Buffer
+		code := Run([]string{"nodes", "--signal=" + val, "--server", srv.URL}, &stdout, &stderr)
+		if code != ExitUserError {
+			t.Errorf("--signal=%q: exit %d, want %d", val, code, ExitUserError)
+		}
+		if !strings.Contains(stderr.String(), "--signal needs at least one signal id") {
+			t.Errorf("--signal=%q: stderr = %q", val, stderr.String())
+		}
+		if len(queries) != 0 {
+			t.Errorf("--signal=%q: sent %d requests, want none", val, len(queries))
+		}
+	}
+}
+
+func TestRun_NodesSearchIsURLEncoded(t *testing.T) {
+	var queries []string
+	srv := nodesFilterServer(t, http.StatusOK, twoNodesWithSignals, &queries)
+	var stdout, stderr bytes.Buffer
+	const term = "a b&c#d"
+	if code := Run([]string{"nodes", "--search", term, "--server", srv.URL}, &stdout, &stderr); code != ExitOK {
+		t.Fatalf("exit %d (stderr: %s)", code, stderr.String())
+	}
+	if len(queries) != 1 {
+		t.Fatalf("got %d requests", len(queries))
+	}
+	q := parseQuery(t, queries[0])
+	if got := q.Get("q"); got != term {
+		t.Errorf("q = %q, want %q (raw query %q)", got, term, queries[0])
+	}
+	if len(q) != 1 {
+		t.Errorf("unexpected extra parameters in %q", queries[0])
+	}
+}
+
+func TestRun_NodesUnauthorizedExitsNonZeroWithMessage(t *testing.T) {
+	var queries []string
+	srv := nodesFilterServer(t, http.StatusUnauthorized, `{"error":"unauthorized"}`, &queries)
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"nodes", "--signal", "down", "--server", srv.URL}, &stdout, &stderr)
+	if code == ExitOK {
+		t.Fatal("exit 0 on a 401")
+	}
+	if strings.TrimSpace(stderr.String()) == "" {
+		t.Error("stderr is empty, want a clear message")
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("stdout = %q, want empty", stdout.String())
+	}
+}

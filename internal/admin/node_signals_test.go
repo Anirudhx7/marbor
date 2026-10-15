@@ -232,20 +232,50 @@ func TestHandleNodes_SignalFilter(t *testing.T) {
 
 func TestHandleNodes_UnknownSignalIs400ListingValidIDs(t *testing.T) {
 	s := signalFleet(t)
-	for _, q := range []string{"signal=bogus", "signal=down,bogus", "signal=down&signal=nope"} {
-		code, body := getNodes(t, s, q)
-		if code != http.StatusBadRequest {
-			t.Fatalf("%s: status %d, want 400: %s", q, code, body)
-		}
-		var e map[string]string
-		if err := json.Unmarshal(body, &e); err != nil {
-			t.Fatalf("%s: error body is not the admin error JSON: %s", q, body)
-		}
-		msg := e["error"]
-		for _, id := range NodeSignalIDs() {
-			if !strings.Contains(msg, id) {
-				t.Errorf("%s: error %q does not list %q", q, msg, id)
+	h := s.Handler()
+	queries := []string{"signal=bogus", "signal=down,bogus", "signal=down&signal=nope", "signal=Bogus&signal=NOPE", "signal=DOWN,Bad,WORSE"}
+	for _, base := range []string{"/admin/nodes", "/admin/v1/nodes"} {
+		for _, q := range queries {
+			req := httptest.NewRequest(http.MethodGet, base+"?"+q, nil)
+			req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("%s?%s: status %d, want 400: %s", base, q, rec.Code, rec.Body.String())
 			}
+			if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+				t.Errorf("%s?%s: Content-Type %q, want JSON", base, q, ct)
+			}
+			var e map[string]string
+			if err := json.Unmarshal(rec.Body.Bytes(), &e); err != nil {
+				t.Fatalf("%s?%s: error body is not the admin error JSON: %s", base, q, rec.Body.String())
+			}
+			msg := e["error"]
+			for _, id := range NodeSignalIDs() {
+				if !strings.Contains(msg, id) {
+					t.Errorf("%s?%s: error %q does not list %q", base, q, msg, id)
+				}
+			}
+		}
+	}
+}
+
+func TestHandleNodes_UnknownSignalEchoIsTruncated(t *testing.T) {
+	s := signalFleet(t)
+	long := strings.Repeat("x", 5000)
+	code, body := getNodes(t, s, "signal="+long)
+	if code != http.StatusBadRequest {
+		t.Fatalf("status %d, want 400", code)
+	}
+	if len(body) > 500 {
+		t.Errorf("error body is %d bytes, want it capped well below the input size", len(body))
+	}
+	if !strings.Contains(string(body), "...") {
+		t.Errorf("truncated echo should end in ...: %s", body)
+	}
+	for _, id := range NodeSignalIDs() {
+		if !strings.Contains(string(body), id) {
+			t.Errorf("error does not list %q: %s", id, body)
 		}
 	}
 }
@@ -260,6 +290,8 @@ func TestHandleNodes_SearchFilter(t *testing.T) {
 		{"name substring", "q=drain", []string{"c-drain", "f-downdrain"}},
 		{"gpu model substring case insensitive", "q=nvidia", []string{"a-healthy", "b-degraded", "c-drain"}},
 		{"trimmed", "q=%20amd%20", []string{"e-pressure"}},
+		{"uppercase q matches lowercase name", "q=D-DOWN", []string{"d-down"}},
+		{"uppercase q matches mixed-case gpu model", "q=NVIDIA%20RTX", []string{"b-degraded"}},
 		{"empty q is no filter", "q=", []string{"a-healthy", "b-degraded", "c-drain", "d-down", "e-pressure", "f-downdrain"}},
 		{"q AND signal", "q=nvidia&signal=degraded,down", []string{"b-degraded"}},
 		{"q matches nothing", "q=nothing-like-this", []string{}},
@@ -361,8 +393,8 @@ func TestHandleNodes_AuthUnchangedWithParams(t *testing.T) {
 	for _, target := range []string{"/admin/nodes?signal=down", "/admin/v1/nodes?signal=bogus&q=x"} {
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, target, nil))
-		if rec.Code != http.StatusUnauthorized && rec.Code != http.StatusForbidden {
-			t.Errorf("%s: status %d, want 401/403 for an unauthenticated request", target, rec.Code)
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("%s: status %d, want 401 for an unauthenticated request", target, rec.Code)
 		}
 	}
 }

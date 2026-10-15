@@ -73,25 +73,9 @@ for (const [label, load] of Object.entries(fixtures)) {
       for (const id of n.signals) assert.ok(CANONICAL.includes(id), `${n.name}: unknown signal ${id}`);
     }
   });
-
-  test(`${label}: chip and fleet-health counts equal the old client-side counts`, async () => {
-    const nodes = await load();
-    const count = (pred) => nodes.filter(pred).length;
-    const bySignal = (id) => count((n) => n.signals.includes(id));
-    assert.equal(bySignal('healthy'), count((n) => n.health === 'healthy' && !n.draining));
-    assert.equal(bySignal('degraded'), count((n) => n.health === 'degraded' && !n.draining));
-    assert.equal(bySignal('draining'), count((n) => n.draining));
-    assert.equal(bySignal('down'), count((n) => n.health === 'down'));
-    assert.equal(bySignal('agent'), count((n) => !!n.agentPresent));
-    assert.equal(bySignal('warm'), count((n) => (n.loadedModels ?? []).length > 0));
-    assert.equal(
-      bySignal('pressure'),
-      count((n) => n.vramSource !== 'none' && n.vramTotalMB > 0 && n.vramUsedMB / n.vramTotalMB >= 0.9),
-    );
-  });
 }
 
-test('withDemoSignals (the demo-only recompute after a local action) agrees with every fixture', async () => {
+async function loadWithDemoSignals() {
   const src = read('src/lib/mockData.ts');
   const start = src.indexOf('export function withDemoSignals');
   assert.ok(start >= 0, 'withDemoSignals not found');
@@ -101,15 +85,51 @@ test('withDemoSignals (the demo-only recompute after a local action) agrees with
   const file = path.join(dir, 'fn.ts');
   fs.writeFileSync(file, fnSrc);
   try {
-    const { withDemoSignals } = await import(pathToFileURL(file).href);
-    const nodes = await fixtures['mockData.ts mockGPUNodes']();
-    for (const n of nodes) {
-      assert.deepEqual(withDemoSignals({ ...n, signals: [] }).signals, n.signals, n.name);
-    }
-    // a drain flips healthy to draining; an undrain flips it back
-    const healthy = nodes.find((n) => n.signals.includes('healthy'));
-    assert.deepEqual(withDemoSignals({ ...healthy, draining: true }).signals.filter((s) => ['healthy', 'draining'].includes(s)), ['draining']);
+    return (await import(pathToFileURL(file).href)).withDemoSignals;
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+}
+
+const base = { health: 'healthy', draining: false, agentPresent: false, loadedModels: [], vramSource: 'nvidia', vramTotalMB: 10000, vramUsedMB: 1000, signals: [] };
+
+test('withDemoSignals (the demo-only recompute after a local action) agrees with every fixture', async () => {
+  const withDemoSignals = await loadWithDemoSignals();
+  const nodes = await fixtures['mockData.ts mockGPUNodes']();
+  for (const n of nodes) {
+    assert.deepEqual(withDemoSignals({ ...n, signals: [] }).signals, n.signals, n.name);
+  }
+});
+
+test('withDemoSignals: drain then undrain restores healthy', async () => {
+  const f = await loadWithDemoSignals();
+  assert.deepEqual(f(base).signals, ['healthy']);
+  assert.deepEqual(f({ ...base, draining: true }).signals, ['draining']);
+  assert.deepEqual(f(f({ ...base, draining: true })).signals, ['draining']);
+  assert.deepEqual(f({ ...base, draining: false }).signals, ['healthy']);
+});
+
+test('withDemoSignals: agent toggling adds and removes agent', async () => {
+  const f = await loadWithDemoSignals();
+  assert.deepEqual(f({ ...base, agentPresent: true }).signals, ['healthy', 'agent']);
+  assert.deepEqual(f({ ...base, agentPresent: false }).signals, ['healthy']);
+});
+
+test('withDemoSignals: unloading the last model removes warm', async () => {
+  const f = await loadWithDemoSignals();
+  const warm = { ...base, loadedModels: [{ name: 'm' }] };
+  assert.deepEqual(f(warm).signals, ['healthy', 'warm']);
+  assert.deepEqual(f({ ...warm, loadedModels: [] }).signals, ['healthy']);
+});
+
+test('withDemoSignals: pressure starts at exactly 90% of VRAM', async () => {
+  const f = await loadWithDemoSignals();
+  assert.ok(f({ ...base, vramUsedMB: 9000 }).signals.includes('pressure'), 'exactly 0.9');
+  assert.ok(!f({ ...base, vramUsedMB: 8999 }).signals.includes('pressure'), 'just below 0.9');
+});
+
+test('withDemoSignals: unknown VRAM never shows pressure', async () => {
+  const f = await loadWithDemoSignals();
+  assert.ok(!f({ ...base, vramSource: 'none', vramUsedMB: 10000 }).signals.includes('pressure'), 'vramSource none');
+  assert.ok(!f({ ...base, vramTotalMB: 0, vramUsedMB: 500 }).signals.includes('pressure'), 'zero total');
 });

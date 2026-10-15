@@ -102,12 +102,12 @@ func buildRoot() *Command {
 					"degraded, draining, down, agent, warm, pressure. healthy and degraded leave out draining nodes; a node that is down and draining\n" +
 					"matches both down and draining; agent means a live marbor agent is reporting; warm means a model is loaded; pressure means used\n" +
 					"VRAM is at least 90% of a known total (a node without measured VRAM never matches, so \"no pressure\" there means unknown, not ok).\n" +
-					"--search keeps nodes whose name or GPU model contains the text, ignoring case, and combines with --signal. Giving --signal more\n" +
+					"--search keeps nodes whose name or GPU model contains the text, trimmed and ignoring case, and combines with --signal. Giving --signal more\n" +
 					"than once adds to the list. No match is an empty table (header only) or [] with --json and still exits 0, so scripts that act on\n" +
 					"matches should count rows rather than check the exit status.",
 				Flags: []FlagSpec{
 					{Name: "signal", Kind: FlagString, Repeatable: true, Usage: "only nodes matching any of these signals, comma-separated or repeated: healthy, degraded, draining, down, agent, warm, pressure"},
-					{Name: "search", Kind: FlagString, Usage: "only nodes whose name or GPU model contains this text (case-insensitive)"},
+					{Name: "search", Kind: FlagString, Usage: "only nodes whose name or GPU model contains this text (trimmed, case-insensitive)"},
 				},
 				Examples: []string{
 					"marbor nodes --signal degraded,down --json | jq length",

@@ -102,6 +102,10 @@ func runNodes(ctx *RunCtx) int {
 	flags, stdout, stderr := ctx.Flags, ctx.Stdout, ctx.Stderr
 	signals := strings.Trim(ctx.String("signal"), ",")
 	search := ctx.String("search")
+	if ctx.IsSet("signal") && strings.TrimSpace(strings.ReplaceAll(signals, ",", "")) == "" {
+		fmt.Fprintln(stderr, "error: --signal needs at least one signal id: healthy, degraded, draining, down, agent, warm, pressure")
+		return ExitUserError
+	}
 
 	client, err := authenticatedClient(flags)
 	if err != nil {
@@ -151,7 +155,9 @@ func runNodes(ctx *RunCtx) int {
 // lacksSignals reports whether any node came back without a signals field at
 // all (not even an empty array), which only a server that predates node
 // filtering does. Such a server also ignores the filter parameters, so a
-// filtered request would silently return every node.
+// filtered request would silently return every node. An empty fleet is
+// indistinguishable from a new server and harmless to treat as fine; this
+// relies on an absent field decoding to a nil slice.
 func lacksSignals(nodes []NodeResp) bool {
 	for _, n := range nodes {
 		if n.Signals == nil {

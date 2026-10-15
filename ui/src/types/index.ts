@@ -198,6 +198,7 @@ export interface GPUNode {
   // healthy, degraded, draining, down, agent, warm, pressure, in that order.
   // Filter chips, counts and the fleet-health strip read this instead of
   // re-deriving the rules; "marbor nodes --signal" uses the same definition.
+  // Kept as string[] so a newer server adding an id never breaks decoding.
   signals: string[];
   // True when an enabled marbor agent IS configured for this node's physical
   // host but stopped answering past the poll-failure threshold (telemetry
@@ -855,3 +856,7 @@ export interface ModelAlias {
   shadows_model: boolean;
   inventory_checked: boolean;
 }
+
+// The placement signal ids a node can carry, in the server's canonical order.
+export const NODE_SIGNAL_IDS = ['healthy', 'degraded', 'draining', 'down', 'agent', 'warm', 'pressure'] as const;
+export type NodeSignalId = (typeof NODE_SIGNAL_IDS)[number];

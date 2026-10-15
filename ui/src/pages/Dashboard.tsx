@@ -22,6 +22,7 @@ import { mockGPUNodes, mockSavings } from '../lib/mockData';
 import { readLastNodeCount, writeLastNodeCount } from '../lib/nodeCount';
 import { fetchNodes, fetchSummary, fetchSavings, fetchHealth, fetchKeys, fetchRequests } from '../lib/api';
 import { GPUNode, Savings, APIKey, RequestEntry } from '../types';
+import type { NodeSignalId } from '../types';
 import { SetupChecklist } from '../components/SetupChecklist';
 import { EmptyState } from '../components/EmptyState';
 
@@ -146,7 +147,7 @@ interface FleetHealth {
 // pressure is the server's call (node.signals, the same definition behind
 // "marbor nodes --signal"); this only counts them.
 function computeFleetHealth(nodes: GPUNode[]): FleetHealth {
-  const withSignal = (id: string) => nodes.filter(n => n.signals.includes(id));
+  const withSignal = (id: NodeSignalId) => nodes.filter(n => (n.signals ?? []).includes(id));
   const downNodes = withSignal('down');
   return {
     total: nodes.length,

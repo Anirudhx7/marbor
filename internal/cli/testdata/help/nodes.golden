@@ -14,7 +14,7 @@ Actions:
 
 Flags:
   --signal string    only nodes matching any of these signals, comma-separated or repeated: healthy, degraded, draining, down, agent, warm, pressure
-  --search string    only nodes whose name or GPU model contains this text (case-insensitive)
+  --search string    only nodes whose name or GPU model contains this text (trimmed, case-insensitive)
   --server string    Admin API base URL (default "http://localhost:8080", env MARBOR_SERVER)
   --json             output machine-readable JSON instead of a human table
   --username string  admin username, used to log in (env MARBOR_USERNAME)
@@ -24,7 +24,7 @@ With --signal, lists only nodes that match any of the given signals, the same on
 degraded, draining, down, agent, warm, pressure. healthy and degraded leave out draining nodes; a node that is down and draining
 matches both down and draining; agent means a live marbor agent is reporting; warm means a model is loaded; pressure means used
 VRAM is at least 90% of a known total (a node without measured VRAM never matches, so "no pressure" there means unknown, not ok).
---search keeps nodes whose name or GPU model contains the text, ignoring case, and combines with --signal. Giving --signal more
+--search keeps nodes whose name or GPU model contains the text, trimmed and ignoring case, and combines with --signal. Giving --signal more
 than once adds to the list. No match is an empty table (header only) or [] with --json and still exits 0, so scripts that act on
 matches should count rows rather than check the exit status.
 

@@ -19,7 +19,8 @@ import { readLastNodeCount, writeLastNodeCount } from '../lib/nodeCount';
 import { isReplicaMember, replicaImpactCopy } from '../lib/replicaImpact';
 import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, probeNodeTLS, fetchModelFit, unloadModel, getPinned, getMarborAgent, enableMarborAgent, regenerateMarborAgentToken, disableMarborAgent, checkNodeHealth, fetchReplicaSuggestions, applyDemoConfirmedGroups, getNodeControl, acceptNodeControl, clearNodeControl, startNodeRuntime, stopNodeRuntime, restartNodeRuntime, getNodeRuntimeLogs, RuntimeActionError } from '../lib/api';
 import type { MarborAgentStatus, NodeHealthCheckResult, NodeControlStatus, ReplicaSuggestionsResponse } from '../lib/api';
-import type { GPUNode, ModelFitResponse, NodeFit, FitStatus } from '../types';
+import type { GPUNode, ModelFitResponse, NodeFit, FitStatus, NodeSignalId } from '../types';
+import { NODE_SIGNAL_IDS } from '../types';
 import { formatDurationLong } from '../lib/time';
 import { actionableCount, bucketSuggestions, chipsByNode, hasReplicaContent, pruneDismissedReady, readDismissedReady, readyFingerprints, readyLineVisible, writeDismissedReady } from '../lib/replicaGroups';
 import type { NodeChip } from '../lib/replicaGroups';
@@ -107,17 +108,18 @@ const LIVE_VRAM_TOOL_SOURCES = new Set(['nvidia-smi', 'rocm-smi', 'xpu-smi', 'sy
 // What each signal means is decided by the server and arrives as
 // node.signals (the same definition behind "marbor nodes --signal"); the
 // chips only label and count it, so the rules cannot drift from the CLI's.
-const SIGNAL_CHIPS: { id: string; label: string }[] = [
-  { id: 'healthy', label: 'Healthy' },
-  { id: 'degraded', label: 'Degraded' },
-  { id: 'draining', label: 'Draining' },
-  { id: 'down', label: 'Down' },
-  { id: 'agent', label: 'Agent' },
-  { id: 'warm', label: 'Warm' },
-  { id: 'pressure', label: 'VRAM pressure' },
-];
+const SIGNAL_LABELS: Record<NodeSignalId, string> = {
+  healthy: 'Healthy',
+  degraded: 'Degraded',
+  draining: 'Draining',
+  down: 'Down',
+  agent: 'Agent',
+  warm: 'Warm',
+  pressure: 'VRAM pressure',
+};
+const SIGNAL_CHIPS: { id: NodeSignalId; label: string }[] = NODE_SIGNAL_IDS.map((id) => ({ id, label: SIGNAL_LABELS[id] }));
 
-const nodeHasSignal = (n: GPUNode, id: string) => n.signals.includes(id);
+const nodeHasSignal = (n: GPUNode, id: NodeSignalId) => (n.signals ?? []).includes(id);
 
 function FitBadge({ fit }: { fit: FitStatus }) {
   const styles: Record<FitStatus, string> = {

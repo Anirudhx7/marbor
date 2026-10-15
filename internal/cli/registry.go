@@ -34,6 +34,8 @@ type FlagSpec struct {
 
 	// Repeatable lets a FlagString be given more than once; the values are
 	// joined with commas, so "--x a --x b" and "--x a,b" read the same.
+	// FlagString only (DefString is ignored), and unsuitable for values that
+	// themselves contain commas.
 	Repeatable bool
 
 	// Required, if true, means the dispatcher must reject a run where this

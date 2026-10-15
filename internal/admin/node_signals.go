@@ -6,10 +6,10 @@ import (
 	"strings"
 )
 
-// VRAMPressureThreshold is the used/total VRAM ratio at or above which a node
+// vramPressureThreshold is the used/total VRAM ratio at or above which a node
 // carries the "pressure" signal. It only drives this signal; the dashboard's
 // VRAM bar colours itself independently.
-const VRAMPressureThreshold = 0.90
+const vramPressureThreshold = 0.90
 
 // Node signal ids, in the canonical order they appear in a node's signals
 // array and in error messages.
@@ -45,7 +45,7 @@ func NodeSignalIDs() []string {
 //   - agent means a live agent is reporting; a stale agent does not match.
 //   - warm means at least one model is loaded.
 //   - pressure needs a measured or declared total (never "none") and a
-//     used/total ratio at or above VRAMPressureThreshold.
+//     used/total ratio at or above vramPressureThreshold.
 //
 // The result is never nil so it always encodes as a JSON array.
 func nodeSignals(n nodeResp) []string {
@@ -69,7 +69,7 @@ func nodeSignals(n nodeResp) []string {
 		out = append(out, signalWarm)
 	}
 	if n.VRAMSource != "none" && n.VRAMTotalMB > 0 &&
-		float64(n.VRAMUsedMB)/float64(n.VRAMTotalMB) >= VRAMPressureThreshold {
+		float64(n.VRAMUsedMB)/float64(n.VRAMTotalMB) >= vramPressureThreshold {
 		out = append(out, signalPressure)
 	}
 	return out
@@ -88,12 +88,22 @@ func parseSignalFilter(values []string) (map[string]bool, string) {
 				continue
 			}
 			if !isNodeSignalID(id) {
-				return nil, fmt.Sprintf("unknown signal %q: valid signals are %s", id, strings.Join(nodeSignalIDs, ", "))
+				return nil, fmt.Sprintf("unknown signal %q: valid signals are %s", truncateSignalID(id), strings.Join(nodeSignalIDs, ", "))
 			}
 			want[id] = true
 		}
 	}
 	return want, ""
+}
+
+// truncateSignalID caps an echoed, client-supplied id so an error message
+// stays small.
+func truncateSignalID(id string) string {
+	const maxEcho = 64
+	if len(id) <= maxEcho {
+		return id
+	}
+	return id[:maxEcho] + "..."
 }
 
 func isNodeSignalID(id string) bool {

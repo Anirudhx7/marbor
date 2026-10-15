@@ -1,3 +1,4 @@
+import type { NodeSignalId } from '../types';
 import { GPUNode, APIKey, Settings, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelCatalogResponse, ModelConfig, BenchmarkRun, SpillCounterRow, RoutingDecision, ModelAlias, QuantRecommendation } from '../types';
 import type { SystemInfo, ReplicaSuggestionsResponse } from './api';
 
@@ -24,7 +25,7 @@ export const mockRuntimeLogLines: string[] = [
 // on. The static demo has no server to re-poll; real nodes always carry the
 // server's own signals and never go through this.
 export function withDemoSignals(n: GPUNode): GPUNode {
-  const signals: string[] = [];
+  const signals: NodeSignalId[] = [];
   if (n.health === 'healthy' && !n.draining) signals.push('healthy');
   if (n.health === 'degraded' && !n.draining) signals.push('degraded');
   if (n.draining) signals.push('draining');

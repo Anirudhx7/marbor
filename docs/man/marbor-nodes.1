@@ -9,7 +9,7 @@ With \-\-signal, lists only nodes that match any of the given signals, the same 
 degraded, draining, down, agent, warm, pressure. healthy and degraded leave out draining nodes; a node that is down and draining
 matches both down and draining; agent means a live marbor agent is reporting; warm means a model is loaded; pressure means used
 VRAM is at least 90% of a known total (a node without measured VRAM never matches, so "no pressure" there means unknown, not ok).
-\-\-search keeps nodes whose name or GPU model contains the text, ignoring case, and combines with \-\-signal. Giving \-\-signal more
+\-\-search keeps nodes whose name or GPU model contains the text, trimmed and ignoring case, and combines with \-\-signal. Giving \-\-signal more
 than once adds to the list. No match is an empty table (header only) or [] with \-\-json and still exits 0, so scripts that act on
 matches should count rows rather than check the exit status.
 .SH COMMANDS
@@ -163,7 +163,7 @@ show a dismissed suggestion again
 only nodes matching any of these signals, comma\-separated or repeated: healthy, degraded, draining, down, agent, warm, pressure
 .TP
 .B \-\-search string
-only nodes whose name or GPU model contains this text (case\-insensitive)
+only nodes whose name or GPU model contains this text (trimmed, case\-insensitive)
 .TP
 .B \-\-server
 Admin API base URL (default "http://localhost:8080", env MARBOR_SERVER)
