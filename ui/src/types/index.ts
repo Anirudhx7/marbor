@@ -194,6 +194,11 @@ export interface GPUNode {
   // measurements, rendering '-' instead.
   agentPresent?: boolean;
   agentVersion?: string;
+  // Placement signals this node matches, decided by the server: any of
+  // healthy, degraded, draining, down, agent, warm, pressure, in that order.
+  // Filter chips, counts and the fleet-health strip read this instead of
+  // re-deriving the rules; "marbor nodes --signal" uses the same definition.
+  signals: string[];
   // True when an enabled marbor agent IS configured for this node's physical
   // host but stopped answering past the poll-failure threshold (telemetry
   // cleared). Deliberately absent/false both when the agent is healthy AND

@@ -126,12 +126,6 @@ function NodeCardSkeleton() {
   );
 }
 
-// VRAM_PRESSURE_THRESHOLD matches VramBar's red band (>90%): a node whose
-// real measured used/total ratio crosses it is flagged here too.
-// Shared with GPUNodes' signal filter - one definition of "VRAM pressure" for
-// the whole app (imported, never re-typed, so the two can't drift apart).
-export const VRAM_PRESSURE_THRESHOLD = 0.9;
-
 // MAX_DOWN_BADGES caps per-node down badges in the strip so a large outage
 // degrades to "+N more" instead of wrapping the strip into a wall of red.
 const MAX_DOWN_BADGES = 3;
@@ -148,23 +142,23 @@ interface FleetHealth {
 
 // computeFleetHealth derives every figure from the live node list the
 // dashboard already polls (/admin/v1/nodes) - counts of real states, never
-// estimates.
+// estimates. Which nodes are healthy, degraded, draining, down or under VRAM
+// pressure is the server's call (node.signals, the same definition behind
+// "marbor nodes --signal"); this only counts them.
 function computeFleetHealth(nodes: GPUNode[]): FleetHealth {
-  const downNodes = nodes.filter(n => n.health === 'down');
+  const withSignal = (id: string) => nodes.filter(n => n.signals.includes(id));
+  const downNodes = withSignal('down');
   return {
     total: nodes.length,
-    healthy: nodes.filter(n => n.health === 'healthy' && !n.draining).length,
-    degraded: nodes.filter(n => n.health === 'degraded' && !n.draining).length,
-    draining: nodes.filter(n => n.draining).length,
+    healthy: withSignal('healthy').length,
+    degraded: withSignal('degraded').length,
+    draining: withSignal('draining').length,
     downNodes,
     // agentStale means an enabled agent IS configured for that host but
     // stopped answering past the poll-failure threshold - deliberately not
     // set for hosts that simply run agentless (see NodeState.AgentStale).
     staleAgents: nodes.filter(n => !!n.agentStale),
-    vramPressure: nodes.filter(n =>
-      n.vramSource !== 'none' && n.vramTotalMB > 0 &&
-      n.vramUsedMB / n.vramTotalMB >= VRAM_PRESSURE_THRESHOLD
-    ),
+    vramPressure: withSignal('pressure'),
   };
 }
 

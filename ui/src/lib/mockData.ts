@@ -19,6 +19,25 @@ export const mockRuntimeLogLines: string[] = [
   'time=2026-08-01T00:22:07.005Z level=INFO source=sched.go:406 msg="model unloaded due to idle timeout" model=llama3:70b',
 ];
 
+// withDemoSignals recomputes a demo node's signals after a local demo action
+// (drain, enable agent, unload a model, edit) changes the fields they depend
+// on. The static demo has no server to re-poll; real nodes always carry the
+// server's own signals and never go through this.
+export function withDemoSignals(n: GPUNode): GPUNode {
+  const signals: string[] = [];
+  if (n.health === 'healthy' && !n.draining) signals.push('healthy');
+  if (n.health === 'degraded' && !n.draining) signals.push('degraded');
+  if (n.draining) signals.push('draining');
+  if (n.health === 'down') signals.push('down');
+  if (n.agentPresent) signals.push('agent');
+  if ((n.loadedModels ?? []).length > 0) signals.push('warm');
+  if (n.vramSource !== 'none' && n.vramTotalMB > 0 && n.vramUsedMB / n.vramTotalMB >= 0.9) signals.push('pressure');
+  return { ...n, signals };
+}
+
+// Each node's static `signals` mirror what the server computes (see the
+// node signal rules in internal/admin); ui/scripts/node-signals.test.mjs checks
+// them against the node's own fields so the demo's chips stay honest.
 export const mockGPUNodes: GPUNode[] = [
   {
     id: 'node-1',
@@ -40,6 +59,7 @@ export const mockGPUNodes: GPUNode[] = [
     temperature: 72,
     health: 'healthy',
     draining: false,
+    signals: ['healthy', 'agent', 'warm'],
     drainedGraceSeconds: 0,
     activeConns: 3,
     prewarmDisabled: false,
@@ -136,6 +156,7 @@ export const mockGPUNodes: GPUNode[] = [
     temperature: 68,
     health: 'healthy',
     draining: false,
+    signals: ['healthy', 'agent', 'warm'],
     drainedGraceSeconds: 0,
     activeConns: 1,
     prewarmDisabled: false,
@@ -195,6 +216,7 @@ export const mockGPUNodes: GPUNode[] = [
     temperature: 78,
     health: 'healthy',
     draining: false,
+    signals: ['healthy', 'agent', 'warm', 'pressure'],
     drainedGraceSeconds: 0,
     activeConns: 0,
     prewarmDisabled: true,
@@ -266,6 +288,7 @@ export const mockGPUNodes: GPUNode[] = [
     temperature: 45,
     health: 'degraded',
     draining: true,
+    signals: ['draining', 'agent', 'warm'],
     drainedReason: 'manual',
     drainedGraceSeconds: 0,
     activeConns: 2,
@@ -316,6 +339,7 @@ export const mockGPUNodes: GPUNode[] = [
     temperature: null,
     health: 'healthy',
     draining: false,
+    signals: ['healthy', 'agent', 'warm'],
     drainedGraceSeconds: 0,
     activeConns: 0,
     prewarmDisabled: false,
@@ -365,6 +389,7 @@ export const mockGPUNodes: GPUNode[] = [
     temperature: null,
     health: 'down',
     draining: false,
+    signals: ['down'],
     drainedGraceSeconds: 0,
     activeConns: 0,
     prewarmDisabled: false,
@@ -405,6 +430,7 @@ export const mockGPUNodes: GPUNode[] = [
     temperature: 70,
     health: 'healthy',
     draining: false,
+    signals: ['healthy', 'agent', 'warm'],
     drainedGraceSeconds: 0,
     activeConns: 2,
     prewarmDisabled: false,
@@ -449,6 +475,7 @@ export const mockGPUNodes: GPUNode[] = [
     temperature: 69,
     health: 'healthy',
     draining: false,
+    signals: ['healthy', 'agent'],
     drainedGraceSeconds: 0,
     activeConns: 0,
     prewarmDisabled: false,
@@ -495,6 +522,7 @@ export const mockGPUNodes: GPUNode[] = [
     temperature: 74,
     health: 'healthy',
     draining: false,
+    signals: ['healthy', 'agent'],
     drainedGraceSeconds: 0,
     activeConns: 0,
     prewarmDisabled: false,
@@ -536,6 +564,7 @@ export const mockGPUNodes: GPUNode[] = [
     temperature: 52,
     health: 'healthy',
     draining: false,
+    signals: ['healthy', 'agent'],
     drainedGraceSeconds: 0,
     activeConns: 0,
     prewarmDisabled: false,
