@@ -728,9 +728,7 @@ export function APIKeys() {
             >
               Cancel
             </button>
-            <Button
-              onClick={handleCreateKey}
-            >
+            <Button onClick={handleCreateKey}>
               Create Key
             </Button>
           </div>

@@ -55,6 +55,13 @@ test('primary matches the string the app used before the shared button', () => {
   assert.deepEqual(tokens(buttonClasses('primary', 'md')), tokens(PRIMARY_BEFORE));
 });
 
+// The small primary as Warmup wrote it before the shared button existed.
+const PRIMARY_SM_BEFORE = 'px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground font-medium rounded-lg text-xs transition-colors shadow-sm';
+
+test('small primary matches the string Warmup used before', () => {
+  assert.deepEqual(tokens(buttonClasses('primary', 'sm')), tokens(PRIMARY_SM_BEFORE));
+});
+
 test('secondary, ghost and destructive each match a class string still in the app', () => {
   const literals = files.flatMap(f => [...read(f).matchAll(/["'`]([^"'`\n]{20,})["'`]/g)].map(m => tokens(m[1]).join(' ')));
   for (const variant of ['secondary', 'ghost', 'destructive']) {
@@ -84,8 +91,19 @@ test('className is appended after the variant classes', () => {
 test('no <Button className> sets color, spacing, size, weight or radius', () => {
   const banned = /(^|\s)(bg-|px-|py-|text-sm|font-|rounded)/;
   for (const f of files.filter(f => f.endsWith('.tsx'))) {
-    for (const m of read(f).matchAll(/<Button\b[^>]*?className="([^"]*)"/gs)) {
-      assert.equal(banned.test(m[1]), false, `${path.relative(SRC, f)}: <Button className="${m[1]}">`);
+    const src = read(f);
+    for (const m of src.matchAll(/<Button/g)) {
+      // The opening tag runs to the first ">" that is not an arrow "=>" and not inside braces.
+      let depth = 0, end = m.index;
+      for (let i = m.index; i < src.length; i++) {
+        const c = src[i];
+        if (c === '{') depth++;
+        else if (c === '}') depth--;
+        else if (c === '>' && depth === 0 && src[i - 1] !== '=') { end = i; break; }
+      }
+      const tag = src.slice(m.index, end);
+      const cn = tag.match(/className=("[^"]*"|\{[^}]*\})/s);
+      if (cn) assert.equal(banned.test(cn[1]), false, `${path.relative(SRC, f)}: <Button className=${cn[1]}>`);
     }
   }
 });

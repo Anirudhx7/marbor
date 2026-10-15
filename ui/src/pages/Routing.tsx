@@ -1081,9 +1081,7 @@ export function Routing() {
             >
               Cancel
             </button>
-            <Button
-              onClick={handleCreateRule}
-            >
+            <Button onClick={handleCreateRule}>
               Add Rule
             </Button>
           </div>
@@ -1141,9 +1139,7 @@ export function Routing() {
             >
               Cancel
             </button>
-            <Button
-              onClick={handleToggleRule}
-            >
+            <Button onClick={handleToggleRule}>
               {ruleToToggle?.enabled ? 'Disable Rule' : 'Enable Rule'}
             </Button>
           </div>

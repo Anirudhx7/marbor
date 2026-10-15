@@ -1,10 +1,9 @@
-import type { ButtonHTMLAttributes, Ref } from 'react';
+import type { ButtonHTMLAttributes } from 'react';
 import { buttonClasses, type ButtonSize, type ButtonVariant } from '../lib/buttonClasses';
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   size?: ButtonSize;
-  ref?: Ref<HTMLButtonElement>;
 }
 
 // Thin wrapper over a native button: the look comes from buttonClasses and

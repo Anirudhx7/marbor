@@ -14,7 +14,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **The standalone demo's built-in database matches the demo fixture again.** `demo/docker-compose.standalone.yml` carries its own copy of the demo database and it had drifted from `demo/marbor.demo.db`. `make demo-db` now regenerates both, and a test fails if they differ.
 
 ### Changed
-- **Dialogs and the Model Advisor panel have slightly smaller rounded corners.** The corner radius goes from 16px to 12px, matching the rest of the dashboard. The primary action buttons also now share one definition, with no change to how they look or behave.
+- **Dialogs and the Model Advisor panel have slightly smaller rounded corners.** The corner radius goes from 16px to 12px, matching the rest of the dashboard. The primary action buttons also now share one definition, with no change to how they look. Disabled primary buttons that had no explicit rule (Re-point alias, Run Benchmark, cloud Save, Add Schedule) now also show the not-allowed cursor.
 - **`install.sh` no longer installs man pages from releases older than v0.25.0.** Those publish them as loose files rather than the archive; the installer now says the archive is missing and skips the man pages (the binary install is unaffected).
 
 ## [0.25.0] - 2026-10-13

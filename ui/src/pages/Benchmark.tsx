@@ -417,9 +417,7 @@ export function Benchmark() {
             >
               Cancel
             </button>
-            <Button
-              onClick={confirmRun}
-            >
+            <Button onClick={confirmRun}>
               Run Benchmark
             </Button>
           </div>
