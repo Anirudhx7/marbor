@@ -473,7 +473,7 @@ The fleet runs without it - remote nodes fall back to operator-declared `vram_to
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/admin/v1/nodes` | Node list: status, VRAM usage, active models, source labels |
+| GET | `/admin/v1/nodes` | Node list: status, VRAM usage, active models, source labels, and a `signals` array per node (`healthy`, `degraded`, `draining`, `down`, `agent`, `warm`, `pressure`). Optional `?signal=degraded,down` (comma list or repeated, any match) and `?q=text` (name or GPU model) narrow the list; an unknown signal is a 400 listing the valid ones. The same applies to `/admin/nodes`, and `GET /admin/nodes/{name}` carries `signals` too |
 | GET | `/admin/v1/keys` | API keys: usage stats, monthly cost, token totals |
 | GET | `/admin/v1/metrics/savings` | Cost savings vs pure cloud - current process lifetime |
 | GET | `/admin/v1/cloud/providers` | Cloud fallback providers: status, spend |
