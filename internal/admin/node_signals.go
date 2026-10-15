@@ -96,14 +96,15 @@ func parseSignalFilter(values []string) (map[string]bool, string) {
 	return want, ""
 }
 
-// truncateSignalID caps an echoed, client-supplied id so an error message
-// stays small.
+// truncateSignalID caps an echoed, client-supplied id at 64 characters so an
+// error message stays small, cutting on a rune boundary.
 func truncateSignalID(id string) string {
 	const maxEcho = 64
-	if len(id) <= maxEcho {
+	r := []rune(id)
+	if len(r) <= maxEcho {
 		return id
 	}
-	return id[:maxEcho] + "..."
+	return string(r[:maxEcho]) + "..."
 }
 
 func isNodeSignalID(id string) bool {

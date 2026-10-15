@@ -656,7 +656,8 @@ type NodeResp struct {
 	Draining    bool   `json:"draining"`
 	// Signals are the placement signals the server says this node matches
 	// (healthy, degraded, draining, down, agent, warm, pressure). Absent
-	// from servers that predate filtering, which is how the CLI tells.
+	// from servers that predate filtering, which is how the CLI tells. An
+	// unfiltered --json against such a server therefore prints null.
 	Signals       []string          `json:"signals"`
 	LoadedModels  []json.RawMessage `json:"loadedModels"`
 	ActiveConns   int32             `json:"activeConns"`

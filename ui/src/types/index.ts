@@ -199,7 +199,9 @@ export interface GPUNode {
   // Filter chips, counts and the fleet-health strip read this instead of
   // re-deriving the rules; "marbor nodes --signal" uses the same definition.
   // Kept as string[] so a newer server adding an id never breaks decoding.
-  signals: string[];
+  // Always sent by the server; consumers still guard with ?? [] so a stale
+  // cached bundle or proxy that drops the field cannot crash a page.
+  signals?: string[];
   // True when an enabled marbor agent IS configured for this node's physical
   // host but stopped answering past the poll-failure threshold (telemetry
   // cleared). Deliberately absent/false both when the agent is healthy AND

@@ -21,8 +21,7 @@ import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import { mockGPUNodes, mockSavings } from '../lib/mockData';
 import { readLastNodeCount, writeLastNodeCount } from '../lib/nodeCount';
 import { fetchNodes, fetchSummary, fetchSavings, fetchHealth, fetchKeys, fetchRequests } from '../lib/api';
-import { GPUNode, Savings, APIKey, RequestEntry } from '../types';
-import type { NodeSignalId } from '../types';
+import { GPUNode, Savings, APIKey, RequestEntry, NodeSignalId } from '../types';
 import { SetupChecklist } from '../components/SetupChecklist';
 import { EmptyState } from '../components/EmptyState';
 
