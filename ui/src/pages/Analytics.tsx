@@ -227,8 +227,8 @@ export function Analytics() {
                   <stop offset="95%" stopColor="hsl(var(--success))" stopOpacity={0} />
                 </linearGradient>
                 <linearGradient id="colorCloud" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
+                  <stop offset="5%" stopColor="hsl(var(--chart-1))" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="hsl(var(--chart-1))" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
@@ -271,7 +271,7 @@ export function Analytics() {
               <Area
                 type="monotone"
                 dataKey="Cloud"
-                stroke="#f59e0b"
+                stroke="hsl(var(--chart-1))"
                 strokeWidth={2}
                 fill="url(#colorCloud)"
               />
@@ -334,7 +334,7 @@ export function Analytics() {
                 formatter={(value) => <span className="text-muted-foreground">{value}</span>}
               />
               <Bar dataKey="Est. saved ($)" fill="hsl(var(--success))" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="Spent ($)" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="Spent ($)" fill="hsl(var(--chart-1))" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         )}
