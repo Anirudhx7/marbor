@@ -28,19 +28,27 @@ const (
 	// maxModelsInMessage caps how many model names the 409 error text lists;
 	// the full list is always in the sole_replica body.
 	maxModelsInMessage = 5
+)
 
-	// The actions the sole-replica check guards. They appear in the 409 text.
-	soleActionDrain   = "drain"
-	soleActionRestart = "restart"
+// soleAction is an action the sole-replica check guards. It appears in the 409
+// text.
+type soleAction string
+
+const (
+	soleActionDrain   soleAction = "drain"
+	soleActionRestart soleAction = "restart"
 )
 
 // restartMarker records a runtime restart marbor sent, so a drain or restart
 // of a peer right afterwards does not count the restarting node as a spare.
-// returned is zero while the agent call is in flight.
+// returned is zero while any restart of the node is in flight. maybeDown is set
+// once a restart ended without the agent refusing it: the runtime may have
+// restarted, so the marker must stay until a later poll or the TTL clears it.
 type restartMarker struct {
-	token    uint64 // identifies the restart that wrote this marker
-	started  time.Time
-	returned time.Time
+	started   time.Time
+	returned  time.Time
+	inflight  int // restarts of this node whose agent call has not ended
+	maybeDown bool
 }
 
 // soleReplicaState serializes the sole-replica check with the state change it
@@ -49,9 +57,12 @@ type restartMarker struct {
 // only changes made through this API, not scheduled or thermal drains and not
 // restarts done outside marbor. Markers are lost on process restart.
 type soleReplicaState struct {
-	mu          sync.Mutex
-	restarting  map[string]restartMarker
-	nextRestart uint64
+	mu         sync.Mutex
+	restarting map[string]restartMarker
+
+	// afterCommit, when set, runs inside the lock right after a change is
+	// committed. Tests use it to hold a request mid-commit.
+	afterCommit func()
 }
 
 // soleReplicaLists is the wire form of a router.SoleReplicaImpact. Every list
@@ -107,7 +118,8 @@ func forceRequested(r *http.Request) bool {
 type soleOutcome int
 
 const (
-	soleNodeMissing soleOutcome = iota // the node does not exist
+	soleNotChecked  soleOutcome = iota // no check ran (the zero value)
+	soleNodeMissing                    // the node does not exist
 	soleProceed                        // nothing needed force; the change was made
 	soleForced                         // force was sent and sole models existed; the change was made
 	soleBlocked                        // sole models and no force; nothing was changed
@@ -135,12 +147,15 @@ func (s *Server) checkSoleReplica(name string, force bool, commit func()) soleCh
 	defer st.mu.Unlock()
 	impact, ok := s.router.SoleReplicaImpact(name, s.restartingNodesLocked(time.Now()))
 	if !ok {
-		return soleCheck{}
+		return soleCheck{outcome: soleNodeMissing}
 	}
 	if len(impact.Models) > 0 && !force {
 		return soleCheck{impact: impact, outcome: soleBlocked}
 	}
 	commit()
+	if st.afterCommit != nil {
+		st.afterCommit()
+	}
 	if force && len(impact.Models) > 0 {
 		return soleCheck{impact: impact, outcome: soleForced}
 	}
@@ -150,15 +165,17 @@ func (s *Server) checkSoleReplica(name string, force bool, commit func()) soleCh
 // guardRuntimeActionSole runs the sole-replica check for a runtime action. Only
 // a restart is checked: stop and start pass straight through with a no-op
 // finish. When the restart may proceed it has already written the restart
-// marker, and finish(true) or finish(false) must be called once the agent call
-// ends. When it may not proceed the response has been written.
-func (s *Server) guardRuntimeActionSole(w http.ResponseWriter, r *http.Request, nodeName, action string) (soleCheck, func(succeeded bool), bool) {
+// marker, and finish must be called once the agent call ends: finish(true) only
+// when the agent definitely refused the restart (so the runtime was never taken
+// down), finish(false) for success and for any outcome that leaves it unknown,
+// such as a timeout or transport failure. When it may not proceed the response
+// has been written.
+func (s *Server) guardRuntimeActionSole(w http.ResponseWriter, r *http.Request, nodeName string, action soleAction) (soleCheck, func(refused bool), bool) {
 	noop := func(bool) {}
 	if action != soleActionRestart {
 		return soleCheck{}, noop, true
 	}
-	var token uint64
-	sole := s.checkSoleReplica(nodeName, forceRequested(r), func() { token = s.markRestartStarted(nodeName) })
+	sole := s.checkSoleReplica(nodeName, forceRequested(r), func() { s.markRestartStarted(nodeName) })
 	switch {
 	case !sole.found():
 		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", nodeName))
@@ -167,7 +184,7 @@ func (s *Server) guardRuntimeActionSole(w http.ResponseWriter, r *http.Request, 
 		writeSoleReplicaConflict(w, nodeName, action, sole.impact)
 		return sole, noop, false
 	}
-	return sole, func(succeeded bool) { s.finishRestart(nodeName, token, succeeded) }, true
+	return sole, func(refused bool) { s.finishRestart(nodeName, refused) }, true
 }
 
 // restartingNodesLocked returns the nodes still counted as unavailable after a
@@ -202,41 +219,61 @@ func (s *Server) restartingNodesLocked(now time.Time) map[string]bool {
 	return out
 }
 
-// markRestartStarted records that a restart of name is about to be sent and
-// returns a token identifying it. Caller holds soleReplica.mu (it runs as the
-// commit step of checkSoleReplica).
-func (s *Server) markRestartStarted(name string) uint64 {
+// markRestartStarted records that a restart of name is about to be sent. A
+// restart already in flight for the node keeps its marker; this one joins it.
+// Caller holds soleReplica.mu (it runs as the commit step of checkSoleReplica).
+func (s *Server) markRestartStarted(name string) {
 	st := &s.soleReplica
 	if st.restarting == nil {
 		st.restarting = make(map[string]restartMarker)
 	}
-	st.nextRestart++
-	st.restarting[name] = restartMarker{token: st.nextRestart, started: time.Now()}
-	return st.nextRestart
+	mk := st.restarting[name]
+	mk.inflight++
+	mk.started = time.Now()
+	mk.returned = time.Time{}
+	st.restarting[name] = mk
 }
 
-// finishRestart ends the restart identified by token. On success the marker
-// stays until a later poll shows the node has come back; on failure it is
-// deleted, since the runtime was never taken down. A marker written by a newer
-// overlapping restart of the same node is left alone.
-func (s *Server) finishRestart(name string, token uint64, succeeded bool) {
+// finishRestart ends one restart of name. The marker is deleted only when no
+// other restart of the node is still in flight and none ended without a
+// definite agent refusal: a refused restart never took the runtime down, but a
+// timeout, cancel or transport failure may have come after it did, so those
+// keep the marker (refused is false) until a later poll confirms the node or
+// the TTL passes.
+func (s *Server) finishRestart(name string, refused bool) {
 	st := &s.soleReplica
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	mk, ok := st.restarting[name]
-	if !ok || mk.token != token {
+	if !ok {
 		return
 	}
-	if !succeeded {
-		delete(st.restarting, name)
-		return
+	if mk.inflight > 0 {
+		mk.inflight--
 	}
-	mk.returned = time.Now()
+	if !refused {
+		mk.maybeDown = true
+	}
+	if mk.inflight == 0 {
+		if !mk.maybeDown {
+			delete(st.restarting, name)
+			return
+		}
+		mk.returned = time.Now()
+	}
 	st.restarting[name] = mk
 }
 
+// agentRefusedError is an error the agent itself reported for a runtime action:
+// it answered with an error status or message, so the action did not start.
+// Transport failures, timeouts and undecodable replies are not this type: the
+// action may have run.
+type agentRefusedError struct{ msg string }
+
+func (e *agentRefusedError) Error() string { return e.msg }
+
 // soleReplicaMessage is the human text of the 409.
-func soleReplicaMessage(name, action string, models []router.SoleReplicaModel) string {
+func soleReplicaMessage(name string, action soleAction, models []router.SoleReplicaModel) string {
 	subject := fmt.Sprintf("draining node %q", name)
 	if action == soleActionRestart {
 		subject = fmt.Sprintf("restarting the runtime on node %q", name)
@@ -256,7 +293,7 @@ func soleReplicaMessage(name, action string, models []router.SoleReplicaModel) s
 }
 
 // writeSoleReplicaConflict writes the 409 for a blocked drain or restart.
-func writeSoleReplicaConflict(w http.ResponseWriter, name, action string, impact router.SoleReplicaImpact) {
+func writeSoleReplicaConflict(w http.ResponseWriter, name string, action soleAction, impact router.SoleReplicaImpact) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusConflict)
 	_ = json.NewEncoder(w).Encode(map[string]any{

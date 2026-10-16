@@ -54,13 +54,19 @@ export function coldLoadSummary(count: number): string {
 
 // impactSummary is the one-sentence description the confirm button points at
 // (aria-describedby), or null when the notice shows nothing visible. The
-// notice and the button both use it, so the button never references a missing
-// element.
+// notice and the button both use it (the notice also shows it as the error
+// text), so the button never references a missing element.
+// endSentence adds a full stop unless the text already ends in sentence punctuation.
+export function endSentence(text: string): string {
+  const t = text.trim();
+  return /[.!?]$/.test(t) ? t : `${t}.`;
+}
+
 export function impactSummary(s: SoleImpactState): string | null {
   switch (s.status) {
     case 'idle': return null;
     case 'loading': return 'Checking other replicas.';
-    case 'error': return 'Could not check other replicas.';
+    case 'error': return endSentence(s.message || 'Could not check other replicas');
     case 'ready': {
       const { models, cold_load_only: cold, unknown } = s.impact;
       if (models.length > 0) return `Only this node can serve ${models.length === 1 ? '1 model' : `${models.length} models`}; no other node can serve them.`;
@@ -124,4 +130,59 @@ export function soleCheckErrorMessage(e: unknown): string {
     if (e.message) return e.message;
   }
   return 'Could not check other replicas';
+}
+
+// readSoleReplicaImpact turns the sole-replica endpoint's response into an
+// impact. A failed status, or a body without a sole_replica object, throws
+// instead of reading as "nothing to report": an unreadable answer is not a safe
+// one.
+export async function readSoleReplicaImpact(res: Response): Promise<SoleReplicaImpact> {
+  if (!res.ok) throw new Error(`Failed to check other replicas (HTTP ${res.status})`);
+  const j = (await res.json().catch(() => ({}))) as { sole_replica?: Partial<SoleReplicaImpact> };
+  const r = j.sole_replica;
+  if (!r || typeof r !== 'object') throw new Error('Unexpected response while checking other replicas');
+  return { models: r.models ?? [], cold_load_only: r.cold_load_only ?? [], unknown: r.unknown ?? [] };
+}
+
+export type StoredImpact = { node: string | null } & SoleImpactState;
+
+// A check that has not answered by then stops waiting, so the confirm button is
+// never held by a hung request (the action is still checked by the server).
+export const CHECK_TIMEOUT_MS = 10_000;
+
+// createImpactChecker runs the check for one node at a time and reports each
+// state through onState. A newer load or a cancel aborts the previous request
+// and its result is discarded, so a slow answer for an earlier node can never
+// overwrite a later one; a request still running after timeoutMs is aborted
+// and reported as an error.
+export function createImpactChecker(
+  fetchImpact: (name: string, signal: AbortSignal) => Promise<SoleReplicaImpact>,
+  onState: (s: StoredImpact) => void,
+  timeoutMs: number = CHECK_TIMEOUT_MS,
+) {
+  let seq = 0;
+  let abort: AbortController | null = null;
+  return {
+    async load(name: string): Promise<void> {
+      const id = ++seq;
+      abort?.abort();
+      const controller = new AbortController();
+      abort = controller;
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      onState({ node: name, status: 'loading' });
+      try {
+        const impact = await fetchImpact(name, controller.signal);
+        if (id === seq) onState({ node: name, status: 'ready', impact });
+      } catch (e) {
+        if (id === seq) onState({ node: name, status: 'error', message: soleCheckErrorMessage(e) });
+      } finally {
+        clearTimeout(timer);
+      }
+    },
+    cancel(): void {
+      seq++;
+      abort?.abort();
+      abort = null;
+    },
+  };
 }

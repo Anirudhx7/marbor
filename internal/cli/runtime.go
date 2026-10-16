@@ -28,8 +28,8 @@ func runRuntimeAction(flags *globalFlags, action, node string, acknowledgeReplic
 	// Only a restart can leave a model without a server: start and stop are
 	// not checked.
 	var gate soleGate
-	if action == soleActionRestart {
-		if gate = gateSoleReplica(client, flags, soleRequest{action: action, node: node, force: force, dryRun: dryRun}, stdout, stderr); gate.done {
+	if soleAction(action) == soleActionRestart {
+		if gate = gateSoleReplica(client, flags, soleRequest{action: soleAction(action), node: node, force: force, dryRun: dryRun}, stdout, stderr); gate.done {
 			return gate.code
 		}
 	}

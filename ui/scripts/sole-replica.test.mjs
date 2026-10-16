@@ -6,6 +6,7 @@ import {
   resolveImpactState, hasSoleModels, isChecking, confirmLabel, formatModel,
   coldLoadSummary, unknownLine, COLD_COLLAPSE_AFTER,
   impactSummary, impactVisible, shouldForce, runtimeActionQuery, runtimeActionFailureInfo, soleCheckErrorMessage,
+  endSentence, readSoleReplicaImpact, createImpactChecker,
 } from '../src/lib/soleReplica.ts';
 
 const empty = { models: [], cold_load_only: [], unknown: [] };
@@ -109,4 +110,63 @@ test('check error text keeps the reason', () => {
   abort.name = 'AbortError';
   assert.equal(soleCheckErrorMessage(abort), 'Timed out checking other replicas');
   assert.equal(soleCheckErrorMessage('boom'), 'Could not check other replicas');
+});
+
+test('error summary uses the message and never doubles its punctuation', () => {
+  assert.equal(impactSummary({ status: 'error' }), 'Could not check other replicas.');
+  assert.equal(impactSummary({ status: 'error', message: 'Timed out checking other replicas' }), 'Timed out checking other replicas.');
+  assert.equal(impactSummary({ status: 'error', message: 'Could not reach marbor.' }), 'Could not reach marbor.');
+  assert.equal(endSentence('Failed?'), 'Failed?');
+  assert.equal(endSentence('Failed'), 'Failed.');
+});
+
+const jsonResponse = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+
+test('readSoleReplicaImpact throws on a missing sole_replica and on a bad status', async () => {
+  await assert.rejects(readSoleReplicaImpact(jsonResponse({ node: 'a' })), /Unexpected response/);
+  await assert.rejects(readSoleReplicaImpact(new Response('not json', { status: 200 })), /Unexpected response/);
+  await assert.rejects(readSoleReplicaImpact(jsonResponse({ error: 'x' }, 503)), /HTTP 503/);
+});
+
+test('readSoleReplicaImpact fills missing lists with empty ones', async () => {
+  const impact = await readSoleReplicaImpact(jsonResponse({ sole_replica: { models: [{ model: 'm', runtime: 'vllm' }] } }));
+  assert.deepEqual(impact, { models: [{ model: 'm', runtime: 'vllm' }], cold_load_only: [], unknown: [] });
+});
+
+const abortable = (signal) => new Promise((_, reject) => {
+  signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));
+});
+
+test('a check that hangs is aborted at the timeout and reports an error', async () => {
+  const seen = [];
+  const checker = createImpactChecker((_name, signal) => abortable(signal), s => seen.push(s), 20);
+  await checker.load('a');
+  assert.deepEqual(seen.map(s => s.status), ['loading', 'error']);
+  assert.equal(seen[1].message, 'Timed out checking other replicas');
+});
+
+test('a slow answer for an earlier node never overwrites a later one', async () => {
+  const seen = [];
+  const resolvers = {};
+  const checker = createImpactChecker((name) => new Promise(resolve => { resolvers[name] = () => resolve(name === 'a' ? sole : empty); }), s => seen.push(s), 1000);
+  const first = checker.load('a');
+  const second = checker.load('b');
+  resolvers.b();
+  await second;
+  resolvers.a();
+  await first;
+  const finals = seen.filter(s => s.status === 'ready');
+  assert.equal(finals.length, 1);
+  assert.equal(finals[0].node, 'b');
+});
+
+test('cancel aborts the request and drops its result', async () => {
+  const seen = [];
+  let signalSeen;
+  const checker = createImpactChecker((_n, signal) => { signalSeen = signal; return abortable(signal); }, s => seen.push(s), 1000);
+  const p = checker.load('a');
+  checker.cancel();
+  await p;
+  assert.equal(signalSeen.aborted, true);
+  assert.deepEqual(seen.map(s => s.status), ['loading']);
 });

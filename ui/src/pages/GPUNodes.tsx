@@ -298,7 +298,7 @@ function DrainConfirmModal({ nodeName, title, question, explanation, actionError
           <button
             onClick={() => { if (!busy) onClose(); }}
             aria-disabled={busy || undefined}
-            className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
+            className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors aria-disabled:opacity-50 aria-disabled:pointer-events-none"
           >
             Cancel
           </button>
@@ -306,7 +306,7 @@ function DrainConfirmModal({ nodeName, title, question, explanation, actionError
             onClick={() => { if (!busy && !confirmDisabled) void onConfirm(); }}
             aria-disabled={busy || confirmDisabled || undefined}
             aria-describedby={confirmDescribedBy}
-            className={`${confirmClassName} aria-disabled:opacity-50 aria-disabled:cursor-not-allowed`}
+            className={`${confirmClassName} aria-disabled:opacity-50 aria-disabled:pointer-events-none`}
           >
             {confirmText}
           </button>
@@ -4008,7 +4008,7 @@ export function GPUNodes() {
       {/* Runtime Start/Stop/Restart Confirmation Modal */}
       <Modal
         isOpen={runtimeActionConfirm !== null}
-        onClose={() => setRuntimeActionConfirm(null)}
+        onClose={() => { if (runtimeActionBusy !== null) return; setRuntimeActionConfirm(null); }}
         title={
           runtimeActionConfirm === 'start' ? 'Start Runtime'
           : runtimeActionConfirm === 'stop' ? 'Stop Runtime'
@@ -4033,20 +4033,26 @@ export function GPUNodes() {
             <p className="text-sm text-destructive">{runtimeActionError}</p>
           )}
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
+            {/* aria-disabled, not disabled, while busy or checking: a disabled
+                button drops focus and the dialog's keyboard trap loses its place. */}
             <button
-              onClick={() => setRuntimeActionConfirm(null)}
-              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => { if (runtimeActionBusy === null) setRuntimeActionConfirm(null); }}
+              aria-disabled={runtimeActionBusy !== null || undefined}
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors aria-disabled:opacity-50 aria-disabled:pointer-events-none"
             >
               Cancel
             </button>
             <button
-              onClick={() => runtimeActionConfirm && runRuntimeAction(runtimeActionConfirm)}
-              disabled={runtimeActionBusy !== null || (runtimeActionConfirm === 'restart' && isChecking(restartImpact.state))}
+              onClick={() => {
+                if (runtimeActionBusy !== null || (runtimeActionConfirm === 'restart' && isChecking(restartImpact.state))) return;
+                if (runtimeActionConfirm) void runRuntimeAction(runtimeActionConfirm);
+              }}
+              aria-disabled={runtimeActionBusy !== null || (runtimeActionConfirm === 'restart' && isChecking(restartImpact.state)) || undefined}
               aria-describedby={[runtimeReplicaNotice ? runtimeNoticeId : '', runtimeActionConfirm === 'restart' && impactVisible(restartImpact.state) ? restartImpactId : ''].filter(Boolean).join(' ') || undefined}
               className={
                 runtimeActionConfirm === 'start'
-                  ? "px-4 py-2 bg-success hover:bg-success/90 disabled:opacity-50 disabled:cursor-not-allowed text-success-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
-                  : "px-4 py-2 bg-destructive hover:bg-destructive/90 disabled:opacity-50 disabled:cursor-not-allowed text-destructive-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+                  ? "px-4 py-2 bg-success hover:bg-success/90 aria-disabled:opacity-50 aria-disabled:pointer-events-none text-success-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+                  : "px-4 py-2 bg-destructive hover:bg-destructive/90 aria-disabled:opacity-50 aria-disabled:pointer-events-none text-destructive-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
               }
             >
               {runtimeActionBusy !== null
