@@ -1,4 +1,5 @@
 import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, CloudProviderInput, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, QuantRecommendation, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry, ModelConfig, LocalModel, BenchmarkRun, BackupFileInfo, SpillCounterRow, RoutingDecision, ModelAlias } from '../types';
+import { runtimeActionFailureInfo, runtimeActionQuery } from './soleReplica';
 import { mockCloudProviders, mockSavings, mockReplicaSuggestions, mockSoleReplicaImpact } from './mockData';
 import { sameDeclared } from './replicaGroups';
 
@@ -537,13 +538,23 @@ export interface SoleReplicaImpact {
   unknown: UnknownReplicaItem[];
 }
 
-// getSoleReplicaImpact is a read-only check; it never changes node state.
-export async function getSoleReplicaImpact(name: string): Promise<SoleReplicaImpact> {
+// SoleReplicaBody is the sole_replica object on a drain or restart response
+// (200 when the action ran and there was something to report, 409 with code
+// "sole_replica" when it was blocked). forced is true only when force=true was
+// sent and it mattered. The dashboard does not read it yet; it is typed so
+// both responses have a documented shape.
+export interface SoleReplicaBody extends SoleReplicaImpact { forced: boolean }
+
+// getSoleReplicaImpact is a read-only check; it never changes node state. A
+// response without a sole_replica object throws instead of reading as "nothing
+// to report": an unreadable answer is not a safe one.
+export async function getSoleReplicaImpact(name: string, signal?: AbortSignal): Promise<SoleReplicaImpact> {
   if (DEMO) return demoDelay(mockSoleReplicaImpact[name] ?? { models: [], cold_load_only: [], unknown: [] });
-  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/sole-replica`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to check other replicas');
-  const j = (await res.json()) as { sole_replica?: Partial<SoleReplicaImpact> };
-  const r = j.sole_replica ?? {};
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/sole-replica`, { headers: authHeaders(), signal });
+  if (!res.ok) throw new Error(`Failed to check other replicas (HTTP ${res.status})`);
+  const j = (await res.json().catch(() => ({}))) as { sole_replica?: Partial<SoleReplicaImpact> };
+  const r = j.sole_replica;
+  if (!r || typeof r !== 'object') throw new Error('Unexpected response while checking other replicas');
   return { models: r.models ?? [], cold_load_only: r.cold_load_only ?? [], unknown: r.unknown ?? [] };
 }
 
@@ -552,7 +563,7 @@ export async function getSoleReplicaImpact(name: string): Promise<SoleReplicaImp
 export async function drainNode(name: string, graceSeconds?: number, force = false) {
   if (DEMO) return demoDelay(undefined);
   const body = graceSeconds !== undefined ? JSON.stringify({ grace_period_seconds: graceSeconds }) : undefined;
-  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/drain${force ? '?force=true' : ''}`, {
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/drain${runtimeActionQuery({ force })}`, {
     method: 'POST',
     headers: { ...authHeaders(), ...(body ? { 'Content-Type': 'application/json' } : {}) },
     body,
@@ -1730,23 +1741,11 @@ export class RuntimeActionError extends Error {
 }
 
 // runtimeActionFailure builds the typed error for a non-2xx runtime action
-// response. A replica_member rejection means the node became part of a
-// multi-host replica after the dialog was opened, so the operator is asked to
-// reopen the action and review the impact (the server text is written for API
-// and CLI callers and names flags the dashboard does not have).
+// response; the message wording lives in runtimeActionFailureInfo.
 async function runtimeActionFailure(res: Response, fallback: string): Promise<RuntimeActionError> {
-  const j = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
-  if (j.code === 'replica_member') {
-    return new RuntimeActionError(
-      'This node is now part of a multi-host replica. Review the impact below and confirm again.',
-      res.status, j.code);
-  }
-  if (j.code === 'sole_replica') {
-    return new RuntimeActionError(
-      'The models only this node can serve changed since you opened this dialog. Review the updated list and confirm again.',
-      res.status, j.code);
-  }
-  return new RuntimeActionError(j.error || `${fallback} (HTTP ${res.status})`, res.status, j.code);
+  const j = (await res.json().catch(() => ({}))) as { error?: string; code?: string; sole_replica?: SoleReplicaBody };
+  const info = runtimeActionFailureInfo(res.status, j, fallback);
+  return new RuntimeActionError(info.message, res.status, info.code);
 }
 
 // startNodeRuntime/stopNodeRuntime/restartNodeRuntime dispatch the runtime
@@ -1769,7 +1768,7 @@ export async function startNodeRuntime(name: string): Promise<void> {
 // the operator what the action does to the replica.
 export async function stopNodeRuntime(name: string, acknowledgeReplica = false): Promise<void> {
   if (DEMO) return demoDelay(undefined);
-  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/runtime/stop${acknowledgeReplica ? '?acknowledge_replica=true' : ''}`, {
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/runtime/stop${runtimeActionQuery({ acknowledgeReplica })}`, {
     method: 'POST',
     headers: authHeaders(),
   });
@@ -1780,8 +1779,7 @@ export async function stopNodeRuntime(name: string, acknowledgeReplica = false):
 // serve; both flags travel in one request when both notices were shown.
 export async function restartNodeRuntime(name: string, acknowledgeReplica = false, force = false): Promise<void> {
   if (DEMO) return demoDelay(undefined);
-  const params = [acknowledgeReplica ? 'acknowledge_replica=true' : '', force ? 'force=true' : ''].filter(Boolean).join('&');
-  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/runtime/restart${params ? `?${params}` : ''}`, {
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/runtime/restart${runtimeActionQuery({ acknowledgeReplica, force })}`, {
     method: 'POST',
     headers: authHeaders(),
   });

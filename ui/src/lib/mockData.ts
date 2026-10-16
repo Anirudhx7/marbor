@@ -629,10 +629,20 @@ export const mockGPUNodes: GPUNode[] = [
 // that stop being served anywhere if the node is drained or its runtime is
 // restarted, the models only an Ollama peer could load on demand, and places
 // where replica data could not be verified. Demo values follow the fleet above
-// (runtimes are accurate; gpu-node-03 already holds qwen2.5 warm, so
-// gpu-node-01 only has llama3.2 left as a cold-load example).
+// (runtimes are accurate; gpu-node-03 runs TGI and holds qwen2.5 warm, which an
+// Ollama node cannot confirm, so gpu-node-01 shows a model-level unknown line;
+// it also lists four cold-load models, enough to show the collapsed form).
 export const mockSoleReplicaImpact: Record<string, SoleReplicaImpact> = {
-  'gpu-node-01': { models: [], cold_load_only: [{ model: 'llama3.2', runtime: 'ollama', peers: ['gpu-node-11'] }], unknown: [] },
+  'gpu-node-01': {
+    models: [],
+    cold_load_only: [
+      { model: 'llama3.2', runtime: 'ollama', peers: ['gpu-node-11'] },
+      { model: 'deepseek-r1:8b', runtime: 'ollama', peers: ['gpu-node-11'] },
+      { model: 'qwen3:8b', runtime: 'ollama', peers: ['gpu-node-11'] },
+      { model: 'mistral:7b', runtime: 'ollama', peers: ['gpu-node-11'] },
+    ],
+    unknown: [{ node: 'gpu-node-03', model: 'qwen2.5', reason: 'model is loaded there but only reachable through the OpenAI-compatible API' }],
+  },
   'gpu-node-02': { models: [{ model: 'meta-llama/Llama-3.3-8B-Instruct', runtime: 'vllm' }], cold_load_only: [], unknown: [] },
   'gpu-node-05': { models: [{ model: 'mlx-community/Llama-3.2-3B-Instruct-4bit', runtime: 'mlx' }], cold_load_only: [], unknown: [] },
   'gpu-node-06': { models: [], cold_load_only: [], unknown: [{ node: 'gpu-node-06', reason: 'node is not healthy, so which models it holds cannot be confirmed' }] },

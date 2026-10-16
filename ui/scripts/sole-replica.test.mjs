@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import {
   resolveImpactState, hasSoleModels, isChecking, confirmLabel, formatModel,
   coldLoadSummary, unknownLine, COLD_COLLAPSE_AFTER,
+  impactSummary, impactVisible, shouldForce, runtimeActionQuery, runtimeActionFailureInfo, soleCheckErrorMessage,
 } from '../src/lib/soleReplica.ts';
 
 const empty = { models: [], cold_load_only: [], unknown: [] };
@@ -48,4 +49,64 @@ test('formatting helpers', () => {
   assert.equal(coldLoadSummary(1), '1 model would have to cold-load on another node');
   assert.equal(coldLoadSummary(4), '4 models would have to cold-load on other nodes');
   assert.equal(COLD_COLLAPSE_AFTER, 3);
+});
+
+const cold = { models: [], cold_load_only: [{ model: 'm', runtime: 'ollama', peers: ['p'] }], unknown: [] };
+const unk = { models: [], cold_load_only: [], unknown: [{ node: 'n', reason: 'r' }] };
+
+test('the notice and the confirm button agree on when the impact is visible', () => {
+  assert.equal(impactVisible({ status: 'idle' }), false);
+  assert.equal(impactVisible({ status: 'ready', impact: empty }), false);
+  assert.equal(impactVisible({ status: 'loading' }), true);
+  assert.equal(impactVisible({ status: 'error' }), true);
+  assert.equal(impactVisible({ status: 'ready', impact: sole }), true);
+  assert.equal(impactVisible({ status: 'ready', impact: cold }), true);
+  assert.equal(impactVisible({ status: 'ready', impact: unk }), true);
+});
+
+test('impact summary names the most serious finding', () => {
+  assert.match(impactSummary({ status: 'ready', impact: sole }), /Only this node can serve 1 model/);
+  assert.match(impactSummary({ status: 'ready', impact: cold }), /cold-load/);
+  assert.match(impactSummary({ status: 'ready', impact: unk }), /Could not verify/);
+  assert.equal(impactSummary({ status: 'ready', impact: empty }), null);
+});
+
+test('force is sent only for a drain or restart whose dialog listed sole models', () => {
+  const ready = { status: 'ready', impact: sole };
+  assert.equal(shouldForce('drain', ready), true);
+  assert.equal(shouldForce('restart', ready), true);
+  assert.equal(shouldForce('stop', ready), false);
+  assert.equal(shouldForce('start', ready), false);
+  for (const s of [{ status: 'loading' }, { status: 'error' }, { status: 'idle' },
+    { status: 'ready', impact: empty }, { status: 'ready', impact: cold }, { status: 'ready', impact: unk }]) {
+    assert.equal(shouldForce('drain', s), false);
+    assert.equal(shouldForce('restart', s), false);
+  }
+});
+
+test('query string carries both acknowledgements in one request and only exact true', () => {
+  assert.equal(runtimeActionQuery({}), '');
+  assert.equal(runtimeActionQuery({ acknowledgeReplica: false, force: false }), '');
+  assert.equal(runtimeActionQuery({ force: true }), '?force=true');
+  assert.equal(runtimeActionQuery({ acknowledgeReplica: true }), '?acknowledge_replica=true');
+  assert.equal(runtimeActionQuery({ acknowledgeReplica: true, force: true }), '?acknowledge_replica=true&force=true');
+});
+
+test('failure mapping keeps the code and uses neutral wording for sole_replica', () => {
+  const sr = runtimeActionFailureInfo(409, { error: 'server text with --force', code: 'sole_replica' }, 'Failed');
+  assert.equal(sr.code, 'sole_replica');
+  assert.doesNotMatch(sr.message, /--force|since you opened/);
+  const rm = runtimeActionFailureInfo(409, { error: 'x', code: 'replica_member' }, 'Failed');
+  assert.equal(rm.code, 'replica_member');
+  assert.match(rm.message, /multi-host replica/);
+  assert.deepEqual(runtimeActionFailureInfo(502, { error: 'agent down' }, 'Failed'), { message: 'agent down', code: undefined });
+  assert.equal(runtimeActionFailureInfo(500, {}, 'Failed to drain node').message, 'Failed to drain node (HTTP 500)');
+});
+
+test('check error text keeps the reason', () => {
+  assert.equal(soleCheckErrorMessage(new Error('Failed to check other replicas (HTTP 502)')), 'Failed to check other replicas (HTTP 502)');
+  const abort = new Error('aborted');
+  abort.name = 'AbortError';
+  assert.equal(soleCheckErrorMessage(abort), 'Timed out checking other replicas');
+  assert.equal(soleCheckErrorMessage('boom'), 'Could not check other replicas');
 });

@@ -22,6 +22,21 @@ var dryRunFlag = FlagSpec{
 	Usage: "show which models only this node can serve and exit without changing anything",
 }
 
+// The actions the sole-replica check guards.
+const (
+	soleActionDrain   = "drain"
+	soleActionRestart = "restart"
+)
+
+// soleRequest says which action the sole-replica check is for and how the
+// operator asked to handle it.
+type soleRequest struct {
+	action string
+	node   string
+	force  bool
+	dryRun bool
+}
+
 // soleGate is the outcome of the sole-replica check run before a drain or
 // runtime restart.
 type soleGate struct {
@@ -35,28 +50,28 @@ type soleGate struct {
 // runtime restart and decides whether the action may be sent. A node that is
 // the only server of a model needs --force, or an interactive yes; without a
 // terminal it is a user error. The server enforces the same rule, so a check
-// that cannot be read is noted and the action is sent unforced for the server
-// to decide.
-func gateSoleReplica(client *Client, flags *globalFlags, action, node string, force, dryRun bool, stdout, stderr io.Writer) soleGate {
-	impact, err := client.SoleReplica(node)
+// that cannot be read is noted and the action is sent for the server to decide,
+// carrying --force if the operator gave it.
+func gateSoleReplica(client *Client, flags *globalFlags, req soleRequest, stdout, stderr io.Writer) soleGate {
+	impact, err := client.SoleReplica(req.node)
 	if err != nil {
-		if dryRun {
+		if req.dryRun {
 			return soleGate{done: true, code: reportError(err, stderr)}
 		}
-		fmt.Fprintf(stderr, "note: could not check whether %q is the only server of any model: %v\n", node, err)
-		return soleGate{}
+		fmt.Fprintf(stderr, "note: could not check whether %q is the only server of any model: %v\n", req.node, err)
+		return soleGate{sendForce: req.force}
 	}
 	printSoleReplicaNotes(stderr, impact)
-	if dryRun {
-		return soleGate{impact: impact, done: true, code: reportDryRun(flags, action, node, impact, stdout, stderr)}
+	if req.dryRun {
+		return soleGate{impact: impact, done: true, code: reportDryRun(flags, req.action, req.node, impact, stdout, stderr)}
 	}
 	if len(impact.Models) == 0 {
 		return soleGate{impact: impact}
 	}
-	if force {
+	if req.force {
 		return soleGate{impact: impact, sendForce: true}
 	}
-	if err := confirmSoleReplica(action, node, impact, stderr); err != nil {
+	if err := confirmSoleReplica(req.action, req.node, impact, stderr); err != nil {
 		return soleGate{impact: impact, done: true, code: reportError(err, stderr)}
 	}
 	return soleGate{impact: impact, sendForce: true}
@@ -80,7 +95,7 @@ func confirmSoleReplica(action, node string, impact *SoleReplicaImpact, stderr i
 // action is described as permanent: a drain is undone with "runtime undrain"
 // and a restart brings the runtime back on its own.
 func soleReplicaConsequence(action, node string) string {
-	if action == "restart" {
+	if action == soleActionRestart {
 		return fmt.Sprintf("Restarting the runtime on %q takes it offline while it restarts, and no other node can serve these models in the meantime. The check covers restarts made through marbor only.", node)
 	}
 	return fmt.Sprintf("Draining %q stops routing new requests to it, and no other node can serve these models until you run \"runtime undrain\". The check covers drains made through marbor only.", node)
@@ -111,7 +126,7 @@ func printSoleReplicaNotes(stderr io.Writer, impact *SoleReplicaImpact) {
 
 // reportDryRun prints the check result for --dry-run and returns the exit code.
 func reportDryRun(flags *globalFlags, action, node string, impact *SoleReplicaImpact, stdout, stderr io.Writer) int {
-	result := map[string]interface{}{"node": node, "action": action, "dry_run": true, "sole_replica": impact}
+	result := map[string]interface{}{"node": node, "action": action, "dry_run": true, "sole_replica": impact.normalized()}
 	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, result); handled {
 		return code
 	}
@@ -123,14 +138,34 @@ func reportDryRun(flags *globalFlags, action, node string, impact *SoleReplicaIm
 	return ExitOK
 }
 
-// soleReplicaForOutput picks the sole_replica detail to show for --json: the
-// server's own (it carries forced) when present, otherwise the pre-check.
-func soleReplicaForOutput(server *SoleReplicaBody, pre *SoleReplicaImpact) interface{} {
-	if server != nil {
-		return server
+// normalized returns the impact with every list non-nil, so JSON output shows
+// [] rather than null.
+func (i SoleReplicaImpact) normalized() SoleReplicaImpact {
+	if i.Models == nil {
+		i.Models = []SoleReplicaModel{}
 	}
-	if pre != nil {
-		return &SoleReplicaBody{SoleReplicaImpact: *pre}
+	if i.ColdLoadOnly == nil {
+		i.ColdLoadOnly = []ColdLoadModel{}
+	}
+	if i.Unknown == nil {
+		i.Unknown = []SoleReplicaUnknown{}
+	}
+	return i
+}
+
+// soleReplicaForOutput picks the sole_replica detail to show: the server's own
+// (it carries forced) when present, otherwise the pre-check, marked forced when
+// force was sent for a node that had sole models. It is nil when there is
+// nothing to report, so --json omits the key the way the server does. Lists are
+// never null.
+func soleReplicaForOutput(server *SoleReplicaBody, pre *SoleReplicaImpact, sentForce bool) *SoleReplicaBody {
+	switch {
+	case server != nil:
+		out := *server
+		out.SoleReplicaImpact = out.SoleReplicaImpact.normalized()
+		return &out
+	case pre != nil && len(pre.Models)+len(pre.ColdLoadOnly)+len(pre.Unknown) > 0:
+		return &SoleReplicaBody{SoleReplicaImpact: pre.normalized(), Forced: sentForce && len(pre.Models) > 0}
 	}
 	return nil
 }

@@ -192,13 +192,33 @@ func TestSoleReplicaImpact_TargetGate(t *testing.T) {
 func TestSoleReplicaImpact_ReplicaHeads(t *testing.T) {
 	const m = "org/big"
 	members := []string{"h1", "w1"}
-	t.Run("head target with a warm head peer is covered", func(t *testing.T) {
+	t.Run("head target with a warm standalone peer is covered", func(t *testing.T) {
 		r := safetyFleet(t,
 			safetyNode{name: "h1", runtime: "vllm", models: []string{m}, peers: "h1", members: members},
 			safetyNode{name: "w1", runtime: "vllm", peers: "h1", members: members},
 			safetyNode{name: "solo", runtime: "vllm", models: []string{m}},
 		)
 		wantSole(t, impactOf(t, r, "h1", nil))
+	})
+	t.Run("head target with a warm head peer is covered", func(t *testing.T) {
+		other := []string{"h2", "w2"}
+		r := safetyFleet(t,
+			safetyNode{name: "h1", runtime: "vllm", models: []string{m}, peers: "h1", members: members},
+			safetyNode{name: "w1", runtime: "vllm", peers: "h1", members: members},
+			safetyNode{name: "h2", runtime: "vllm", models: []string{m}, peers: "h2", members: other},
+			safetyNode{name: "w2", runtime: "vllm", peers: "h2", members: other},
+		)
+		wantSole(t, impactOf(t, r, "h1", nil))
+	})
+	t.Run("head target whose only peer head has no warm copy is sole", func(t *testing.T) {
+		other := []string{"h2", "w2"}
+		r := safetyFleet(t,
+			safetyNode{name: "h1", runtime: "vllm", models: []string{m}, peers: "h1", members: members},
+			safetyNode{name: "w1", runtime: "vllm", peers: "h1", members: members},
+			safetyNode{name: "h2", runtime: "vllm", peers: "h2", members: other},
+			safetyNode{name: "w2", runtime: "vllm", peers: "h2", members: other},
+		)
+		wantSole(t, impactOf(t, r, "h1", nil), m)
 	})
 	t.Run("head peer with an unreachable worker is unknown not sole", func(t *testing.T) {
 		r := safetyFleet(t,
@@ -302,6 +322,85 @@ func checkParity(t *testing.T, m, targetRT, peerRT string, down, drain, warm, sh
 			}
 		}
 	}
+}
+
+// The same parity check for peers that are replica members or stale: a worker
+// is never a server, a stale peer or a head with an unreachable worker is
+// reported unknown (routing may or may not use it, the check refuses to guess),
+// and a healthy warm head is covered and routable.
+func TestSoleReplicaImpact_ParityWithRoutingReplicaAndStalePeers(t *testing.T) {
+	const m = "shared-model"
+	members := []string{"h1", "w1"}
+	type outcome int
+	const (
+		covered outcome = iota
+		unknown
+		sole
+	)
+	cases := []struct {
+		name        string
+		peer        safetyNode
+		worker      *safetyNode
+		staleWorker bool
+		want        outcome
+		peerName    string
+	}{
+		{name: "stale warm peer", peer: safetyNode{name: "p", runtime: "vllm", models: []string{m}, age: 24 * time.Hour}, want: unknown, peerName: "p"},
+		{name: "never polled peer", peer: safetyNode{name: "p", runtime: "vllm", models: []string{m}, never: true}, want: unknown, peerName: "p"},
+		{name: "healthy warm head", peer: safetyNode{name: "h1", runtime: "vllm", models: []string{m}, peers: "h1", members: members}, worker: &safetyNode{name: "w1", runtime: "vllm", peers: "h1", members: members}, want: covered, peerName: "h1"},
+		{name: "warm head with an unreachable worker", peer: safetyNode{name: "h1", runtime: "vllm", models: []string{m}, peers: "h1", members: members}, worker: &safetyNode{name: "w1", runtime: "vllm", peers: "h1", members: members}, staleWorker: true, want: unknown, peerName: "h1"},
+		{name: "worker is never a server", peer: safetyNode{name: "w1", runtime: "vllm", models: []string{m}, peers: "h1", members: members}, worker: &safetyNode{name: "h1", runtime: "vllm", peers: "h1", members: members, down: true}, want: sole, peerName: "w1"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			specs := []safetyNode{{name: "t", runtime: "vllm", models: []string{m}}, tc.peer}
+			if tc.worker != nil {
+				specs = append(specs, *tc.worker)
+			}
+			r := safetyFleet(t, specs...)
+			if tc.staleWorker {
+				r.setAgentStale(nodeByName(t, r, "w1"), true)
+			}
+			imp := impactOf(t, r, "t", nil)
+			var got outcome
+			switch {
+			case len(imp.Models) > 0:
+				got = sole
+			case len(imp.Unknown) > 0:
+				got = unknown
+			default:
+				got = covered
+			}
+			if got != tc.want {
+				t.Fatalf("outcome = %v, want %v (impact %+v)", got, tc.want, imp)
+			}
+			// Routing never sends traffic to a node the check calls covered
+			// unless routing itself can use it.
+			if tc.want == covered {
+				if !routes(r, tc.peerName, m) {
+					t.Errorf("the check counts %s as a server but routing rejects it", tc.peerName)
+				}
+			}
+			// A peer routing accepts is never reported as a sole-replica gap.
+			if tc.want == sole {
+				if routes(r, tc.peerName, m) {
+					t.Errorf("routing accepts %s but the check reports the model as sole", tc.peerName)
+				}
+			}
+		})
+	}
+}
+
+// routes reports whether routing would consider the named node for model m,
+// judged among the whole fleet (replica roles need the other members).
+func routes(r *Router, name, m string) bool {
+	f := r.filterCandidatesWithFallback(r.nodes, m, "", nil)
+	for _, n := range f.healthy {
+		if n.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 func TestSoleReplicaImpact_ConcurrentRaceClean(t *testing.T) {

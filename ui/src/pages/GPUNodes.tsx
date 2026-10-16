@@ -19,7 +19,7 @@ import { RuntimeBadge } from '../components/RuntimeBadge';
 import { mockGPUNodes, mockRuntimeLogLines, withDemoSignals } from '../lib/mockData';
 import { SoleReplicaImpactNotice } from '../components/SoleReplicaImpactNotice';
 import { useSoleReplicaImpact } from '../lib/useSoleReplicaImpact';
-import { hasSoleModels, isChecking, confirmLabel } from '../lib/soleReplica';
+import { impactVisible, isChecking, confirmLabel, shouldForce } from '../lib/soleReplica';
 import { readLastNodeCount, writeLastNodeCount } from '../lib/nodeCount';
 import { isReplicaMember, replicaImpactCopy } from '../lib/replicaImpact';
 import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, probeNodeTLS, fetchModelFit, unloadModel, getPinned, getMarborAgent, enableMarborAgent, regenerateMarborAgentToken, disableMarborAgent, checkNodeHealth, fetchReplicaSuggestions, applyDemoConfirmedGroups, getNodeControl, acceptNodeControl, clearNodeControl, startNodeRuntime, stopNodeRuntime, restartNodeRuntime, getNodeRuntimeLogs, RuntimeActionError } from '../lib/api';
@@ -276,13 +276,15 @@ function DrainConfirmModal({ nodeName, title, question, explanation, actionError
   confirmClassName: string;
   confirmDescribedBy?: string;
   // confirmDisabled holds the confirm button while a check is still running; busy
-  // also disables Cancel while the request is in flight.
+  // also holds Cancel while the request is in flight. Both use aria-disabled
+  // rather than disabled, so the focused button keeps focus (a disabled button
+  // drops it and the dialog's keyboard trap loses its place).
   confirmDisabled?: boolean;
   busy?: boolean;
   children?: ReactNode;
 }) {
   return (
-    <Modal isOpen={nodeName !== null} onClose={onClose} title={title} maxWidth="sm">
+    <Modal isOpen={nodeName !== null} onClose={() => { if (!busy) onClose(); }} title={title} maxWidth="sm">
       <div className="space-y-4">
         <p className="text-sm text-muted-foreground">
           {question} <span className="text-foreground font-semibold">{nodeName}</span>?
@@ -294,17 +296,17 @@ function DrainConfirmModal({ nodeName, title, question, explanation, actionError
         )}
         <div className="flex justify-end gap-3 pt-4 border-t border-border">
           <button
-            onClick={onClose}
-            disabled={busy}
-            className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={() => { if (!busy) onClose(); }}
+            aria-disabled={busy || undefined}
+            className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
           >
             Cancel
           </button>
           <button
-            onClick={onConfirm}
-            disabled={busy || confirmDisabled}
+            onClick={() => { if (!busy && !confirmDisabled) void onConfirm(); }}
+            aria-disabled={busy || confirmDisabled || undefined}
             aria-describedby={confirmDescribedBy}
-            className={`${confirmClassName} disabled:opacity-50 disabled:cursor-not-allowed`}
+            className={`${confirmClassName} aria-disabled:opacity-50 aria-disabled:cursor-not-allowed`}
           >
             {confirmText}
           </button>
@@ -1170,7 +1172,7 @@ export function GPUNodes() {
       // force is sent only when this dialog listed models that only this node
       // can serve; a failed or unknown check never sends it (the server checks
       // again and refuses if needed).
-      const force = action === 'restart' && hasSoleModels(restartImpact.state);
+      const force = shouldForce(action, restartImpact.state);
       if (action === 'start') await startNodeRuntime(agentNode.name);
       else if (action === 'stop') await stopNodeRuntime(agentNode.name, ackReplica);
       else await restartNodeRuntime(agentNode.name, ackReplica, force);
@@ -1184,7 +1186,10 @@ export function GPUNodes() {
       // The node became a replica member (or its sole-replica list changed)
       // after the dialog opened: refresh and reopen the dialog (it refetches the
       // impact) so the operator reviews the current state, with the error inside
-      // it, and confirms again. Nothing is retried automatically.
+      // it, and confirms again. Nothing is retried automatically. Reopening on
+      // replica_member (a stop or restart that now needs the replica
+      // acknowledgement) is deliberate: it shows the replica notice before the
+      // operator confirms again.
       if (e instanceof RuntimeActionError && (e.code === 'replica_member' || e.code === 'sole_replica')) {
         if (e.code === 'replica_member') await loadNodes();
         setRuntimeActionConfirm(action);
@@ -3192,12 +3197,12 @@ export function GPUNodes() {
         question="Are you sure you want to drain"
         explanation="This stops new requests from being routed to this node. In-flight requests are unaffected. You can undrain it again at any time."
         actionError={actionError}
-        onClose={() => { setNodeToDrain(null); setDrainGraceSeconds(''); }}
+        onClose={() => { if (drainBusy) return; setNodeToDrain(null); setDrainGraceSeconds(''); }}
         onConfirm={async () => {
           if (!nodeToDrain) return;
           const grace = drainGraceSeconds.trim() === '' ? undefined : Number(drainGraceSeconds);
           // force only when this dialog listed models that only this node can serve.
-          const force = hasSoleModels(drainImpact.state);
+          const force = shouldForce('drain', drainImpact.state);
           setDrainBusy(true);
           try {
             const ok = await handleDrainNode(nodeToDrain, grace, force);
@@ -3208,7 +3213,7 @@ export function GPUNodes() {
         }}
         confirmLabel={confirmLabel('Drain', drainBusy, drainImpact.state)}
         confirmClassName="px-4 py-2 bg-amber-600 hover:bg-amber-600/90 text-white font-medium rounded-lg text-sm transition-colors shadow-sm"
-        confirmDescribedBy={[drainReplicaNotice ? drainNoticeId : '', drainImpact.state.status !== 'idle' ? drainImpactId : ''].filter(Boolean).join(' ') || undefined}
+        confirmDescribedBy={[drainReplicaNotice ? drainNoticeId : '', impactVisible(drainImpact.state) ? drainImpactId : ''].filter(Boolean).join(' ') || undefined}
         confirmDisabled={isChecking(drainImpact.state)}
         busy={drainBusy}
       >
@@ -4037,7 +4042,7 @@ export function GPUNodes() {
             <button
               onClick={() => runtimeActionConfirm && runRuntimeAction(runtimeActionConfirm)}
               disabled={runtimeActionBusy !== null || (runtimeActionConfirm === 'restart' && isChecking(restartImpact.state))}
-              aria-describedby={[runtimeReplicaNotice ? runtimeNoticeId : '', runtimeActionConfirm === 'restart' && restartImpact.state.status !== 'idle' ? restartImpactId : ''].filter(Boolean).join(' ') || undefined}
+              aria-describedby={[runtimeReplicaNotice ? runtimeNoticeId : '', runtimeActionConfirm === 'restart' && impactVisible(restartImpact.state) ? restartImpactId : ''].filter(Boolean).join(' ') || undefined}
               className={
                 runtimeActionConfirm === 'start'
                   ? "px-4 py-2 bg-success hover:bg-success/90 disabled:opacity-50 disabled:cursor-not-allowed text-success-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"

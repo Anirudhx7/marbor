@@ -28,8 +28,8 @@ func runRuntimeAction(flags *globalFlags, action, node string, acknowledgeReplic
 	// Only a restart can leave a model without a server: start and stop are
 	// not checked.
 	var gate soleGate
-	if action == "restart" {
-		if gate = gateSoleReplica(client, flags, action, node, force, dryRun, stdout, stderr); gate.done {
+	if action == soleActionRestart {
+		if gate = gateSoleReplica(client, flags, soleRequest{action: action, node: node, force: force, dryRun: dryRun}, stdout, stderr); gate.done {
 			return gate.code
 		}
 	}
@@ -50,7 +50,7 @@ func runRuntimeAction(flags *globalFlags, action, node string, acknowledgeReplic
 	if out.Replica != nil {
 		result["replica"] = out.Replica
 	}
-	if sole := soleReplicaForOutput(out.SoleReplica, gate.impact); sole != nil {
+	if sole := soleReplicaForOutput(out.SoleReplica, gate.impact, gate.sendForce); sole != nil {
 		result["sole_replica"] = sole
 	}
 	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, result); handled {
@@ -117,7 +117,7 @@ func runRuntimeDrain(flags *globalFlags, node, reason string, gracePeriod int, f
 		return reportError(err, stderr)
 	}
 
-	gate := gateSoleReplica(client, flags, "drain", node, force, dryRun, stdout, stderr)
+	gate := gateSoleReplica(client, flags, soleRequest{action: soleActionDrain, node: node, force: force, dryRun: dryRun}, stdout, stderr)
 	if gate.done {
 		return gate.code
 	}
@@ -128,9 +128,7 @@ func runRuntimeDrain(flags *globalFlags, node, reason string, gracePeriod int, f
 	}
 
 	printReplicaWarning(stderr, result.Replica)
-	if result.SoleReplica == nil && gate.impact != nil {
-		result.SoleReplica = &SoleReplicaBody{SoleReplicaImpact: *gate.impact}
-	}
+	result.SoleReplica = soleReplicaForOutput(result.SoleReplica, gate.impact, gate.sendForce)
 
 	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, result); handled {
 		return code

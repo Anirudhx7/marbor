@@ -34,9 +34,9 @@ type SoleReplicaUnknown struct {
 // SoleReplicaImpact is what taking one node out of service does to model
 // availability on the rest of the fleet. Only Models is a hard finding.
 type SoleReplicaImpact struct {
-	Models       []SoleReplicaModel
-	ColdLoadOnly []ColdLoadModel
-	Unknown      []SoleReplicaUnknown
+	Models       []SoleReplicaModel   `json:"models"`
+	ColdLoadOnly []ColdLoadModel      `json:"cold_load_only"`
+	Unknown      []SoleReplicaUnknown `json:"unknown"`
 }
 
 type peerVerdict int
@@ -102,7 +102,10 @@ func snapshotSafetyNode(n *NodeState) safetyView {
 // available. The second result is false when the node does not exist.
 //
 // It is read-only: it reads node snapshots one lock at a time, holds no
-// router lock, and fires no webhooks. It mirrors the routing eligibility
+// router lock, and fires no webhooks. Each peer is snapshotted once and the
+// classification helpers then re-lock individual nodes, so a poll landing
+// mid-check can make the answer slightly stale; callers that need a change to
+// follow the check atomically serialize it themselves. It mirrors the routing eligibility
 // rules with three deliberate differences: a peer's remaining request
 // capacity is ignored (a busy peer still serves), data marbor cannot verify
 // is reported as unknown rather than guessed, and an unwarm Ollama peer only

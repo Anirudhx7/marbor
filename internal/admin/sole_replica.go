@@ -28,12 +28,17 @@ const (
 	// maxModelsInMessage caps how many model names the 409 error text lists;
 	// the full list is always in the sole_replica body.
 	maxModelsInMessage = 5
+
+	// The actions the sole-replica check guards. They appear in the 409 text.
+	soleActionDrain   = "drain"
+	soleActionRestart = "restart"
 )
 
 // restartMarker records a runtime restart marbor sent, so a drain or restart
 // of a peer right afterwards does not count the restarting node as a spare.
 // returned is zero while the agent call is in flight.
 type restartMarker struct {
+	token    uint64 // identifies the restart that wrote this marker
 	started  time.Time
 	returned time.Time
 }
@@ -44,8 +49,9 @@ type restartMarker struct {
 // only changes made through this API, not scheduled or thermal drains and not
 // restarts done outside marbor. Markers are lost on process restart.
 type soleReplicaState struct {
-	mu         sync.Mutex
-	restarting map[string]restartMarker
+	mu          sync.Mutex
+	restarting  map[string]restartMarker
+	nextRestart uint64
 }
 
 // soleReplicaLists is the wire form of a router.SoleReplicaImpact. Every list
@@ -96,18 +102,34 @@ func forceRequested(r *http.Request) bool {
 	return r.URL.Query().Get(forceParam) == "true"
 }
 
-// soleCheck is the outcome of checkSoleReplica.
+// soleOutcome is how a sole-replica check ended. One value, so the impossible
+// combinations (blocked and forced at once) cannot be represented.
+type soleOutcome int
+
+const (
+	soleNodeMissing soleOutcome = iota // the node does not exist
+	soleProceed                        // nothing needed force; the change was made
+	soleForced                         // force was sent and sole models existed; the change was made
+	soleBlocked                        // sole models and no force; nothing was changed
+)
+
+// soleCheck is the result of checkSoleReplica.
 type soleCheck struct {
 	impact  router.SoleReplicaImpact
-	found   bool // the node exists
-	blocked bool // sole models and no force: nothing was changed
-	forced  bool // force was sent and sole models existed
+	outcome soleOutcome
 }
 
+func (c soleCheck) found() bool   { return c.outcome != soleNodeMissing }
+func (c soleCheck) blocked() bool { return c.outcome == soleBlocked }
+func (c soleCheck) forced() bool  { return c.outcome == soleForced }
+
 // checkSoleReplica evaluates the impact of taking name out of service and,
-// unless that is blocked, runs commit while still holding the lock. commit
-// returns false when the node has vanished. Callers must not hold the lock.
-func (s *Server) checkSoleReplica(name string, force bool, commit func() bool) soleCheck {
+// unless that is blocked, runs commit while still holding the lock, so two
+// requests against mutual peers cannot both pass. The impact is computed from
+// a snapshot of each peer, and the router helpers re-lock per node, so a poll
+// landing mid-check can make the answer slightly stale; the lock serializes
+// marbor's own changes, not the fleet. Callers must not hold the lock.
+func (s *Server) checkSoleReplica(name string, force bool, commit func()) soleCheck {
 	st := &s.soleReplica
 	st.mu.Lock()
 	defer st.mu.Unlock()
@@ -116,12 +138,36 @@ func (s *Server) checkSoleReplica(name string, force bool, commit func() bool) s
 		return soleCheck{}
 	}
 	if len(impact.Models) > 0 && !force {
-		return soleCheck{impact: impact, found: true, blocked: true}
+		return soleCheck{impact: impact, outcome: soleBlocked}
 	}
-	if !commit() {
-		return soleCheck{}
+	commit()
+	if force && len(impact.Models) > 0 {
+		return soleCheck{impact: impact, outcome: soleForced}
 	}
-	return soleCheck{impact: impact, found: true, forced: force && len(impact.Models) > 0}
+	return soleCheck{impact: impact, outcome: soleProceed}
+}
+
+// guardRuntimeActionSole runs the sole-replica check for a runtime action. Only
+// a restart is checked: stop and start pass straight through with a no-op
+// finish. When the restart may proceed it has already written the restart
+// marker, and finish(true) or finish(false) must be called once the agent call
+// ends. When it may not proceed the response has been written.
+func (s *Server) guardRuntimeActionSole(w http.ResponseWriter, r *http.Request, nodeName, action string) (soleCheck, func(succeeded bool), bool) {
+	noop := func(bool) {}
+	if action != soleActionRestart {
+		return soleCheck{}, noop, true
+	}
+	var token uint64
+	sole := s.checkSoleReplica(nodeName, forceRequested(r), func() { token = s.markRestartStarted(nodeName) })
+	switch {
+	case !sole.found():
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", nodeName))
+		return sole, noop, false
+	case sole.blocked():
+		writeSoleReplicaConflict(w, nodeName, action, sole.impact)
+		return sole, noop, false
+	}
+	return sole, func(succeeded bool) { s.finishRestart(nodeName, token, succeeded) }, true
 }
 
 // restartingNodesLocked returns the nodes still counted as unavailable after a
@@ -156,33 +202,43 @@ func (s *Server) restartingNodesLocked(now time.Time) map[string]bool {
 	return out
 }
 
-// markRestartStarted records that a restart of name is about to be sent.
-// Caller holds soleReplica.mu (it runs as the commit step of checkSoleReplica).
-func (s *Server) markRestartStarted(name string) bool {
+// markRestartStarted records that a restart of name is about to be sent and
+// returns a token identifying it. Caller holds soleReplica.mu (it runs as the
+// commit step of checkSoleReplica).
+func (s *Server) markRestartStarted(name string) uint64 {
 	st := &s.soleReplica
 	if st.restarting == nil {
 		st.restarting = make(map[string]restartMarker)
 	}
-	st.restarting[name] = restartMarker{started: time.Now()}
-	return true
+	st.nextRestart++
+	st.restarting[name] = restartMarker{token: st.nextRestart, started: time.Now()}
+	return st.nextRestart
 }
 
-// markRestartReturned notes that the agent call for name has finished. The
-// marker stays until a later poll shows the node has come back.
-func (s *Server) markRestartReturned(name string) {
+// finishRestart ends the restart identified by token. On success the marker
+// stays until a later poll shows the node has come back; on failure it is
+// deleted, since the runtime was never taken down. A marker written by a newer
+// overlapping restart of the same node is left alone.
+func (s *Server) finishRestart(name string, token uint64, succeeded bool) {
 	st := &s.soleReplica
 	st.mu.Lock()
 	defer st.mu.Unlock()
-	if mk, ok := st.restarting[name]; ok {
-		mk.returned = time.Now()
-		st.restarting[name] = mk
+	mk, ok := st.restarting[name]
+	if !ok || mk.token != token {
+		return
 	}
+	if !succeeded {
+		delete(st.restarting, name)
+		return
+	}
+	mk.returned = time.Now()
+	st.restarting[name] = mk
 }
 
 // soleReplicaMessage is the human text of the 409.
 func soleReplicaMessage(name, action string, models []router.SoleReplicaModel) string {
 	subject := fmt.Sprintf("draining node %q", name)
-	if action == "restart" {
+	if action == soleActionRestart {
 		subject = fmt.Sprintf("restarting the runtime on node %q", name)
 	}
 	shown := make([]string, 0, maxModelsInMessage)
@@ -230,7 +286,9 @@ func soleReplicaAuditDetail(detail string, impact router.SoleReplicaImpact, forc
 }
 
 // handleNodeSoleReplica is GET /admin/nodes/{name}/sole-replica: the same
-// check a drain or restart runs, with no state change.
+// check a drain or restart runs, with no change to the node. Reading the
+// restart markers also drops expired or confirmed ones, which is idempotent
+// and happens under the same lock.
 func (s *Server) handleNodeSoleReplica(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	st := &s.soleReplica
