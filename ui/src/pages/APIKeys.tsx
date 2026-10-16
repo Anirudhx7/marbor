@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { Plus, Copy, Trash2, Key, Pencil } from 'lucide-react';
 import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
+import { Button } from '../components/Button';
 import { EmptyState } from '../components/EmptyState';
 import { SearchInput } from '../components/SearchInput';
 import { mockAPIKeys } from '../lib/mockData';
@@ -727,12 +728,9 @@ export function APIKeys() {
             >
               Cancel
             </button>
-            <button
-              onClick={handleCreateKey}
-              className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
-            >
+            <Button onClick={handleCreateKey}>
               Create Key
-            </button>
+            </Button>
           </div>
         </div>
       </Modal>
@@ -873,10 +871,9 @@ export function APIKeys() {
               className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
               Cancel
             </button>
-            <button onClick={handleSaveKeyPatch} disabled={editSaving}
-              className="px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm">
+            <Button onClick={handleSaveKeyPatch} disabled={editSaving}>
               {editSaving ? 'Saving...' : 'Save Changes'}
-            </button>
+            </Button>
           </div>
         </div>
       </Modal>

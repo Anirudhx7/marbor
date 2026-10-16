@@ -13,6 +13,7 @@ import type { Schedule, NodeWarmup } from '../lib/api';
 import { Badge } from '../components/Badge';
 import { EmptyState } from '../components/EmptyState';
 import { Modal } from '../components/Modal';
+import { Button } from '../components/Button';
 import { CustomSelect } from '../components/Select';
 import { RuntimeBadge } from '../components/RuntimeBadge';
 import { CustomTimePicker } from '../components/DateTimePicker';
@@ -752,10 +753,10 @@ function ScheduleForm({ nodes, modelsByNode, onCreate }: {
               className="px-4 py-2 border border-border text-xs text-muted-foreground rounded-lg hover:bg-secondary transition-colors">
               Cancel
             </button>
-            <button onClick={submit} disabled={saving}
-              className="flex items-center justify-center gap-1 px-4 py-2 bg-primary text-primary-foreground text-xs font-medium rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors shadow-sm">
+            <Button size="sm" onClick={submit} disabled={saving}
+              className="flex items-center justify-center gap-1">
               <Plus className="w-3.5 h-3.5" /> {saving ? 'Adding…' : 'Add Schedule'}
-            </button>
+            </Button>
           </div>
         </div>
       )}

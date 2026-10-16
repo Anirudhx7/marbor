@@ -11,6 +11,7 @@ import { startPull, onPullSuccess, isDownloadOnlyRuntime, pullOptionsFor } from 
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import type { ModelCatalog, ModelEntry, GPUNode } from '../types';
 import { Modal } from '../components/Modal';
+import { buttonClasses } from '../lib/buttonClasses';
 import { ModelConfigModal } from '../components/ModelConfigModal';
 import { CustomSelect } from '../components/Select';
 
@@ -501,7 +502,7 @@ function ModelFleetCard({ model, demoMode, replicaByNode, deleteGuardByNode, onC
               <Link
                 to={`/gpu-nodes?highlight=${encodeURIComponent(deleteNode)}&from=models`}
                 onClick={() => setBlockedInfoOpen(false)}
-                className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm inline-flex items-center gap-1"
+                className={`${buttonClasses('primary', 'md')} inline-flex items-center gap-1`}
               >
                 Manage on GPU Nodes <ArrowUpRight className="w-3.5 h-3.5" />
               </Link>

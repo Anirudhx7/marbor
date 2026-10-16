@@ -7,6 +7,7 @@ import { formatDurationShort } from '../lib/time';
 import { useDemoMode } from '../hooks/useDemoMode';
 import { mockGPUNodes } from '../lib/mockData';
 import { Modal } from './Modal';
+import { buttonClasses } from '../lib/buttonClasses';
 import { completionText } from '../lib/downloadOnly';
 
 function formatBytes(n: number): string {
@@ -376,7 +377,7 @@ function PullJobCard({ job }: { job: PullProgressState }) {
               <Link
                 to={`/gpu-nodes?highlight=${encodeURIComponent(job.node)}&from=models`}
                 onClick={() => setBlockedInfoOpen(false)}
-                className="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm inline-flex items-center gap-1"
+                className={`${buttonClasses('primary', 'md')} inline-flex items-center gap-1`}
               >
                 Manage on GPU Nodes <ArrowUpRight className="w-3.5 h-3.5" />
               </Link>

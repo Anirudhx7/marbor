@@ -588,7 +588,7 @@ function ModelDetailPanel({
   return (
     <div
       ref={panelRef}
-      className="col-span-full bg-card border border-primary/30 rounded-2xl overflow-hidden flex flex-col shadow-xl"
+      className="col-span-full bg-card border border-primary/30 rounded-xl overflow-hidden flex flex-col shadow-xl"
       style={{
         opacity: visible ? 1 : 0,
         transform: visible ? 'translateY(0)' : 'translateY(-6px)',
