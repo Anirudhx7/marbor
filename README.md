@@ -204,7 +204,7 @@ Client Application (Agent / RAG / Copilot)
 | **Resilience** | Automatic retry/failover | Dead node before first byte triggers retry on alternate healthy nodes → cloud → 502. Transparent to the client. |
 | | Request queue | Configurable `queue_max_depth` and `queue_timeout_ms`. Traffic spikes queue and drain rather than immediately 502-ing. |
 | | Per-node in-flight cap | Optional `max_in_flight_per_node` (global) with a per-node override. A node at/over its cap is excluded from routing - failover/cloud/503 - instead of queued, for operators who need overflow rather than piling onto a slow node. Best-effort (approximate under a concurrent request burst), not an atomic guarantee. |
-| | Node drain | `POST /admin/nodes/{name}/drain` marks a node so the router skips it for new requests while in-flight work completes. Zero-downtime GPU maintenance. |
+| | Node drain | `POST /admin/nodes/{name}/drain` marks a node so the router skips it for new requests while in-flight work completes. Zero-downtime GPU maintenance. Before draining, marbor names any model the node is the only server of and asks you to confirm (API callers pass `force=true`). |
 | | Config hot-reload | `SIGHUP` or `POST /admin/v1/config/reload` re-syncs state from `marbor.db` in place. Key rotations and routing changes take effect without dropping connections. |
 | **Cluster Telemetry** | Cluster-wide VRAM | Per-node used-VRAM live across the entire cluster from each node's own `/api/ps`. No sidecar agent required. |
 | | GPU metrics | nvidia-smi integration on marbor host: temperature, power draw, total capacity. Remote nodes: real telemetry via the optional marbor agent, or operator-declared `vram_total_mb` if it is not installed. Every figure labelled with its source (nvidia/api/declared/agent). |
@@ -479,7 +479,8 @@ The fleet runs without it - remote nodes fall back to operator-declared `vram_to
 | GET | `/admin/v1/cloud/providers` | Cloud fallback providers: status, spend |
 | GET | `/admin/v1/spill` | Per-key, per-provider local/cloud/blocked request counts |
 | GET | `/health` | 200 OK when control plane is ready (unauthenticated, for LB health checks) |
-| POST | `/admin/nodes/{name}/drain` | Drain node for maintenance |
+| POST | `/admin/nodes/{name}/drain` | Drain node for maintenance. Returns 409 with `code: sole_replica` when the node is the only server of a model it holds, until `force=true` is passed (a runtime restart is checked the same way) |
+| GET | `/admin/nodes/{name}/sole-replica` | Read-only check a drain or runtime restart runs: models only this node can serve, models only an Ollama node could cold-load, and places where other nodes cannot be verified |
 | PATCH | `/admin/keys/{name}` | Mutate key rate limits, quotas, model allow-lists at runtime |
 | PATCH | `/admin/nodes/{name}` | Override `vram_total_mb`, `gpu_model`, `gpu_indices` at runtime |
 | GET | `/admin/v1/models/catalog` | Built-in model catalog with per-node fit and a `recommendation` (quantization to pull) per model |

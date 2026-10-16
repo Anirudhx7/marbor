@@ -463,22 +463,28 @@ func buildRoot() *Command {
 					"breaks the replica, and marbor does not restart the other members. " +
 					"\"drain\" on a replica member is allowed and prints what it does: draining a " +
 					"worker has no routing effect, draining the head drains the replica.\n\n" +
+					"\"drain\" and \"restart\" first check whether the node is the only server of any " +
+					"model it holds. If it is, they ask for confirmation on a terminal, or exit 1 " +
+					"without a terminal unless --force is passed. Models that only an Ollama node " +
+					"could load on demand, and places where other nodes cannot be verified, are " +
+					"printed but never block. --dry-run prints the check and changes nothing. " +
+					"The check covers drains and restarts made through marbor only.\n\n" +
 					"\"logs\" is a point-in-time snapshot, not a live tail. A node whose control " +
 					"driver has no real log source (e.g. a bare PID-file process with no supervisor) " +
 					"returns a clear \"not supported\" error.",
 				Sub: []*Command{
 					{Name: "start", Short: "start the node's inference runtime process", NeedsAuth: true, Args: []ArgSpec{{Name: "node"}}, Run: func(ctx *RunCtx) int {
-						return runRuntimeAction(ctx.Flags, ctx.Cmd.Name, ctx.Args[0], false, ctx.Stdout, ctx.Stderr)
+						return runRuntimeAction(ctx.Flags, ctx.Cmd.Name, ctx.Args[0], false, false, false, ctx.Stdout, ctx.Stderr)
 					}},
 					{Name: "stop", Short: "stop the node's inference runtime process", NeedsAuth: true, Args: []ArgSpec{{Name: "node"}},
 						Flags: []FlagSpec{acknowledgeReplicaFlag},
 						Run: func(ctx *RunCtx) int {
-							return runRuntimeAction(ctx.Flags, ctx.Cmd.Name, ctx.Args[0], ctx.Bool("acknowledge-replica"), ctx.Stdout, ctx.Stderr)
+							return runRuntimeAction(ctx.Flags, ctx.Cmd.Name, ctx.Args[0], ctx.Bool("acknowledge-replica"), false, false, ctx.Stdout, ctx.Stderr)
 						}},
 					{Name: "restart", Short: "restart the node's inference runtime process", NeedsAuth: true, Args: []ArgSpec{{Name: "node"}},
-						Flags: []FlagSpec{acknowledgeReplicaFlag},
+						Flags: []FlagSpec{acknowledgeReplicaFlag, forceFlag, dryRunFlag},
 						Run: func(ctx *RunCtx) int {
-							return runRuntimeAction(ctx.Flags, ctx.Cmd.Name, ctx.Args[0], ctx.Bool("acknowledge-replica"), ctx.Stdout, ctx.Stderr)
+							return runRuntimeAction(ctx.Flags, ctx.Cmd.Name, ctx.Args[0], ctx.Bool("acknowledge-replica"), ctx.Bool("force"), ctx.Bool("dry-run"), ctx.Stdout, ctx.Stderr)
 						}},
 					{
 						Name:      "logs",
@@ -500,9 +506,11 @@ func buildRoot() *Command {
 						Flags: []FlagSpec{
 							{Name: "reason", Kind: FlagString, DefString: "", Usage: `reason recorded for the drain (default "manual")`},
 							{Name: "grace-period", Kind: FlagInt, DefInt: -1, Usage: "bounded-drain window in seconds (omit for infinite - no enforcement engine reads this yet)"},
+							forceFlag,
+							dryRunFlag,
 						},
 						Run: func(ctx *RunCtx) int {
-							return runRuntimeDrain(ctx.Flags, ctx.Args[0], ctx.String("reason"), ctx.Int("grace-period"), ctx.Stdout, ctx.Stderr)
+							return runRuntimeDrain(ctx.Flags, ctx.Args[0], ctx.String("reason"), ctx.Int("grace-period"), ctx.Bool("force"), ctx.Bool("dry-run"), ctx.Stdout, ctx.Stderr)
 						},
 					},
 					{

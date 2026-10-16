@@ -19,24 +19,39 @@ import (
 // --acknowledge-replica flag); the rejection message is printed as the error
 // and exits ExitUserError. When the action does run on a replica member, the
 // replica warning is printed to stderr so the effect is on record.
-func runRuntimeAction(flags *globalFlags, action, node string, acknowledgeReplica bool, stdout, stderr io.Writer) int {
+func runRuntimeAction(flags *globalFlags, action, node string, acknowledgeReplica, force, dryRun bool, stdout, stderr io.Writer) int {
 	client, err := authenticatedClient(flags)
 	if err != nil {
 		return reportError(err, stderr)
 	}
 
-	replica, err := client.RuntimeAction(node, action, acknowledgeReplica)
+	// Only a restart can leave a model without a server: start and stop are
+	// not checked.
+	var gate soleGate
+	if action == "restart" {
+		if gate = gateSoleReplica(client, flags, action, node, force, dryRun, stdout, stderr); gate.done {
+			return gate.code
+		}
+	}
+
+	out, err := client.RuntimeAction(node, action, acknowledgeReplica, gate.sendForce)
 	if errors.Is(err, ErrReplicaDetailUnavailable) {
 		// The action ran; only the replica detail could not be read.
 		fmt.Fprintf(stderr, "note: %s\n", err)
 	} else if err != nil {
 		return reportError(err, stderr)
 	}
-	printReplicaWarning(stderr, replica)
+	if out == nil {
+		out = &RuntimeActionResult{}
+	}
+	printReplicaWarning(stderr, out.Replica)
 
 	result := map[string]interface{}{"ok": true, "node": node, "action": action}
-	if replica != nil {
-		result["replica"] = replica
+	if out.Replica != nil {
+		result["replica"] = out.Replica
+	}
+	if sole := soleReplicaForOutput(out.SoleReplica, gate.impact); sole != nil {
+		result["sole_replica"] = sole
 	}
 	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, result); handled {
 		return code
@@ -96,18 +111,26 @@ func runRuntimeLogs(flags *globalFlags, node string, lines int, stdout, stderr i
 // routing state (never sent to the Marbor Agent) - same exit-code taxonomy
 // as runRuntimeAction. gracePeriod < 0 means the flag was not passed
 // (infinite drain, today's frozen default) - matches Client.DrainNode.
-func runRuntimeDrain(flags *globalFlags, node, reason string, gracePeriod int, stdout, stderr io.Writer) int {
+func runRuntimeDrain(flags *globalFlags, node, reason string, gracePeriod int, force, dryRun bool, stdout, stderr io.Writer) int {
 	client, err := authenticatedClient(flags)
 	if err != nil {
 		return reportError(err, stderr)
 	}
 
-	result, err := client.DrainNode(node, reason, gracePeriod)
+	gate := gateSoleReplica(client, flags, "drain", node, force, dryRun, stdout, stderr)
+	if gate.done {
+		return gate.code
+	}
+
+	result, err := client.DrainNode(node, reason, gracePeriod, gate.sendForce)
 	if err != nil {
 		return reportError(err, stderr)
 	}
 
 	printReplicaWarning(stderr, result.Replica)
+	if result.SoleReplica == nil && gate.impact != nil {
+		result.SoleReplica = &SoleReplicaBody{SoleReplicaImpact: *gate.impact}
+	}
 
 	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, result); handled {
 		return code

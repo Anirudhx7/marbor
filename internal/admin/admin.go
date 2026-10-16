@@ -168,6 +168,7 @@ type TokenEvent struct {
 
 type Server struct {
 	router         *router.Router
+	soleReplica    soleReplicaState // serializes the sole-replica check with drain/restart
 	auth           *auth.Middleware
 	cfg            config.Config
 	version        string
@@ -1253,6 +1254,7 @@ func (s *Server) Handler() http.Handler {
 	reg("DELETE /admin/nodes/{name}/pull", s.cors(s.adminAuth(s.handleCancelPull)))
 	reg("POST /admin/nodes/{name}/drain", s.cors(s.adminAuth(s.handleDrainNode)))
 	reg("DELETE /admin/nodes/{name}/drain", s.cors(s.adminAuth(s.handleUndrainNode)))
+	reg("GET /admin/nodes/{name}/sole-replica", s.cors(s.adminAuth(s.handleNodeSoleReplica)))
 	reg("POST /admin/nodes/{name}/prewarm", s.cors(s.adminAuth(s.handleSetNodePrewarm)))
 	reg("POST /admin/benchmark/run", s.cors(s.adminAuth(s.handleRunBenchmark)))
 	reg("GET /admin/benchmark/{id}/progress", s.cors(s.adminAuth(s.handleBenchmarkProgress)))
@@ -2768,6 +2770,24 @@ func (s *Server) handleNodeRuntimeAction(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
+	// A restart must not leave a model with no other node able to serve it
+	// unless the caller says so with force=true. The check and the restart
+	// marker (which keeps this node from counting as a spare for a peer's
+	// drain) are taken together under one lock.
+	var sole soleCheck
+	if action == "restart" {
+		sole = s.checkSoleReplica(nodeName, forceRequested(r), func() bool { return s.markRestartStarted(nodeName) })
+		if !sole.found {
+			writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", nodeName))
+			return
+		}
+		if sole.blocked {
+			writeSoleReplicaConflict(w, nodeName, action, sole.impact)
+			return
+		}
+		defer s.markRestartReturned(nodeName)
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), nodeRuntimeActionTimeout)
 	defer cancel()
 	if err := s.runtimeActionViaAgent(ctx, nodeURL, agentCfg, action, ctrl); err != nil {
@@ -2782,11 +2802,15 @@ func (s *Server) handleNodeRuntimeAction(w http.ResponseWriter, r *http.Request,
 		return
 	}
 
-	s.logSystemChange(r, "runtime_"+action, nodeName, replicaAuditDetail(fmt.Sprintf("Driver: %s, Identifier: %s", ctrl.Driver, ctrl.Identifier), replica, acknowledged))
+	detail := replicaAuditDetail(fmt.Sprintf("Driver: %s, Identifier: %s", ctrl.Driver, ctrl.Identifier), replica, acknowledged)
+	s.logSystemChange(r, "runtime_"+action, nodeName, soleReplicaAuditDetail(detail, sole.impact, sole.forced))
 
 	resp := map[string]interface{}{"ok": true}
 	if replica != nil {
 		resp["replica"] = replica
+	}
+	if field := soleReplicaField(sole.impact, sole.forced); field != nil {
+		resp["sole_replica"] = field
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
@@ -3873,19 +3897,36 @@ func (s *Server) handleDrainNode(w http.ResponseWriter, r *http.Request) {
 		}
 		grace = *body.GracePeriodSeconds
 	}
-	if !s.router.DrainNode(name, reason, grace) {
+	// The sole-replica check and the drain itself run under one lock, so two
+	// drains of mutual peers cannot both pass.
+	sole := s.checkSoleReplica(name, forceRequested(r), func() bool {
+		if !s.router.DrainNode(name, reason, grace) {
+			return false
+		}
+		_ = s.st.SetNodeDrain(name, true, reason, grace)
+		return true
+	})
+	if !sole.found {
 		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
 		return
 	}
-	// Draining a replica member is never blocked, but the response says what
-	// the drain does (draining a worker has no routing effect). Replica roles
-	// come from the declarations, which a drain does not change.
+	if sole.blocked {
+		writeSoleReplicaConflict(w, name, "drain", sole.impact)
+		return
+	}
+	// Draining a replica member is never blocked by its replica role, but the
+	// response says what the drain does (draining a worker has no routing
+	// effect). Replica roles come from the declarations, which a drain does
+	// not change.
 	replica := s.replicaInfoFor(name, replicaActionDrain)
-	_ = s.st.SetNodeDrain(name, true, reason, grace)
-	s.logSystemChange(r, "drain_node", name, replicaAuditDetail(reason, replica, false))
+	detail := soleReplicaAuditDetail(replicaAuditDetail(reason, replica, false), sole.impact, sole.forced)
+	s.logSystemChange(r, "drain_node", name, detail)
 	resp := map[string]any{"node": name, "draining": true, "reason": reason, "grace_period_seconds": grace}
 	if replica != nil {
 		resp["replica"] = replica
+	}
+	if field := soleReplicaField(sole.impact, sole.forced); field != nil {
+		resp["sole_replica"] = field
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)

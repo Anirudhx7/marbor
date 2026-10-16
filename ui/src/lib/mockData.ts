@@ -1,5 +1,5 @@
 import { NodeSignalId, GPUNode, APIKey, Settings, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelCatalogResponse, ModelConfig, BenchmarkRun, SpillCounterRow, RoutingDecision, ModelAlias, QuantRecommendation } from '../types';
-import type { SystemInfo, ReplicaSuggestionsResponse } from './api';
+import type { SystemInfo, ReplicaSuggestionsResponse, SoleReplicaImpact } from './api';
 
 const GB = 1024;
 const GiB = 1024 * 1024 * 1024;
@@ -584,7 +584,60 @@ export const mockGPUNodes: GPUNode[] = [
     agentGpuVendor: 'amd',
     agentRuntime: 'vllm',
   },
+  // Cold standby Ollama node: healthy, nothing loaded. It is the only other
+  // Ollama node, so it is the cold-load peer in the drain impact demo for
+  // gpu-node-01 (a model that is warm only there could be loaded here on demand).
+  {
+    id: 'node-11',
+    name: 'gpu-node-11',
+    host: '10.0.0.21',
+    gpuModel: 'NVIDIA RTX 4090 24GB',
+    port: 11434,
+    runtime: 'ollama',
+    warmupSupported: true,
+    vramTotalMB: 24 * GB,
+    vramUsedMB: Math.round(0.4 * GB),
+    vramSource: 'nvidia',
+    powerDrawW: 28,
+    cpuPercent: 3,
+    temperature: 38,
+    health: 'healthy',
+    draining: false,
+    signals: ['healthy', 'agent'],
+    drainedGraceSeconds: 0,
+    activeConns: 0,
+    prewarmDisabled: false,
+    pendingPrewarmMB: 0,
+    uptime: '21d 3h',
+    loadedModels: [],
+    healthHistory: Array(60).fill(0).map(() => 97 + Math.random() * 3),
+    coldStarts: 0,
+    tokensTotal: 0,
+    avgLatencyMs: 0,
+    warmHitRatio: 0,
+    agentPresent: true,
+    agentVersion: '0.19.2',
+    agentCapabilities: ['status'],
+    agentPlatform: 'linux',
+    agentArchitecture: 'amd64',
+    agentGpuVendor: 'nvidia',
+    agentRuntime: 'ollama',
+  },
 ];
+
+// SoleReplicaImpact mirrors the Admin API sole-replica response: the models
+// that stop being served anywhere if the node is drained or its runtime is
+// restarted, the models only an Ollama peer could load on demand, and places
+// where replica data could not be verified. Demo values follow the fleet above
+// (runtimes are accurate; gpu-node-03 already holds qwen2.5 warm, so
+// gpu-node-01 only has llama3.2 left as a cold-load example).
+export const mockSoleReplicaImpact: Record<string, SoleReplicaImpact> = {
+  'gpu-node-01': { models: [], cold_load_only: [{ model: 'llama3.2', runtime: 'ollama', peers: ['gpu-node-11'] }], unknown: [] },
+  'gpu-node-02': { models: [{ model: 'meta-llama/Llama-3.3-8B-Instruct', runtime: 'vllm' }], cold_load_only: [], unknown: [] },
+  'gpu-node-05': { models: [{ model: 'mlx-community/Llama-3.2-3B-Instruct-4bit', runtime: 'mlx' }], cold_load_only: [], unknown: [] },
+  'gpu-node-06': { models: [], cold_load_only: [], unknown: [{ node: 'gpu-node-06', reason: 'node is not healthy, so which models it holds cannot be confirmed' }] },
+  'gpu-node-07': { models: [{ model: 'meta-llama/Llama-3.1-405B-Instruct', runtime: 'vllm' }], cold_load_only: [], unknown: [] },
+};
 
 export const mockAPIKeys: APIKey[] = [
   {

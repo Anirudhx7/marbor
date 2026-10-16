@@ -1,5 +1,5 @@
 import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, CloudProviderInput, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, QuantRecommendation, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry, ModelConfig, LocalModel, BenchmarkRun, BackupFileInfo, SpillCounterRow, RoutingDecision, ModelAlias } from '../types';
-import { mockCloudProviders, mockSavings, mockReplicaSuggestions } from './mockData';
+import { mockCloudProviders, mockSavings, mockReplicaSuggestions, mockSoleReplicaImpact } from './mockData';
 import { sameDeclared } from './replicaGroups';
 
 const BASE = '/admin';
@@ -523,15 +523,41 @@ export async function removeNode(name: string) {
   if (!res.ok) throw new Error('Failed to remove node');
 }
 
-export async function drainNode(name: string, graceSeconds?: number) {
+// SoleReplicaImpact is the Admin API's answer to "what stops being served if
+// this node is drained or its runtime restarted". models: only this node can
+// serve them (blocks the action unless forced). cold_load_only: only an Ollama
+// peer could load them on demand (never blocks). unknown: places where replica
+// data could not be verified (never blocks). The arrays are always present.
+export interface SoleReplicaModel { model: string; runtime: string }
+export interface ColdLoadOnlyModel { model: string; runtime: string; peers: string[] }
+export interface UnknownReplicaItem { node: string; model?: string; reason: string }
+export interface SoleReplicaImpact {
+  models: SoleReplicaModel[];
+  cold_load_only: ColdLoadOnlyModel[];
+  unknown: UnknownReplicaItem[];
+}
+
+// getSoleReplicaImpact is a read-only check; it never changes node state.
+export async function getSoleReplicaImpact(name: string): Promise<SoleReplicaImpact> {
+  if (DEMO) return demoDelay(mockSoleReplicaImpact[name] ?? { models: [], cold_load_only: [], unknown: [] });
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/sole-replica`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to check other replicas');
+  const j = (await res.json()) as { sole_replica?: Partial<SoleReplicaImpact> };
+  const r = j.sole_replica ?? {};
+  return { models: r.models ?? [], cold_load_only: r.cold_load_only ?? [], unknown: r.unknown ?? [] };
+}
+
+// force=true is sent only from the confirm dialog, and only when the dialog
+// showed the operator the models that only this node can serve.
+export async function drainNode(name: string, graceSeconds?: number, force = false) {
   if (DEMO) return demoDelay(undefined);
   const body = graceSeconds !== undefined ? JSON.stringify({ grace_period_seconds: graceSeconds }) : undefined;
-  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/drain`, {
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/drain${force ? '?force=true' : ''}`, {
     method: 'POST',
     headers: { ...authHeaders(), ...(body ? { 'Content-Type': 'application/json' } : {}) },
     body,
   });
-  if (!res.ok) throw new Error('Failed to drain node');
+  if (!res.ok) throw await runtimeActionFailure(res, 'Failed to drain node');
 }
 
 export async function undrainNode(name: string) {
@@ -1712,7 +1738,12 @@ async function runtimeActionFailure(res: Response, fallback: string): Promise<Ru
   const j = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
   if (j.code === 'replica_member') {
     return new RuntimeActionError(
-      'This node is now part of a multi-host replica. Reopen Stop or Restart and review the impact before confirming.',
+      'This node is now part of a multi-host replica. Review the impact below and confirm again.',
+      res.status, j.code);
+  }
+  if (j.code === 'sole_replica') {
+    return new RuntimeActionError(
+      'The models only this node can serve changed since you opened this dialog. Review the updated list and confirm again.',
       res.status, j.code);
   }
   return new RuntimeActionError(j.error || `${fallback} (HTTP ${res.status})`, res.status, j.code);
@@ -1745,9 +1776,12 @@ export async function stopNodeRuntime(name: string, acknowledgeReplica = false):
   if (!res.ok) throw await runtimeActionFailure(res, 'Failed to stop runtime');
 }
 
-export async function restartNodeRuntime(name: string, acknowledgeReplica = false): Promise<void> {
+// force is sent only when the dialog showed the models that only this node can
+// serve; both flags travel in one request when both notices were shown.
+export async function restartNodeRuntime(name: string, acknowledgeReplica = false, force = false): Promise<void> {
   if (DEMO) return demoDelay(undefined);
-  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/runtime/restart${acknowledgeReplica ? '?acknowledge_replica=true' : ''}`, {
+  const params = [acknowledgeReplica ? 'acknowledge_replica=true' : '', force ? 'force=true' : ''].filter(Boolean).join('&');
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/runtime/restart${params ? `?${params}` : ''}`, {
     method: 'POST',
     headers: authHeaders(),
   });

@@ -370,6 +370,8 @@ start/stop/restart/logs/drain/undrain/health on one node
 
 "stop|restart" on the head, a worker, or an unresolved member of a multi-host replica is rejected unless --acknowledge-replica is passed: stopping any member breaks the replica, and marbor does not restart the other members. "drain" on a replica member is allowed and prints what it does: draining a worker has no routing effect, draining the head drains the replica.
 
+"drain" and "restart" first check whether the node is the only server of any model it holds. If it is, they ask for confirmation on a terminal, or exit 1 without a terminal unless --force is passed. Models that only an Ollama node could load on demand, and places where other nodes cannot be verified, are printed but never block. --dry-run prints the check and changes nothing. The check covers drains and restarts made through marbor only.
+
 "logs" is a point-in-time snapshot, not a live tail. A node whose control driver has no real log source (e.g. a bare PID-file process with no supervisor) returns a clear "not supported" error.
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
@@ -401,6 +403,8 @@ Requires authentication - see the root README's CLI auth section, or run `marbor
 Flags:
 
 - `--acknowledge-replica` - proceed when the node is part of a multi-host replica (stopping any member breaks the replica)
+- `--force` - proceed without asking when the node is the only server of a model it holds
+- `--dry-run` - show which models only this node can serve and exit without changing anything
 
 #### `logs <node>`
 
@@ -422,6 +426,8 @@ Flags:
 
 - `--reason string` - reason recorded for the drain (default "manual")
 - `--grace-period int` - bounded-drain window in seconds (omit for infinite - no enforcement engine reads this yet)
+- `--force` - proceed without asking when the node is the only server of a model it holds
+- `--dry-run` - show which models only this node can serve and exit without changing anything
 
 #### `undrain <node>`
 
