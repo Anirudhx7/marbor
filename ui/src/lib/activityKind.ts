@@ -79,14 +79,14 @@ export function getActivityKindLabel(kind: ActivityKind): string {
 
 export function getActivityKindColor(kind: ActivityKind): string {
   const colors: Record<ActivityKind, string> = {
-    drain: 'bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/20',
-    agent: 'bg-sky-500/15 text-sky-700 dark:text-sky-400 border-sky-500/20',
-    runtime: 'bg-violet-500/15 text-violet-700 dark:text-violet-400 border-violet-500/20',
-    node: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/20',
-    warmup: 'bg-orange-500/15 text-orange-700 dark:text-orange-400 border-orange-500/20',
-    schedule: 'bg-teal-500/15 text-teal-700 dark:text-teal-400 border-teal-500/20',
-    predictive: 'bg-fuchsia-500/15 text-fuchsia-700 dark:text-fuchsia-400 border-fuchsia-500/20',
-    config: 'bg-slate-500/15 text-slate-600 dark:text-slate-400 border-slate-500/20',
+    drain: 'bg-warning/15 text-warning border-warning/20',
+    agent: 'bg-info/15 text-info border-info/20',
+    runtime: 'bg-primary/15 text-primary border-primary/20',
+    node: 'bg-success/15 text-success border-success/20',
+    warmup: 'bg-chart-1/15 text-chart-1 border-chart-1/20',
+    schedule: 'bg-chart-2/15 text-chart-2 border-chart-2/20',
+    predictive: 'bg-chart-2/15 text-chart-2 border-chart-2/20',
+    config: 'bg-muted text-muted-foreground border-border',
   };
   return colors[kind];
 }
