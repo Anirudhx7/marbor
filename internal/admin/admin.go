@@ -557,7 +557,13 @@ type nodeResp struct {
 	RuntimeMismatchHint string `json:"runtimeMismatchHint,omitempty"`
 	Health              string `json:"health"`
 	Draining            bool   `json:"draining"`
-	DrainedReason       string `json:"drainedReason,omitempty"`
+	// Signals lists the placement signals this node currently matches
+	// (healthy, degraded, draining, down, agent, warm, pressure), in that
+	// order. Always present, [] when none match. It is derived from the other
+	// fields in this response by nodeSignals; clients filter and count by it
+	// instead of re-deriving the rules.
+	Signals       []string `json:"signals"`
+	DrainedReason string   `json:"drainedReason,omitempty"`
 	// DrainedGraceSeconds is the bounded-drain window requested at drain time;
 	// 0 means no grace was set (infinite - today's frozen default). No
 	// enforcement engine reads this yet (Phase 3), it only round-trips.
@@ -1528,7 +1534,7 @@ func (s *Server) nodeStateToResp(n *router.NodeState, id string, roles map[strin
 		replicaHead = heads[n.Name]
 	}
 
-	return nodeResp{
+	resp := nodeResp{
 		ID:                              id,
 		Name:                            n.Name,
 		Host:                            host,
@@ -1605,9 +1611,24 @@ func (s *Server) nodeStateToResp(n *router.NodeState, id string, roles map[strin
 		EngineKVCacheUsagePercent:       n.EngineKVCacheUsagePercent,
 		EnginePrefixCacheHitRatePercent: n.EnginePrefixCacheHitRatePercent,
 	}
+	resp.Signals = nodeSignals(resp)
+	return resp
 }
 
+// handleNodes lists nodes. Optional query parameters narrow the list without
+// changing what each node looks like:
+//
+//	?signal=a,b   keep nodes matching any of the signals (repeatable, case-insensitive)
+//	?q=text       keep nodes whose name or GPU model contains the text
+//
+// An unknown signal id is a 400 that lists the valid ids. Filtering happens
+// after the full response is built, so node ids and replica roles are the
+// same as in the unfiltered list.
 func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
+	filter, ok := parseNodeFilter(w, r)
+	if !ok {
+		return
+	}
 	nodes := s.router.Nodes()
 	roles, heads := s.router.SchedulingRolesWithHeads(nodes) // computed once for the whole list, not per node
 	out := make([]nodeResp, len(nodes))
@@ -1635,6 +1656,9 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 
 		out[i] = resp
 		n.RUnlock()
+	}
+	if filter.active() {
+		out = filter.apply(out)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(out)
