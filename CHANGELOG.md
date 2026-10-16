@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **`marbor nodes --signal` and `--search` filter the node list, matching the dashboard's filter chips.** `marbor nodes --signal degraded,down --json | jq length` counts the nodes that need attention (any one of the signals matches; the flag can also be repeated). The signals are `healthy`, `degraded`, `draining`, `down`, `agent`, `warm` and `pressure`. `--search` keeps nodes whose name or GPU model contains the text (trimmed, case-insensitive). An empty `--signal` is a usage error (exit 2) and sends no request. The Admin API node list takes the same `signal` and `q` query parameters and every node, from the list or from `GET /admin/nodes/{name}`, now carries a `signals` array. The server decides what each signal means, so the dashboard's chips, chip counts and fleet-health strip read the same array instead of working it out in the browser. An empty match prints an empty table or `[]` and exits 0, so scripts should count rows. Against a server that predates filtering, the flags fail with a clear message instead of printing every node.
+
 ### Fixed
 - **A node URL with an IPv6 zone ID can no longer reach a link-local address.** `http://[fe80::1%25eth0]:11434` was accepted as a node URL even though `http://[fe80::1]:11434` is refused, because the zone suffix hid the address from the link-local check. The check now ignores the zone, so both forms are refused.
 - **The standalone demo's built-in database matches the demo fixture again.** `demo/docker-compose.standalone.yml` carries its own copy of the demo database and it had drifted from `demo/marbor.demo.db`. `make demo-db` now regenerates both, and a test fails if they differ.

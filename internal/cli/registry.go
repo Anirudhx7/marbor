@@ -32,6 +32,12 @@ type FlagSpec struct {
 	DefInt    int
 	DefBool   bool
 
+	// Repeatable lets a FlagString be given more than once; the values are
+	// joined with commas, so "--x a --x b" and "--x a,b" read the same.
+	// FlagString only (DefString is ignored), and unsuitable for values that
+	// themselves contain commas.
+	Repeatable bool
+
 	// Required, if true, means the dispatcher must reject a run where this
 	// flag was left at its zero value. RequiredMsg is the exact message to
 	// print (e.g. "error: --driver and --identifier are required") - kept

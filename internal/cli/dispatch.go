@@ -184,7 +184,11 @@ func registerCommandFlags(fs *flag.FlagSet, flags []FlagSpec) map[string]*int {
 	for _, f := range flags {
 		switch f.Kind {
 		case FlagString:
-			fs.String(f.Name, f.DefString, f.Usage)
+			if f.Repeatable {
+				fs.Var(&repeatedStringFlag{}, f.Name, f.Usage)
+			} else {
+				fs.String(f.Name, f.DefString, f.Usage)
+			}
 		case FlagBool:
 			fs.Bool(f.Name, f.DefBool, f.Usage)
 		case FlagInt:
@@ -192,6 +196,23 @@ func registerCommandFlags(fs *flag.FlagSet, flags []FlagSpec) map[string]*int {
 		}
 	}
 	return ints
+}
+
+// repeatedStringFlag collects every occurrence of a Repeatable string flag.
+// Its String form is the occurrences joined with commas, which is what
+// RunCtx.String reads back.
+type repeatedStringFlag struct{ parts []string }
+
+func (r *repeatedStringFlag) String() string {
+	if r == nil {
+		return ""
+	}
+	return strings.Join(r.parts, ",")
+}
+
+func (r *repeatedStringFlag) Set(v string) error {
+	r.parts = append(r.parts, v)
+	return nil
 }
 
 // isZeroFlagValue reports whether fv (a *flag.Flag looked up by name) is

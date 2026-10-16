@@ -14,13 +14,12 @@ import { ReplicaGroupsTab } from '../components/ReplicaGroupsTab';
 import { ModelConfigModal } from '../components/ModelConfigModal';
 import { CustomSelect } from '../components/Select';
 import { RuntimeBadge } from '../components/RuntimeBadge';
-import { mockGPUNodes, mockRuntimeLogLines } from '../lib/mockData';
+import { mockGPUNodes, mockRuntimeLogLines, withDemoSignals } from '../lib/mockData';
 import { readLastNodeCount, writeLastNodeCount } from '../lib/nodeCount';
 import { isReplicaMember, replicaImpactCopy } from '../lib/replicaImpact';
-import { VRAM_PRESSURE_THRESHOLD } from './Dashboard';
 import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, probeNodeTLS, fetchModelFit, unloadModel, getPinned, getMarborAgent, enableMarborAgent, regenerateMarborAgentToken, disableMarborAgent, checkNodeHealth, fetchReplicaSuggestions, applyDemoConfirmedGroups, getNodeControl, acceptNodeControl, clearNodeControl, startNodeRuntime, stopNodeRuntime, restartNodeRuntime, getNodeRuntimeLogs, RuntimeActionError } from '../lib/api';
 import type { MarborAgentStatus, NodeHealthCheckResult, NodeControlStatus, ReplicaSuggestionsResponse } from '../lib/api';
-import type { GPUNode, ModelFitResponse, NodeFit, FitStatus } from '../types';
+import { NODE_SIGNAL_IDS, type GPUNode, type ModelFitResponse, type NodeFit, type FitStatus, type NodeSignalId } from '../types';
 import { formatDurationLong } from '../lib/time';
 import { actionableCount, bucketSuggestions, chipsByNode, hasReplicaContent, pruneDismissedReady, readDismissedReady, readyFingerprints, readyLineVisible, writeDismissedReady } from '../lib/replicaGroups';
 import type { NodeChip } from '../lib/replicaGroups';
@@ -97,24 +96,29 @@ function formatBytes(bytes: number): string {
 // "unknown" are visually distinct.
 const LIVE_VRAM_TOOL_SOURCES = new Set(['nvidia-smi', 'rocm-smi', 'xpu-smi', 'system_profiler', 'agent', 'api']);
 
-// SIGNAL_DEFS backs the placement-signal filter chips above the node grid -
+// SIGNAL_CHIPS backs the placement-signal filter chips above the node grid -
 // the fleet-page version of the landing page's live-trace signal grid, but
 // with OR semantics: a shown node matches any active signal. (The site keeps
 // AND because a *request* must satisfy every signal to land; an operator
 // *querying* nodes needs union, and health chips are mutually exclusive, so
 // AND would empty-set Degraded + Down.) Non-matches are filtered out so a
 // 100-GPU fleet stays scannable without hunting for lit cards.
-const SIGNAL_DEFS: { id: string; label: string; matches: (n: GPUNode) => boolean }[] = [
-  // health/degraded exclude draining nodes, mirroring computeFleetHealth in
-  // Dashboard.tsx - a draining node lights the Draining chip, not Healthy.
-  { id: 'healthy', label: 'Healthy', matches: (n) => n.health === 'healthy' && !n.draining },
-  { id: 'degraded', label: 'Degraded', matches: (n) => n.health === 'degraded' && !n.draining },
-  { id: 'draining', label: 'Draining', matches: (n) => n.draining },
-  { id: 'down', label: 'Down', matches: (n) => n.health === 'down' },
-  { id: 'agent', label: 'Agent', matches: (n) => !!n.agentPresent },
-  { id: 'warm', label: 'Warm', matches: (n) => (n.loadedModels ?? []).length > 0 },
-  { id: 'pressure', label: 'VRAM pressure', matches: (n) => n.vramSource !== 'none' && n.vramTotalMB > 0 && n.vramUsedMB / n.vramTotalMB >= VRAM_PRESSURE_THRESHOLD },
-];
+//
+// What each signal means is decided by the server and arrives as
+// node.signals (the same definition behind "marbor nodes --signal"); the
+// chips only label and count it, so the rules cannot drift from the CLI's.
+const SIGNAL_LABELS: Record<NodeSignalId, string> = {
+  healthy: 'Healthy',
+  degraded: 'Degraded',
+  draining: 'Draining',
+  down: 'Down',
+  agent: 'Agent',
+  warm: 'Warm',
+  pressure: 'VRAM pressure',
+};
+const SIGNAL_CHIPS: { id: NodeSignalId; label: string }[] = NODE_SIGNAL_IDS.map((id) => ({ id, label: SIGNAL_LABELS[id] }));
+
+const nodeHasSignal = (n: GPUNode, id: NodeSignalId) => (n.signals ?? []).includes(id);
 
 function FitBadge({ fit }: { fit: FitStatus }) {
   const styles: Record<FitStatus, string> = {
@@ -1265,7 +1269,7 @@ export function GPUNodes() {
         // fresh enable should stamp these placeholder defaults onto it.
         ? (n.agentPresent
             ? n
-            : {
+            : withDemoSignals({
                 ...n,
                 agentPresent: true,
                 agentVersion: '0.1.0',
@@ -1277,7 +1281,7 @@ export function GPUNodes() {
                 agentArchitecture: 'amd64',
                 agentGpuVendor: 'nvidia',
                 agentRuntime: 'ollama',
-              })
+              }))
         : n));
       setAgentBusy(false);
       return;
@@ -1382,7 +1386,7 @@ export function GPUNodes() {
     setAgentError(null);
     if (demoMode) {
       setNodes(prev => prev.map(n => n.name === agentToDisable
-        ? {
+        ? withDemoSignals({
             ...n,
             agentPresent: false,
             agentVersion: undefined,
@@ -1394,7 +1398,7 @@ export function GPUNodes() {
             agentArchitecture: undefined,
             agentGpuVendor: undefined,
             agentRuntime: undefined,
-          }
+          })
         : n));
       setAgentStatus(s => s ? { ...s, enabled: false } : s);
       setAgentInstallCommand(null);
@@ -1668,13 +1672,13 @@ export function GPUNodes() {
     if (view === 'replicas' && !showReplicaTab && !suggestionsError) setView('nodes');
   });
 
-  const signalOptions = useMemo(() => SIGNAL_DEFS.map((s) => ({
+  const signalOptions = useMemo(() => SIGNAL_CHIPS.map((s) => ({
     id: s.id,
     label: s.label,
-    count: filteredNodes.filter(s.matches).length,
+    count: filteredNodes.filter((n) => nodeHasSignal(n, s.id)).length,
   })), [filteredNodes]);
-  const activeSignalDefs = useMemo(
-    () => SIGNAL_DEFS.filter((s) => activeSignals.has(s.id)),
+  const activeSignalIds = useMemo(
+    () => SIGNAL_CHIPS.filter((s) => activeSignals.has(s.id)).map((s) => s.id),
     [activeSignals]
   );
   const visibleNodes = useMemo(() => {
@@ -1682,15 +1686,15 @@ export function GPUNodes() {
     // mutually exclusive, so AND would empty-set the classic triage query
     // (Degraded + Down = "everything on fire"). OR gathers, AND would mislead.
     const nodeMatchesSignals = (node: GPUNode) =>
-      activeSignalDefs.length === 0 || activeSignalDefs.some((s) => s.matches(node));
+      activeSignalIds.length === 0 || activeSignalIds.some((id) => nodeHasSignal(node, id));
     return filteredNodes.filter(nodeMatchesSignals);
-  }, [filteredNodes, activeSignalDefs]);
+  }, [filteredNodes, activeSignalIds]);
 
   const handleAddNode = async () => {
     if (!newNode.name || !newNode.host) return;
 
     if (demoMode) {
-      const added: GPUNode = {
+      const added: GPUNode = withDemoSignals({
         id: `gpu-node-${Math.random().toString(36).substring(2, 9)}`,
         name: newNode.name,
         host: newNode.host,
@@ -1711,7 +1715,8 @@ export function GPUNodes() {
         uptime: '0m',
         loadedModels: [],
         healthHistory: [100, 100, 100],
-      };
+        signals: [],
+      });
       setNodes(prev => [...prev, added]);
       setActionError(null);
       setIsAddModalOpen(false);
@@ -1759,7 +1764,7 @@ export function GPUNodes() {
 
   const handleDrainNode = async (name: string, graceSeconds?: number): Promise<boolean> => {
     if (demoMode) {
-      setNodes(prev => prev.map(n => n.name === name ? { ...n, draining: true, drainedGraceSeconds: graceSeconds ?? 0 } : n));
+      setNodes(prev => prev.map(n => n.name === name ? withDemoSignals({ ...n, draining: true, drainedGraceSeconds: graceSeconds ?? 0 }) : n));
       setActionError(null);
       return true;
     }
@@ -1777,7 +1782,7 @@ export function GPUNodes() {
 
   const handleUndrainNode = async (name: string): Promise<boolean> => {
     if (demoMode) {
-      setNodes(prev => prev.map(n => n.name === name ? { ...n, draining: false } : n));
+      setNodes(prev => prev.map(n => n.name === name ? withDemoSignals({ ...n, draining: false }) : n));
       setActionError(null);
       return true;
     }
@@ -1818,7 +1823,7 @@ export function GPUNodes() {
       if (demoMode) {
         // Reflect the unload immediately in the static demo (no backend to re-poll).
         setNodes(prev => prev.map(n => n.name === nodeName
-          ? { ...n, loadedModels: (n.loadedModels || []).filter(m => m.name !== model) }
+          ? withDemoSignals({ ...n, loadedModels: (n.loadedModels || []).filter(m => m.name !== model) })
           : n));
       } else {
         await loadNodes();
@@ -2120,7 +2125,7 @@ export function GPUNodes() {
   // core doesn't have to be applied twice.
   const sendNodePatch = async (nodeName: string, patch: { vram_total_mb?: number; gpu_model?: string; runtime?: string; url?: string; gpu_indices?: number[]; max_in_flight?: number; tls_fingerprint?: string; parallelism_type?: string | null; parallelism_width?: number | null; vram_overrides?: Record<string, number>; replica_peers?: { members: string[]; head: string } | null }) => {
     if (demoMode) {
-      setNodes(prev => prev.map(n => n.name === nodeName ? mergeNodePatch(n, patch) : n));
+      setNodes(prev => prev.map(n => n.name === nodeName ? withDemoSignals(mergeNodePatch(n, patch)) : n));
       return;
     }
     if (!isLive) return;

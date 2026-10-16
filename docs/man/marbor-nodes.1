@@ -5,7 +5,13 @@ marbor\-nodes \- list nodes known to marbor
 .B marbor nodes
 [action] [args] [\fIflags\fR]
 .SH DESCRIPTION
-list nodes known to marbor
+With \-\-signal, lists only nodes that match any of the given signals, the same ones as the dashboard's filter chips: healthy,
+degraded, draining, down, agent, warm, pressure. healthy and degraded leave out draining nodes; a node that is down and draining
+matches both down and draining; agent means a live marbor agent is reporting; warm means a model is loaded; pressure means used
+VRAM is at least 90% of a known total (a node without measured VRAM never matches, so "no pressure" there means unknown, not ok).
+\-\-search keeps nodes whose name or GPU model contains the text, trimmed and ignoring case, and combines with \-\-signal. Giving \-\-signal more
+than once adds to the list. No match is an empty table (header only) or [] with \-\-json and still exits 0, so scripts that act on
+matches should count rows rather than check the exit status.
 .SH COMMANDS
 .TP
 .B confirm\-tls <node>
@@ -153,6 +159,12 @@ hide a suggestion until its members change
 show a dismissed suggestion again
 .SH FLAGS
 .TP
+.B \-\-signal string
+only nodes matching any of these signals, comma\-separated or repeated: healthy, degraded, draining, down, agent, warm, pressure
+.TP
+.B \-\-search string
+only nodes whose name or GPU model contains this text (trimmed, case\-insensitive)
+.TP
 .B \-\-server
 Admin API base URL (default "http://localhost:8080", env MARBOR_SERVER)
 .TP
@@ -164,5 +176,14 @@ admin username, used to log in (env MARBOR_USERNAME)
 .TP
 .B \-\-password
 admin password, used to log in (env MARBOR_PASSWORD)
+.SH EXAMPLES
+.PP
+.nf
+marbor nodes \-\-signal degraded,down \-\-json | jq length
+.fi
+.PP
+.nf
+marbor nodes \-\-signal pressure \-\-search a100
+.fi
 .SH SEE ALSO
 \fBmarbor\fR(1)
