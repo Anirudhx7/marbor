@@ -14,17 +14,23 @@ const css = read('index.css');
 
 const RAW = /\b(?:bg|text|border|ring|fill|stroke|from|to|via)-(?:red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|slate|gray|zinc|neutral|stone)-\d{2,3}\b/;
 
-// Lines that intentionally keep raw palette classes.
+// Raw tokens that are allowed on specific kinds of line. Only the named token
+// is removed before scanning, so any other raw color on the same line still fails.
 const ALLOWED_RAW = [
-  /text-\[9px\]/, // tiny provenance label, left as is
-  /<Star\b/, // star rating icons stay amber
-  /dark:text-red-400/, // destructive is too dark on dark surfaces; see contrast test
+  { when: /text-\[9px\]/, strip: /(?:dark:)?\b(?:text|bg|border)-(?:amber|yellow)-\d{2,3}(?:\/\d+)?/g }, // tiny provenance label
+  { when: /<Star\b/, strip: /(?:dark:)?\b(?:text|fill)-(?:amber|yellow)-\d{2,3}/g }, // star rating icons stay amber
+  { when: /dark:text-red-400/, strip: /dark:text-red-400/g }, // see the red-400 contrast test
 ];
 
 function rawHits(rel) {
   return read(rel).split('\n')
-    .map((line, i) => ({ line, n: i + 1 }))
-    .filter(({ line }) => RAW.test(line) && !ALLOWED_RAW.some(re => re.test(line)));
+    .map((line, i) => {
+      let rest = line;
+      for (const a of ALLOWED_RAW) if (a.when.test(line)) rest = rest.replace(a.strip, '');
+      return { line, n: i + 1, rest };
+    })
+    .filter(({ rest }) => RAW.test(rest))
+    .map(({ line, n }) => ({ line, n }));
 }
 
 test('status surfaces use semantic tokens, not raw palette classes', () => {
@@ -105,8 +111,11 @@ test('status and chart tokens exist in both themes', () => {
   assert.match(css, /--color-chart-2:\s*hsl\(var\(--chart-2\)\)/);
 });
 
-// destructive is excluded: its dark value is below AA on dark surfaces by
-// design, and call sites pair it with dark:text-red-400 instead.
+// Tints are measured over --card, where these badges mostly sit. A few sites
+// (for example the demo banner) sit on the page background, where the same
+// tints measure slightly lower; that wider check is not asserted here.
+// destructive is excluded below: its dark value is under AA on its own tint by
+// design, and call sites pair it with dark:text-red-400, which is asserted.
 const TEXT_TOKENS = ['success', 'warning', 'info', 'primary', 'chart-1', 'chart-2'];
 
 for (const [theme, block] of Object.entries(themes)) {
@@ -127,3 +136,12 @@ for (const [theme, block] of Object.entries(themes)) {
     assert.ok(r >= 4.5, `muted ${r.toFixed(2)}`);
   });
 }
+
+test('dark: red-400 text on the destructive 15% tint is at least 4.5:1', () => {
+  const block = themes.dark;
+  const card = toRgb(hsl(block, 'card'));
+  const tint = over(toRgb(hsl(block, 'destructive')), card, 0.15);
+  const red400 = [248 / 255, 113 / 255, 113 / 255];
+  const r = ratio(red400, tint);
+  assert.ok(r >= 4.5, `red-400 ${r.toFixed(2)}`);
+});
