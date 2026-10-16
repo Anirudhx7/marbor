@@ -2771,22 +2771,13 @@ func (s *Server) handleNodeRuntimeAction(w http.ResponseWriter, r *http.Request,
 	}
 
 	// A restart must not leave a model with no other node able to serve it
-	// unless the caller says so with force=true. The check and the restart
-	// marker (which keeps this node from counting as a spare for a peer's
-	// drain) are taken together under one lock.
-	var sole soleCheck
-	if action == "restart" {
-		sole = s.checkSoleReplica(nodeName, forceRequested(r), func() bool { return s.markRestartStarted(nodeName) })
-		if !sole.found {
-			writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", nodeName))
-			return
-		}
-		if sole.blocked {
-			writeSoleReplicaConflict(w, nodeName, action, sole.impact)
-			return
-		}
-		defer s.markRestartReturned(nodeName)
+	// unless the caller says so with force=true.
+	sole, finishRestart, proceed := s.guardRuntimeActionSole(w, r, nodeName, action)
+	if !proceed {
+		return
 	}
+	restartOK := false
+	defer func() { finishRestart(restartOK) }()
 
 	ctx, cancel := context.WithTimeout(r.Context(), nodeRuntimeActionTimeout)
 	defer cancel()
@@ -2801,15 +2792,16 @@ func (s *Server) handleNodeRuntimeAction(w http.ResponseWriter, r *http.Request,
 		writeJSONError(w, http.StatusBadGateway, err.Error())
 		return
 	}
+	restartOK = true
 
 	detail := replicaAuditDetail(fmt.Sprintf("Driver: %s, Identifier: %s", ctrl.Driver, ctrl.Identifier), replica, acknowledged)
-	s.logSystemChange(r, "runtime_"+action, nodeName, soleReplicaAuditDetail(detail, sole.impact, sole.forced))
+	s.logSystemChange(r, "runtime_"+action, nodeName, soleReplicaAuditDetail(detail, sole.impact, sole.forced()))
 
 	resp := map[string]interface{}{"ok": true}
 	if replica != nil {
 		resp["replica"] = replica
 	}
-	if field := soleReplicaField(sole.impact, sole.forced); field != nil {
+	if field := soleReplicaField(sole.impact, sole.forced()); field != nil {
 		resp["sole_replica"] = field
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -3899,19 +3891,18 @@ func (s *Server) handleDrainNode(w http.ResponseWriter, r *http.Request) {
 	}
 	// The sole-replica check and the drain itself run under one lock, so two
 	// drains of mutual peers cannot both pass.
-	sole := s.checkSoleReplica(name, forceRequested(r), func() bool {
-		if !s.router.DrainNode(name, reason, grace) {
-			return false
+	drained := false
+	sole := s.checkSoleReplica(name, forceRequested(r), func() {
+		if drained = s.router.DrainNode(name, reason, grace); drained {
+			_ = s.st.SetNodeDrain(name, true, reason, grace)
 		}
-		_ = s.st.SetNodeDrain(name, true, reason, grace)
-		return true
 	})
-	if !sole.found {
-		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
+	if sole.blocked() {
+		writeSoleReplicaConflict(w, name, soleActionDrain, sole.impact)
 		return
 	}
-	if sole.blocked {
-		writeSoleReplicaConflict(w, name, "drain", sole.impact)
+	if !sole.found() || !drained {
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
 		return
 	}
 	// Draining a replica member is never blocked by its replica role, but the
@@ -3919,13 +3910,13 @@ func (s *Server) handleDrainNode(w http.ResponseWriter, r *http.Request) {
 	// effect). Replica roles come from the declarations, which a drain does
 	// not change.
 	replica := s.replicaInfoFor(name, replicaActionDrain)
-	detail := soleReplicaAuditDetail(replicaAuditDetail(reason, replica, false), sole.impact, sole.forced)
+	detail := soleReplicaAuditDetail(replicaAuditDetail(reason, replica, false), sole.impact, sole.forced())
 	s.logSystemChange(r, "drain_node", name, detail)
 	resp := map[string]any{"node": name, "draining": true, "reason": reason, "grace_period_seconds": grace}
 	if replica != nil {
 		resp["replica"] = replica
 	}
-	if field := soleReplicaField(sole.impact, sole.forced); field != nil {
+	if field := soleReplicaField(sole.impact, sole.forced()); field != nil {
 		resp["sole_replica"] = field
 	}
 	w.Header().Set("Content-Type", "application/json")
