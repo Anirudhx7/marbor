@@ -10,6 +10,8 @@ import { SearchInput } from '../components/SearchInput';
 import { SignalFilter } from '../components/SignalFilter';
 import { EmptyState } from '../components/EmptyState';
 import { Modal } from '../components/Modal';
+import { Button } from '../components/Button';
+import { buttonClasses } from '../lib/buttonClasses';
 import { ReplicaGroupsTab } from '../components/ReplicaGroupsTab';
 import { ModelConfigModal } from '../components/ModelConfigModal';
 import { CustomSelect } from '../components/Select';
@@ -2605,13 +2607,12 @@ export function GPUNodes() {
             >
               Cancel
             </button>
-            <button
+            <Button
               onClick={handleAddNode}
               disabled={!newNode.name || !newNode.host}
-              className="px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
             >
               Add Node
-            </button>
+            </Button>
           </div>
         </div>
       </Modal>
@@ -2994,13 +2995,12 @@ export function GPUNodes() {
             >
               Cancel
             </button>
-            <button
+            <Button
               onClick={handleSavePatch}
               disabled={editSaving}
-              className="px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
             >
               {editSaving ? 'Saving...' : 'Save Changes'}
-            </button>
+            </Button>
           </div>
         </div>
       </Modal>
@@ -3030,7 +3030,7 @@ export function GPUNodes() {
             >
               Cancel
             </button>
-            <button
+            <Button
               onClick={async () => {
                 if (!pendingPatch) return;
                 const patch = pendingPatch;
@@ -3038,10 +3038,9 @@ export function GPUNodes() {
                 await applyPatch(patch);
               }}
               disabled={editSaving}
-              className="px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
             >
               {editSaving ? 'Saving...' : 'Confirm Change'}
-            </button>
+            </Button>
           </div>
         </div>
       </Modal>
@@ -3221,7 +3220,7 @@ export function GPUNodes() {
           if (ok) setNodeToUndrain(null);
         }}
         confirmLabel="Undrain node"
-        confirmClassName="px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+        confirmClassName={buttonClasses('primary', 'md')}
       />
 
       {/* Toggle Predictive Prewarm Confirmation Modal */}
@@ -3377,13 +3376,12 @@ export function GPUNodes() {
                 fingerprint (required - an unpinned Agent connection will be rejected).
               </p>
               <div className="flex justify-end pt-2">
-                <button
+                <Button
                   onClick={handleEnableAgent}
                   disabled={agentBusy}
-                  className="px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
                 >
                   {agentBusy ? 'Enabling...' : 'Enable Agent'}
-                </button>
+                </Button>
               </div>
             </div>
           )}
@@ -3905,7 +3903,7 @@ export function GPUNodes() {
             >
               Cancel
             </button>
-            <button
+            <Button
               onClick={async () => {
                 setPendingAgentReconfigure(false);
                 // A probed-but-unpinned fingerprint was probed against the
@@ -3917,10 +3915,9 @@ export function GPUNodes() {
                 await handleEnableAgent();
               }}
               disabled={agentBusy}
-              className="px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
             >
               {agentBusy ? 'Applying...' : 'Confirm'}
-            </button>
+            </Button>
           </div>
         </div>
       </Modal>
