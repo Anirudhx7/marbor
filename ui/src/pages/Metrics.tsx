@@ -168,7 +168,7 @@ export function Metrics() {
                   <Line
                     type="monotone"
                     dataKey="Tokens per second"
-                    stroke="#10b981"
+                    stroke="hsl(var(--chart-2))"
                     strokeWidth={2}
                     dot={{ r: 2 }}
                     connectNulls={false}

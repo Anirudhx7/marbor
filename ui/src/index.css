@@ -28,6 +28,8 @@
   --color-warning-foreground: hsl(var(--warning-foreground));
   --color-info: hsl(var(--info));
   --color-info-foreground: hsl(var(--info-foreground));
+  --color-chart-1: hsl(var(--chart-1));
+  --color-chart-2: hsl(var(--chart-2));
 
   --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
   /* Editorial display face for brand moments only (login masthead, empty
@@ -83,6 +85,10 @@
     --info: 221.2 60% 38%; /* Richer blue 7.72 on card */
     --info-foreground: 45 23% 92%;
 
+    /* Chart/categorical accents: darkened in light so text on a 15% tint stays AA */
+    --chart-1: 32 95% 30%;
+    --chart-2: 160 84% 22%;
+
     --border: 45 16% 73%; /* Healthy card separation 1.49 vs bg, 1.72 vs card */
     --input: 45 16% 73%;
     --ring: 45 70% 25%;
@@ -124,8 +130,11 @@
     --warning: 24 95% 53%; /* Safety Orange (Dark Theme) */
     --warning-foreground: 30 10% 5%;
 
-    --info: 217.2 91.2% 59.8%;
+    --info: 217.2 91.2% 66%; /* raised from 59.8% so info text on its tint passes AA */
     --info-foreground: 30 10% 5%;
+
+    --chart-1: 38 92% 50%;
+    --chart-2: 160 84% 39%;
 
     --border: 30 8% 20%;
     --input: 30 8% 20%;

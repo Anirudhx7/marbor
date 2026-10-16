@@ -87,9 +87,9 @@ function ContextFeasibilityNote({ cf, fit }: { cf: ModelVariantFit['context_feas
 
 function FitBadge({ fit }: { fit: 'green' | 'yellow' | 'red' | 'unknown' | 'incompatible' }) {
   const styles = {
-    green: 'bg-green-500/15 text-green-600 dark:text-green-400 border border-green-500/30',
-    yellow: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30',
-    red: 'bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30',
+    green: 'bg-success/15 text-success border border-success/30',
+    yellow: 'bg-warning/15 text-warning border border-warning/30',
+    red: 'bg-destructive/15 text-destructive dark:text-red-400 border border-destructive/30',
     unknown: 'bg-secondary text-muted-foreground border border-border',
     incompatible: 'bg-secondary text-muted-foreground border border-border',
   };
@@ -117,11 +117,11 @@ function NodeVramCard({ node }: { node: any }) {
           VRAM source:{' '}
           <span className={`px-1.5 py-0.5 rounded font-semibold ${
             LIVE_VRAM_TOOL_SOURCES.has(node.vram_source)
-              ? 'bg-green-500/15 text-green-600 dark:text-green-400'
+              ? 'bg-success/15 text-success'
               : node.vram_source === 'inferred'
-              ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+              ? 'bg-warning/15 text-warning'
               : node.vram_source === 'declared'
-              ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400'
+              ? 'bg-info/15 text-info'
               : 'bg-secondary text-muted-foreground'
           }`}>
             {node.vram_source === 'declared' ? 'declared' : node.vram_source}
@@ -144,7 +144,7 @@ function NodeVramCard({ node }: { node: any }) {
             )}
           </p>
           {node.gpu_count_unknown && (
-            <p className="text-xs text-amber-600 dark:text-amber-400 font-medium mt-1">
+            <p className="text-xs text-warning font-medium mt-1">
               GPU count unknown - no agent has confirmed a per-device reading, so this number may not reflect the full node.
             </p>
           )}
@@ -152,7 +152,7 @@ function NodeVramCard({ node }: { node: any }) {
       ) : (node.vram_used_bytes ?? 0) > 0 ? (
         <>
           <div className="w-full bg-secondary rounded-md h-2 mt-1">
-            <div className="bg-amber-500 h-2 rounded-md w-full opacity-40" />
+            <div className="bg-warning h-2 rounded-md w-full opacity-40" />
           </div>
           <p className="text-xs text-muted-foreground font-medium mt-2">
             {bytesToGB(node.vram_used_bytes!)} in use &middot; total unknown
@@ -235,7 +235,7 @@ function NodeFitList({
             {m.downloaded && (
               <span
                 title="A version of this model is already on this node; it may not be the quantization picked here"
-                className="inline-flex items-center px-1.5 py-0.5 rounded bg-green-500/15 text-green-600 dark:text-green-400 border border-green-500/30 text-[10px] font-medium"
+                className="inline-flex items-center px-1.5 py-0.5 rounded bg-success/15 text-success border border-success/30 text-[10px] font-medium"
               >
                 Downloaded
               </span>
@@ -261,7 +261,7 @@ function NodeFitList({
         </div>
         <div>
           {isDiskShort ? (
-            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30">
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-destructive/15 text-destructive dark:text-red-400 border border-destructive/30">
               No Disk Space
             </span>
           ) : (
@@ -354,7 +354,7 @@ function NodeFitList({
               <div className="flex justify-between gap-3"><dt className="text-muted-foreground">Node</dt><dd className="text-foreground">{node.name}</dd></div>
             </dl>
             {confirmPull.recommendation.tight && (
-              <p className="text-xs text-amber-600 dark:text-amber-400">This quantization fits with little VRAM headroom (Tight).</p>
+              <p className="text-xs text-warning">This quantization fits with little VRAM headroom (Tight).</p>
             )}
             {hfRuntime && (
               <p className="text-xs text-muted-foreground">
@@ -683,7 +683,7 @@ function ModelDetailPanel({
         ) : details && details.variants && details.variants.length > 0 ? (
           <div className="space-y-2">
             {details.docker_deployed && (
-              <p className="text-[10px] text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2.5 py-1.5 leading-normal">
+              <p className="text-[10px] text-warning bg-warning/10 border border-warning/20 rounded-lg px-2.5 py-1.5 leading-normal">
                 This node's runtime runs in Docker - the disk figures below reflect the host machine, not necessarily the container's own storage volume. Marbor checks the container's real free space before actually pulling, so a pull is never started if it would genuinely run out of room.
               </p>
             )}
@@ -720,7 +720,7 @@ function ModelDetailPanel({
                       <FitBadge fit={v.fit} />
                       {v.disk_fit === 'insufficient' && (
                         <span
-                          className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30"
+                          className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-destructive/15 text-destructive dark:text-red-400 border border-destructive/30"
                           title={`Needs ~${sizeGB} disk, node "${nodeName}" has ${details.disk_free_gb.toFixed(1)} GB free`}
                         >
                           No Disk Space
@@ -734,7 +734,7 @@ function ModelDetailPanel({
                         <Settings2 className="w-3.5 h-3.5" />
                       </button>
                       {isPulled ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-green-600 dark:text-green-400">
+                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-success">
                           <Check className="w-3.5 h-3.5" /> Ready
                         </span>
                       ) : (!actualRuntime || actualRuntime === 'ollama' || agentPullCapable) ? (
@@ -1189,15 +1189,15 @@ export function ModelAdvisor() {
           <p className="text-sm text-muted-foreground mt-1 font-medium">Search Hugging Face for models that fit your node&apos;s runtime and VRAM</p>
         </div>
         <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${demoMode ? 'bg-success' : (loading && !isLive) ? 'bg-blue-500 animate-pulse' : isLive ? 'bg-success' : 'bg-amber-500'}`} />
-          <span className={`text-xs font-semibold ${demoMode ? 'text-success' : (loading && !isLive) ? 'text-blue-600 dark:text-blue-400 animate-pulse' : isLive ? 'text-success' : 'text-amber-600 dark:text-amber-400'}`}>
+          <div className={`w-2 h-2 rounded-full ${demoMode ? 'bg-success' : (loading && !isLive) ? 'bg-info animate-pulse' : isLive ? 'bg-success' : 'bg-warning'}`} />
+          <span className={`text-xs font-semibold ${demoMode ? 'text-success' : (loading && !isLive) ? 'text-info animate-pulse' : isLive ? 'text-success' : 'text-warning'}`}>
             {demoMode ? 'Demo Mode' : (loading && !isLive) ? 'Connecting...' : isLive ? 'Live Data' : 'Disconnected'}
           </span>
         </div>
       </div>
 
       {demoMode && (
-        <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-700 dark:text-amber-400 text-sm font-medium">
+        <div className="p-4 bg-warning/10 border border-warning/20 rounded-xl text-warning text-sm font-medium">
           Demo mode - 5 inference nodes (Ollama, vLLM, TGI, llama.cpp, MLX). Connect real nodes to see live data.
         </div>
       )}
