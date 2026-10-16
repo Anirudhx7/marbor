@@ -17,6 +17,9 @@ import { ModelConfigModal } from '../components/ModelConfigModal';
 import { CustomSelect } from '../components/Select';
 import { RuntimeBadge } from '../components/RuntimeBadge';
 import { mockGPUNodes, mockRuntimeLogLines, withDemoSignals } from '../lib/mockData';
+import { SoleReplicaImpactNotice } from '../components/SoleReplicaImpactNotice';
+import { useSoleReplicaImpact } from '../lib/useSoleReplicaImpact';
+import { hasSoleModels, isChecking, confirmLabel } from '../lib/soleReplica';
 import { readLastNodeCount, writeLastNodeCount } from '../lib/nodeCount';
 import { isReplicaMember, replicaImpactCopy } from '../lib/replicaImpact';
 import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, probeNodeTLS, fetchModelFit, unloadModel, getPinned, getMarborAgent, enableMarborAgent, regenerateMarborAgentToken, disableMarborAgent, checkNodeHealth, fetchReplicaSuggestions, applyDemoConfirmedGroups, getNodeControl, acceptNodeControl, clearNodeControl, startNodeRuntime, stopNodeRuntime, restartNodeRuntime, getNodeRuntimeLogs, RuntimeActionError } from '../lib/api';
@@ -261,7 +264,7 @@ function ReplicaImpactNotice({ id, text }: { id: string; text: string | null }) 
 // confirmation modals (same Modal wrapper, two-paragraph body, error block,
 // and Cancel/Confirm button pair) - only title, copy, target node name,
 // confirm handler/label, and the confirm button's color class differ.
-function DrainConfirmModal({ nodeName, title, question, explanation, actionError, onClose, onConfirm, confirmLabel, confirmClassName, confirmDescribedBy, children }: {
+function DrainConfirmModal({ nodeName, title, question, explanation, actionError, onClose, onConfirm, confirmLabel: confirmText, confirmClassName, confirmDescribedBy, confirmDisabled, busy, children }: {
   nodeName: string | null;
   title: string;
   question: string;
@@ -272,6 +275,10 @@ function DrainConfirmModal({ nodeName, title, question, explanation, actionError
   confirmLabel: string;
   confirmClassName: string;
   confirmDescribedBy?: string;
+  // confirmDisabled holds the confirm button while a check is still running; busy
+  // also disables Cancel while the request is in flight.
+  confirmDisabled?: boolean;
+  busy?: boolean;
   children?: ReactNode;
 }) {
   return (
@@ -288,16 +295,18 @@ function DrainConfirmModal({ nodeName, title, question, explanation, actionError
         <div className="flex justify-end gap-3 pt-4 border-t border-border">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            disabled={busy}
+            className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Cancel
           </button>
           <button
             onClick={onConfirm}
+            disabled={busy || confirmDisabled}
             aria-describedby={confirmDescribedBy}
-            className={confirmClassName}
+            className={`${confirmClassName} disabled:opacity-50 disabled:cursor-not-allowed`}
           >
-            {confirmLabel}
+            {confirmText}
           </button>
         </div>
       </div>
@@ -890,6 +899,10 @@ export function GPUNodes() {
   const [drainReplicaNotice, setDrainReplicaNotice] = useState<string | null>(null);
   const drainNoticeId = useId();
   const runtimeNoticeId = useId();
+  const drainImpactId = useId();
+  const restartImpactId = useId();
+  const [drainBusy, setDrainBusy] = useState(false);
+  const drainImpact = useSoleReplicaImpact(nodeToDrain, demoMode);
   const [nodeToUndrain, setNodeToUndrain] = useState<string | null>(null);
   // Bounded-drain window entered in the Drain confirm modal. Blank = infinite
   // (today's frozen default). Recorded and round-tripped now so a future rolling-
@@ -995,6 +1008,9 @@ export function GPUNodes() {
   const runtimeReplicaNotice = runtimeActionConfirm && runtimeActionConfirm !== 'start'
     ? replicaImpactCopy(agentNode, runtimeActionConfirm) : null;
   const [runtimeActionNotice, setRuntimeActionNotice] = useState<string | null>(null);
+  // The "other replicas" check runs only while the Restart dialog is open.
+  const restartImpact = useSoleReplicaImpact(
+    runtimeActionConfirm === 'restart' ? (agentNode?.name ?? null) : null, demoMode);
   // --- Runtime logs - a pure read, no confirm dialog needed (destructive-action
   // confirms don't apply to a non-destructive read).
   const [logsModalOpen, setLogsModalOpen] = useState(false);
@@ -1151,9 +1167,13 @@ export function GPUNodes() {
       // replica_member): the error below asks the operator to reopen the
       // dialog and review the impact instead of acknowledging unseen.
       const ackReplica = isReplicaMember(agentNode);
+      // force is sent only when this dialog listed models that only this node
+      // can serve; a failed or unknown check never sends it (the server checks
+      // again and refuses if needed).
+      const force = action === 'restart' && hasSoleModels(restartImpact.state);
       if (action === 'start') await startNodeRuntime(agentNode.name);
       else if (action === 'stop') await stopNodeRuntime(agentNode.name, ackReplica);
-      else await restartNodeRuntime(agentNode.name, ackReplica);
+      else await restartNodeRuntime(agentNode.name, ackReplica, force);
       // Refresh immediately instead of waiting up to 10s for the next poll
       // tick - the modal's agentNode.runtimeStatus otherwise looks stale
       // right after a successful action even though the change already
@@ -1161,10 +1181,14 @@ export function GPUNodes() {
       await loadNodes();
     } catch (e: any) {
       setRuntimeActionError(e?.message || `Failed to ${action} runtime`);
-      // The node became a replica member after the dialog opened: refresh so
-      // the reopened dialog shows the current role and impact notice. The
-      // error renders in the node panel (the confirm dialog is already closed).
-      if (e instanceof RuntimeActionError && e.code === 'replica_member') await loadNodes();
+      // The node became a replica member (or its sole-replica list changed)
+      // after the dialog opened: refresh and reopen the dialog (it refetches the
+      // impact) so the operator reviews the current state, with the error inside
+      // it, and confirms again. Nothing is retried automatically.
+      if (e instanceof RuntimeActionError && (e.code === 'replica_member' || e.code === 'sole_replica')) {
+        if (e.code === 'replica_member') await loadNodes();
+        setRuntimeActionConfirm(action);
+      }
     } finally {
       setRuntimeActionBusy(null);
     }
@@ -1764,7 +1788,7 @@ export function GPUNodes() {
     }
   };
 
-  const handleDrainNode = async (name: string, graceSeconds?: number): Promise<boolean> => {
+  const handleDrainNode = async (name: string, graceSeconds?: number, force = false): Promise<boolean> => {
     if (demoMode) {
       setNodes(prev => prev.map(n => n.name === name ? withDemoSignals({ ...n, draining: true, drainedGraceSeconds: graceSeconds ?? 0 }) : n));
       setActionError(null);
@@ -1772,12 +1796,15 @@ export function GPUNodes() {
     }
     if (!isLive) return false;
     try {
-      await drainNode(name, graceSeconds);
+      await drainNode(name, graceSeconds, force);
       await loadNodes();
       setActionError(null);
       return true;
     } catch (err: any) {
       setActionError(err?.message || `Failed to drain node ${name}`);
+      // The models only this node serves changed since the dialog opened:
+      // refetch so the operator reviews the new list before confirming again.
+      if (err instanceof RuntimeActionError && err.code === 'sole_replica') drainImpact.reload();
       return false;
     }
   };
@@ -3169,14 +3196,24 @@ export function GPUNodes() {
         onConfirm={async () => {
           if (!nodeToDrain) return;
           const grace = drainGraceSeconds.trim() === '' ? undefined : Number(drainGraceSeconds);
-          const ok = await handleDrainNode(nodeToDrain, grace);
-          if (ok) { setNodeToDrain(null); setDrainGraceSeconds(''); }
+          // force only when this dialog listed models that only this node can serve.
+          const force = hasSoleModels(drainImpact.state);
+          setDrainBusy(true);
+          try {
+            const ok = await handleDrainNode(nodeToDrain, grace, force);
+            if (ok) { setNodeToDrain(null); setDrainGraceSeconds(''); }
+          } finally {
+            setDrainBusy(false);
+          }
         }}
-        confirmLabel="Drain node"
+        confirmLabel={confirmLabel('Drain', drainBusy, drainImpact.state)}
         confirmClassName="px-4 py-2 bg-amber-600 hover:bg-amber-600/90 text-white font-medium rounded-lg text-sm transition-colors shadow-sm"
-        confirmDescribedBy={drainReplicaNotice ? drainNoticeId : undefined}
+        confirmDescribedBy={[drainReplicaNotice ? drainNoticeId : '', drainImpact.state.status !== 'idle' ? drainImpactId : ''].filter(Boolean).join(' ') || undefined}
+        confirmDisabled={isChecking(drainImpact.state)}
+        busy={drainBusy}
       >
         <ReplicaImpactNotice id={drainNoticeId} text={drainReplicaNotice} />
+        <SoleReplicaImpactNotice id={drainImpactId} state={drainImpact.state} />
         {/* Grace-period input disabled until the enforcement engine that reads it
         ships (the future rolling-upgrade/orchestration feature). Uncomment when
         that lands - drainGraceSeconds/setDrainGraceSeconds and the onConfirm/
@@ -3986,6 +4023,7 @@ export function GPUNodes() {
             {runtimeActionConfirm === 'restart' && 'Disruptive and immediate: the runtime process is killed and relaunched. In-flight requests on this node fail, and all warm/loaded models are evicted and must reload from cold on next use. The process comes back up on its own once restarted - no separate start needed.'}
           </p>
           <ReplicaImpactNotice id={runtimeNoticeId} text={runtimeReplicaNotice} />
+          {runtimeActionConfirm === 'restart' && <SoleReplicaImpactNotice id={restartImpactId} state={restartImpact.state} />}
           {runtimeActionError && (
             <p className="text-sm text-destructive">{runtimeActionError}</p>
           )}
@@ -3998,8 +4036,8 @@ export function GPUNodes() {
             </button>
             <button
               onClick={() => runtimeActionConfirm && runRuntimeAction(runtimeActionConfirm)}
-              disabled={runtimeActionBusy !== null}
-              aria-describedby={runtimeReplicaNotice ? runtimeNoticeId : undefined}
+              disabled={runtimeActionBusy !== null || (runtimeActionConfirm === 'restart' && isChecking(restartImpact.state))}
+              aria-describedby={[runtimeReplicaNotice ? runtimeNoticeId : '', runtimeActionConfirm === 'restart' && restartImpact.state.status !== 'idle' ? restartImpactId : ''].filter(Boolean).join(' ') || undefined}
               className={
                 runtimeActionConfirm === 'start'
                   ? "px-4 py-2 bg-success hover:bg-success/90 disabled:opacity-50 disabled:cursor-not-allowed text-success-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
@@ -4008,7 +4046,7 @@ export function GPUNodes() {
             >
               {runtimeActionBusy !== null
                 ? (runtimeActionConfirm === 'start' ? 'Starting...' : runtimeActionConfirm === 'stop' ? 'Stopping...' : 'Restarting...')
-                : (runtimeActionConfirm === 'start' ? 'Start' : runtimeActionConfirm === 'stop' ? 'Stop' : 'Restart')}
+                : (runtimeActionConfirm === 'start' ? 'Start' : runtimeActionConfirm === 'stop' ? 'Stop' : confirmLabel('Restart', false, restartImpact.state))}
             </button>
           </div>
         </div>

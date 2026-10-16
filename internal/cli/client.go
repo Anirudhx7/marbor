@@ -261,12 +261,20 @@ func (c *Client) Logout() error {
 // mirroring the Admin API's own dispatch-to-agent contract exactly (no
 // business logic lives in the CLI). acknowledgeReplica sends
 // acknowledge_replica=true, which the server requires for a stop or restart
-// on a multi-host replica head, worker or unresolved member. The returned
-// ReplicaInfo is nil for a standalone node.
-func (c *Client) RuntimeAction(node, action string, acknowledgeReplica bool) (*ReplicaInfo, error) {
+// on a multi-host replica head, worker or unresolved member. force sends
+// force=true, which a restart needs when it would leave a model with no other
+// node able to serve it. The returned Replica is nil for a standalone node.
+func (c *Client) RuntimeAction(node, action string, acknowledgeReplica, force bool) (*RuntimeActionResult, error) {
 	path := "/admin/nodes/" + urlPathEscape(node) + "/runtime/" + action
+	var query []string
 	if acknowledgeReplica {
-		path += "?acknowledge_replica=true"
+		query = append(query, "acknowledge_replica=true")
+	}
+	if force {
+		query = append(query, "force=true")
+	}
+	if len(query) > 0 {
+		path += "?" + strings.Join(query, "&")
 	}
 	resp, err := c.doRequestBody(http.MethodPost, path, nil)
 	if err != nil {
@@ -274,16 +282,73 @@ func (c *Client) RuntimeAction(node, action string, acknowledgeReplica bool) (*R
 	}
 	defer resp.Body.Close()
 
-	var out struct {
-		Replica *ReplicaInfo `json:"replica"`
-	}
+	var out RuntimeActionResult
 	// An undecodable body is not a failure: the action already succeeded. It is
 	// reported as ErrReplicaDetailUnavailable so the caller can say the replica
 	// detail could not be read; an empty body just means there is none.
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil && !errors.Is(err, io.EOF) {
 		return nil, ErrReplicaDetailUnavailable
 	}
-	return out.Replica, nil
+	return &out, nil
+}
+
+// RuntimeActionResult is the optional detail on a successful runtime action:
+// the replica the node belongs to, and any models the action took out of
+// service. Both are nil when there is nothing to report.
+type RuntimeActionResult struct {
+	Replica     *ReplicaInfo     `json:"replica,omitempty"`
+	SoleReplica *SoleReplicaBody `json:"sole_replica,omitempty"`
+}
+
+// SoleReplicaModel is a model the node is the only possible server of.
+type SoleReplicaModel struct {
+	Model   string `json:"model"`
+	Runtime string `json:"runtime"`
+}
+
+// ColdLoadModel is a model only an Ollama peer could load on demand.
+type ColdLoadModel struct {
+	Model   string   `json:"model"`
+	Runtime string   `json:"runtime"`
+	Peers   []string `json:"peers"`
+}
+
+// SoleReplicaUnknown is a place where replica data could not be verified.
+type SoleReplicaUnknown struct {
+	Node   string `json:"node"`
+	Model  string `json:"model,omitempty"`
+	Reason string `json:"reason"`
+}
+
+// SoleReplicaImpact mirrors the Admin API's sole_replica lists.
+type SoleReplicaImpact struct {
+	Models       []SoleReplicaModel   `json:"models"`
+	ColdLoadOnly []ColdLoadModel      `json:"cold_load_only"`
+	Unknown      []SoleReplicaUnknown `json:"unknown"`
+}
+
+// SoleReplicaBody is the sole_replica object on a drain or restart response.
+type SoleReplicaBody struct {
+	SoleReplicaImpact
+	Forced bool `json:"forced"`
+}
+
+// SoleReplica calls GET /admin/nodes/{name}/sole-replica - the read-only
+// check a drain or runtime restart runs before changing anything.
+func (c *Client) SoleReplica(node string) (*SoleReplicaImpact, error) {
+	resp, err := c.doRequestBody(http.MethodGet, "/admin/nodes/"+urlPathEscape(node)+"/sole-replica", nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var out struct {
+		SoleReplica SoleReplicaImpact `json:"sole_replica"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, serverErrorf("could not parse sole-replica response: %v", err)
+	}
+	return &out.SoleReplica, nil
 }
 
 // ErrReplicaDetailUnavailable is returned by RuntimeAction, together with a
@@ -541,13 +606,17 @@ type DrainResult struct {
 	// Replica is set when the drained node is a multi-host replica head,
 	// worker or unresolved member; its Warning states what the drain does.
 	Replica *ReplicaInfo `json:"replica,omitempty"`
+	// SoleReplica lists models the drain took out of service, or that could not
+	// be checked. Nil when there was nothing to report.
+	SoleReplica *SoleReplicaBody `json:"sole_replica,omitempty"`
 }
 
 // DrainNode calls POST /admin/nodes/{name}/drain - marks a node as draining
 // (marbor-internal routing state; never sent to the Marbor Agent), mirroring the
 // UI's GPUNodes.tsx "Drain" action. graceSeconds < 0 means "not set" (absent
-// from the request body - infinite drain, today's frozen default).
-func (c *Client) DrainNode(node, reason string, graceSeconds int) (*DrainResult, error) {
+// from the request body - infinite drain, today's frozen default). force sends
+// force=true, which a drain needs when the node is the only server of a model.
+func (c *Client) DrainNode(node, reason string, graceSeconds int, force bool) (*DrainResult, error) {
 	body := map[string]any{}
 	if reason != "" {
 		body["reason"] = reason
@@ -558,7 +627,11 @@ func (c *Client) DrainNode(node, reason string, graceSeconds int) (*DrainResult,
 	if len(body) == 0 {
 		body = nil
 	}
-	resp, err := c.doRequestBody(http.MethodPost, "/admin/nodes/"+urlPathEscape(node)+"/drain", body)
+	path := "/admin/nodes/" + urlPathEscape(node) + "/drain"
+	if force {
+		path += "?force=true"
+	}
+	resp, err := c.doRequestBody(http.MethodPost, path, body)
 	if err != nil {
 		return nil, err
 	}

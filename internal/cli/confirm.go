@@ -18,7 +18,14 @@ func requireConfirm(action, target string, yes bool, stderr io.Writer) error {
 	if !stdinIsTTY() {
 		return userErrorf("refusing to %s %q without --yes (no TTY to confirm)", action, target)
 	}
-	fmt.Fprintf(stderr, "This will %s %q. This action cannot be undone.\nProceed? [y/N] ", action, target)
+	return promptProceed(stderr, fmt.Sprintf("This will %s %q. This action cannot be undone.", action, target))
+}
+
+// promptProceed prints message followed by "Proceed? [y/N]" on stderr and
+// reads one answer from stdin. It returns nil only for y or yes. The caller
+// has already checked that stdin is a terminal.
+func promptProceed(stderr io.Writer, message string) error {
+	fmt.Fprintf(stderr, "%s\nProceed? [y/N] ", message)
 	br := bufio.NewReader(stdinReader)
 	line, err := br.ReadString('\n')
 	if err != nil && len(line) == 0 {
