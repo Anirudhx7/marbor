@@ -55,8 +55,15 @@ func TestDrain_ForceDoesNotMarkNonSoleDrainsForced(t *testing.T) {
 			n.Unlock()
 		}
 		w := drainQ(t, s, "a", "force=true")
-		if w.Code != http.StatusOK || soleBody(t, w)["forced"] != false {
+		sr := soleBody(t, w)
+		if w.Code != http.StatusOK || sr["forced"] != false {
 			t.Fatalf("%d %s", w.Code, w.Body.String())
+		}
+		if unknown, _ := sr["unknown"].([]any); len(unknown) == 0 {
+			t.Errorf("the subtest must yield an unknown item: %s", w.Body.String())
+		}
+		if models, _ := sr["models"].([]any); len(models) != 0 {
+			t.Errorf("unknown must not count as a sole model: %v", models)
 		}
 	})
 	t.Run("covered", func(t *testing.T) {
@@ -117,45 +124,48 @@ func TestRouterDrain_IsNotGuarded(t *testing.T) {
 	}
 }
 
-func TestDrain_ConcurrentMutualPeersRepeatedly(t *testing.T) {
+// A drain is held inside its commit step while a drain of the mutual peer is
+// sent: the second must wait for the lock and then see the first drain, so it
+// is refused. Without the lock it would finish while the first is still held.
+func TestDrain_SecondMutualPeerWaitsForCommitAndIsRefused(t *testing.T) {
 	var hits atomic.Int32
 	s, cleanup := newSoleReplicaServer(t, okHandler(&hits))
 	defer cleanup()
-	for round := 0; round < 40; round++ {
-		readyNode(t, s, "a", "", soleModel)
-		readyNode(t, s, "b", "", soleModel)
-		readyNode(t, s, "c", "")
-		s.router.UndrainNode("a")
-		s.router.UndrainNode("b")
+	readyNode(t, s, "a", "", soleModel)
+	readyNode(t, s, "b", "", soleModel)
+	readyNode(t, s, "c", "")
 
-		start := make(chan struct{})
-		codes := make([]int, 2)
-		var wg sync.WaitGroup
-		for i, name := range []string{"a", "b"} {
-			req := drainRequest(s, name, "")
-			wg.Add(1)
-			go func(i int) {
-				defer wg.Done()
-				<-start
-				w := httptest.NewRecorder()
-				s.Handler().ServeHTTP(w, req)
-				codes[i] = w.Code
-			}(i)
-		}
-		close(start)
-		wg.Wait()
-		ok, conflict := 0, 0
-		for _, c := range codes {
-			switch c {
-			case http.StatusOK:
-				ok++
-			case http.StatusConflict:
-				conflict++
-			}
-		}
-		if ok != 1 || conflict != 1 {
-			t.Fatalf("round %d: codes = %v, want exactly one 200 and one 409", round, codes)
-		}
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	s.soleReplica.afterCommit = func() {
+		once.Do(func() {
+			close(entered)
+			<-release
+		})
+	}
+
+	firstDone := make(chan int, 1)
+	go func() { firstDone <- drainQ(t, s, "a", "").Code }()
+	<-entered
+
+	secondDone := make(chan int, 1)
+	go func() { secondDone <- drainQ(t, s, "b", "").Code }()
+	select {
+	case code := <-secondDone:
+		close(release)
+		t.Fatalf("second drain finished (%d) while the first was still committing", code)
+	case <-time.After(300 * time.Millisecond):
+	}
+	close(release)
+	if code := <-firstDone; code != http.StatusOK {
+		t.Fatalf("first drain: %d, want 200", code)
+	}
+	if code := <-secondDone; code != http.StatusConflict {
+		t.Fatalf("second drain: %d, want 409", code)
+	}
+	if isDraining(s, "b") {
+		t.Error("the refused drain must not drain b")
 	}
 }
 
@@ -224,34 +234,108 @@ func TestBlockedRequestsWriteNoMarkerAndNoAudit(t *testing.T) {
 	}
 }
 
-// An overlapping restart of the same node owns the marker: the first restart
-// finishing must not stamp or delete the newer marker.
-func TestFinishRestart_OnlyTouchesItsOwnMarker(t *testing.T) {
+func markerOf(s *Server, name string) restartMarker {
+	s.soleReplica.mu.Lock()
+	defer s.soleReplica.mu.Unlock()
+	return s.soleReplica.restarting[name]
+}
+
+// Overlapping restarts of one node share a marker: a refusal of one must not
+// delete it while the other is in flight or may have restarted the runtime.
+func TestFinishRestart_OverlappingRestartsKeepTheMarker(t *testing.T) {
 	var hits atomic.Int32
 	s, cleanup := newSoleReplicaServer(t, okHandler(&hits))
 	defer cleanup()
 	s.soleReplica.mu.Lock()
-	first := s.markRestartStarted("a")
-	second := s.markRestartStarted("a")
+	s.markRestartStarted("a")
+	s.markRestartStarted("a")
 	s.soleReplica.mu.Unlock()
-	if first == second {
-		t.Fatal("tokens must differ")
+
+	s.finishRestart("a", true) // one refused, one still in flight
+	if mk := markerOf(s, "a"); mk.inflight != 1 || !mk.returned.IsZero() {
+		t.Fatalf("a refusal beside an in-flight restart changed the marker wrongly: %+v", mk)
+	}
+	s.finishRestart("a", false) // the other ended with an unknown outcome
+	if mk := markerOf(s, "a"); mk.inflight != 0 || mk.returned.IsZero() || !mk.maybeDown {
+		t.Fatalf("the surviving restart must stamp returned: %+v", mk)
 	}
 
-	s.finishRestart("a", first, true)
+	// Older restart may have restarted the runtime; a later refusal keeps it.
 	s.soleReplica.mu.Lock()
-	mk := s.soleReplica.restarting["a"]
+	s.markRestartStarted("a")
 	s.soleReplica.mu.Unlock()
-	if mk.token != second || !mk.returned.IsZero() {
-		t.Fatalf("first restart changed the second marker: %+v", mk)
-	}
-	s.finishRestart("a", first, false)
+	s.finishRestart("a", true)
 	if restartingCount(s) != 1 {
-		t.Fatal("a stale failure must not delete the newer marker")
+		t.Fatal("a refusal must not delete a marker an earlier restart left maybeDown")
 	}
-	s.finishRestart("a", second, false)
+}
+
+func TestFinishRestart_LoneRefusalDeletesMarker(t *testing.T) {
+	var hits atomic.Int32
+	s, cleanup := newSoleReplicaServer(t, okHandler(&hits))
+	defer cleanup()
+	s.soleReplica.mu.Lock()
+	s.markRestartStarted("a")
+	s.soleReplica.mu.Unlock()
+	s.finishRestart("a", true)
 	if restartingCount(s) != 0 {
-		t.Fatal("the owning restart failing must delete its marker")
+		t.Fatal("a lone refused restart must delete its marker")
+	}
+}
+
+// A restart whose outcome is unknown (the agent connection dropped, or a 200
+// with an unreadable body) may have restarted the runtime: the marker stays, so
+// a drain of the peer is still refused.
+func TestRestart_UnknownOutcomeKeepsMarker(t *testing.T) {
+	cases := map[string]http.HandlerFunc{
+		"connection dropped": func(w http.ResponseWriter, r *http.Request) {
+			conn, _, err := w.(http.Hijacker).Hijack()
+			if err == nil {
+				conn.Close()
+			}
+		},
+		"unreadable 200": func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte("not json"))
+		},
+	}
+	for name, handler := range cases {
+		t.Run(name, func(t *testing.T) {
+			s, cleanup := newSoleReplicaServer(t, handler)
+			defer cleanup()
+			readyNode(t, s, "a", "", soleModel)
+			readyNode(t, s, "b", "", soleModel)
+			if w := runtimeReq(t, s, "a", "restart", ""); w.Code != http.StatusBadGateway {
+				t.Fatalf("restart: %d, want 502", w.Code)
+			}
+			if mk := markerOf(s, "a"); mk.returned.IsZero() || !mk.maybeDown {
+				t.Fatalf("an unknown outcome must keep a stamped marker: %+v", mk)
+			}
+			if w := drainQ(t, s, "b", ""); w.Code != http.StatusConflict {
+				t.Fatalf("drain of the peer: %d, want 409: %s", w.Code, w.Body.String())
+			}
+		})
+	}
+}
+
+func TestRestart_SuccessStampsReturned(t *testing.T) {
+	var hits atomic.Int32
+	s, cleanup := newSoleReplicaServer(t, okHandler(&hits))
+	defer cleanup()
+	readyNode(t, s, "a", "", soleModel)
+	readyNode(t, s, "b", "", soleModel)
+	if w := runtimeReq(t, s, "a", "restart", ""); w.Code != http.StatusOK {
+		t.Fatalf("restart: %d", w.Code)
+	}
+	mk := markerOf(s, "a")
+	if mk.returned.IsZero() || mk.inflight != 0 {
+		t.Fatalf("a successful restart must stamp returned: %+v", mk)
+	}
+}
+
+func TestSoleCheck_ZeroValueIsNotNodeMissing(t *testing.T) {
+	var c soleCheck
+	if !c.found() || c.blocked() || c.forced() {
+		t.Fatalf("zero soleCheck = found %v blocked %v forced %v", c.found(), c.blocked(), c.forced())
 	}
 }
 

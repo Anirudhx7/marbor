@@ -104,12 +104,14 @@ func snapshotSafetyNode(n *NodeState) safetyView {
 // It is read-only: it reads node snapshots one lock at a time, holds no
 // router lock, and fires no webhooks. Each peer is snapshotted once and the
 // classification helpers then re-lock individual nodes, so a poll landing
-// mid-check can make the answer slightly stale; callers that need a change to
-// follow the check atomically serialize it themselves. It mirrors the routing eligibility
-// rules with three deliberate differences: a peer's remaining request
-// capacity is ignored (a busy peer still serves), data marbor cannot verify
-// is reported as unknown rather than guessed, and an unwarm Ollama peer only
-// counts as able to cold-load a model when the target is an Ollama node too.
+// mid-check can make the answer slightly stale; callers that need a change
+// to follow the check atomically serialize it themselves.
+//
+// It mirrors the routing eligibility rules with three deliberate
+// differences: a peer's remaining request capacity is ignored (a busy peer
+// still serves), data marbor cannot verify is reported as unknown rather
+// than guessed, and an unwarm Ollama peer only counts as able to cold-load a
+// model when the target is an Ollama node too.
 func (r *Router) SoleReplicaImpact(target string, alsoDown map[string]bool) (SoleReplicaImpact, bool) {
 	nodes := r.Nodes()
 	var tn *NodeState

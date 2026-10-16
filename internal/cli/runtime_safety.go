@@ -22,16 +22,18 @@ var dryRunFlag = FlagSpec{
 	Usage: "show which models only this node can serve and exit without changing anything",
 }
 
-// The actions the sole-replica check guards.
+// soleAction is an action the sole-replica check guards.
+type soleAction string
+
 const (
-	soleActionDrain   = "drain"
-	soleActionRestart = "restart"
+	soleActionDrain   soleAction = "drain"
+	soleActionRestart soleAction = "restart"
 )
 
 // soleRequest says which action the sole-replica check is for and how the
 // operator asked to handle it.
 type soleRequest struct {
-	action string
+	action soleAction
 	node   string
 	force  bool
 	dryRun bool
@@ -79,7 +81,7 @@ func gateSoleReplica(client *Client, flags *globalFlags, req soleRequest, stdout
 
 // confirmSoleReplica asks the operator to accept taking the sole models out of
 // service, or fails when there is no terminal to ask on.
-func confirmSoleReplica(action, node string, impact *SoleReplicaImpact, stderr io.Writer) error {
+func confirmSoleReplica(action soleAction, node string, impact *SoleReplicaImpact, stderr io.Writer) error {
 	names := soleModelNames(impact.Models)
 	if !stdinIsTTY() {
 		return userErrorf("refusing to %s %q without --force: it is the only node that can serve %s (no TTY to confirm)", action, node, strings.Join(names, ", "))
@@ -94,7 +96,7 @@ func confirmSoleReplica(action, node string, impact *SoleReplicaImpact, stderr i
 // soleReplicaConsequence states what proceeding does, in plain terms. Neither
 // action is described as permanent: a drain is undone with "runtime undrain"
 // and a restart brings the runtime back on its own.
-func soleReplicaConsequence(action, node string) string {
+func soleReplicaConsequence(action soleAction, node string) string {
 	if action == soleActionRestart {
 		return fmt.Sprintf("Restarting the runtime on %q takes it offline while it restarts, and no other node can serve these models in the meantime. The check covers restarts made through marbor only.", node)
 	}
@@ -125,7 +127,7 @@ func printSoleReplicaNotes(stderr io.Writer, impact *SoleReplicaImpact) {
 }
 
 // reportDryRun prints the check result for --dry-run and returns the exit code.
-func reportDryRun(flags *globalFlags, action, node string, impact *SoleReplicaImpact, stdout, stderr io.Writer) int {
+func reportDryRun(flags *globalFlags, action soleAction, node string, impact *SoleReplicaImpact, stdout, stderr io.Writer) int {
 	result := map[string]interface{}{"node": node, "action": action, "dry_run": true, "sole_replica": impact.normalized()}
 	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, result); handled {
 		return code

@@ -68,6 +68,11 @@ export const mockGPUNodes: GPUNode[] = [
     loadedModels: [
       { name: 'llama3.2', sizeVram: Math.round(2.2 * GiB) },
       { name: 'qwen2.5', sizeVram: Math.round(4.8 * GiB) },
+      // Warm here so the cold-load list in mockSoleReplicaImpact (which is
+      // computed from a node's loaded models) lists models this node holds.
+      { name: 'deepseek-r1:8b', sizeVram: Math.round(5.2 * GiB) },
+      { name: 'qwen3:8b', sizeVram: Math.round(5.2 * GiB) },
+      { name: 'mistral:7b', sizeVram: Math.round(4.1 * GiB) },
     ],
     healthHistory: Array(60).fill(0).map(() => 95 + Math.random() * 5),
     coldStarts: 2,
@@ -628,10 +633,12 @@ export const mockGPUNodes: GPUNode[] = [
 // SoleReplicaImpact mirrors the Admin API sole-replica response: the models
 // that stop being served anywhere if the node is drained or its runtime is
 // restarted, the models only an Ollama peer could load on demand, and places
-// where replica data could not be verified. Demo values follow the fleet above
-// (runtimes are accurate; gpu-node-03 runs TGI and holds qwen2.5 warm, which an
-// Ollama node cannot confirm, so gpu-node-01 shows a model-level unknown line;
-// it also lists four cold-load models, enough to show the collapsed form).
+// where replica data could not be verified. Demo values follow mockGPUNodes
+// above, the data the Nodes page shows: gpu-node-01 holds llama3.2, qwen2.5,
+// deepseek-r1:8b, qwen3:8b and mistral:7b warm; gpu-node-03 runs TGI and holds
+// qwen2.5 warm, which an Ollama node cannot confirm, so gpu-node-01 shows a
+// model-level unknown line for it; gpu-node-01 also lists four cold-load
+// models, enough to show the collapsed form.
 export const mockSoleReplicaImpact: Record<string, SoleReplicaImpact> = {
   'gpu-node-01': {
     models: [],

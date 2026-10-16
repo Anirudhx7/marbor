@@ -1,5 +1,5 @@
 import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, CloudProviderInput, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, QuantRecommendation, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry, ModelConfig, LocalModel, BenchmarkRun, BackupFileInfo, SpillCounterRow, RoutingDecision, ModelAlias } from '../types';
-import { runtimeActionFailureInfo, runtimeActionQuery } from './soleReplica';
+import { readSoleReplicaImpact, runtimeActionFailureInfo, runtimeActionQuery } from './soleReplica';
 import { mockCloudProviders, mockSavings, mockReplicaSuggestions, mockSoleReplicaImpact } from './mockData';
 import { sameDeclared } from './replicaGroups';
 
@@ -551,11 +551,7 @@ export interface SoleReplicaBody extends SoleReplicaImpact { forced: boolean }
 export async function getSoleReplicaImpact(name: string, signal?: AbortSignal): Promise<SoleReplicaImpact> {
   if (DEMO) return demoDelay(mockSoleReplicaImpact[name] ?? { models: [], cold_load_only: [], unknown: [] });
   const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/sole-replica`, { headers: authHeaders(), signal });
-  if (!res.ok) throw new Error(`Failed to check other replicas (HTTP ${res.status})`);
-  const j = (await res.json().catch(() => ({}))) as { sole_replica?: Partial<SoleReplicaImpact> };
-  const r = j.sole_replica;
-  if (!r || typeof r !== 'object') throw new Error('Unexpected response while checking other replicas');
-  return { models: r.models ?? [], cold_load_only: r.cold_load_only ?? [], unknown: r.unknown ?? [] };
+  return readSoleReplicaImpact(res);
 }
 
 // force=true is sent only from the confirm dialog, and only when the dialog

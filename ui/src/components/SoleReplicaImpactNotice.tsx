@@ -8,27 +8,31 @@ import {
 // cold-load (neutral note), and places replica data could not be verified. The
 // outer role="status" region is always mounted, so a result that arrives after
 // the dialog opens is announced. The confirm button points at the short summary
-// (aria-describedby, via the caller's useId value), not the whole list. Lists
-// scroll inside a capped height so the dialog stays usable at 375px;
+// (aria-describedby, via the caller's useId value), not the whole list; that
+// summary sits outside the live region so its facts are not announced twice.
+// Lists scroll inside a capped height so the dialog stays usable at 375px;
 // break-words keeps long model names inside it.
 export function SoleReplicaImpactNotice({ id, state }: { id: string; state: SoleImpactState }) {
+  const summary = impactSummary(state);
   return (
-    <div role="status" aria-live="polite" className="empty:hidden">
-      <NoticeBody id={id} state={state} />
-    </div>
+    <>
+      {summary !== null && <span id={id} className="sr-only">{summary}</span>}
+      <div role="status" aria-live="polite" className="empty:hidden">
+        <NoticeBody state={state} summary={summary} />
+      </div>
+    </>
   );
 }
 
-function NoticeBody({ id, state }: { id: string; state: SoleImpactState }) {
-  const summary = impactSummary(state);
+function NoticeBody({ state, summary }: { state: SoleImpactState; summary: string | null }) {
   if (summary === null || state.status === 'idle') return null;
   if (state.status === 'loading') {
-    return <p className="text-xs text-muted-foreground"><span id={id}>Checking other replicas...</span></p>;
+    return <p className="text-xs text-muted-foreground">Checking other replicas...</p>;
   }
   if (state.status === 'error') {
     return (
       <p className="text-xs text-muted-foreground rounded-lg border border-border bg-secondary/40 p-3">
-        <span id={id}>{state.message ?? 'Could not check other replicas'}.</span> You can still continue; marbor checks again when you confirm.
+        {summary} You can still continue; marbor checks again when you confirm.
       </p>
     );
   }
@@ -36,7 +40,6 @@ function NoticeBody({ id, state }: { id: string; state: SoleImpactState }) {
   const listClass = 'mt-1 max-h-28 overflow-y-auto space-y-0.5 font-mono';
   return (
     <div role="note" className="space-y-2 text-xs break-words">
-      <span id={id} className="sr-only">{summary}</span>
       {models.length > 0 && (
         <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 text-foreground p-3">
           <p className="font-semibold">Only this node can serve:</p>

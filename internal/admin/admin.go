@@ -2772,16 +2772,20 @@ func (s *Server) handleNodeRuntimeAction(w http.ResponseWriter, r *http.Request,
 
 	// A restart must not leave a model with no other node able to serve it
 	// unless the caller says so with force=true.
-	sole, finishRestart, proceed := s.guardRuntimeActionSole(w, r, nodeName, action)
+	sole, finishRestart, proceed := s.guardRuntimeActionSole(w, r, nodeName, soleAction(action))
 	if !proceed {
 		return
 	}
-	restartOK := false
-	defer func() { finishRestart(restartOK) }()
+	// Only a definite agent refusal clears the restart marker; success and any
+	// unknown outcome (timeout, cancel, transport failure, panic) keep it.
+	restartRefused := false
+	defer func() { finishRestart(restartRefused) }()
 
 	ctx, cancel := context.WithTimeout(r.Context(), nodeRuntimeActionTimeout)
 	defer cancel()
 	if err := s.runtimeActionViaAgent(ctx, nodeURL, agentCfg, action, ctrl); err != nil {
+		var refused *agentRefusedError
+		restartRefused = errors.As(err, &refused)
 		// The agent's own error text (a domain message like "systemd:
 		// restart ollama.service: Unit not found") is meant to surface to
 		// the client - see runtimeActionViaAgent's doc comment for why a
@@ -2792,7 +2796,6 @@ func (s *Server) handleNodeRuntimeAction(w http.ResponseWriter, r *http.Request,
 		writeJSONError(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	restartOK = true
 
 	detail := replicaAuditDetail(fmt.Sprintf("Driver: %s, Identifier: %s", ctrl.Driver, ctrl.Identifier), replica, acknowledged)
 	s.logSystemChange(r, "runtime_"+action, nodeName, soleReplicaAuditDetail(detail, sole.impact, sole.forced()))
@@ -2852,14 +2855,19 @@ func (s *Server) runtimeActionViaAgent(ctx context.Context, nodeURL string, agen
 		Error string `json:"error"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return fmt.Errorf("agent runtime %s: could not decode response (status %d)", action, resp.StatusCode)
+		msg := fmt.Sprintf("agent runtime %s: could not decode response (status %d)", action, resp.StatusCode)
+		if resp.StatusCode >= http.StatusBadRequest {
+			// The agent answered with an error status: it refused.
+			return &agentRefusedError{msg: msg}
+		}
+		return errors.New(msg)
 	}
 	if !out.OK {
 		msg := out.Error
 		if msg == "" {
 			msg = fmt.Sprintf("agent returned %d", resp.StatusCode)
 		}
-		return errors.New(msg)
+		return &agentRefusedError{msg: msg}
 	}
 	return nil
 }
