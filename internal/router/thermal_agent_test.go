@@ -506,7 +506,7 @@ func TestThermalWatchdog_AgentLogsDeviceIndexNotPosition(t *testing.T) {
 
 func TestThermalWatchdog_BreachLimitNeverBelowOne(t *testing.T) {
 	r, ns := agentThermalRouter(t, 3, "a")
-	r.thermalWatchdog.ConsecutiveBreaches = 0 // as a struct-literal router would have it
+	r.thermalWatchdog.ConsecutiveBreaches = -1 // below one behaves as one (a struct-literal router can have 0)
 	buf := captureLog(t)
 	r.applyAgentTelemetry(ns[0], thermalTel(thermalF(90)))
 	if d, _ := thermalDraining(ns[0]); !d {
@@ -517,11 +517,30 @@ func TestThermalWatchdog_BreachLimitNeverBelowOne(t *testing.T) {
 	}
 }
 
-func TestThermalWatchdog_LocalDrainLogsReading(t *testing.T) {
-	r, _ := agentThermalRouter(t, 1, "a")
+func TestThermalWatchdog_LocalPathDrainLogsReadingAndHonoursLimitFloor(t *testing.T) {
+	r, _ := newThermalTestRouter(t, config.ThermalWatchdogConfig{
+		Enabled: true, MaxTempCelsius: 85, ConsecutiveBreaches: 3,
+	})
+	r.thermalWatchdog.ConsecutiveBreaches = -2 // a limit below one behaves as one
+	n := r.nodes[0]
+	r.nvidiaMu.Lock()
+	r.nvidiaCache[0] = GPUStats{TempCelsius: 91, VRAMTotalMB: 24576, VRAMUsedMB: 1000}
+	r.nvidiaMu.Unlock()
 	buf := captureLog(t)
-	r.thermalDrain("a", "local GPU at 91.0°C")
-	if !strings.Contains(buf.String(), "node a auto-drained after 1 consecutive polls at/above 85.0°C (local GPU at 91.0°C)") {
-		t.Errorf("unexpected drain log: %q", buf.String())
+	r.pollNode(n)
+	if d, _ := thermalDraining(n); !d {
+		t.Fatal("first hot local poll drains when the limit is below one")
+	}
+	if !strings.Contains(buf.String(), "node gpu-0 auto-drained after 1 consecutive polls at/above 85.0\u00b0C (local GPU at 91.0\u00b0C)") {
+		t.Errorf("unexpected local drain log: %q", buf.String())
+	}
+}
+
+func TestThermalWatchdog_UnscopedLogSaysWholeHost(t *testing.T) {
+	r, ns := agentThermalRouter(t, 1, "a")
+	buf := captureLog(t)
+	r.applyAgentTelemetry(ns[0], thermalTel(thermalF(90)))
+	if !strings.Contains(buf.String(), "agent GPU 0 at 90.0\u00b0C, no GPU scope known, whole host") {
+		t.Errorf("log %q should say the whole host was used", buf.String())
 	}
 }
