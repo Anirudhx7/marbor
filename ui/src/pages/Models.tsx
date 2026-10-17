@@ -196,7 +196,24 @@ interface DeleteGuardInfo {
   members?: string[];
 }
 
-function ModelFleetCard({ model, demoMode, replicaByNode, deleteGuardByNode, onConfigure, onDeleted }: { model: ModelEntry; demoMode: boolean; replicaByNode: Record<string, { head: string; type?: string; width?: number }>; deleteGuardByNode: Record<string, DeleteGuardInfo>; onConfigure: () => void; onDeleted: (modelName: string, nodeNames: string[]) => void }) {
+type NodeStateMap = Record<string, { health: 'healthy' | 'degraded' | 'down'; draining: boolean }>;
+
+// One place for the residency dot: a draining node is amber "Draining" (the
+// GPU nodes page and dashboard say the same), never red "Down" just because
+// it is not taking new traffic. Falls back to the catalog's healthy flag when
+// the node list has not loaded.
+function residencyDot(nodeStates: NodeStateMap, node: { name: string; healthy: boolean }): { status: 'healthy' | 'degraded' | 'down'; title: string } {
+  const st = nodeStates[node.name];
+  if (!st) return node.healthy ? { status: 'healthy', title: 'Healthy' } : { status: 'down', title: 'Down' };
+  if (st.draining) return { status: 'degraded', title: 'Draining' };
+  return { status: st.health, title: st.health === 'healthy' ? 'Healthy' : st.health === 'degraded' ? 'Degraded' : 'Down' };
+}
+
+// Same display names the GPU nodes page uses.
+const RUNTIME_LABELS: Record<string, string> = { ollama: 'Ollama', vllm: 'vLLM', tgi: 'TGI', llamacpp: 'llama.cpp', mlx: 'MLX' };
+const runtimeLabel = (r?: string) => (r ? RUNTIME_LABELS[r] || r : '');
+
+function ModelFleetCard({ model, demoMode, replicaByNode, nodeStates, deleteGuardByNode, onConfigure, onDeleted }: { model: ModelEntry; demoMode: boolean; replicaByNode: Record<string, { head: string; type?: string; width?: number }>; nodeStates: NodeStateMap; deleteGuardByNode: Record<string, DeleteGuardInfo>; onConfigure: () => void; onDeleted: (modelName: string, nodeNames: string[]) => void }) {
   const isWarm = model.warm_count > 0;
   const totalVRAM = totalVRAMFor(model);
   const isDrifted = !!model.digest_mismatch;
@@ -388,14 +405,14 @@ function ModelFleetCard({ model, demoMode, replicaByNode, deleteGuardByNode, onC
             <Link
               key={node.name}
               to={`/gpu-nodes?highlight=${encodeURIComponent(node.name)}&from=models`}
-              title={`${node.name} · ${node.runtime || 'runtime unknown'} · ${node.warm ? 'warm' : 'cold'} · digest ${node.digest || '-'}${node.vram_bytes ? ` · ${formatVRAM(node.vram_bytes)}` : ''}`}
+              title={`${node.name} · ${runtimeLabel(node.runtime) || 'runtime unknown'} · ${node.warm ? 'warm' : 'cold'} · digest ${node.digest || '-'}${node.vram_bytes ? ` · ${formatVRAM(node.vram_bytes)}` : ''}`}
               className="inline-flex items-center gap-1.5 px-2 py-1 bg-secondary hover:bg-secondary/80 border border-transparent hover:border-border rounded-md text-xs font-medium text-foreground transition-colors duration-200 ease-out"
             >
-              <StatusDot status={node.healthy ? 'healthy' : 'down'} />
+              <StatusDot status={residencyDot(nodeStates, node).status} title={residencyDot(nodeStates, node).title} />
               <span className="font-mono truncate max-w-[110px]">{node.name}</span>
               {node.runtime && (
                 <span className="text-[10px] px-1 py-0.5 bg-card border border-border rounded font-mono text-muted-foreground">
-                  {node.runtime}
+                  {runtimeLabel(node.runtime)}
                 </span>
               )}
               <span className={`text-[10px] font-mono px-1 py-0.5 rounded ${node.warm ? 'bg-success/10 text-success border border-success/20' : 'bg-muted text-muted-foreground border border-border'}`}>
@@ -415,14 +432,14 @@ function ModelFleetCard({ model, demoMode, replicaByNode, deleteGuardByNode, onC
                 <Link
                   key={node.name}
                   to={`/gpu-nodes?highlight=${encodeURIComponent(node.name)}&from=models`}
-                  title={`${node.name} · ${node.runtime || 'runtime unknown'} · ${node.warm ? 'warm' : 'cold'} · shard of deployment headed by ${replicaByNode[node.name].head} · digest ${node.digest || '-'}${node.vram_bytes ? ` · ${formatVRAM(node.vram_bytes)}` : ''}`}
+                  title={`${node.name} · ${runtimeLabel(node.runtime) || 'runtime unknown'} · ${node.warm ? 'warm' : 'cold'} · shard of deployment headed by ${replicaByNode[node.name].head} · digest ${node.digest || '-'}${node.vram_bytes ? ` · ${formatVRAM(node.vram_bytes)}` : ''}`}
                   className="inline-flex items-center gap-1.5 px-2 py-1 bg-card hover:bg-secondary/80 border border-transparent hover:border-info/40 rounded-md text-xs font-medium text-foreground transition-colors duration-200 ease-out"
                 >
-                  <StatusDot status={node.healthy ? 'healthy' : 'down'} />
+                  <StatusDot status={residencyDot(nodeStates, node).status} title={residencyDot(nodeStates, node).title} />
                   <span className="font-mono truncate max-w-[110px]">{node.name}</span>
                   {node.runtime && (
                     <span className="text-[10px] px-1 py-0.5 bg-card border border-border rounded font-mono text-muted-foreground">
-                      {node.runtime}
+                      {runtimeLabel(node.runtime)}
                     </span>
                   )}
                   <span className="text-[10px] font-mono text-muted-foreground" title={node.digest ? `Digest: ${node.digest}` : 'Digest unknown'}>
@@ -633,6 +650,7 @@ export function Models() {
   // copies. Unresolved nodes stay out of this map on purpose: their
   // component disagrees, so each counts as its own instance until the
   // operator reconciles the declarations on the GPU Nodes page.
+  const [nodeStates, setNodeStates] = useState<NodeStateMap>({});
   const [replicaByNode, setReplicaByNode] = useState<Record<string, { head: string; type?: string; width?: number }>>({});
   // Delete-safety guard: unlike replicaByNode above, every node
   // returned by the fetch gets an explicit entry here (including
@@ -654,6 +672,7 @@ export function Models() {
         const list = demoMode ? mockGPUNodes : await fetchNodes();
         if (!active || currentAppPath() !== '/models') return;
         setRuntimeByNode(Object.fromEntries((list || []).map((n) => [n.name, n.runtime])));
+        setNodeStates(Object.fromEntries((list || []).map((n) => [n.name, { health: n.health as 'healthy' | 'degraded' | 'down', draining: !!n.draining }])));
         setReplicaByNode(Object.fromEntries(
           (list || [])
             .filter((n) => (n.schedulingRole === 'head' || n.schedulingRole === 'worker') && n.replicaHead)
@@ -669,6 +688,7 @@ export function Models() {
       } catch {
         if (!active || currentAppPath() !== '/models') return;
         setRuntimeByNode({});
+        setNodeStates({});
         setReplicaByNode({});
         setDeleteGuardByNode({});
       }
@@ -1004,10 +1024,10 @@ export function Models() {
                                   <Link
                                     key={node.name}
                                     to={`/gpu-nodes?highlight=${encodeURIComponent(node.name)}&from=models`}
-                                    title={`${node.name} ${node.runtime || ''} ${node.warm ? 'warm' : 'cold'} ${node.digest || ''}`}
+                                    title={`${node.name} ${runtimeLabel(node.runtime)} ${node.warm ? 'warm' : 'cold'} ${node.digest || ''}`}
                                     className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-secondary rounded text-xs font-medium hover:bg-secondary/80 transition-colors duration-200 ease-out"
                                   >
-                                    <StatusDot status={node.healthy ? 'healthy' : 'down'} size="sm" />
+                                    <StatusDot status={residencyDot(nodeStates, node).status} title={residencyDot(nodeStates, node).title} size="sm" />
                                     <span className="font-mono truncate max-w-[90px]">{node.name}</span>
                                     <span className="text-[10px] font-mono text-muted-foreground">{shortDigest(node.digest)}</span>
                                   </Link>
@@ -1021,10 +1041,10 @@ export function Models() {
                                       <Link
                                         key={node.name}
                                         to={`/gpu-nodes?highlight=${encodeURIComponent(node.name)}&from=models`}
-                                        title={`${node.name} ${node.runtime || ''} ${node.warm ? 'warm' : 'cold'} · shard of deployment headed by ${replicaByNode[node.name].head} · ${node.digest || ''}`}
+                                        title={`${node.name} ${runtimeLabel(node.runtime)} ${node.warm ? 'warm' : 'cold'} · shard of deployment headed by ${replicaByNode[node.name].head} · ${node.digest || ''}`}
                                         className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-card rounded text-xs font-medium hover:bg-secondary/80 transition-colors duration-200 ease-out"
                                       >
-                                        <StatusDot status={node.healthy ? 'healthy' : 'down'} size="sm" />
+                                        <StatusDot status={residencyDot(nodeStates, node).status} title={residencyDot(nodeStates, node).title} size="sm" />
                                         <span className="font-mono truncate max-w-[90px]">{node.name}</span>
                                         <span className="text-[10px] font-mono text-muted-foreground">{shortDigest(node.digest)}</span>
                                       </Link>
@@ -1062,7 +1082,7 @@ export function Models() {
               {/* Mobile cards - visible only below md, stacked, no horizontal scroll */}
               <div className="grid grid-cols-1 md:hidden gap-4 animate-fade-in">
                 {filteredModels.map((model) => (
-                  <ModelFleetCard key={model.name} model={model} demoMode={demoMode} replicaByNode={replicaByNode} deleteGuardByNode={deleteGuardByNode} onConfigure={() => setConfigModel(model.name)} onDeleted={handleModelDeleted} />
+                  <ModelFleetCard key={model.name} model={model} demoMode={demoMode} replicaByNode={replicaByNode} nodeStates={nodeStates} deleteGuardByNode={deleteGuardByNode} onConfigure={() => setConfigModel(model.name)} onDeleted={handleModelDeleted} />
                 ))}
               </div>
             </div>
@@ -1136,7 +1156,7 @@ export function Models() {
           ) : filteredModels.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-fr">
               {filteredModels.map((model) => (
-                <ModelFleetCard key={model.name} model={model} demoMode={demoMode} replicaByNode={replicaByNode} deleteGuardByNode={deleteGuardByNode} onConfigure={() => setConfigModel(model.name)} onDeleted={handleModelDeleted} />
+                <ModelFleetCard key={model.name} model={model} demoMode={demoMode} replicaByNode={replicaByNode} nodeStates={nodeStates} deleteGuardByNode={deleteGuardByNode} onConfigure={() => setConfigModel(model.name)} onDeleted={handleModelDeleted} />
               ))}
             </div>
           ) : (

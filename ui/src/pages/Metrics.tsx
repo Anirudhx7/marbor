@@ -198,6 +198,9 @@ export function Metrics() {
               <code className="block bg-secondary text-xs px-3 py-2 rounded-lg border border-border font-mono break-all">
                 {`http://${window.location.hostname}:9090/metrics`}
               </code>
+              <p className="text-[11px] text-muted-foreground mt-1.5">
+                This endpoint is plain HTTP with no authentication. Keep it on a private network or put a TLS-terminating reverse proxy in front of it; do not expose it to the public internet.
+              </p>
             </div>
             <div>
               <p className="text-xs font-medium text-muted-foreground mb-1">Grafana dashboard</p>

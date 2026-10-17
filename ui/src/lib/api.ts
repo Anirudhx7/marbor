@@ -1,6 +1,6 @@
 import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, CloudProviderInput, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, QuantRecommendation, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry, ModelConfig, LocalModel, BenchmarkRun, BackupFileInfo, SpillCounterRow, RoutingDecision, ModelAlias } from '../types';
 import { readSoleReplicaImpact, runtimeActionFailureInfo, runtimeActionQuery } from './soleReplica';
-import { mockAPIKeys, mockCloudProviders, mockGPUNodes, mockSavings, mockReplicaSuggestions, mockSoleReplicaImpact } from './mockData';
+import { auditAddNodeDetails, auditRuntimeUnitDetails, mockAPIKeys, mockCloudProviders, mockGPUNodes, mockSavings, mockReplicaSuggestions, mockSoleReplicaImpact } from './mockData';
 import { sameDeclared } from './replicaGroups';
 
 const BASE = '/admin';
@@ -14,17 +14,21 @@ const DEMO = import.meta.env.VITE_FORCE_DEMO === 'true';
 // the static demo. Mutations (create/approve/suspend/delete) update this array
 // so the demo behaves realistically for the session; it resets on reload.
 let demoUsers: UserRecord[] | null = null;
+
+// Demo users reference keys from the shared mockAPIKeys list by id, so the
+// Users page can never name a key the API keys page does not show.
+const keyName = (id: string) => mockAPIKeys.find(k => k.id === id)?.name ?? '';
 function demoUserStore(): UserRecord[] {
   if (!demoUsers) {
     const now = Date.now();
     const iso = (daysAgo: number) => new Date(now - daysAgo * 86_400_000).toISOString();
     demoUsers = [
-      { id: 1, username: 'admin',      email: 'admin@acme.io',  role: 'admin', status: 'active',    api_key_name: 'default',    must_change_password: false, created_at: iso(120), approved_at: iso(120), approved_by: 'system' },
-      { id: 2, username: 'dana.rao',   email: 'dana@acme.io',   role: 'user',  status: 'active',    api_key_name: 'dana-key',   must_change_password: false, created_at: iso(40),  approved_at: iso(39),  approved_by: 'admin' },
-      { id: 3, username: 'sam.lee',    email: 'sam@acme.io',    role: 'user',  status: 'active',    api_key_name: 'sam-key',    must_change_password: false, created_at: iso(22),  approved_at: iso(21),  approved_by: 'admin' },
+      { id: 1, username: 'admin',      email: 'admin@acme.io',  role: 'admin', status: 'active',    api_key_name: keyName('key-1'), must_change_password: false, created_at: iso(120), approved_at: iso(120), approved_by: 'system' },
+      { id: 2, username: 'dana.rao',   email: 'dana@acme.io',   role: 'user',  status: 'active',    api_key_name: keyName('key-2'), must_change_password: false, created_at: iso(40),  approved_at: iso(39),  approved_by: 'admin' },
+      { id: 3, username: 'sam.lee',    email: 'sam@acme.io',    role: 'user',  status: 'active',    api_key_name: keyName('key-3'), must_change_password: false, created_at: iso(22),  approved_at: iso(21),  approved_by: 'admin' },
       { id: 4, username: 'priya.n',    email: 'priya@acme.io',  role: 'user',  status: 'pending',   api_key_name: '',           must_change_password: false, created_at: iso(2) },
       { id: 5, username: 'marco.b',    email: 'marco@acme.io',  role: 'user',  status: 'pending',   api_key_name: '',           must_change_password: false, created_at: iso(1) },
-      { id: 6, username: 'legacy.svc', email: '',               role: 'user',  status: 'suspended', api_key_name: 'legacy-key', must_change_password: false, created_at: iso(200), approved_at: iso(199), approved_by: 'admin' },
+      { id: 6, username: 'legacy.svc', email: '',               role: 'user',  status: 'suspended', api_key_name: keyName('key-6'), must_change_password: false, created_at: iso(200), approved_at: iso(199), approved_by: 'admin' },
     ];
   }
   return demoUsers;
@@ -316,7 +320,7 @@ export interface Schedule {
 let demoWarmup: Record<string, NodeWarmup> | null = null;
 function demoWarmupStore(): Record<string, NodeWarmup> {
   if (!demoWarmup) demoWarmup = {
-    'gpu-node-01': { enabled: true,  models: ['deepseek-r1:7b', 'gemma2:9b'] },
+    'gpu-node-01': { enabled: true,  models: ['llama3.3:8b', 'gemma2:9b'] },
     'gpu-node-02': { enabled: false, models: [] },
     'gpu-node-03': { enabled: false, models: [] },
     'gpu-node-04': { enabled: false, models: [] },
@@ -330,7 +334,7 @@ function demoWarmupStore(): Record<string, NodeWarmup> {
 let demoSchedules: Schedule[] | null = null;
 function demoScheduleStore(): Schedule[] {
   if (!demoSchedules) demoSchedules = [
-    { id: 'sched-demo-1', action: 'warmup', node: 'gpu-node-01', models: ['deepseek-r1:7b', 'gemma2:9b'], at: '08:30', days: [1, 2, 3, 4, 5], enabled: true, last_run_at: new Date(Date.now() - 16 * 60 * 60 * 1000).toISOString(), last_status: 'ok' },
+    { id: 'sched-demo-1', action: 'warmup', node: 'gpu-node-01', models: ['llama3.3:8b', 'gemma2:9b'], at: '08:30', days: [1, 2, 3, 4, 5], enabled: true, last_run_at: new Date(Date.now() - 16 * 60 * 60 * 1000).toISOString(), last_status: 'ok' },
     { id: 'sched-demo-2', action: 'drain',  node: 'gpu-node-03', at: '19:00', days: [1, 2, 3, 4, 5], enabled: true, last_run_at: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(), last_status: 'ok' },
     { id: 'sched-demo-3', action: 'warmup', node: 'gpu-node-01', models: ['llama3.3:70b'], at: '09:00', days: [1, 2, 3, 4, 5], enabled: false },
   ];
@@ -1533,14 +1537,14 @@ export async function fetchSystemAuditFiltered(f: SystemAuditFilter = {}): Promi
       // Recent minutes
       { time: iso(2), username: 'admin', action: 'drain_node', target: 'gpu-node-04', details: 'Drained: manual', source_ip: '192.168.1.5' },
       { time: iso(5), username: 'dana.rao', action: 'unload_model', target: 'gpu-node-01', details: 'Model: gemma2:9b', source_ip: '192.168.1.12' },
-      { time: iso(9), username: 'admin', action: 'runtime_restart', target: 'gpu-node-02', details: 'Driver: systemd, Identifier: ollama.service', source_ip: '192.168.1.5' },
-      { time: iso(15), username: 'admin', action: 'add_node', target: 'gpu-node-07', details: 'URL: http://10.0.0.17:11434, Runtime: ollama, VRAM: 24576MB', source_ip: '192.168.1.5' },
+      { time: iso(9), username: 'admin', action: 'runtime_restart', target: 'gpu-node-02', details: auditRuntimeUnitDetails('gpu-node-02'), source_ip: '192.168.1.5' },
+      { time: iso(15), username: 'admin', action: 'add_node', target: 'gpu-node-07', details: auditAddNodeDetails('gpu-node-07'), source_ip: '192.168.1.5' },
       { time: iso(18), username: 'admin', action: 'enable_marbor_agent', target: '10.0.0.13', details: 'Port: 9200, Scheme: https', source_ip: '192.168.1.5' },
-      { time: iso(22), username: 'sam.lee', action: 'set_node_warmup', target: 'gpu-node-02', details: 'Enabled: true, Models: ["llama3.3:70b"]', source_ip: '192.168.1.8' },
+      { time: iso(22), username: 'sam.lee', action: 'set_node_warmup', target: 'gpu-node-01', details: 'Enabled: true, Models: ["gemma2:9b"]', source_ip: '192.168.1.8' },
       { time: iso(28), username: 'admin', action: 'undrain_node', target: 'gpu-node-04', details: '', source_ip: '192.168.1.5' },
       { time: iso(35), username: 'admin', action: 'remove_node', target: 'gpu-node-06', details: '', source_ip: '192.168.1.5' },
       { time: iso(45), username: 'admin', action: 'add_routing_rule', target: 'rule-deepseek-r1', details: 'Condition: model == "deepseek-r1", Target: gpu-node-02, Priority: 10, Enabled: true', source_ip: '192.168.1.5' },
-      { time: iso(52), username: 'admin', action: 'accept_node_control', target: 'gpu-node-03', details: 'Driver: systemd, Identifier: ollama.service', source_ip: '192.168.1.5' },
+      { time: iso(52), username: 'admin', action: 'accept_node_control', target: 'gpu-node-03', details: auditRuntimeUnitDetails('gpu-node-03'), source_ip: '192.168.1.5' },
       { time: iso(67), username: 'dana.rao', action: 'disable_marbor_agent', target: '10.0.0.14', details: '', source_ip: '192.168.1.12' },
       { time: iso(74), username: 'admin', action: 'set_pinned_models', target: 'gpu-node-01', details: 'Models: ["llama3:8b", "mistral:7b"]', source_ip: '192.168.1.5' },
       { time: iso(90), username: 'admin', action: 'patch_node', target: 'gpu-node-03', details: 'URLChanged: false, VRAMTotalMBChanged: true, RuntimeChanged: false', source_ip: '192.168.1.5' },
@@ -1549,11 +1553,11 @@ export async function fetchSystemAuditFiltered(f: SystemAuditFilter = {}): Promi
       { time: iso(180), username: 'admin', action: 'add_key', target: 'marketing-team', details: 'RateLimit: 50, DailyLimit: 500, MonthlyLimit: 10000, DailyUsdCap: 50.00, MonthlyUsdCap: 200.00, Models: []', source_ip: '192.168.1.5' },
       { time: iso(200), username: 'admin', action: 'create_schedule', target: 'sched-1724170000000000001', details: 'Action: warmup, Node: gpu-node-01, At: 08:30, Models: [llama3.3:8b], Enabled: true', source_ip: '192.168.1.5' },
       // Older hours/days to make date presets meaningful
-      { time: iso(150), username: 'system', action: 'api_key_expiry_malformed', target: 'legacy-key', details: 'The stored expiry for this API key is malformed, so the key is rejected until the expiry is corrected.', source_ip: '' },
+      { time: iso(150), username: 'system', action: 'api_key_expiry_malformed', target: keyName('key-6'), details: 'The stored expiry for this API key is malformed, so the key is rejected until the expiry is corrected.', source_ip: '' },
       { time: isoHours(3), username: 'system', action: 'scheduled_warmup', target: 'gpu-node-01', details: 'Schedule sched-1724170000000000001: action=warmup node=gpu-node-01 models=[llama3.3:8b] status=ok', source_ip: '' },
       { time: isoHours(8), username: 'admin', action: 'patch_schedule', target: 'sched-1724170000000000001', details: 'Action: warmup, Node: gpu-node-01, At: 09:00, Models: [gemma2:9b], Enabled: true', source_ip: '192.168.1.5' },
       { time: isoHours(20), username: 'admin', action: 'runtime_stop', target: 'gpu-node-03', details: 'Driver: docker', source_ip: '192.168.1.5' },
-      { time: isoDays(2), username: 'dana.rao', action: 'add_node', target: 'gpu-node-05', details: 'URL: http://10.0.0.15:11434, Runtime: mlx, VRAM: 0MB', source_ip: '192.168.1.12' },
+      { time: isoDays(2), username: 'dana.rao', action: 'add_node', target: 'gpu-node-05', details: auditAddNodeDetails('gpu-node-05'), source_ip: '192.168.1.12' },
       { time: isoDays(3), username: 'system', action: 'scheduled_drain', target: 'gpu-node-03', details: 'Schedule sched-1724100000000000000: action=drain node=gpu-node-03 models=[] status=ok', source_ip: '' },
       { time: isoDays(5), username: 'admin', action: 'update_settings', target: 'global', details: 'Timezone: UTC, AuthEnabled: true, DailyCap: 150.00', source_ip: '192.168.1.5' },
       { time: isoDays(7), username: 'admin', action: 'delete_schedule', target: 'sched-1724170000000000001', details: '', source_ip: '192.168.1.5' },
