@@ -50,7 +50,7 @@ export const mockGPUNodes: GPUNode[] = [
     // Demo parity for keep-warm notices: the resident copy's digest differs
     // from the fleet's reference copy of the same model (warn-only, still
     // kept warm).
-    warmupWarnings: { 'deepseek-r1:7b': "digest drift: resident copy differs from the fleet's reference digest for this model; still being kept warm" },
+    warmupWarnings: { 'llama3.3:8b': "digest drift: resident copy (9f8a1c) differs from the fleet's reference digest (3b7e0a) for this model; still being kept warm" },
     vramTotalMB: 80 * GB,
     vramUsedMB: Math.round(67.2 * GB),
     vramSource: 'nvidia',
@@ -655,6 +655,25 @@ export const mockSoleReplicaImpact: Record<string, SoleReplicaImpact> = {
   'gpu-node-07': { models: [{ model: 'meta-llama/Llama-3.1-405B-Instruct', runtime: 'vllm' }], cold_load_only: [], unknown: [] },
 };
 
+// Audit-log details for a node action, read from the node's own record so an
+// entry never contradicts the fleet (runtime, service unit, VRAM, address).
+const RUNTIME_SERVICE_UNIT: Record<string, string> = {
+  ollama: 'ollama.service',
+  vllm: 'vllm.service',
+  tgi: 'tgi.service',
+  llamacpp: 'llama-server.service',
+  mlx: 'mlx-server.service',
+};
+export function auditAddNodeDetails(nodeName: string): string {
+  const n = mockGPUNodes.find(x => x.name === nodeName);
+  if (!n) return '';
+  return `URL: ${n.scheme ?? 'http'}://${n.host}:${n.port}, Runtime: ${n.runtime}, VRAM: ${n.vramTotalMB}MB`;
+}
+export function auditRuntimeUnitDetails(nodeName: string): string {
+  const n = mockGPUNodes.find(x => x.name === nodeName);
+  return `Driver: systemd, Identifier: ${RUNTIME_SERVICE_UNIT[n?.runtime ?? 'ollama'] ?? 'ollama.service'}`;
+}
+
 export const mockAPIKeys: APIKey[] = [
   {
     id: 'key-1',
@@ -1188,7 +1207,7 @@ export const mockAnalytics: Analytics = {
 // local/cloud rows for a key without the policy set.
 export const mockSpillCounters: SpillCounterRow[] = [
   { key_name: 'Engineering Team', served_by: 'local', requests: 5312 },
-  { key_name: 'Engineering Team', served_by: 'fake-openai', requests: 142 },
+  { key_name: 'Engineering Team', served_by: 'openai-gpt4o', requests: 142 },
   { key_name: 'Data Platform', served_by: 'local', requests: 3890 },
   { key_name: 'Data Platform', served_by: 'blocked', requests: 27 },
 ];
@@ -1528,7 +1547,21 @@ function mockNodeModels(base: ModelCatalogResponse, node: ModelCatalogResponse['
 
 export const mockModelCatalogResponse: ModelCatalogResponse = {
   ...mockModelCatalogBase,
-  nodes: mockModelCatalogBase.nodes.map(n => ({ ...n, models: mockNodeModels(mockModelCatalogBase, n) })),
+  // GPU model, runtime and VRAM figures come from the shared node record
+  // (mockGPUNodes) so the advisor and the GPU nodes page cannot disagree.
+  nodes: mockModelCatalogBase.nodes.map(base => {
+    const rec = mockGPUNodes.find(g => g.name === base.name);
+    const n = rec && rec.vramTotalMB > 0
+      ? {
+          ...base,
+          runtime: rec.runtime,
+          vram_total_bytes: rec.vramTotalMB * 1024 * 1024,
+          vram_used_bytes: rec.vramUsedMB * 1024 * 1024,
+          vram_free_bytes: Math.max(0, rec.vramTotalMB - rec.vramUsedMB) * 1024 * 1024,
+        }
+      : base;
+    return { ...n, models: mockNodeModels(mockModelCatalogBase, n) };
+  }),
 };
 
 // What a vLLM, TGI or MLX node browses instead of GGUF repos: the same model
@@ -1984,12 +2017,12 @@ export function getMockModelConfigCapabilities(): Record<string, string[]> {
 export const mockActivityEntries = [
   { time: new Date(Date.now() - 2 * 60_000).toISOString(), username: 'admin', action: 'drain_node', target: 'gpu-node-04', details: 'Drained: manual', source_ip: '192.168.1.5' },
   { time: new Date(Date.now() - 5 * 60_000).toISOString(), username: 'dana.rao', action: 'unload_model', target: 'gpu-node-01', details: 'Model: gemma2:9b', source_ip: '192.168.1.12' },
-  { time: new Date(Date.now() - 9 * 60_000).toISOString(), username: 'admin', action: 'runtime_restart', target: 'gpu-node-02', details: 'Driver: systemd, Identifier: ollama.service', source_ip: '192.168.1.5' },
-  { time: new Date(Date.now() - 15 * 60_000).toISOString(), username: 'admin', action: 'add_node', target: 'gpu-node-07', details: 'URL: http://10.0.0.17:11434, Runtime: ollama, VRAM: 24576MB', source_ip: '192.168.1.5' },
+  { time: new Date(Date.now() - 9 * 60_000).toISOString(), username: 'admin', action: 'runtime_restart', target: 'gpu-node-02', details: auditRuntimeUnitDetails('gpu-node-02'), source_ip: '192.168.1.5' },
+  { time: new Date(Date.now() - 15 * 60_000).toISOString(), username: 'admin', action: 'add_node', target: 'gpu-node-07', details: auditAddNodeDetails('gpu-node-07'), source_ip: '192.168.1.5' },
   { time: new Date(Date.now() - 18 * 60_000).toISOString(), username: 'admin', action: 'enable_marbor_agent', target: '10.0.0.13', details: 'Port: 9200, Scheme: https', source_ip: '192.168.1.5' },
   { time: new Date(Date.now() - 28 * 60_000).toISOString(), username: 'admin', action: 'undrain_node', target: 'gpu-node-04', details: '', source_ip: '192.168.1.5' },
   { time: new Date(Date.now() - 45 * 60_000).toISOString(), username: 'admin', action: 'create_schedule', target: 'sched-1724170000000000000', details: 'Action: warmup, Node: gpu-node-01, At: 08:30, Models: [llama3.3:8b], Enabled: true', source_ip: '192.168.1.5' },
-  { time: new Date(Date.now() - 90 * 60_000).toISOString(), username: 'system', action: 'api_key_expiry_malformed', target: 'legacy-key', details: 'The stored expiry for this API key is malformed, so the key is rejected until the expiry is corrected.', source_ip: '' },
+  { time: new Date(Date.now() - 90 * 60_000).toISOString(), username: 'system', action: 'api_key_expiry_malformed', target: mockAPIKeys[5].name, details: 'The stored expiry for this API key is malformed, so the key is rejected until the expiry is corrected.', source_ip: '' },
   { time: new Date(Date.now() - 2 * 60 * 60_000).toISOString(), username: 'system', action: 'scheduled_warmup', target: 'gpu-node-01', details: 'Schedule sched-1724170000000000000: action=warmup node=gpu-node-01 models=[llama3.3:8b] status=ok', source_ip: '' },
   { time: new Date(Date.now() - 5 * 60 * 60_000).toISOString(), username: 'admin', action: 'patch_schedule', target: 'sched-1724170000000000000', details: 'Action: warmup, Node: gpu-node-01, At: 09:00, Models: [gemma2:9b], Enabled: true', source_ip: '192.168.1.5' },
   { time: new Date(Date.now() - 26 * 60 * 60_000).toISOString(), username: 'admin', action: 'delete_schedule', target: 'sched-1724170000000000000', details: '', source_ip: '192.168.1.5' },

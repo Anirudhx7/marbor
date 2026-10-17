@@ -218,6 +218,10 @@ export function Analytics() {
         </h3>
         {loading ? (
           <div className="h-64 bg-secondary/30 rounded-lg animate-pulse" />
+        ) : chartData.length === 0 ? (
+          <div className="h-64 flex items-center justify-center text-sm text-muted-foreground text-center px-4">
+            No data yet - requests will appear here as traffic flows through the proxy.
+          </div>
         ) : (
           <ResponsiveContainer width="100%" height={260}>
             <AreaChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
@@ -266,6 +270,7 @@ export function Analytics() {
                 dataKey="Local"
                 stroke="hsl(var(--success))"
                 strokeWidth={2}
+                isAnimationActive={false}
                 fill="url(#colorLocal)"
               />
               <Area
@@ -273,6 +278,7 @@ export function Analytics() {
                 dataKey="Cloud"
                 stroke="hsl(var(--chart-1))"
                 strokeWidth={2}
+                isAnimationActive={false}
                 fill="url(#colorCloud)"
               />
             </AreaChart>
@@ -333,8 +339,8 @@ export function Analytics() {
                 wrapperStyle={{ fontSize: '12px', paddingTop: '16px' }}
                 formatter={(value) => <span className="text-muted-foreground">{value}</span>}
               />
-              <Bar dataKey="Est. saved ($)" fill="hsl(var(--success))" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="Spent ($)" fill="hsl(var(--chart-1))" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="Est. saved ($)" isAnimationActive={false} fill="hsl(var(--success))" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="Spent ($)" fill="hsl(var(--chart-1))" radius={[4, 4, 0, 0]} isAnimationActive={false} />
             </BarChart>
           </ResponsiveContainer>
         )}
