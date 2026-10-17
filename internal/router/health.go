@@ -272,6 +272,7 @@ func (r *Router) pollNode(n *NodeState) {
 
 	var prevModels []ModelInfo
 	var shouldThermalDrain bool
+	var thermalTempC float64
 	var nodeName string
 	var nowHealthy bool
 	func() {
@@ -312,6 +313,7 @@ func (r *Router) pollNode(n *NodeState) {
 					n.ThermalBreaches++
 					if n.ThermalBreaches >= r.thermalWatchdog.ConsecutiveBreaches && !n.Draining {
 						shouldThermalDrain = true
+						thermalTempC = temp
 					}
 				} else {
 					n.ThermalBreaches = 0
@@ -407,16 +409,7 @@ func (r *Router) pollNode(n *NodeState) {
 	}
 
 	if shouldThermalDrain {
-		r.DrainNode(nodeName, "thermal", 0)
-		// Persist so a restart doesn't silently undrain a still-hot GPU -
-		// thermal auto-drain was in-memory only before this.
-		if r.store != nil {
-			if err := r.store.SetNodeDrain(nodeName, true, "thermal", 0); err != nil {
-				log.Printf("thermal watchdog: persist drain for %s: %v", nodeName, err)
-			}
-		}
-		log.Printf("thermal watchdog: node %s auto-drained after %d consecutive polls at/above %.1f°C",
-			nodeName, r.thermalWatchdog.ConsecutiveBreaches, r.thermalWatchdog.MaxTempCelsius)
+		r.thermalDrain(nodeName, fmt.Sprintf("local GPU at %.1f°C", thermalTempC))
 	}
 
 	// Persist any residency change (models loaded/unloaded since the last poll)

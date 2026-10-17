@@ -13,9 +13,11 @@ import (
 // that matches none of the reported devices, every device on the host counts
 // (the same fallback placement uses). Devices that report no temperature are
 // skipped; when none in scope reports one the reading is unknown (ok false),
-// never borrowed from a device outside the scope. Caller holds n.mu.
-func scopedThermalReadingLocked(n *NodeState, devices []marboragent.GPUInfo) (tempC float64, device int, ok bool) {
-	scoped, _ := scopeGPUsForPlacement(devices, effectiveGPUIndicesLocked(n))
+// never borrowed from a device outside the scope. scopeApplied reports
+// whether the scope narrowed the devices (false means the host-wide fallback
+// was used). Caller holds n.mu.
+func scopedThermalReadingLocked(n *NodeState, devices []marboragent.GPUInfo) (tempC float64, device int, scopeApplied, ok bool) {
+	scoped, scopeApplied := scopeGPUsForPlacement(devices, effectiveGPUIndicesLocked(n))
 	for _, d := range scoped {
 		if d.TemperatureC == nil {
 			continue
@@ -24,7 +26,7 @@ func scopedThermalReadingLocked(n *NodeState, devices []marboragent.GPUInfo) (te
 			tempC, device, ok = *d.TemperatureC, d.Index, true
 		}
 	}
-	return tempC, device, ok
+	return tempC, device, scopeApplied, ok
 }
 
 // trackAgentThermalLocked counts one agent poll toward the thermal watchdog
@@ -42,14 +44,18 @@ func (r *Router) trackAgentThermalLocked(n *NodeState, gpu *marboragent.GPUBlock
 	if gpu != nil {
 		devices = gpu.Devices
 	}
-	temp, device, ok := scopedThermalReadingLocked(n, devices)
+	temp, device, scopeApplied, ok := scopedThermalReadingLocked(n, devices)
 	if !ok || temp < r.thermalWatchdog.MaxTempCelsius {
 		n.ThermalBreaches = 0
 		return ""
 	}
 	n.ThermalBreaches++
-	if n.ThermalBreaches >= r.thermalWatchdog.ConsecutiveBreaches && !n.Draining {
-		return fmt.Sprintf("agent GPU %d at %.1f°C", device, temp)
+	if n.ThermalBreaches >= max(r.thermalWatchdog.ConsecutiveBreaches, 1) && !n.Draining {
+		scope := "node GPU scope"
+		if !scopeApplied {
+			scope = "no GPU scope known, whole host"
+		}
+		return fmt.Sprintf("agent GPU %d at %.1f°C, %s", device, temp, scope)
 	}
 	return ""
 }
@@ -59,7 +65,9 @@ func (r *Router) trackAgentThermalLocked(n *NodeState, gpu *marboragent.GPUBlock
 // detail names the triggering device and reading. Must not be called with
 // any node lock held (DrainNode takes r.mu then n.mu).
 func (r *Router) thermalDrain(nodeName, detail string) {
-	r.DrainNode(nodeName, "thermal", 0)
+	if !r.DrainNode(nodeName, "thermal", 0) {
+		return // node removed since the poll: nothing to persist or report
+	}
 	if r.store != nil {
 		if err := r.store.SetNodeDrain(nodeName, true, "thermal", 0); err != nil {
 			log.Printf("thermal watchdog: persist drain for %s: %v", nodeName, err)
