@@ -311,7 +311,7 @@ func (r *Router) pollNode(n *NodeState) {
 			if r.thermalWatchdog.Enabled && r.thermalWatchdog.MaxTempCelsius > 0 {
 				if temp >= r.thermalWatchdog.MaxTempCelsius {
 					n.ThermalBreaches++
-					if n.ThermalBreaches >= r.thermalWatchdog.ConsecutiveBreaches && !n.Draining {
+					if n.ThermalBreaches >= r.thermalBreachLimit() && !n.Draining {
 						shouldThermalDrain = true
 						thermalTempC = temp
 					}

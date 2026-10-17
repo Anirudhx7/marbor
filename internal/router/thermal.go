@@ -50,7 +50,7 @@ func (r *Router) trackAgentThermalLocked(n *NodeState, gpu *marboragent.GPUBlock
 		return ""
 	}
 	n.ThermalBreaches++
-	if n.ThermalBreaches >= max(r.thermalWatchdog.ConsecutiveBreaches, 1) && !n.Draining {
+	if n.ThermalBreaches >= r.thermalBreachLimit() && !n.Draining {
 		scope := "node GPU scope"
 		if !scopeApplied {
 			scope = "no GPU scope known, whole host"
@@ -58,6 +58,12 @@ func (r *Router) trackAgentThermalLocked(n *NodeState, gpu *marboragent.GPUBlock
 		return fmt.Sprintf("agent GPU %d at %.1f°C, %s", device, temp, scope)
 	}
 	return ""
+}
+
+// thermalBreachLimit is the number of consecutive hot polls that drains a
+// node: the configured count, never below one.
+func (r *Router) thermalBreachLimit() int {
+	return max(r.thermalWatchdog.ConsecutiveBreaches, 1)
 }
 
 // thermalDrain drains the node through the same path as the local watchdog
@@ -74,5 +80,5 @@ func (r *Router) thermalDrain(nodeName, detail string) {
 		}
 	}
 	log.Printf("thermal watchdog: node %s auto-drained after %d consecutive polls at/above %.1f°C (%s)",
-		nodeName, r.thermalWatchdog.ConsecutiveBreaches, r.thermalWatchdog.MaxTempCelsius, detail)
+		nodeName, r.thermalBreachLimit(), r.thermalWatchdog.MaxTempCelsius, detail)
 }

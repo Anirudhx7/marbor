@@ -87,8 +87,12 @@ func TestThermalWatchdog_AgentUsesHottestInScopeOnly(t *testing.T) {
 	ns[0].DeclaredGPUIndices = []int{1}
 	ns[1].DeclaredGPUIndices = []int{0}
 	tel := thermalTel(thermalF(60), thermalF(95))
+	buf := captureLog(t)
 	for _, n := range ns {
 		r.applyAgentTelemetryForHost(n, tel, 2)
+	}
+	if !strings.Contains(buf.String(), "agent GPU 1 at 95.0°C, node GPU scope") {
+		t.Errorf("log %q should name the card and the scoped rule", buf.String())
 	}
 	if d, _ := thermalDraining(ns[0]); !d {
 		t.Error("node scoped to the hot card should drain")
@@ -362,7 +366,9 @@ func TestThermalWatchdog_ConcurrentPollsAndUndrainsRace(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	// The drain path ran and nothing deadlocked.
+	// The drain path ran and nothing deadlocked: from a known undrained state
+	// the next hot poll must drain.
+	r.UndrainNode(ns[0].Name)
 	r.applyAgentTelemetryForHost(ns[0], thermalTel(thermalF(90)), 2)
 	if d, _ := thermalDraining(ns[0]); !d {
 		t.Error("final hot poll should leave the node draining")
@@ -468,6 +474,9 @@ func TestThermalWatchdog_AgentPersistFailureStillDrainsInMemory(t *testing.T) {
 	if !strings.Contains(buf.String(), "persist drain for a") {
 		t.Errorf("persist failure not logged: %q", buf.String())
 	}
+	if !strings.Contains(buf.String(), "node a auto-drained after 1 consecutive polls at/above 85.0°C (agent GPU 0 at 95.0°C") {
+		t.Errorf("drain not reported with its streak, threshold and reading: %q", buf.String())
+	}
 }
 
 func TestThermalWatchdog_RemovedNodeIsNotPersistedOrLogged(t *testing.T) {
@@ -475,11 +484,44 @@ func TestThermalWatchdog_RemovedNodeIsNotPersistedOrLogged(t *testing.T) {
 	st := openWarmTestStore(t)
 	r.SetStore(st)
 	buf := captureLog(t)
-	r.thermalDrain("ghost", "agent GPU 0 at 99.0C")
+	r.thermalDrain("ghost", "agent GPU 0 at 99.0°C")
 	if states, _ := st.NodeDrainStates(); len(states) != 0 {
 		t.Errorf("a drain row was written for an unknown node: %+v", states)
 	}
 	if strings.Contains(buf.String(), "auto-drained") {
 		t.Error("must not report a drain that did not happen")
+	}
+}
+
+func TestThermalWatchdog_AgentLogsDeviceIndexNotPosition(t *testing.T) {
+	r, ns := agentThermalRouter(t, 1, "a")
+	buf := captureLog(t)
+	tel := marboragent.Telemetry{GPU: &marboragent.GPUBlock{Devices: []marboragent.GPUInfo{
+		{Index: 3, TemperatureC: thermalF(96)}, {Index: 6, TemperatureC: thermalF(50)}}}}
+	r.applyAgentTelemetry(ns[0], tel)
+	if !strings.Contains(buf.String(), "agent GPU 3 at 96.0°C") {
+		t.Errorf("log %q should carry the device Index, not its position", buf.String())
+	}
+}
+
+func TestThermalWatchdog_BreachLimitNeverBelowOne(t *testing.T) {
+	r, ns := agentThermalRouter(t, 3, "a")
+	r.thermalWatchdog.ConsecutiveBreaches = 0 // as a struct-literal router would have it
+	buf := captureLog(t)
+	r.applyAgentTelemetry(ns[0], thermalTel(thermalF(90)))
+	if d, _ := thermalDraining(ns[0]); !d {
+		t.Error("a limit of 0 behaves as 1: first hot poll drains")
+	}
+	if !strings.Contains(buf.String(), "after 1 consecutive polls") {
+		t.Errorf("log %q should report a limit of 1", buf.String())
+	}
+}
+
+func TestThermalWatchdog_LocalDrainLogsReading(t *testing.T) {
+	r, _ := agentThermalRouter(t, 1, "a")
+	buf := captureLog(t)
+	r.thermalDrain("a", "local GPU at 91.0°C")
+	if !strings.Contains(buf.String(), "node a auto-drained after 1 consecutive polls at/above 85.0°C (local GPU at 91.0°C)") {
+		t.Errorf("unexpected drain log: %q", buf.String())
 	}
 }
