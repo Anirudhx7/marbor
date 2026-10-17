@@ -12,6 +12,7 @@ import { Toggle } from '../components/Toggle';
 import { useTimezone } from '../hooks/useTimezone';
 import { formatDateTimeInZone } from '../lib/time';
 import { notifyTimezoneChanged } from '../hooks/useTimezone';
+import { roundPrice } from '../lib/roundPrice';
 
 
 
@@ -329,7 +330,7 @@ export function SettingsPage() {
           webhookEnabled: settingsData.webhook?.enabled || false,
           webhookUrl: settingsData.webhook?.url || '',
           webhookSecret: settingsData.webhook?.secret || '',
-          savingsReferenceCostPer1k: settingsData.savings?.reference_cost_per_1k ?? 0.002,
+          savingsReferenceCostPer1k: roundPrice(settingsData.savings?.reference_cost_per_1k ?? 0.002),
 
           warmupEnabled: settingsData.warmup?.enabled || false,
           warmupIntervalMs: settingsData.warmup?.interval_ms ?? 300000,
@@ -572,6 +573,7 @@ export function SettingsPage() {
             </div>
           </div>
           <button
+            type="button" role="switch" aria-checked={demoMode} aria-label="Demo mode"
             onClick={() => demoMode ? setDemoMode(false) : setDemoModeConfirmOpen(true)}
             className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
               demoMode ? 'bg-amber-500' : 'bg-muted-foreground/30'
@@ -708,6 +710,7 @@ export function SettingsPage() {
                 <p className="text-xs text-muted-foreground">Do not show warning banner in demo mode</p>
               </div>
               <button
+                type="button" role="switch" aria-checked={settings.hideDemoBanner} aria-label="Hide demo banner"
                 onClick={() => setSettings({ ...settings, hideDemoBanner: !settings.hideDemoBanner })}
                 className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
                   settings.hideDemoBanner ? 'bg-primary' : 'bg-muted-foreground/30'
@@ -727,6 +730,7 @@ export function SettingsPage() {
                 <p className="text-xs text-muted-foreground">Do not show cloud spend warning banners</p>
               </div>
               <button
+                type="button" role="switch" aria-checked={settings.hideBudgetBanner} aria-label="Hide budget banner"
                 onClick={() => setSettings({ ...settings, hideBudgetBanner: !settings.hideBudgetBanner })}
                 className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
                   settings.hideBudgetBanner ? 'bg-primary' : 'bg-muted-foreground/30'
@@ -781,14 +785,14 @@ export function SettingsPage() {
                 <p className="text-xs text-muted-foreground">Structured JSON access-log line per request on stdout</p>
                 <p className="text-[10px] text-amber-700 dark:text-amber-400 mt-1">Requires a marbor restart to take effect.</p>
               </div>
-              <Toggle on={settings.proxyAccessLog} onToggle={() => setSettings({ ...settings, proxyAccessLog: !settings.proxyAccessLog })} />
+              <Toggle label="Proxy access log" on={settings.proxyAccessLog} onToggle={() => setSettings({ ...settings, proxyAccessLog: !settings.proxyAccessLog })} />
             </div>
             <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
               <div>
                 <p className="text-sm font-medium text-foreground">Trust proxy headers</p>
                 <p className="text-xs text-muted-foreground">Trust X-Forwarded-For/X-Real-IP for the logged client IP. Only enable if marbor sits behind a trusted reverse proxy - otherwise these headers are forgeable by any direct client.</p>
               </div>
-              <Toggle on={settings.proxyTrustProxyHeaders} onToggle={() => setSettings({ ...settings, proxyTrustProxyHeaders: !settings.proxyTrustProxyHeaders })} />
+              <Toggle label="Trust proxy headers" on={settings.proxyTrustProxyHeaders} onToggle={() => setSettings({ ...settings, proxyTrustProxyHeaders: !settings.proxyTrustProxyHeaders })} />
             </div>
           </div>
         </div>
@@ -829,6 +833,7 @@ export function SettingsPage() {
                 <p className="text-xs text-muted-foreground">Let client API keys reach model create/delete/pull APIs, not just inference. Only enable if every client is trusted.</p>
               </div>
               <button
+                type="button" role="switch" aria-checked={settings.allowManagementEndpoints} aria-label="Allow management endpoints"
                 onClick={() => setSettings({ ...settings, allowManagementEndpoints: !settings.allowManagementEndpoints })}
                 className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
                   settings.allowManagementEndpoints ? 'bg-primary' : 'bg-muted-foreground/30'
@@ -941,6 +946,7 @@ export function SettingsPage() {
                 <p className="text-xs text-muted-foreground">Route requests through LiteLLM proxy</p>
               </div>
               <button
+                type="button" role="switch" aria-checked={settings.liteLLMEnabled} aria-label="Enable LiteLLM"
                 onClick={() => setSettings({ ...settings, liteLLMEnabled: !settings.liteLLMEnabled })}
                 className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
                   settings.liteLLMEnabled ? 'bg-primary' : 'bg-muted-foreground/30'
@@ -1181,7 +1187,7 @@ export function SettingsPage() {
               <p className="text-sm font-medium text-foreground">Session affinity</p>
               <p className="text-xs text-muted-foreground">Route requests sharing an X-Session-ID to the same node (KV-cache reuse)</p>
             </div>
-            <Toggle on={settings.routingSessionAffinity} onToggle={() => setSettings({ ...settings, routingSessionAffinity: !settings.routingSessionAffinity })} />
+            <Toggle label="Session affinity" on={settings.routingSessionAffinity} onToggle={() => setSettings({ ...settings, routingSessionAffinity: !settings.routingSessionAffinity })} />
           </div>
           {settings.routingSessionAffinity && (
             <div className="mt-3">
@@ -1199,7 +1205,7 @@ export function SettingsPage() {
                   <p className="text-xs text-muted-foreground">Auto-drain a node after sustained overheat (recovery requires manual undrain)</p>
                 </div>
               </div>
-              <Toggle on={settings.thermalWatchdogEnabled} onToggle={() => setSettings({ ...settings, thermalWatchdogEnabled: !settings.thermalWatchdogEnabled })} />
+              <Toggle label="Thermal watchdog" on={settings.thermalWatchdogEnabled} onToggle={() => setSettings({ ...settings, thermalWatchdogEnabled: !settings.thermalWatchdogEnabled })} />
             </div>
             {settings.thermalWatchdogEnabled && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
@@ -1221,7 +1227,7 @@ export function SettingsPage() {
                 <p className="text-sm font-medium text-foreground">Prefix Locality Hints</p>
                 <p className="text-xs text-muted-foreground">Soft preference for the node that completed the most recent matching turn in this conversation (KV-cache reuse) - never overrides warm residency</p>
               </div>
-              <Toggle on={settings.routingPrefixLocalityEnabled} onToggle={() => setSettings({ ...settings, routingPrefixLocalityEnabled: !settings.routingPrefixLocalityEnabled })} />
+              <Toggle label="Prefix locality hints" on={settings.routingPrefixLocalityEnabled} onToggle={() => setSettings({ ...settings, routingPrefixLocalityEnabled: !settings.routingPrefixLocalityEnabled })} />
             </div>
             {settings.routingPrefixLocalityEnabled && (
               <div className="mt-3">
@@ -1250,7 +1256,7 @@ export function SettingsPage() {
                 <p className="text-sm font-medium text-foreground">Enable Docker discovery</p>
                 <p className="text-xs text-muted-foreground">Poll the Docker socket for Ollama containers</p>
               </div>
-              <Toggle on={settings.dockerEnabled} onToggle={() => setSettings({ ...settings, dockerEnabled: !settings.dockerEnabled })} />
+              <Toggle label="Docker discovery" on={settings.dockerEnabled} onToggle={() => setSettings({ ...settings, dockerEnabled: !settings.dockerEnabled })} />
             </div>
             {settings.dockerEnabled && (
               <>
@@ -1283,7 +1289,7 @@ export function SettingsPage() {
               <div>
                 <p className="text-sm font-medium text-foreground">Enable webhooks</p>
               </div>
-              <Toggle on={settings.webhookEnabled} onToggle={() => setSettings({ ...settings, webhookEnabled: !settings.webhookEnabled })} />
+              <Toggle label="Webhooks" on={settings.webhookEnabled} onToggle={() => setSettings({ ...settings, webhookEnabled: !settings.webhookEnabled })} />
             </div>
             {settings.webhookEnabled && (
               <>
@@ -1326,6 +1332,7 @@ export function SettingsPage() {
                 <p className="text-xs text-muted-foreground">Export metrics in Prometheus format</p>
               </div>
               <button
+                type="button" role="switch" aria-checked={settings.prometheusEnabled} aria-label="Prometheus metrics"
                 onClick={() => setSettings({ ...settings, prometheusEnabled: !settings.prometheusEnabled })}
                 className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
                   settings.prometheusEnabled ? 'bg-primary' : 'bg-muted-foreground/30'
@@ -1440,6 +1447,8 @@ export function SettingsPage() {
                 setNewCtxModel('');
                 setNewCtxTokens('');
               }}
+              aria-label="Add context window"
+              title="Add context window"
               className="flex items-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium rounded-lg transition-colors"
             >
               <Plus className="w-4 h-4" />
@@ -1464,7 +1473,7 @@ export function SettingsPage() {
                 <div>
                   <p className="text-sm font-medium text-foreground">Enable global warmup</p>
                 </div>
-                <Toggle on={settings.warmupEnabled} onToggle={() => setSettings({ ...settings, warmupEnabled: !settings.warmupEnabled })} />
+                <Toggle label="Global warmup" on={settings.warmupEnabled} onToggle={() => setSettings({ ...settings, warmupEnabled: !settings.warmupEnabled })} />
               </div>
               {settings.warmupEnabled && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1480,7 +1489,7 @@ export function SettingsPage() {
               )}
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1.5">Local Token Value ($/1k tokens)</label>
-                <input type="number" step="0.001" value={settings.savingsReferenceCostPer1k} onChange={(e) => setSettings({ ...settings, savingsReferenceCostPer1k: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
+                <input type="number" step="0.001" value={roundPrice(settings.savingsReferenceCostPer1k)} onChange={(e) => setSettings({ ...settings, savingsReferenceCostPer1k: roundPrice(parseFloat(e.target.value) || 0) })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
                 <p className="text-[10px] text-muted-foreground mt-1">Cloud rate used to value locally-served tokens in the dashboard's savings calculation.</p>
               </div>
             </div>
@@ -1490,7 +1499,7 @@ export function SettingsPage() {
                   <p className="text-sm font-medium text-foreground">Audit log</p>
                   <p className="text-xs text-muted-foreground">Best-effort request audit trail</p>
                 </div>
-                <Toggle on={settings.auditEnabled} onToggle={() => setSettings({ ...settings, auditEnabled: !settings.auditEnabled })} />
+                <Toggle label="Audit log" on={settings.auditEnabled} onToggle={() => setSettings({ ...settings, auditEnabled: !settings.auditEnabled })} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1.5">Audit log retention (days)</label>
@@ -1575,7 +1584,7 @@ export function SettingsPage() {
                 <p className="text-sm font-medium text-foreground">Scheduled backup</p>
                 <p className="text-xs text-muted-foreground">Automatic VACUUM INTO backups on a recurring interval</p>
               </div>
-              <Toggle on={settings.backupEnabled} onToggle={() => setSettings({ ...settings, backupEnabled: !settings.backupEnabled })} />
+              <Toggle label="Scheduled backup" on={settings.backupEnabled} onToggle={() => setSettings({ ...settings, backupEnabled: !settings.backupEnabled })} />
             </div>
             {settings.backupEnabled && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

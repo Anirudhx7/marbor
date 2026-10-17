@@ -109,7 +109,7 @@ const MOCK_RULES: RoutingRule[] = [
   {
     id: '2',
     priority: 20,
-    condition: 'api_key == "sk-prod-*"',
+    condition: 'api_key == "sk-eng-*"',
     targetNode: 'any',
     strategy: 'least-connections',
     enabled: true,
@@ -721,6 +721,7 @@ export function Routing() {
                   <td className="px-6 py-4 text-center">
                     <button
                       onClick={() => setRuleToToggle(rule)}
+                      aria-label={rule.enabled ? `Disable rule #${rule.priority}` : `Enable rule #${rule.priority}`}
                       className={`inline-flex items-center justify-center w-8 h-8 rounded-lg transition-colors ${
                         rule.enabled
                           ? 'bg-primary/10 text-primary'
@@ -736,6 +737,7 @@ export function Routing() {
                         setRuleToDelete(rule);
                         setIsDeleteModalOpen(true);
                       }}
+                      aria-label={`Delete rule #${rule.priority}`}
                       className="p-2 text-muted-foreground hover:text-destructive transition-colors"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -792,6 +794,7 @@ export function Routing() {
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => setRuleToToggle(rule)}
+                  aria-label={rule.enabled ? `Disable rule #${rule.priority}` : `Enable rule #${rule.priority}`}
                   className={`inline-flex items-center justify-center w-8 h-8 rounded-lg transition-colors ${
                     rule.enabled
                       ? 'bg-primary/10 text-primary'
@@ -805,6 +808,7 @@ export function Routing() {
                     setRuleToDelete(rule);
                     setIsDeleteModalOpen(true);
                   }}
+                  aria-label={`Delete rule #${rule.priority}`}
                   className="p-2 text-muted-foreground hover:text-destructive transition-colors"
                 >
                   <Trash2 className="w-4 h-4" />
@@ -898,16 +902,16 @@ export function Routing() {
                       {provider.provider}
                     </Badge>
                     <>
-                      <button onClick={() => moveCloudProvider(index, -1)} disabled={index === 0} className="p-1.5 text-muted-foreground hover:text-foreground rounded-md hover:bg-secondary transition-colors disabled:opacity-30 disabled:pointer-events-none">
+                      <button onClick={() => moveCloudProvider(index, -1)} disabled={index === 0} aria-label={`Move ${provider.name} up`} className="p-1.5 text-muted-foreground hover:text-foreground rounded-md hover:bg-secondary transition-colors disabled:opacity-30 disabled:pointer-events-none">
                         <ChevronUp className="w-3.5 h-3.5" />
                       </button>
-                      <button onClick={() => moveCloudProvider(index, 1)} disabled={index === cloudProviders.length - 1} className="p-1.5 text-muted-foreground hover:text-foreground rounded-md hover:bg-secondary transition-colors disabled:opacity-30 disabled:pointer-events-none">
+                      <button onClick={() => moveCloudProvider(index, 1)} disabled={index === cloudProviders.length - 1} aria-label={`Move ${provider.name} down`} className="p-1.5 text-muted-foreground hover:text-foreground rounded-md hover:bg-secondary transition-colors disabled:opacity-30 disabled:pointer-events-none">
                         <ChevronDown className="w-3.5 h-3.5" />
                       </button>
-                      <button onClick={() => openEditCloudProvider(provider)} className="p-1.5 text-muted-foreground hover:text-foreground rounded-md hover:bg-secondary transition-colors">
+                      <button onClick={() => openEditCloudProvider(provider)} aria-label={`Edit ${provider.name}`} className="p-1.5 text-muted-foreground hover:text-foreground rounded-md hover:bg-secondary transition-colors">
                         <Pencil className="w-3.5 h-3.5" />
                       </button>
-                      <button onClick={() => setProviderToDelete(provider.name)} className="p-1.5 text-muted-foreground hover:text-destructive rounded-md hover:bg-secondary transition-colors">
+                      <button onClick={() => setProviderToDelete(provider.name)} aria-label={`Delete ${provider.name}`} className="p-1.5 text-muted-foreground hover:text-destructive rounded-md hover:bg-secondary transition-colors">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </>
@@ -951,6 +955,7 @@ export function Routing() {
                 <button
                   onClick={() => handleDeleteDegChain(model)}
                   disabled={chainsSaving}
+                  aria-label={`Delete fallback chain for ${model}`}
                   className="p-1.5 text-muted-foreground hover:text-destructive rounded-md hover:bg-secondary transition-colors disabled:opacity-50"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -967,6 +972,8 @@ export function Routing() {
           <button
             onClick={handleAddDegChain}
             disabled={chainsSaving}
+            aria-label="Add fallback chain"
+            title="Add fallback chain"
             className="flex items-center justify-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
           >
             <Plus className="w-4 h-4" />
@@ -1035,7 +1042,7 @@ export function Routing() {
               type="text"
               value={newRuleForm.condition}
               onChange={(e) => setNewRuleForm({ ...newRuleForm, condition: e.target.value })}
-              placeholder='e.g., model =~ "70b" or api_key == "sk-prod-*"'
+              placeholder='e.g., model =~ "70b" or api_key == "sk-eng-*"'
               className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
             />
             <p className="text-xs text-muted-foreground mt-1.5">
@@ -1251,7 +1258,7 @@ export function Routing() {
             </div>
             <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
               <p className="text-sm font-medium text-foreground">Enabled</p>
-              <Toggle on={editingProvider.enabled} onToggle={() => setEditingProvider({ ...editingProvider, enabled: !editingProvider.enabled })} />
+              <Toggle label="Provider enabled" on={editingProvider.enabled} onToggle={() => setEditingProvider({ ...editingProvider, enabled: !editingProvider.enabled })} />
             </div>
             {cloudError && <p className="text-sm text-destructive">{cloudError}</p>}
             <div className="flex justify-end gap-3 pt-4 border-t border-border">

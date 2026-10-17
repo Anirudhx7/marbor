@@ -57,10 +57,6 @@ const fixtures = {
     const src = read('src/lib/mockData.ts');
     return evalArray(sliceArray(src, 'export const mockGPUNodes: GPUNode[] = [', '\n];'), 'mock', src);
   },
-  'api.ts demo fetchNodes list': async () => {
-    const src = read('src/lib/api.ts');
-    return evalArray(sliceArray(src, 'demoDelay<GPUNode[]>([', '\n  ]'), 'api', src);
-  },
 };
 
 for (const [label, load] of Object.entries(fixtures)) {

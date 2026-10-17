@@ -241,6 +241,8 @@ section,#install{scroll-margin-top:96px}
 @media(max-width:380px){.nav-cta{display:none}}
 @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}@view-transition{navigation:none}[data-reveal]{opacity:1;transform:none;transition:none}.btn,.page-card,.index-card,.doc-nav-link,.nav,.nav-inner,.toc li a,.copy-btn{transition:none}}
 @media (pointer:coarse){.btn{min-height:48px}.icon-btn{width:44px;height:44px}.doc-nav-link{min-height:44px}.toc li a{min-height:44px}}
+/* Narrow screens: wrap long code lines instead of forcing sideways scrolling. */
+@media(max-width:640px){.doc-content pre.code code{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}}
 </style>
 </head>
 <body>
@@ -304,6 +306,8 @@ section,#install{scroll-margin-top:96px}
 }"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>Run the returned <code>install_command</code> on the target host (via Ansible, SSH, whatever you use) and the agent exchanges the code for its real token and registers itself.</p>
 <p><strong>This endpoint is not safe to call blindly on every run.</strong> It unconditionally mints a fresh token, overwrites the persisted <code>marbor_agent</code> record, and pushes the new token to the live router - a repeat call against an already-healthy node rotates its credential out from under it and could interrupt a live connection for no reason. Check <code>GET /admin/nodes</code> first and only call this for a node that isn't already reporting <code>agentPresent: true</code> and <code>health: "healthy"</code>.</p>
+<h2 id="agent-transport-tls">Agent transport (TLS)<a class="anchor" href="#agent-transport-tls" aria-label="Link to section">#</a></h2>
+<p>Agents installed this way run <code>marbor-agent service install</code>, which provisions a TLS certificate and serves HTTPS, so enrollment needs no extra flag. Only a hand-started foreground <code>marbor-agent</code> without <code>--cert</code>/<code>--key</code> is plaintext; it refuses to start on a non-loopback bind unless <code>--allow-insecure-plaintext</code> is passed (see <a href="../../SECURITY.html">SECURITY.md</a>). Do not add that flag to an enrollment playbook.</p>
 <h2 id="scripted-enrollment-for-n-nodes">Scripted enrollment for N nodes<a class="anchor" href="#scripted-enrollment-for-n-nodes" aria-label="Link to section">#</a></h2>
 <div class="code-wrap"><pre class="code" data-lang="bash"><code>MARBOR_SERVER=https://marbor.example.com
 COOKIES=$(mktemp)
@@ -414,7 +418,7 @@ done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2
 
   <div class="doc-toc-wrap"><aside class="toc-card" aria-label="On this page">
     <p class="toc-title">On this page</p>
-    <ul class="toc"><li class="lvl-2"><a href="#authenticating-a-script">Authenticating a script</a></li><li class="lvl-2"><a href="#how-enrollment-actually-works">How enrollment actually works</a></li><li class="lvl-2"><a href="#scripted-enrollment-for-n-nodes">Scripted enrollment for N nodes</a></li><li class="lvl-2"><a href="#recommended-path-the-first-party-ansible-playbook">Recommended path: the first-party Ansible playbook</a></li><li class="lvl-2"><a href="#ansible-sketch-how-it-works-under-the-hood-no-ansible-fallback">Ansible sketch (how it works under the hood / no-Ansible fallback)</a></li><li class="lvl-2"><a href="#rotation-and-revocation">Rotation and revocation</a></li></ul>
+    <ul class="toc"><li class="lvl-2"><a href="#authenticating-a-script">Authenticating a script</a></li><li class="lvl-2"><a href="#how-enrollment-actually-works">How enrollment actually works</a></li><li class="lvl-2"><a href="#agent-transport-tls">Agent transport (TLS)</a></li><li class="lvl-2"><a href="#scripted-enrollment-for-n-nodes">Scripted enrollment for N nodes</a></li><li class="lvl-2"><a href="#recommended-path-the-first-party-ansible-playbook">Recommended path: the first-party Ansible playbook</a></li><li class="lvl-2"><a href="#ansible-sketch-how-it-works-under-the-hood-no-ansible-fallback">Ansible sketch (how it works under the hood / no-Ansible fallback)</a></li><li class="lvl-2"><a href="#rotation-and-revocation">Rotation and revocation</a></li></ul>
   </aside></div>
 </div>
 

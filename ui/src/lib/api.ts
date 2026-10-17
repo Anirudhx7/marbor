@@ -1,6 +1,6 @@
 import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, CloudProviderInput, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, QuantRecommendation, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry, ModelConfig, LocalModel, BenchmarkRun, BackupFileInfo, SpillCounterRow, RoutingDecision, ModelAlias } from '../types';
 import { readSoleReplicaImpact, runtimeActionFailureInfo, runtimeActionQuery } from './soleReplica';
-import { mockCloudProviders, mockSavings, mockReplicaSuggestions, mockSoleReplicaImpact } from './mockData';
+import { mockAPIKeys, mockCloudProviders, mockGPUNodes, mockSavings, mockReplicaSuggestions, mockSoleReplicaImpact } from './mockData';
 import { sameDeclared } from './replicaGroups';
 
 const BASE = '/admin';
@@ -316,9 +316,9 @@ export interface Schedule {
 let demoWarmup: Record<string, NodeWarmup> | null = null;
 function demoWarmupStore(): Record<string, NodeWarmup> {
   if (!demoWarmup) demoWarmup = {
-    'gpu-node-01': { enabled: true,  models: ['deepseek-r1:8b', 'qwen2.5:7b'] },
+    'gpu-node-01': { enabled: true,  models: ['deepseek-r1:7b', 'gemma2:9b'] },
     'gpu-node-02': { enabled: false, models: [] },
-    'gpu-node-03': { enabled: true,  models: ['qwen2.5-coder:14b'] },
+    'gpu-node-03': { enabled: false, models: [] },
     'gpu-node-04': { enabled: false, models: [] },
     // A replica worker carrying a leftover keep-warm config from before it
     // joined the replica - shown locked, with a "Clear stale config" action.
@@ -330,9 +330,9 @@ function demoWarmupStore(): Record<string, NodeWarmup> {
 let demoSchedules: Schedule[] | null = null;
 function demoScheduleStore(): Schedule[] {
   if (!demoSchedules) demoSchedules = [
-    { id: 'sched-demo-1', action: 'warmup', node: 'gpu-node-01', models: ['deepseek-r1:8b', 'qwen2.5:7b'], at: '08:30', days: [1, 2, 3, 4, 5], enabled: true, last_run_at: new Date(Date.now() - 16 * 60 * 60 * 1000).toISOString(), last_status: 'ok' },
+    { id: 'sched-demo-1', action: 'warmup', node: 'gpu-node-01', models: ['deepseek-r1:7b', 'gemma2:9b'], at: '08:30', days: [1, 2, 3, 4, 5], enabled: true, last_run_at: new Date(Date.now() - 16 * 60 * 60 * 1000).toISOString(), last_status: 'ok' },
     { id: 'sched-demo-2', action: 'drain',  node: 'gpu-node-03', at: '19:00', days: [1, 2, 3, 4, 5], enabled: true, last_run_at: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(), last_status: 'ok' },
-    { id: 'sched-demo-3', action: 'warmup', node: 'gpu-node-02', models: ['llama3.3:70b'], at: '09:00', days: [1, 2, 3, 4, 5], enabled: false },
+    { id: 'sched-demo-3', action: 'warmup', node: 'gpu-node-01', models: ['llama3.3:70b'], at: '09:00', days: [1, 2, 3, 4, 5], enabled: false },
   ];
   return demoSchedules;
 }
@@ -354,7 +354,7 @@ export async function setNodeWarmup(name: string, nw: NodeWarmup): Promise<NodeW
 }
 
 export async function getPinned(nodeName: string): Promise<string[]> {
-  if (DEMO) return demoDelay(['qwen2.5']);
+  if (DEMO) return demoDelay(['gemma2:9b']);
   const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(nodeName)}/pinned`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch pinned models');
   const j = await res.json();
@@ -441,18 +441,8 @@ export async function apiFetch(input: string, init?: RequestInit): Promise<Respo
 }
 
 export async function fetchNodes(): Promise<GPUNode[]> {
-  if (DEMO) return demoDelay<GPUNode[]>([
-    { id: 'gpu-node-01', name: 'gpu-node-01', host: '10.0.0.11', gpuModel: 'NVIDIA A100 80GB',     port: 11434, vramTotalMB: 81920, vramUsedMB: 14336, vramSource: 'nvidia', powerDrawW: 280, cpuPercent: 18, temperature: 52, health: 'healthy',  runtime: 'ollama', warmupSupported: true, warmupWarnings: { 'deepseek-r1:8b': "digest drift: resident copy differs from the fleet's reference digest for this model; still being kept warm" }, draining: false, signals: ['healthy', 'warm'], drainedGraceSeconds: 0, activeConns: 2, maxInFlight: 0, prewarmDisabled: false, pendingPrewarmMB: 0,    uptime: '12d 6h', loadedModels: [{ name: 'deepseek-r1:8b', sizeVram: 8192 }, { name: 'qwen2.5:7b', sizeVram: 6144 }], healthHistory: [1,1,1,1,1,1,1,1,1,1] },
-    { id: 'gpu-node-02', name: 'gpu-node-02', host: '10.0.0.12', gpuModel: 'NVIDIA A100 80GB',     port: 11434, vramTotalMB: 81920, vramUsedMB: 0,     vramSource: 'nvidia', powerDrawW: 210, cpuPercent: 4,  temperature: 44, health: 'healthy',  runtime: 'ollama', warmupSupported: true, draining: false, signals: ['healthy'], drainedGraceSeconds: 0, activeConns: 0, maxInFlight: 0, prewarmDisabled: false, pendingPrewarmMB: 6144, uptime: '12d 6h', loadedModels: [],                                                                                                    healthHistory: [1,1,1,1,1,1,1,1,1,1] },
-    { id: 'gpu-node-03', name: 'gpu-node-03', host: '10.0.0.13', gpuModel: 'NVIDIA RTX 4090 24GB', port: 11434, vramTotalMB: 24576, vramUsedMB: 9216, vramSource: 'nvidia', powerDrawW: 195, cpuPercent: 22, temperature: 61, health: 'healthy',  runtime: 'ollama', warmupSupported: true, draining: false, signals: ['healthy', 'warm'], drainedGraceSeconds: 0, activeConns: 1, maxInFlight: 4, prewarmDisabled: true,  pendingPrewarmMB: 0,    uptime: '5d 3h',  loadedModels: [{ name: 'qwen2.5-coder:14b', sizeVram: 9216 }],                                                          healthHistory: [1,1,1,1,1,1,0,1,1,1] },
-    { id: 'gpu-node-04', name: 'gpu-node-04', host: '10.0.0.14', gpuModel: 'NVIDIA RTX 3090 24GB', port: 11434, vramTotalMB: 24576, vramUsedMB: 0,    vramSource: 'nvidia', powerDrawW: 0,   cpuPercent: 0,  temperature: null, health: 'down', runtime: 'ollama', warmupSupported: true, draining: false, signals: ['down'], drainedGraceSeconds: 0, activeConns: 0, maxInFlight: 0, prewarmDisabled: false, pendingPrewarmMB: 0,    uptime: 'N/A',    loadedModels: [],                                                                                                    healthHistory: [1,1,0,0,0,1,0,0,0,0] },
-    // Non-Ollama multi-host replica (head + worker) and an unresolved node, so
-    // the Warmup page shows the unsupported-runtime, locked-worker, and
-    // unresolved states.
-    { id: 'gpu-node-07', name: 'gpu-node-07', host: '10.0.0.17', gpuModel: 'NVIDIA H100 80GB', port: 8000, vramTotalMB: 81920, vramUsedMB: 62464, vramSource: 'nvidia', powerDrawW: 540, cpuPercent: 31, temperature: 66, health: 'healthy', runtime: 'vllm', warmupSupported: false, replicaPeers: { members: ['gpu-node-07', 'gpu-node-08'], head: 'gpu-node-07' }, schedulingRole: 'head', replicaHead: 'gpu-node-07', parallelismType: 'tp', parallelismWidth: 8, draining: false, signals: ['healthy', 'warm'], drainedGraceSeconds: 0, activeConns: 3, maxInFlight: 0, prewarmDisabled: false, pendingPrewarmMB: 0, uptime: '3d 2h', loadedModels: [{ name: 'meta-llama/Llama-3.1-405B-Instruct', sizeVram: 62464 }], healthHistory: [1,1,1,1,1,1,1,1,1,1] },
-    { id: 'gpu-node-08', name: 'gpu-node-08', host: '10.0.0.18', gpuModel: 'NVIDIA H100 80GB', port: 8000, vramTotalMB: 81920, vramUsedMB: 59801, vramSource: 'nvidia', powerDrawW: 520, cpuPercent: 27, temperature: 64, health: 'healthy', runtime: 'vllm', warmupSupported: false, warmupWarnings: { 'meta-llama/Llama-3.1-405B-Instruct': "not warmed: this node is a replica worker; keep-warm is managed on its head gpu-node-07. Clear this node's stored keep-warm config (Warmup page 'Clear stale config', or: marbor nodes warmup set gpu-node-08 --enabled=false --models \"\") and add the model on gpu-node-07 instead." }, replicaPeers: { members: ['gpu-node-07', 'gpu-node-08'], head: 'gpu-node-07' }, schedulingRole: 'worker', replicaHead: 'gpu-node-07', parallelismType: 'tp', parallelismWidth: 8, draining: false, signals: ['healthy'], drainedGraceSeconds: 0, activeConns: 0, maxInFlight: 0, prewarmDisabled: false, pendingPrewarmMB: 0, uptime: '3d 2h', loadedModels: [], healthHistory: [1,1,1,1,1,1,1,1,1,1] },
-    { id: 'gpu-node-09', name: 'gpu-node-09', host: '10.0.0.19', gpuModel: 'AMD Instinct MI300X 192GB', port: 8000, vramTotalMB: 196608, vramUsedMB: 2150, vramSource: 'agent', powerDrawW: 380, cpuPercent: 6, temperature: 48, health: 'healthy', runtime: 'vllm', warmupSupported: false, warmupWarnings: { 'meta-llama/Llama-3.3-70B-Instruct': 'not warmed: node has an unresolved replica declaration - reconcile replica_peers' }, replicaPeers: { members: ['gpu-node-09', 'gpu-node-10'], head: 'gpu-node-09' }, schedulingRole: 'unresolved', draining: false, signals: ['healthy'], drainedGraceSeconds: 0, activeConns: 0, maxInFlight: 0, prewarmDisabled: false, pendingPrewarmMB: 0, uptime: '1d 4h', loadedModels: [], healthHistory: [1,1,1,1,1,1,1,1,1,1] },
-  ]);
+  // Same fixture the GPU nodes page renders, so every demo page agrees on the fleet.
+  if (DEMO) return demoDelay<GPUNode[]>(mockGPUNodes);
   const res = await apiFetch(`${BASE}/nodes`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch nodes');
   return res.json();
@@ -1245,9 +1235,9 @@ export async function fetchPredictiveDecisions(): Promise<PredictiveDecision[]> 
   if (DEMO) {
     const now = Date.now();
     return demoDelay([
-      { timestamp: new Date(now - 2 * 60_000).toISOString(), predicted_model: 'qwen2.5:7b',        trigger_model: 'deepseek-r1:8b', node: 'gpu-node-01', was_already_warm: false, warmup_triggered: true,  transition_count: 14, hour: new Date(now - 2 * 60_000).getHours() },
+      { timestamp: new Date(now - 2 * 60_000).toISOString(), predicted_model: 'gemma2:9b',        trigger_model: 'deepseek-r1:7b', node: 'gpu-node-01', was_already_warm: false, warmup_triggered: true,  transition_count: 14, hour: new Date(now - 2 * 60_000).getHours() },
       { timestamp: new Date(now - 9 * 60_000).toISOString(), predicted_model: 'qwen2.5-coder:14b', trigger_model: 'llama3.3:8b',    node: 'gpu-node-02', was_already_warm: false, warmup_triggered: true,  transition_count: 9,  hour: new Date(now - 9 * 60_000).getHours() },
-      { timestamp: new Date(now - 21 * 60_000).toISOString(), predicted_model: 'deepseek-r1:8b',   trigger_model: 'qwen2.5:7b',     node: 'gpu-node-01', was_already_warm: true,  warmup_triggered: false, transition_count: 14, hour: new Date(now - 21 * 60_000).getHours() },
+      { timestamp: new Date(now - 21 * 60_000).toISOString(), predicted_model: 'deepseek-r1:7b',   trigger_model: 'gemma2:9b',     node: 'gpu-node-01', was_already_warm: true,  warmup_triggered: false, transition_count: 14, hour: new Date(now - 21 * 60_000).getHours() },
     ]);
   }
   const res = await apiFetch(`${BASE}/predictive/decisions`, { headers: authHeaders() });
@@ -1278,7 +1268,7 @@ export async function fetchCloudBudgetStatus(): Promise<CloudBudgetStatus> {
       softBudgetPct: 0.8,
       global: { dailySpent: 4.2, dailyCap: 25, dailyPct: 4.2 / 25, monthlySpent: 61.5, monthlyCap: 500, monthlyPct: 61.5 / 500 },
       perKey: [
-        { name: 'team-shared', dailySpent: 3.1, dailyCap: 5, dailyPct: 3.1 / 5, monthlySpent: 42.0, monthlyCap: 50, monthlyPct: 42.0 / 50 },
+        { name: mockAPIKeys[0].name, dailySpent: 3.1, dailyCap: 5, dailyPct: 3.1 / 5, monthlySpent: 42.0, monthlyCap: 50, monthlyPct: 42.0 / 50 },
       ],
     });
   }
@@ -1542,7 +1532,7 @@ export async function fetchSystemAuditFiltered(f: SystemAuditFilter = {}): Promi
     const all: SystemAuditEntry[] = [
       // Recent minutes
       { time: iso(2), username: 'admin', action: 'drain_node', target: 'gpu-node-04', details: 'Drained: manual', source_ip: '192.168.1.5' },
-      { time: iso(5), username: 'dana.rao', action: 'unload_model', target: 'gpu-node-01', details: 'Model: qwen2.5:7b', source_ip: '192.168.1.12' },
+      { time: iso(5), username: 'dana.rao', action: 'unload_model', target: 'gpu-node-01', details: 'Model: gemma2:9b', source_ip: '192.168.1.12' },
       { time: iso(9), username: 'admin', action: 'runtime_restart', target: 'gpu-node-02', details: 'Driver: systemd, Identifier: ollama.service', source_ip: '192.168.1.5' },
       { time: iso(15), username: 'admin', action: 'add_node', target: 'gpu-node-07', details: 'URL: http://10.0.0.17:11434, Runtime: ollama, VRAM: 24576MB', source_ip: '192.168.1.5' },
       { time: iso(18), username: 'admin', action: 'enable_marbor_agent', target: '10.0.0.13', details: 'Port: 9200, Scheme: https', source_ip: '192.168.1.5' },
@@ -1561,7 +1551,7 @@ export async function fetchSystemAuditFiltered(f: SystemAuditFilter = {}): Promi
       // Older hours/days to make date presets meaningful
       { time: iso(150), username: 'system', action: 'api_key_expiry_malformed', target: 'legacy-key', details: 'The stored expiry for this API key is malformed, so the key is rejected until the expiry is corrected.', source_ip: '' },
       { time: isoHours(3), username: 'system', action: 'scheduled_warmup', target: 'gpu-node-01', details: 'Schedule sched-1724170000000000001: action=warmup node=gpu-node-01 models=[llama3.3:8b] status=ok', source_ip: '' },
-      { time: isoHours(8), username: 'admin', action: 'patch_schedule', target: 'sched-1724170000000000001', details: 'Action: warmup, Node: gpu-node-01, At: 09:00, Models: [qwen2.5:7b], Enabled: true', source_ip: '192.168.1.5' },
+      { time: isoHours(8), username: 'admin', action: 'patch_schedule', target: 'sched-1724170000000000001', details: 'Action: warmup, Node: gpu-node-01, At: 09:00, Models: [gemma2:9b], Enabled: true', source_ip: '192.168.1.5' },
       { time: isoHours(20), username: 'admin', action: 'runtime_stop', target: 'gpu-node-03', details: 'Driver: docker', source_ip: '192.168.1.5' },
       { time: isoDays(2), username: 'dana.rao', action: 'add_node', target: 'gpu-node-05', details: 'URL: http://10.0.0.15:11434, Runtime: mlx, VRAM: 0MB', source_ip: '192.168.1.12' },
       { time: isoDays(3), username: 'system', action: 'scheduled_drain', target: 'gpu-node-03', details: 'Schedule sched-1724100000000000000: action=drain node=gpu-node-03 models=[] status=ok', source_ip: '' },

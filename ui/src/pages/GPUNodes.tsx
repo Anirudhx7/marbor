@@ -539,7 +539,7 @@ function NodeCard({ node, pinnedModels, replicaWorkers, onRemove, onDrain, onUnd
         <div className="flex items-start gap-3 min-w-0">
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <StatusDot status={node.health} />
+              <StatusDot status={node.health} title={node.draining ? 'Draining' : undefined} />
               <h3 className="font-semibold text-foreground truncate">{node.name}</h3>
               {isHighlighted && (
                 <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-md bg-primary text-primary-foreground shadow-sm animate-pulse">
@@ -658,6 +658,8 @@ function NodeCard({ node, pinnedModels, replicaWorkers, onRemove, onDrain, onUnd
           </button>
           <button
             onClick={() => onRemove(node.name)}
+            aria-label={`Remove node ${node.name}`}
+            title="Remove node"
             className="p-1.5 text-muted-foreground hover:text-destructive transition-colors"
           >
             <Trash2 className="w-4 h-4" />
@@ -1303,7 +1305,7 @@ export function GPUNodes() {
             : withDemoSignals({
                 ...n,
                 agentPresent: true,
-                agentVersion: '0.1.0',
+                agentVersion: '0.25.0',
                 fanPercent: 55,
                 ramUsedMB: Math.round(20 * 1024),
                 diskFreeGB: 500,

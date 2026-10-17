@@ -590,6 +590,8 @@ export function Activity() {
                           evt.stopPropagation();
                           setSelectedEntry(e);
                         }}
+                        aria-label="View entry details"
+                        title="View entry details"
                         className="p-1 rounded-md text-muted-foreground hover:text-primary hover:bg-secondary transition-colors cursor-pointer"
                       >
                         <Eye className="w-4 h-4" />
@@ -627,6 +629,8 @@ export function Activity() {
                       evt.stopPropagation();
                       setSelectedEntry(e);
                     }}
+                    aria-label="View entry details"
+                    title="View entry details"
                     className="p-1 rounded-md text-muted-foreground hover:text-primary hover:bg-secondary transition-colors cursor-pointer shrink-0"
                   >
                     <Eye className="w-4 h-4" />

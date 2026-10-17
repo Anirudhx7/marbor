@@ -1173,6 +1173,7 @@ export function Warmup() {
               </div>
             </div>
             <button
+              type="button" role="switch" aria-checked={predictiveEnabled} aria-label="Predictive warmup engine"
               onClick={() => setPredictiveConfirmOpen(true)}
               disabled={togglingPredictive}
               className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 ease-in-out ${
