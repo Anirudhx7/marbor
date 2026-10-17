@@ -29,6 +29,9 @@ test('homepage checklist names the demo dashboard warm model', () => {
   const m = home.match(/data-done="([^"]+) is warm on your fleet\./);
   assert.ok(m, 'homepage checklist line not found');
   assert.equal(m[1], catalogModels()[0].name);
+  // The visible text is a separate copy of the data-done attribute.
+  assert.ok(!/>llama3\.2 is warm/.test(home), 'stale visible warm-model text');
+  assert.ok(home.includes(`>${m[1]} is warm on your fleet.<`), 'visible text differs from data-done');
 });
 
 test('keep-warm notices name models that really have a digest mismatch', () => {
