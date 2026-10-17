@@ -231,6 +231,8 @@ section,#install{scroll-margin-top:96px}
 @media(max-width:380px){.nav-cta{display:none}}
 @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}@view-transition{navigation:none}[data-reveal]{opacity:1;transform:none;transition:none}.btn,.page-card,.index-card,.doc-nav-link,.nav,.nav-inner,.toc li a,.copy-btn{transition:none}}
 @media (pointer:coarse){.btn{min-height:48px}.icon-btn{width:44px;height:44px}.doc-nav-link{min-height:44px}.toc li a{min-height:44px}}
+/* Narrow screens: wrap long code lines instead of forcing sideways scrolling. */
+@media(max-width:640px){.doc-content pre.code code{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}}
 </style>
 </head>
 <body>

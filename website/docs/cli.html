@@ -241,6 +241,8 @@ section,#install{scroll-margin-top:96px}
 @media(max-width:380px){.nav-cta{display:none}}
 @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}@view-transition{navigation:none}[data-reveal]{opacity:1;transform:none;transition:none}.btn,.page-card,.index-card,.doc-nav-link,.nav,.nav-inner,.toc li a,.copy-btn{transition:none}}
 @media (pointer:coarse){.btn{min-height:48px}.icon-btn{width:44px;height:44px}.doc-nav-link{min-height:44px}.toc li a{min-height:44px}}
+/* Narrow screens: wrap long code lines instead of forcing sideways scrolling. */
+@media(max-width:640px){.doc-content pre.code code{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}}
 </style>
 </head>
 <body>
@@ -303,7 +305,14 @@ section,#install{scroll-margin-top:96px}
 <p>show the CLI's saved identity (live-verified)</p>
 <h3 id="nodes"><code>nodes</code><a class="anchor" href="#nodes" aria-label="Link to section">#</a></h3>
 <p>list nodes known to marbor</p>
+<p>With --signal, lists only nodes that match any of the given signals, the same ones as the dashboard's filter chips: healthy, degraded, draining, down, agent, warm, pressure. healthy and degraded leave out draining nodes; a node that is down and draining matches both down and draining; agent means a live marbor agent is reporting; warm means a model is loaded; pressure means used VRAM is at least 90% of a known total (a node without measured VRAM never matches, so "no pressure" there means unknown, not ok). --search keeps nodes whose name or GPU model contains the text, trimmed and ignoring case, and combines with --signal. Giving --signal more than once adds to the list. No match is an empty table (header only) or [] with --json and still exits 0, so scripts that act on matches should count rows rather than check the exit status.</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<p>Flags:</p>
+<ul><li><code>--signal string</code> - only nodes matching any of these signals, comma-separated or repeated: healthy, degraded, draining, down, agent, warm, pressure</li><li><code>--search string</code> - only nodes whose name or GPU model contains this text (trimmed, case-insensitive)</li></ul>
+<p>Examples:</p>
+<div class="code-wrap"><pre class="code" data-lang="bash"><code>marbor nodes --signal degraded,down --json | jq length
+marbor nodes --signal pressure --search a100</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="marbor nodes --signal degraded,down --json | jq length
+marbor nodes --signal pressure --search a100"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).</p>
 <h4 id="confirm-tls-node"><code>confirm-tls &lt;node&gt;</code><a class="anchor" href="#confirm-tls-node" aria-label="Link to section">#</a></h4>
 <p>pin a marbor agent's TLS certificate fingerprint (headless enrollment)</p>
@@ -311,10 +320,10 @@ section,#install{scroll-margin-top:96px}
 <p>Flags:</p>
 <ul><li><code>--fingerprint string</code> - SHA-256 fingerprint the operator has independently confirmed matches the node's actual TLS certificate (see "agent service status" on the node), in the form SHA256:&lt;64 hex characters&gt; (required)</li></ul>
 <h4 id="patch-node"><code>patch &lt;node&gt;</code><a class="anchor" href="#patch-node" aria-label="Link to section">#</a></h4>
-<p>update a node's deployment/placement fields (url, runtime, GPU, VRAM, parallelism, TLS pin clear)</p>
+<p>update a node's deployment/placement fields (url, runtime, GPU, VRAM, parallelism, replica membership, TLS pin clear)</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <p>Flags:</p>
-<ul><li><code>--url string</code> - backend URL to route this node's traffic to</li><li><code>--runtime string</code> - runtime: ollama, vllm, tgi, llamacpp, mlx</li><li><code>--gpu-model string</code> - GPU model label, informational (empty to clear)</li><li><code>--vram-total-mb int</code> - declared total VRAM in MB</li><li><code>--gpu-indices string</code> - physical GPU indices this node/runtime uses, comma-separated (e.g. 0,1) - REPLACES the whole declared list (empty to clear)</li><li><code>--max-in-flight int</code> - per-node in-flight request cap override (0 to clear, falls back to the global default)</li><li><code>--parallelism-type string</code> - parallelism type: tp, pp, ep, dp (empty to clear)</li><li><code>--parallelism-width int</code> - parallelism width 1..64 (0 to clear)</li><li><code>--vram-override string</code> - per-model VRAM size overrides in MB, comma-separated model=mb pairs - REPLACES the whole declared list, dropping any entry not listed here (empty to clear all)</li><li><code>--tls-clear</code> - clear this node's pinned TLS fingerprint (setting a new one requires "nodes confirm-tls", never this flag)</li></ul>
+<ul><li><code>--url string</code> - backend URL to route this node's traffic to</li><li><code>--runtime string</code> - runtime: ollama, vllm, tgi, llamacpp, mlx</li><li><code>--gpu-model string</code> - GPU model label, informational (empty to clear)</li><li><code>--vram-total-mb int</code> - declared total VRAM in MB</li><li><code>--gpu-indices string</code> - physical GPU indices this node/runtime uses, comma-separated (e.g. 0,1) - REPLACES the whole declared list (empty to clear)</li><li><code>--max-in-flight int</code> - per-node in-flight request cap override (0 to clear, falls back to the global default)</li><li><code>--parallelism-type string</code> - parallelism type: tp, pp, ep, dp (empty to clear)</li><li><code>--parallelism-width int</code> - parallelism width 1..64 (0 to clear)</li><li><code>--vram-override string</code> - per-model VRAM size overrides in MB, comma-separated model=mb pairs - REPLACES the whole declared list, dropping any entry not listed here (empty to clear all)</li><li><code>--tls-clear</code> - clear this node's pinned TLS fingerprint (setting a new one requires "nodes confirm-tls", never this flag)</li><li><code>--replica-members string</code> - declare this node as part of a multi-host replica: comma-separated node names, including this node's own name (e.g. node-a,node-b) - must be set together with --replica-head (empty to clear the declaration)</li><li><code>--replica-head string</code> - the node name (from --replica-members) that clients/marbor route requests to for this replica - must be set together with --replica-members</li></ul>
 <h4 id="tls-probe-node"><code>tls-probe &lt;node&gt;</code><a class="anchor" href="#tls-probe-node" aria-label="Link to section">#</a></h4>
 <p>read a node's Marbor Agent TLS certificate fingerprint without pinning it</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
@@ -361,12 +370,29 @@ section,#install{scroll-margin-top:96px}
 <h4 id="fit"><code>fit</code><a class="anchor" href="#fit" aria-label="Link to section">#</a></h4>
 <p>show per-node VRAM fit analysis for resident/warm models</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<h4 id="suggestions"><code>suggestions</code><a class="anchor" href="#suggestions" aria-label="Link to section">#</a></h4>
+<p>list multi-host replica groups detected from agent launch details, and confirm or dismiss them</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<p>Flags:</p>
+<ul><li><code>--all</code> - also show dismissed suggestions</li></ul>
+<h5 id="confirm-id"><code>confirm &lt;id&gt;</code><a class="anchor" href="#confirm-id" aria-label="Link to section">#</a></h5>
+<p>declare a detected replica group on every member in one step</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<p>Flags:</p>
+<ul><li><code>--adopt</code> - for a group that conflicts with a declaration: overwrite the members' declarations with the detected group (the prompt shows each node's declared and detected values)</li><li><code>--yes</code> - confirm without prompting</li></ul>
+<h5 id="dismiss-id"><code>dismiss &lt;id&gt;</code><a class="anchor" href="#dismiss-id" aria-label="Link to section">#</a></h5>
+<p>hide a suggestion until its members change</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<h5 id="restore-id"><code>restore &lt;id&gt;</code><a class="anchor" href="#restore-id" aria-label="Link to section">#</a></h5>
+<p>show a dismissed suggestion again</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <h3 id="models"><code>models</code><a class="anchor" href="#models" aria-label="Link to section">#</a></h3>
 <p>fleet-wide list, or pull/delete/unload/list on one node</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <p>requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).</p>
 <h4 id="pull-node-model"><code>pull &lt;node&gt; &lt;model&gt;</code><a class="anchor" href="#pull-node-model" aria-label="Link to section">#</a></h4>
 <p>start pulling a model onto a node (async - does not wait for completion)</p>
+<p>Starts the pull and returns; it does not wait for completion. On a vLLM or TGI node (use a Hugging Face owner/name) the pull only downloads the weights: relaunch the runtime on the node to serve the new model.</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <h4 id="delete-node-model"><code>delete &lt;node&gt; &lt;model&gt;</code><a class="anchor" href="#delete-node-model" aria-label="Link to section">#</a></h4>
 <p>delete a model from a node's local storage</p>
@@ -397,12 +423,30 @@ section,#install{scroll-margin-top:96px}
 <h4 id="pull-progress-node-model"><code>pull-progress &lt;node&gt; &lt;model&gt;</code><a class="anchor" href="#pull-progress-node-model" aria-label="Link to section">#</a></h4>
 <p>show a point-in-time snapshot of an active pull</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<h4 id="alias"><code>alias</code><a class="anchor" href="#alias" aria-label="Link to section">#</a></h4>
+<p>map client-facing model names (e.g. gpt-4) to real models on the fleet</p>
+<p>An alias rewrites a request for its name to the real target model before routing, so existing client configs keep working. Aliases resolve one hop only and take effect immediately, with no restart.</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<p>requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).</p>
+<h5 id="list"><code>list</code><a class="anchor" href="#list" aria-label="Link to section">#</a></h5>
+<p>list model aliases with their target's live status</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<h5 id="set-alias-target"><code>set &lt;alias&gt; &lt;target&gt;</code><a class="anchor" href="#set-alias-target" aria-label="Link to section">#</a></h5>
+<p>create or replace an alias</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<h5 id="remove-alias"><code>remove &lt;alias&gt;</code><a class="anchor" href="#remove-alias" aria-label="Link to section">#</a></h5>
+<p>remove an alias (clients still using its name start failing)</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<p>Flags:</p>
+<ul><li><code>--yes</code> - confirm removal without prompting</li></ul>
 <h4 id="cancel-pull-node-model"><code>cancel-pull &lt;node&gt; &lt;model&gt;</code><a class="anchor" href="#cancel-pull-node-model" aria-label="Link to section">#</a></h4>
 <p>cancel an in-flight pull</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <h3 id="runtime"><code>runtime</code><a class="anchor" href="#runtime" aria-label="Link to section">#</a></h3>
 <p>start/stop/restart/logs/drain/undrain/health on one node</p>
 <p>"start|stop|restart" requires the target node to have an operator-accepted control driver (see "node control accept") - a node with none configured returns an error rather than guessing one.</p>
+<p>"stop|restart" on the head, a worker, or an unresolved member of a multi-host replica is rejected unless --acknowledge-replica is passed: stopping any member breaks the replica, and marbor does not restart the other members. "drain" on a replica member is allowed and prints what it does: draining a worker has no routing effect, draining the head drains the replica.</p>
+<p>"drain" and "restart" first check whether the node is the only server of any model it holds. If it is, they ask for confirmation on a terminal, or exit 1 without a terminal unless --force is passed. Models that only an Ollama node could load on demand, and places where other nodes cannot be verified, are printed but never block. --dry-run prints the check and changes nothing. The check covers drains and restarts made through marbor only.</p>
 <p>"logs" is a point-in-time snapshot, not a live tail. A node whose control driver has no real log source (e.g. a bare PID-file process with no supervisor) returns a clear "not supported" error.</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <p>requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).</p>
@@ -412,9 +456,13 @@ section,#install{scroll-margin-top:96px}
 <h4 id="stop-node"><code>stop &lt;node&gt;</code><a class="anchor" href="#stop-node" aria-label="Link to section">#</a></h4>
 <p>stop the node's inference runtime process</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<p>Flags:</p>
+<ul><li><code>--acknowledge-replica</code> - proceed when the node is part of a multi-host replica (stopping any member breaks the replica)</li></ul>
 <h4 id="restart-node"><code>restart &lt;node&gt;</code><a class="anchor" href="#restart-node" aria-label="Link to section">#</a></h4>
 <p>restart the node's inference runtime process</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<p>Flags:</p>
+<ul><li><code>--acknowledge-replica</code> - proceed when the node is part of a multi-host replica (stopping any member breaks the replica)</li><li><code>--force</code> - proceed without asking when the node is the only server of a model it holds</li><li><code>--dry-run</code> - show which models only this node can serve and exit without changing anything</li></ul>
 <h4 id="logs-node"><code>logs &lt;node&gt;</code><a class="anchor" href="#logs-node" aria-label="Link to section">#</a></h4>
 <p>fetch recent log lines from the node's runtime process</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
@@ -424,7 +472,7 @@ section,#install{scroll-margin-top:96px}
 <p>mark the node draining (stop routing new requests to it)</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <p>Flags:</p>
-<ul><li><code>--reason string</code> - reason recorded for the drain (default "manual")</li><li><code>--grace-period int</code> - bounded-drain window in seconds (omit for infinite - no enforcement engine reads this yet)</li></ul>
+<ul><li><code>--reason string</code> - reason recorded for the drain (default "manual")</li><li><code>--grace-period int</code> - bounded-drain window in seconds (omit for infinite - no enforcement engine reads this yet)</li><li><code>--force</code> - proceed without asking when the node is the only server of a model it holds</li><li><code>--dry-run</code> - show which models only this node can serve and exit without changing anything</li></ul>
 <h4 id="undrain-node"><code>undrain &lt;node&gt;</code><a class="anchor" href="#undrain-node" aria-label="Link to section">#</a></h4>
 <p>reverse "runtime drain"</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
@@ -472,7 +520,7 @@ section,#install{scroll-margin-top:96px}
 <h3 id="key"><code>key</code><a class="anchor" href="#key" aria-label="Link to section">#</a></h3>
 <p>per-API-key local/cloud routing overrides (masked list, plaintext-once on create)</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
-<h4 id="list"><code>list</code><a class="anchor" href="#list" aria-label="Link to section">#</a></h4>
+<h4 id="list-1"><code>list</code><a class="anchor" href="#list-1" aria-label="Link to section">#</a></h4>
 <p>list keys (masked)</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <h4 id="create"><code>create</code><a class="anchor" href="#create" aria-label="Link to section">#</a></h4>
@@ -500,7 +548,7 @@ section,#install{scroll-margin-top:96px}
 <p>manage time-of-day warmup/unload/drain/undrain automations</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <p>requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).</p>
-<h4 id="list-1"><code>list</code><a class="anchor" href="#list-1" aria-label="Link to section">#</a></h4>
+<h4 id="list-2"><code>list</code><a class="anchor" href="#list-2" aria-label="Link to section">#</a></h4>
 <p>list schedules</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <h4 id="create-1"><code>create</code><a class="anchor" href="#create-1" aria-label="Link to section">#</a></h4>
@@ -525,7 +573,7 @@ section,#install{scroll-margin-top:96px}
 <h4 id="rules"><code>rules</code><a class="anchor" href="#rules" aria-label="Link to section">#</a></h4>
 <p>list/add/remove/toggle routing rules</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
-<h5 id="list-2"><code>list</code><a class="anchor" href="#list-2" aria-label="Link to section">#</a></h5>
+<h5 id="list-3"><code>list</code><a class="anchor" href="#list-3" aria-label="Link to section">#</a></h5>
 <p>list routing rules</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <h5 id="add"><code>add</code><a class="anchor" href="#add" aria-label="Link to section">#</a></h5>
@@ -557,7 +605,7 @@ section,#install{scroll-margin-top:96px}
 <h4 id="providers"><code>providers</code><a class="anchor" href="#providers" aria-label="Link to section">#</a></h4>
 <p>list/add/update/delete/reorder/test cloud providers</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
-<h5 id="list-3"><code>list</code><a class="anchor" href="#list-3" aria-label="Link to section">#</a></h5>
+<h5 id="list-4"><code>list</code><a class="anchor" href="#list-4" aria-label="Link to section">#</a></h5>
 <p>list cloud providers (does not display the API key)</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <h5 id="add-1"><code>add</code><a class="anchor" href="#add-1" aria-label="Link to section">#</a></h5>
@@ -590,7 +638,7 @@ section,#install{scroll-margin-top:96px}
 <p>manage your starred model list</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <p>requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).</p>
-<h4 id="list-4"><code>list</code><a class="anchor" href="#list-4" aria-label="Link to section">#</a></h4>
+<h4 id="list-5"><code>list</code><a class="anchor" href="#list-5" aria-label="Link to section">#</a></h4>
 <p>list starred model ids</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <h4 id="add-model-id"><code>add &lt;model-id&gt;</code><a class="anchor" href="#add-model-id" aria-label="Link to section">#</a></h4>
@@ -619,7 +667,7 @@ section,#install{scroll-margin-top:96px}
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <p>Flags:</p>
 <ul><li><code>--model string</code> - model name (required) (required)</li><li><code>--node string</code> - node name (required) (required)</li></ul>
-<h4 id="list-5"><code>list</code><a class="anchor" href="#list-5" aria-label="Link to section">#</a></h4>
+<h4 id="list-6"><code>list</code><a class="anchor" href="#list-6" aria-label="Link to section">#</a></h4>
 <p>list every configured model parameter profile</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <h4 id="capabilities"><code>capabilities</code><a class="anchor" href="#capabilities" aria-label="Link to section">#</a></h4>
@@ -629,6 +677,20 @@ section,#install{scroll-margin-top:96px}
 <p>show the fleet-aware HF/local model catalog with per-node fit</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <p>requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).</p>
+<h3 id="fit-ownername"><code>fit [owner/name]</code><a class="anchor" href="#fit-ownername" aria-label="Link to section">#</a></h3>
+<p>show which models fit each node and which quantization to pull</p>
+<p>With no argument, lists every built-in catalog model for each node: whether it fits the node's total VRAM and free disk, and the quantization to pull (flagged "tight" when it uses most of the VRAM). With an owner/name Hugging Face repo, shows the same for that repo; this queries the server once per node. Sizes are estimates; "-" means unknown. On vLLM and TGI nodes a curated model shows its Hugging Face equivalent (full precision, approximate size) when it has one; pulling it only downloads, so relaunch the runtime to serve it. Read-only: nothing is pulled or changed.</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<p>Flags:</p>
+<ul><li><code>--node string</code> - only this node (default: every node)</li><li><code>--ctx int</code> - context window in tokens for VRAM sizing (only with owner/name; default 8192)</li></ul>
+<p>Examples:</p>
+<div class="code-wrap"><pre class="code" data-lang="bash"><code>marbor fit
+marbor fit --node gpu-1
+marbor fit unsloth/Qwen3-8B-GGUF --node gpu-1 --ctx 16384</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="marbor fit
+marbor fit --node gpu-1
+marbor fit unsloth/Qwen3-8B-GGUF --node gpu-1 --ctx 16384"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+<p>requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).</p>
+<p>See also: marbor nodes fit (downloaded models), marbor catalog (raw catalog).</p>
 <h3 id="backup"><code>backup</code><a class="anchor" href="#backup" aria-label="Link to section">#</a></h3>
 <p>manage marbor.db backups</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
@@ -638,7 +700,7 @@ section,#install{scroll-margin-top:96px}
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <p>Flags:</p>
 <ul><li><code>--output string</code> - local file path to save to (default: server-suggested filename)</li></ul>
-<h4 id="list-6"><code>list</code><a class="anchor" href="#list-6" aria-label="Link to section">#</a></h4>
+<h4 id="list-7"><code>list</code><a class="anchor" href="#list-7" aria-label="Link to section">#</a></h4>
 <p>list backup files on the server</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <h4 id="restore-filename"><code>restore &lt;filename&gt;</code><a class="anchor" href="#restore-filename" aria-label="Link to section">#</a></h4>
@@ -701,6 +763,13 @@ section,#install{scroll-margin-top:96px}
 <h4 id="decisions"><code>decisions</code><a class="anchor" href="#decisions" aria-label="Link to section">#</a></h4>
 <p>show recent predictive prewarm decisions</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<h3 id="prefix-locality"><code>prefix-locality</code><a class="anchor" href="#prefix-locality" aria-label="Link to section">#</a></h3>
+<p>show prefix-locality routing hit and miss counts</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<p>requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).</p>
+<h4 id="stats"><code>stats</code><a class="anchor" href="#stats" aria-label="Link to section">#</a></h4>
+<p>show prefix-locality routing hit and miss counts</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <h3 id="system-info"><code>system-info</code><a class="anchor" href="#system-info" aria-label="Link to section">#</a></h3>
 <p>show control-plane host system info and per-node GPU summary</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
@@ -757,7 +826,7 @@ section,#install{scroll-margin-top:96px}
 <h4 id="explain-request-id"><code>explain &lt;request-id&gt;</code><a class="anchor" href="#explain-request-id" aria-label="Link to section">#</a></h4>
 <p>show why the router picked the node it did for one request</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
-<h4 id="list-7"><code>list</code><a class="anchor" href="#list-7" aria-label="Link to section">#</a></h4>
+<h4 id="list-8"><code>list</code><a class="anchor" href="#list-8" aria-label="Link to section">#</a></h4>
 <p>show the in-memory request log, newest first</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <h4 id="live"><code>live</code><a class="anchor" href="#live" aria-label="Link to section">#</a></h4>
@@ -773,7 +842,7 @@ section,#install{scroll-margin-top:96px}
 <h3 id="users"><code>users</code><a class="anchor" href="#users" aria-label="Link to section">#</a></h3>
 <p>manage dashboard users</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
-<h4 id="list-8"><code>list</code><a class="anchor" href="#list-8" aria-label="Link to section">#</a></h4>
+<h4 id="list-9"><code>list</code><a class="anchor" href="#list-9" aria-label="Link to section">#</a></h4>
 <p>list users</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <h4 id="create-2"><code>create</code><a class="anchor" href="#create-2" aria-label="Link to section">#</a></h4>
@@ -811,7 +880,7 @@ section,#install{scroll-margin-top:96px}
 <p>change your own password (interactive, masked prompts)</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <h4 id="skip-password-change"><code>skip-password-change</code><a class="anchor" href="#skip-password-change" aria-label="Link to section">#</a></h4>
-<p>dismiss the forced-password-change prompt for this session only</p>
+<p>dismiss the forced-password-change prompt (not available for the default admin login)</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <h3 id="completion-shell"><code>completion &lt;shell&gt;</code><a class="anchor" href="#completion-shell" aria-label="Link to section">#</a></h3>
 <p>_Hidden from <code>--help</code> output, but fully reachable._</p>
@@ -833,7 +902,7 @@ marbor completion fish &gt; ~/.config/fish/completions/marbor.fish"><svg viewBox
 
   <div class="doc-toc-wrap"><aside class="toc-card" aria-label="On this page">
     <p class="toc-title">On this page</p>
-    <ul class="toc"><li class="lvl-2"><a href="#global-flags">Global flags</a></li><li class="lvl-2"><a href="#exit-status">Exit status</a></li><li class="lvl-2"><a href="#environment">Environment</a></li><li class="lvl-2"><a href="#files">Files</a></li><li class="lvl-2"><a href="#commands">Commands</a></li><li class="lvl-3"><a href="#version">`version`</a></li><li class="lvl-3"><a href="#status">`status`</a></li><li class="lvl-3"><a href="#login">`login`</a></li><li class="lvl-3"><a href="#logout">`logout`</a></li><li class="lvl-3"><a href="#whoami">`whoami`</a></li><li class="lvl-3"><a href="#nodes">`nodes`</a></li><li class="lvl-3"><a href="#models">`models`</a></li><li class="lvl-3"><a href="#runtime">`runtime`</a></li><li class="lvl-3"><a href="#node">`node`</a></li><li class="lvl-3"><a href="#key">`key`</a></li><li class="lvl-3"><a href="#schedules">`schedules`</a></li><li class="lvl-3"><a href="#routing">`routing`</a></li><li class="lvl-3"><a href="#cloud">`cloud`</a></li><li class="lvl-3"><a href="#favorites">`favorites`</a></li><li class="lvl-3"><a href="#model-config">`model-config`</a></li><li class="lvl-3"><a href="#catalog">`catalog`</a></li><li class="lvl-3"><a href="#backup">`backup`</a></li><li class="lvl-3"><a href="#analytics">`analytics`</a></li><li class="lvl-3"><a href="#savings">`savings`</a></li><li class="lvl-3"><a href="#metrics">`metrics`</a></li><li class="lvl-3"><a href="#pulls">`pulls`</a></li><li class="lvl-3"><a href="#warmup-1">`warmup`</a></li><li class="lvl-3"><a href="#predictive-1">`predictive`</a></li><li class="lvl-3"><a href="#system-info">`system-info`</a></li><li class="lvl-3"><a href="#config">`config`</a></li><li class="lvl-3"><a href="#settings">`settings`</a></li><li class="lvl-3"><a href="#benchmark">`benchmark`</a></li><li class="lvl-3"><a href="#spill">`spill`</a></li><li class="lvl-3"><a href="#activity">`activity`</a></li><li class="lvl-3"><a href="#requests">`requests`</a></li><li class="lvl-3"><a href="#audit">`audit`</a></li><li class="lvl-3"><a href="#users">`users`</a></li><li class="lvl-3"><a href="#completion-shell">`completion &lt;shell&gt;`</a></li></ul>
+    <ul class="toc"><li class="lvl-2"><a href="#global-flags">Global flags</a></li><li class="lvl-2"><a href="#exit-status">Exit status</a></li><li class="lvl-2"><a href="#environment">Environment</a></li><li class="lvl-2"><a href="#files">Files</a></li><li class="lvl-2"><a href="#commands">Commands</a></li><li class="lvl-3"><a href="#version">`version`</a></li><li class="lvl-3"><a href="#status">`status`</a></li><li class="lvl-3"><a href="#login">`login`</a></li><li class="lvl-3"><a href="#logout">`logout`</a></li><li class="lvl-3"><a href="#whoami">`whoami`</a></li><li class="lvl-3"><a href="#nodes">`nodes`</a></li><li class="lvl-3"><a href="#models">`models`</a></li><li class="lvl-3"><a href="#runtime">`runtime`</a></li><li class="lvl-3"><a href="#node">`node`</a></li><li class="lvl-3"><a href="#key">`key`</a></li><li class="lvl-3"><a href="#schedules">`schedules`</a></li><li class="lvl-3"><a href="#routing">`routing`</a></li><li class="lvl-3"><a href="#cloud">`cloud`</a></li><li class="lvl-3"><a href="#favorites">`favorites`</a></li><li class="lvl-3"><a href="#model-config">`model-config`</a></li><li class="lvl-3"><a href="#catalog">`catalog`</a></li><li class="lvl-3"><a href="#fit-ownername">`fit [owner/name]`</a></li><li class="lvl-3"><a href="#backup">`backup`</a></li><li class="lvl-3"><a href="#analytics">`analytics`</a></li><li class="lvl-3"><a href="#savings">`savings`</a></li><li class="lvl-3"><a href="#metrics">`metrics`</a></li><li class="lvl-3"><a href="#pulls">`pulls`</a></li><li class="lvl-3"><a href="#warmup-1">`warmup`</a></li><li class="lvl-3"><a href="#predictive-1">`predictive`</a></li><li class="lvl-3"><a href="#prefix-locality">`prefix-locality`</a></li><li class="lvl-3"><a href="#system-info">`system-info`</a></li><li class="lvl-3"><a href="#config">`config`</a></li><li class="lvl-3"><a href="#settings">`settings`</a></li><li class="lvl-3"><a href="#benchmark">`benchmark`</a></li><li class="lvl-3"><a href="#spill">`spill`</a></li><li class="lvl-3"><a href="#activity">`activity`</a></li><li class="lvl-3"><a href="#requests">`requests`</a></li><li class="lvl-3"><a href="#audit">`audit`</a></li><li class="lvl-3"><a href="#users">`users`</a></li><li class="lvl-3"><a href="#completion-shell">`completion &lt;shell&gt;`</a></li></ul>
   </aside></div>
 </div>
 

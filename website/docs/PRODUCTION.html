@@ -241,6 +241,8 @@ section,#install{scroll-margin-top:96px}
 @media(max-width:380px){.nav-cta{display:none}}
 @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}@view-transition{navigation:none}[data-reveal]{opacity:1;transform:none;transition:none}.btn,.page-card,.index-card,.doc-nav-link,.nav,.nav-inner,.toc li a,.copy-btn{transition:none}}
 @media (pointer:coarse){.btn{min-height:48px}.icon-btn{width:44px;height:44px}.doc-nav-link{min-height:44px}.toc li a{min-height:44px}}
+/* Narrow screens: wrap long code lines instead of forcing sideways scrolling. */
+@media(max-width:640px){.doc-content pre.code code{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}}
 </style>
 </head>
 <body>
@@ -288,6 +290,7 @@ section,#install{scroll-margin-top:96px}
 <tr><td><code>8080</code></td><td>Admin dashboard + REST API</td></tr>
 <tr><td><code>9090</code></td><td>Prometheus metrics (optional)</td></tr></tbody>
 </table></div>
+<p>The metrics endpoint on <code>9090</code> is plain HTTP, so in production keep it on a private monitoring network or scrape it through a TLS-terminating reverse proxy (see <a href="#nginx-tls-termination">nginx TLS Termination</a>); do not expose it to the public internet.</p>
 <hr/>
 <h2 id="systemd">systemd<a class="anchor" href="#systemd" aria-label="Link to section">#</a></h2>
 <p>Create <code>/etc/systemd/system/marbor.service</code>:</p>
@@ -355,7 +358,7 @@ sudo chown -R marbor:marbor /opt/marbor
 sudo systemctl daemon-reload
 sudo systemctl enable --now marbor
 sudo journalctl -u marbor -f"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-<p>First boot creates <code>/opt/marbor/marbor.db</code> blank-slate. Log in at <code>http://&lt;host&gt;:8080</code> with <code>admin</code>/<code>admin</code> (forced password change on first login) and add your nodes/API keys from the dashboard - or run <code>install.sh</code>'s network-discovery wizard beforehand to seed nodes automatically.</p>
+<p>First boot creates <code>/opt/marbor/marbor.db</code> blank-slate. Log in at <code>http://&lt;host&gt;:8080</code> as <code>admin</code> / <code>admin</code>. You are required to set a new password immediately and that first-login change cannot be skipped; until then the dashboard (plain HTTP) accepts the default login from anyone who can reach it, so do this right after install. Then add your nodes/API keys from the dashboard - or run <code>install.sh</code>'s network-discovery wizard beforehand to seed nodes automatically.</p>
 <hr/>
 <h2 id="docker-compose">Docker Compose<a class="anchor" href="#docker-compose" aria-label="Link to section">#</a></h2>
 <p>The repo ships a working <code>docker-compose.yml</code>. It mounts <strong>two</strong> named volumes:</p>

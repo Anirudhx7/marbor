@@ -50,7 +50,7 @@ export const mockGPUNodes: GPUNode[] = [
     // Demo parity for keep-warm notices: the resident copy's digest differs
     // from the fleet's reference copy of the same model (warn-only, still
     // kept warm).
-    warmupWarnings: { 'deepseek-r1:8b': "digest drift: resident copy differs from the fleet's reference digest for this model; still being kept warm" },
+    warmupWarnings: { 'deepseek-r1:7b': "digest drift: resident copy differs from the fleet's reference digest for this model; still being kept warm" },
     vramTotalMB: 80 * GB,
     vramUsedMB: Math.round(67.2 * GB),
     vramSource: 'nvidia',
@@ -65,14 +65,15 @@ export const mockGPUNodes: GPUNode[] = [
     prewarmDisabled: false,
     pendingPrewarmMB: 0,
     uptime: '14d 6h',
+    // Names match the Models page catalog (mockModelCatalog derives each model's
+    // warm state from these lists), so Dashboard and Models count the same fleet.
     loadedModels: [
-      { name: 'llama3.2', sizeVram: Math.round(2.2 * GiB) },
-      { name: 'qwen2.5', sizeVram: Math.round(4.8 * GiB) },
+      { name: 'llama3.3:8b', sizeVram: Math.round(16.2 * GiB) },
+      { name: 'gemma2:9b', sizeVram: Math.round(14.1 * GiB) },
       // Warm here so the cold-load list in mockSoleReplicaImpact (which is
       // computed from a node's loaded models) lists models this node holds.
-      { name: 'deepseek-r1:8b', sizeVram: Math.round(5.2 * GiB) },
-      { name: 'qwen3:8b', sizeVram: Math.round(5.2 * GiB) },
-      { name: 'mistral:7b', sizeVram: Math.round(4.1 * GiB) },
+      { name: 'deepseek-r1:7b', sizeVram: Math.round(9.5 * GiB) },
+      { name: 'nomic-embed-text', sizeVram: Math.round(0.6 * GiB) },
     ],
     healthHistory: Array(60).fill(0).map(() => 95 + Math.random() * 5),
     coldStarts: 2,
@@ -85,7 +86,7 @@ export const mockGPUNodes: GPUNode[] = [
     // v1 envelope (agentGpus array, host capacity/identity, runtime
     // version/status, node_id).
     agentPresent: true,
-    agentVersion: '0.17.0',
+    agentVersion: '0.25.0',
     fanPercent: 62,
     ramUsedMB: Math.round(41.5 * GB),
     diskFreeGB: 812.4,
@@ -118,7 +119,7 @@ export const mockGPUNodes: GPUNode[] = [
     // keep-warm model cold, and it stays that way until an explicit warmup
     // re-arms it, distinct from a warmupErrors failure.
     warmupState: [
-      { model: 'qwen2.5:7b', state: 'suppressed', reason: 'scheduled_unload', since: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString() },
+      { model: 'gemma2:9b', state: 'suppressed', reason: 'scheduled_unload', since: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString() },
     ],
   },
   {
@@ -152,7 +153,7 @@ export const mockGPUNodes: GPUNode[] = [
     // Operator-declared VRAM override demo: vLLM doesn't
     // expose per-model size via its API, so without this the scheduler can't
     // reserve headroom or predictively warm this model on this node.
-    vramOverrides: { 'meta-llama/Llama-3.3-8B-Instruct': 16384 },
+    vramOverrides: { 'llama3.3:8b': 16384 },
     vramTotalMB: 80 * GB,
     vramUsedMB: Math.round(52.8 * GB),
     vramSource: 'nvidia',
@@ -168,7 +169,8 @@ export const mockGPUNodes: GPUNode[] = [
     pendingPrewarmMB: 8192,
     uptime: '12d 14h',
     loadedModels: [
-      { name: 'meta-llama/Llama-3.3-8B-Instruct', sizeVram: Math.round(16.0 * GiB) },
+      { name: 'llama3.3:8b', sizeVram: Math.round(16.2 * GiB) },
+      { name: 'mistral:7b', sizeVram: Math.round(14.8 * GiB) },
     ],
     healthHistory: Array(60).fill(0).map(() => 92 + Math.random() * 8),
     coldStarts: 0,
@@ -179,7 +181,7 @@ export const mockGPUNodes: GPUNode[] = [
     ramUsedMB: Math.round(28.3 * GB),
     diskFreeGB: 1204.7,
     agentPresent: true,
-    agentVersion: '0.1.0',
+    agentVersion: '0.25.0',
     agentCapabilities: ['status'],
     agentPlatform: 'linux',
     agentArchitecture: 'amd64',
@@ -228,12 +230,9 @@ export const mockGPUNodes: GPUNode[] = [
     pendingPrewarmMB: 0,
     uptime: '8d 2h',
     loadedModels: [
-      { name: 'mistralai/Mistral-Small-24B-Instruct-2501', sizeVram: Math.round(14.8 * GiB) },
-      // Also warm here despite living on gpu-node-01 - the Fleet Capacity
-      // card's "duplicated models" figure needs a demo instance (the same
-      // 7B warm twice is exactly the placement waste that figure exists to
-      // surface).
-      { name: 'qwen2.5', sizeVram: Math.round(4.8 * GiB) },
+      { name: 'mistral:7b', sizeVram: Math.round(14.8 * GiB) },
+      { name: 'qwen2.5-coder:14b', sizeVram: Math.round(26.5 * GiB) },
+      { name: 'gemma2:9b', sizeVram: Math.round(14.1 * GiB) },
     ],
     healthHistory: Array(60).fill(0).map(() => 88 + Math.random() * 10),
     coldStarts: 5,
@@ -244,7 +243,7 @@ export const mockGPUNodes: GPUNode[] = [
     ramUsedMB: Math.round(16.8 * GB),
     diskFreeGB: 340.2,
     agentPresent: true,
-    agentVersion: '0.1.0',
+    agentVersion: '0.25.0',
     agentCapabilities: ['status'],
     agentPlatform: 'linux',
     agentArchitecture: 'amd64',
@@ -260,7 +259,7 @@ export const mockGPUNodes: GPUNode[] = [
     // keep-warm ping, and a separate scheduled unload that failed against
     // this node, both diagnosable from the dashboard instead of only ever
     // appearing in the marbor's own logs.
-    warmupErrors: { 'mistralai/Mistral-Small-24B-Instruct-2501': 'node gpu-node-03 unhealthy' },
+    warmupErrors: { 'mistral:7b': 'node gpu-node-03 unhealthy' },
     unloadErrors: { 'codellama:13b': 'agent unreachable: dial tcp: connect: connection refused' },
   },
   {
@@ -301,7 +300,7 @@ export const mockGPUNodes: GPUNode[] = [
     pendingPrewarmMB: 0,
     uptime: '3d 8h',
     loadedModels: [
-      { name: 'llama-3.2-3b-instruct.Q4_K_M.gguf', sizeVram: Math.round(4.2 * GiB) },
+      { name: 'phi3:medium', sizeVram: Math.round(4.2 * GiB) },
     ],
     healthHistory: Array(60).fill(0).map(() => 70 + Math.random() * 25),
     coldStarts: 12,
@@ -312,7 +311,7 @@ export const mockGPUNodes: GPUNode[] = [
     ramUsedMB: Math.round(9.6 * GB),
     diskFreeGB: 78.9,
     agentPresent: true,
-    agentVersion: '0.1.0',
+    agentVersion: '0.25.0',
     agentCapabilities: ['status'],
     agentPlatform: 'linux',
     agentArchitecture: 'amd64',
@@ -351,7 +350,7 @@ export const mockGPUNodes: GPUNode[] = [
     pendingPrewarmMB: 0,
     uptime: '5d 19h',
     loadedModels: [
-      { name: 'mlx-community/Llama-3.2-3B-Instruct-4bit', sizeVram: Math.round(2.0 * GiB) },
+      { name: 'nomic-embed-text', sizeVram: Math.round(0.6 * GiB) },
     ],
     healthHistory: Array(60).fill(0).map(() => 96 + Math.random() * 4),
     coldStarts: 1,
@@ -362,7 +361,7 @@ export const mockGPUNodes: GPUNode[] = [
     ramUsedMB: Math.round(38.6 * GB),
     diskFreeGB: 512.5,
     agentPresent: true,
-    agentVersion: '0.1.0',
+    agentVersion: '0.25.0',
     agentCapabilities: ['status'],
     agentPlatform: 'darwin',
     agentArchitecture: 'arm64',
@@ -450,7 +449,7 @@ export const mockGPUNodes: GPUNode[] = [
     avgLatencyMs: 210,
     warmHitRatio: 1.0,
     agentPresent: true,
-    agentVersion: '0.19.2',
+    agentVersion: '0.25.0',
     agentCapabilities: ['status'],
     agentPlatform: 'linux',
     agentArchitecture: 'amd64',
@@ -496,7 +495,7 @@ export const mockGPUNodes: GPUNode[] = [
     avgLatencyMs: 0,
     warmHitRatio: 0,
     agentPresent: true,
-    agentVersion: '0.19.2',
+    agentVersion: '0.25.0',
     agentCapabilities: ['status'],
     agentPlatform: 'linux',
     agentArchitecture: 'amd64',
@@ -540,7 +539,7 @@ export const mockGPUNodes: GPUNode[] = [
     avgLatencyMs: 0,
     warmHitRatio: 0,
     agentPresent: true,
-    agentVersion: '0.19.2',
+    agentVersion: '0.25.0',
     agentCapabilities: ['status'],
     agentPlatform: 'linux',
     agentArchitecture: 'amd64',
@@ -582,7 +581,7 @@ export const mockGPUNodes: GPUNode[] = [
     avgLatencyMs: 0,
     warmHitRatio: 0,
     agentPresent: true,
-    agentVersion: '0.19.2',
+    agentVersion: '0.25.0',
     agentCapabilities: ['status'],
     agentPlatform: 'linux',
     agentArchitecture: 'amd64',
@@ -621,7 +620,7 @@ export const mockGPUNodes: GPUNode[] = [
     avgLatencyMs: 0,
     warmHitRatio: 0,
     agentPresent: true,
-    agentVersion: '0.19.2',
+    agentVersion: '0.25.0',
     agentCapabilities: ['status'],
     agentPlatform: 'linux',
     agentArchitecture: 'amd64',
@@ -634,24 +633,24 @@ export const mockGPUNodes: GPUNode[] = [
 // that stop being served anywhere if the node is drained or its runtime is
 // restarted, the models only an Ollama peer could load on demand, and places
 // where replica data could not be verified. Demo values follow mockGPUNodes
-// above, the data the Nodes page shows: gpu-node-01 holds llama3.2, qwen2.5,
-// deepseek-r1:8b, qwen3:8b and mistral:7b warm; gpu-node-03 runs TGI and holds
-// qwen2.5 warm, which an Ollama node cannot confirm, so gpu-node-01 shows a
-// model-level unknown line for it; gpu-node-01 also lists four cold-load
-// models, enough to show the collapsed form.
+// above, the data the Nodes page shows: gpu-node-01 holds llama3.3:8b, gemma2:9b,
+// deepseek-r1:7b and nomic-embed-text warm; gpu-node-03 runs TGI and holds
+// qwen2.5-coder:14b warm, which an Ollama node cannot confirm, so gpu-node-01
+// shows a model-level unknown line for it; gpu-node-01 also lists four
+// cold-load models, enough to show the collapsed form.
 export const mockSoleReplicaImpact: Record<string, SoleReplicaImpact> = {
   'gpu-node-01': {
     models: [],
     cold_load_only: [
-      { model: 'llama3.2', runtime: 'ollama', peers: ['gpu-node-11'] },
-      { model: 'deepseek-r1:8b', runtime: 'ollama', peers: ['gpu-node-11'] },
-      { model: 'qwen3:8b', runtime: 'ollama', peers: ['gpu-node-11'] },
-      { model: 'mistral:7b', runtime: 'ollama', peers: ['gpu-node-11'] },
+      { model: 'llama3.3:8b', runtime: 'ollama', peers: ['gpu-node-11'] },
+      { model: 'gemma2:9b', runtime: 'ollama', peers: ['gpu-node-11'] },
+      { model: 'deepseek-r1:7b', runtime: 'ollama', peers: ['gpu-node-11'] },
+      { model: 'nomic-embed-text', runtime: 'ollama', peers: ['gpu-node-11'] },
     ],
-    unknown: [{ node: 'gpu-node-03', model: 'qwen2.5', reason: 'model is loaded there but only reachable through the OpenAI-compatible API' }],
+    unknown: [{ node: 'gpu-node-03', model: 'qwen2.5-coder:14b', reason: 'model is loaded there but only reachable through the OpenAI-compatible API' }],
   },
-  'gpu-node-02': { models: [{ model: 'meta-llama/Llama-3.3-8B-Instruct', runtime: 'vllm' }], cold_load_only: [], unknown: [] },
-  'gpu-node-05': { models: [{ model: 'mlx-community/Llama-3.2-3B-Instruct-4bit', runtime: 'mlx' }], cold_load_only: [], unknown: [] },
+  'gpu-node-02': { models: [{ model: 'llama3.3:8b', runtime: 'vllm' }], cold_load_only: [], unknown: [] },
+  'gpu-node-05': { models: [{ model: 'nomic-embed-text', runtime: 'mlx' }], cold_load_only: [], unknown: [] },
   'gpu-node-06': { models: [], cold_load_only: [], unknown: [{ node: 'gpu-node-06', reason: 'node is not healthy, so which models it holds cannot be confirmed' }] },
   'gpu-node-07': { models: [{ model: 'meta-llama/Llama-3.1-405B-Instruct', runtime: 'vllm' }], cold_load_only: [], unknown: [] },
 };
@@ -660,7 +659,7 @@ export const mockAPIKeys: APIKey[] = [
   {
     id: 'key-1',
     name: 'Engineering Team',
-    key: 'om-eng-7a3f-b7c2-d4e5-f8g9',
+    key: 'sk-eng-7a3f-b7c2-d4e5-f8g9',
     created: '2026-01-15',
     requestsToday: 3124,
     requestsThisMonth: 142380,
@@ -676,7 +675,7 @@ export const mockAPIKeys: APIKey[] = [
   {
     id: 'key-2',
     name: 'Data Platform',
-    key: 'om-data-9h2i-j4k5-l6m7-n8o9',
+    key: 'sk-data-9h2i-j4k5-l6m7-n8o9',
     created: '2026-02-01',
     requestsToday: 1287,
     requestsThisMonth: 89450,
@@ -693,7 +692,7 @@ export const mockAPIKeys: APIKey[] = [
   {
     id: 'key-3',
     name: 'Support Bot',
-    key: 'om-sup-1p2q-r3s4-t5u6-v7w8',
+    key: 'sk-sup-1p2q-r3s4-t5u6-v7w8',
     created: '2026-02-14',
     requestsToday: 892,
     requestsThisMonth: 62340,
@@ -710,7 +709,7 @@ export const mockAPIKeys: APIKey[] = [
   {
     id: 'key-4',
     name: 'CI/CD Pipeline',
-    key: 'om-ci-8x9y-z1a2-b3c4-d5e6',
+    key: 'sk-ci-8x9y-z1a2-b3c4-d5e6',
     created: '2026-01-20',
     requestsToday: 412,
     requestsThisMonth: 28160,
@@ -726,7 +725,7 @@ export const mockAPIKeys: APIKey[] = [
   {
     id: 'key-5',
     name: 'Legal & Compliance',
-    key: 'om-leg-4f5g-h6i7-j8k9-l0m1',
+    key: 'sk-leg-4f5g-h6i7-j8k9-l0m1',
     created: '2026-03-01',
     requestsToday: 234,
     requestsThisMonth: 15840,
@@ -742,7 +741,7 @@ export const mockAPIKeys: APIKey[] = [
   {
     id: 'key-6',
     name: 'External Partner',
-    key: 'om-ext-2k3l-m4n5-o6p7-q8r9',
+    key: 'sk-ext-2k3l-m4n5-o6p7-q8r9',
     created: '2026-03-10',
     requestsToday: 0,
     requestsThisMonth: 4397,
@@ -838,17 +837,17 @@ export const mockSavings: Savings = {
   total_requests: 342467,
 };
 
-export const mockModelCatalog: ModelCatalog = {
-  total_models: 9,
-  total_nodes: 6,
-  healthy_nodes: 4,
-  models: [
+// Fleet-level figures (node count, healthy count, per-model warm count) are
+// derived from mockGPUNodes and each model's own node list, never typed twice,
+// so the Models header, the model cards and the GPU nodes page cannot drift.
+export const mockModelCatalog: ModelCatalog = (() => {
+  const models: ModelCatalog['models'] = [
     {
       name: 'llama3.3:8b',
       size_vram: Math.round(16.2 * 1024 * 1024 * 1024),
       size_disk: Math.round(4.7 * 1024 * 1024 * 1024),
-      warm_count: 2,
-      total_nodes: 4,
+      warm_count: 0, // derived from nodes[].warm below
+      total_nodes: mockGPUNodes.length,
       // Demo parity for the digest-mismatch warning: these two nodes
       // deliberately report different digests for the same model name, as if
       // the tag was re-pulled with different content mid-rollout.
@@ -864,8 +863,8 @@ export const mockModelCatalog: ModelCatalog = {
       name: 'mistral:7b',
       size_vram: Math.round(14.8 * 1024 * 1024 * 1024),
       size_disk: Math.round(4.1 * 1024 * 1024 * 1024),
-      warm_count: 2,
-      total_nodes: 4,
+      warm_count: 0, // derived from nodes[].warm below
+      total_nodes: mockGPUNodes.length,
       total_vram_bytes: Math.round(14.8 * 2 * 1024 * 1024 * 1024),
       nodes: [
         { name: 'gpu-node-02', healthy: true, warm: true, vram_bytes: Math.round(14.8 * 1024 * 1024 * 1024), runtime: 'ollama' },
@@ -876,8 +875,8 @@ export const mockModelCatalog: ModelCatalog = {
       name: 'llama3.3:70b',
       size_vram: Math.round(40.2 * 1024 * 1024 * 1024),
       size_disk: Math.round(42.5 * 1024 * 1024 * 1024),
-      warm_count: 1,
-      total_nodes: 4,
+      warm_count: 0, // derived from nodes[].warm below
+      total_nodes: mockGPUNodes.length,
       total_vram_bytes: Math.round(40.2 * 1024 * 1024 * 1024),
       nodes: [
         { name: 'gpu-node-01', healthy: true, warm: true, vram_bytes: Math.round(40.2 * 1024 * 1024 * 1024), runtime: 'ollama' },
@@ -887,8 +886,8 @@ export const mockModelCatalog: ModelCatalog = {
       name: 'qwen2.5-coder:14b',
       size_vram: Math.round(26.5 * 1024 * 1024 * 1024),
       size_disk: Math.round(9.0 * 1024 * 1024 * 1024),
-      warm_count: 2,
-      total_nodes: 4,
+      warm_count: 0, // derived from nodes[].warm below
+      total_nodes: mockGPUNodes.length,
       digest_mismatch: true,
       total_vram_bytes: Math.round(26.5 * 2 * 1024 * 1024 * 1024),
       drift_details: 'a1b2c3 vs d4e5f6',
@@ -901,8 +900,8 @@ export const mockModelCatalog: ModelCatalog = {
       name: 'gemma2:9b',
       size_vram: Math.round(14.1 * 1024 * 1024 * 1024),
       size_disk: Math.round(5.4 * 1024 * 1024 * 1024),
-      warm_count: 3,
-      total_nodes: 4,
+      warm_count: 0, // derived from nodes[].warm below
+      total_nodes: mockGPUNodes.length,
       total_vram_bytes: Math.round(14.1 * 3 * 1024 * 1024 * 1024),
       nodes: [
         { name: 'gpu-node-01', healthy: true, warm: true, vram_bytes: Math.round(14.1 * 1024 * 1024 * 1024), runtime: 'ollama' },
@@ -914,8 +913,8 @@ export const mockModelCatalog: ModelCatalog = {
       name: 'phi3:medium',
       size_vram: Math.round(4.2 * 1024 * 1024 * 1024),
       size_disk: Math.round(7.9 * 1024 * 1024 * 1024),
-      warm_count: 0,
-      total_nodes: 4,
+      warm_count: 0, // derived from nodes[].warm below
+      total_nodes: mockGPUNodes.length,
       nodes: [
         { name: 'gpu-node-04', healthy: false, warm: false, runtime: 'llamacpp' },
         { name: 'gpu-node-06', healthy: false, warm: false, runtime: 'ollama' },
@@ -925,8 +924,8 @@ export const mockModelCatalog: ModelCatalog = {
       name: 'deepseek-r1:7b',
       size_vram: Math.round(9.5 * 1024 * 1024 * 1024),
       size_disk: Math.round(4.7 * 1024 * 1024 * 1024),
-      warm_count: 1,
-      total_nodes: 4,
+      warm_count: 0, // derived from nodes[].warm below
+      total_nodes: mockGPUNodes.length,
       total_vram_bytes: Math.round(9.5 * 1024 * 1024 * 1024),
       nodes: [
         { name: 'gpu-node-01', healthy: true, warm: true, vram_bytes: Math.round(9.5 * 1024 * 1024 * 1024), runtime: 'llamacpp' },
@@ -936,8 +935,8 @@ export const mockModelCatalog: ModelCatalog = {
       name: 'nomic-embed-text',
       size_vram: Math.round(0.6 * 1024 * 1024 * 1024),
       size_disk: Math.round(0.27 * 1024 * 1024 * 1024),
-      warm_count: 2,
-      total_nodes: 4,
+      warm_count: 0, // derived from nodes[].warm below
+      total_nodes: mockGPUNodes.length,
       total_vram_bytes: Math.round(0.6 * 2 * 1024 * 1024 * 1024),
       family: 'bert',
       nodes: [
@@ -956,8 +955,8 @@ export const mockModelCatalog: ModelCatalog = {
       name: 'meta-llama/Llama-3.1-405B-Instruct',
       size_vram: Math.round(61.0 * 1024 * 1024 * 1024),
       size_disk: Math.round(230.0 * 1024 * 1024 * 1024),
-      warm_count: 3,
-      total_nodes: 4,
+      warm_count: 0, // derived from nodes[].warm below
+      total_nodes: mockGPUNodes.length,
       total_vram_bytes: Math.round((61.0 + 58.4 + 61.0) * 1024 * 1024 * 1024),
       family: 'llama',
       nodes: [
@@ -966,8 +965,30 @@ export const mockModelCatalog: ModelCatalog = {
         { name: 'gpu-node-01', healthy: true, warm: true, vram_bytes: Math.round(61.0 * 1024 * 1024 * 1024), runtime: 'vllm' },
       ],
     },
-  ],
-};
+  
+  ].map(m => {
+    const nodes: NonNullable<ModelCatalog['models'][number]['nodes']> = (m.nodes ?? []).map(entry => {
+      const node = mockGPUNodes.find(n => n.name === entry.name);
+      if (!node) return entry;
+      const warm = (node.loadedModels ?? []).some(l => l.name === m.name);
+      return { ...entry, warm, healthy: node.health === 'healthy', runtime: node.runtime };
+    });
+    // A node that has the model loaded always appears in its resident list.
+    for (const node of mockGPUNodes) {
+      if (nodes.some(e => e.name === node.name)) continue;
+      const loaded = (node.loadedModels ?? []).find(l => l.name === m.name);
+      if (!loaded) continue;
+      nodes.push({ name: node.name, healthy: node.health === 'healthy', warm: true, vram_bytes: loaded.sizeVram, runtime: node.runtime });
+    }
+    return { ...m, nodes, warm_count: nodes.filter(n => n.warm).length };
+  });
+  return {
+    total_models: models.length,
+    total_nodes: mockGPUNodes.length,
+    healthy_nodes: mockGPUNodes.filter(n => n.health === 'healthy').length,
+    models,
+  };
+})();
 
 export const mockCloudProviders: CloudProvider[] = [
   {
@@ -1660,7 +1681,7 @@ export const mockHFModels = [
 
 export const mockBenchmarkRuns: BenchmarkRun[] = [
   {
-    id: 3, node: 'gpu-node-01', model: 'deepseek-r1:8b', n: 10,
+    id: 3, node: 'gpu-node-01', model: 'deepseek-r1:7b', n: 10,
     cold_p50_ms: 3840, cold_min_ms: 3510, cold_max_ms: 4220, cold_p95_ms: 4180, cold_p99_ms: 4220,
     warm_p50_ms: 112, warm_min_ms: 98, warm_max_ms: 141, warm_p95_ms: 138, warm_p99_ms: 141,
     cold_tpot_p50_ms: 28.4, warm_tpot_p50_ms: 19.1,
@@ -1962,7 +1983,7 @@ export function getMockModelConfigCapabilities(): Record<string, string[]> {
 // never rendered as measurements in production.
 export const mockActivityEntries = [
   { time: new Date(Date.now() - 2 * 60_000).toISOString(), username: 'admin', action: 'drain_node', target: 'gpu-node-04', details: 'Drained: manual', source_ip: '192.168.1.5' },
-  { time: new Date(Date.now() - 5 * 60_000).toISOString(), username: 'dana.rao', action: 'unload_model', target: 'gpu-node-01', details: 'Model: qwen2.5:7b', source_ip: '192.168.1.12' },
+  { time: new Date(Date.now() - 5 * 60_000).toISOString(), username: 'dana.rao', action: 'unload_model', target: 'gpu-node-01', details: 'Model: gemma2:9b', source_ip: '192.168.1.12' },
   { time: new Date(Date.now() - 9 * 60_000).toISOString(), username: 'admin', action: 'runtime_restart', target: 'gpu-node-02', details: 'Driver: systemd, Identifier: ollama.service', source_ip: '192.168.1.5' },
   { time: new Date(Date.now() - 15 * 60_000).toISOString(), username: 'admin', action: 'add_node', target: 'gpu-node-07', details: 'URL: http://10.0.0.17:11434, Runtime: ollama, VRAM: 24576MB', source_ip: '192.168.1.5' },
   { time: new Date(Date.now() - 18 * 60_000).toISOString(), username: 'admin', action: 'enable_marbor_agent', target: '10.0.0.13', details: 'Port: 9200, Scheme: https', source_ip: '192.168.1.5' },
@@ -1970,7 +1991,7 @@ export const mockActivityEntries = [
   { time: new Date(Date.now() - 45 * 60_000).toISOString(), username: 'admin', action: 'create_schedule', target: 'sched-1724170000000000000', details: 'Action: warmup, Node: gpu-node-01, At: 08:30, Models: [llama3.3:8b], Enabled: true', source_ip: '192.168.1.5' },
   { time: new Date(Date.now() - 90 * 60_000).toISOString(), username: 'system', action: 'api_key_expiry_malformed', target: 'legacy-key', details: 'The stored expiry for this API key is malformed, so the key is rejected until the expiry is corrected.', source_ip: '' },
   { time: new Date(Date.now() - 2 * 60 * 60_000).toISOString(), username: 'system', action: 'scheduled_warmup', target: 'gpu-node-01', details: 'Schedule sched-1724170000000000000: action=warmup node=gpu-node-01 models=[llama3.3:8b] status=ok', source_ip: '' },
-  { time: new Date(Date.now() - 5 * 60 * 60_000).toISOString(), username: 'admin', action: 'patch_schedule', target: 'sched-1724170000000000000', details: 'Action: warmup, Node: gpu-node-01, At: 09:00, Models: [qwen2.5:7b], Enabled: true', source_ip: '192.168.1.5' },
+  { time: new Date(Date.now() - 5 * 60 * 60_000).toISOString(), username: 'admin', action: 'patch_schedule', target: 'sched-1724170000000000000', details: 'Action: warmup, Node: gpu-node-01, At: 09:00, Models: [gemma2:9b], Enabled: true', source_ip: '192.168.1.5' },
   { time: new Date(Date.now() - 26 * 60 * 60_000).toISOString(), username: 'admin', action: 'delete_schedule', target: 'sched-1724170000000000000', details: '', source_ip: '192.168.1.5' },
   { time: new Date(Date.now() - 3 * 24 * 60 * 60_000).toISOString(), username: 'admin', action: 'update_settings', target: 'global', details: 'Timezone: UTC, AuthEnabled: true, PollInterval: 2000ms, DailyCap: 25, MonthlyCap: 500', source_ip: '10.0.0.5' },
   { time: new Date(Date.now() - 8 * 24 * 60 * 60_000).toISOString(), username: 'admin', action: 'patch_node', target: 'gpu-node-03', details: 'URLChanged: false, RuntimeChanged: true', source_ip: '192.168.1.5' },

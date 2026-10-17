@@ -786,7 +786,7 @@ export function Dashboard() {
                 <div className="flex items-start justify-between mb-4">
                   <div>
                     <div className="flex items-center gap-2">
-                      <StatusDot status={node.health} size="sm" />
+                      <StatusDot status={node.health} size="sm" title={node.draining ? 'Draining' : undefined} />
                       <span className="font-semibold text-foreground text-sm">{node.name}</span>
                     </div>
                     <p className="text-xs font-medium text-muted-foreground mt-1">{node.gpuModel}</p>

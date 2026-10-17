@@ -1,7 +1,12 @@
 // Compact toggle switch shared by boolean controls (Settings, Routing).
-export function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+// `label` is the accessible name: the switch has no visible text of its own.
+export function Toggle({ on, onToggle, label }: { on: boolean; onToggle: () => void; label: string }) {
   return (
     <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
       onClick={onToggle}
       className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${on ? 'bg-primary' : 'bg-muted-foreground/30'}`}
     >

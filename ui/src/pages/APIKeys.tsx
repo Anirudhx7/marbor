@@ -519,6 +519,8 @@ export function APIKeys() {
                           setIsRevokeModalOpen(true);
                         }}
                         disabled={key.status === 'suspended' || key.status === 'revoked'}
+                        aria-label={`Revoke key ${key.name}`}
+                        title="Revoke key"
                         className="p-2 text-muted-foreground hover:text-destructive disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -608,6 +610,8 @@ export function APIKeys() {
                   setIsRevokeModalOpen(true);
                 }}
                 disabled={key.status === 'suspended' || key.status === 'revoked'}
+                aria-label={`Revoke key ${key.name}`}
+                title="Revoke key"
                 className="p-2 text-muted-foreground hover:text-destructive disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               >
                 <Trash2 className="w-4 h-4" />
@@ -800,6 +804,7 @@ export function APIKeys() {
               type="button"
               role="switch"
               aria-checked={editForm.localOnly}
+              aria-label="Local-only (never use cloud fallback)"
               onClick={() => setEditForm({ ...editForm, localOnly: !editForm.localOnly })}
               className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${editForm.localOnly ? 'bg-primary' : 'bg-muted-foreground/30'}`}
             >
@@ -815,6 +820,7 @@ export function APIKeys() {
               type="button"
               role="switch"
               aria-checked={editForm.allowLocalDegradation}
+              aria-label="Allow local degradation"
               onClick={() => setEditForm({ ...editForm, allowLocalDegradation: !editForm.allowLocalDegradation })}
               className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${editForm.allowLocalDegradation ? 'bg-primary' : 'bg-muted-foreground/30'}`}
             >

@@ -242,6 +242,8 @@ section,#install{scroll-margin-top:96px}
 @media(max-width:380px){.nav-cta{display:none}}
 @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}@view-transition{navigation:none}[data-reveal]{opacity:1;transform:none;transition:none}.btn,.page-card,.index-card,.doc-nav-link,.nav,.nav-inner,.toc li a,.copy-btn{transition:none}}
 @media (pointer:coarse){.btn{min-height:48px}.icon-btn{width:44px;height:44px}.doc-nav-link{min-height:44px}.toc li a{min-height:44px}}
+/* Narrow screens: wrap long code lines instead of forcing sideways scrolling. */
+@media(max-width:640px){.doc-content pre.code code{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}}
 </style>
 </head>
 <body>
@@ -297,7 +299,7 @@ section,#install{scroll-margin-top:96px}
 <p>With multiple vLLM or Ollama nodes, a naive load balancer (nginx round-robin) sends requests to nodes that don't have the model loaded, triggering a cold load every time. marbor polls each node to see what's currently loaded and routes to the one that already has the model warm.</p>
 <p><strong>Who feels this:</strong> homelabs and teams with 2+ GPU boxes serving more models than fit on one card.</p>
 <h3 id="3-no-visibility-no-control">3. No visibility, no control<a class="anchor" href="#3-no-visibility-no-control" aria-label="Link to section">#</a></h3>
-<p>A bare vLLM or Ollama deployment has no auth, no rate limits, no metrics, no request log. Anyone on the network can use your GPU, and you can't see who used what or what cloud fallback cost you. marbor adds per-key auth with rate limits and model allow-lists, a live dashboard, Prometheus metrics, a Grafana dashboard, webhooks, audit logging, and a marbor agent for remote telemetry, operations, and maintenance.</p>
+<p>A bare vLLM or Ollama deployment has no auth, no rate limits, no metrics, no request log. Anyone on the network can use your GPU, and you can't see who used what or what cloud fallback cost you. marbor adds per-key auth with rate limits and model allow-lists, a live dashboard, Prometheus metrics, a Grafana dashboard, webhooks, best-effort request audit logging, and a marbor agent for remote telemetry, operations, and maintenance.</p>
 <p><strong>Who feels this:</strong> the platform engineer told "make AI work for the whole team" with on-prem GPUs and an OpenAI bill to justify.</p>
 <hr/>
 <h2 id="audience-in-order-of-fit">Audience, in order of fit<a class="anchor" href="#audience-in-order-of-fit" aria-label="Link to section">#</a></h2>

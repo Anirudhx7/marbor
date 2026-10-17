@@ -12,6 +12,8 @@ This guide covers running marbor in a real production environment. There is no c
 | `8080` | Admin dashboard + REST API |
 | `9090` | Prometheus metrics (optional) |
 
+The metrics endpoint on `9090` is plain HTTP, so in production keep it on a private monitoring network or scrape it through a TLS-terminating reverse proxy (see [nginx TLS Termination](#nginx-tls-termination)); do not expose it to the public internet.
+
 ---
 
 ## systemd

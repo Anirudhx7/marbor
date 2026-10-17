@@ -241,6 +241,8 @@ section,#install{scroll-margin-top:96px}
 @media(max-width:380px){.nav-cta{display:none}}
 @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}@view-transition{navigation:none}[data-reveal]{opacity:1;transform:none;transition:none}.btn,.page-card,.index-card,.doc-nav-link,.nav,.nav-inner,.toc li a,.copy-btn{transition:none}}
 @media (pointer:coarse){.btn{min-height:48px}.icon-btn{width:44px;height:44px}.doc-nav-link{min-height:44px}.toc li a{min-height:44px}}
+/* Narrow screens: wrap long code lines instead of forcing sideways scrolling. */
+@media(max-width:640px){.doc-content pre.code code{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}}
 </style>
 </head>
 <body>
@@ -477,6 +479,14 @@ print(response.content)"><svg viewBox="0 0 24 24" fill="none" stroke="currentCol
     print(chunk.content, end="", flush=True)</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="for chunk in llm.stream(&quot;Explain cloud overflow in plain English.&quot;):
     print(chunk.content, end=&quot;&quot;, flush=True)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <hr/>
+<h2 id="keeping-existing-model-names-openwebui-cursor-apps-built-for-cloud-apis">Keeping existing model names (OpenWebUI, Cursor, apps built for cloud APIs)<a class="anchor" href="#keeping-existing-model-names-openwebui-cursor-apps-built-for-cloud-apis" aria-label="Link to section">#</a></h2>
+<p>Clients configured for a cloud model name such as <code>gpt-4</code> can keep that name. Declare a model alias that maps it to a real model on your fleet, and marbor rewrites each request before routing:</p>
+<div class="code-wrap"><pre class="code" data-lang="bash"><code>marbor models alias set gpt-4 llama3.2:8b
+marbor models alias list</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="marbor models alias set gpt-4 llama3.2:8b
+marbor models alias list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+<p>The same aliases are managed through the Admin API (<code>GET/PUT/DELETE /admin/model-aliases</code>) and the Routing page. Changes apply immediately, with no restart.</p>
+<ul><li>Point the client at marbor (<code>http://your-marbor-host:11434/v1</code> for OpenAI-style clients such as OpenWebUI's OpenAI connection or Cursor's custom base URL) and leave its model name unchanged.</li><li><code>GET /v1/models</code> lists the alias (with its target's status) while the target is on the fleet, so model pickers that read that endpoint show it.</li><li>Responses carry an <code>X-Marbor-Model-Alias: gpt-4 -&gt; llama3.2:8b</code> header, and the request log shows <code>gpt-4 -&gt; llama3.2:8b</code>. The response body's <code>model</code> field is the real model.</li><li>Aliases apply to both <code>/v1/*</code> and the Ollama-native <code>/api/*</code> endpoints. See <a href="LIMITATIONS.html#model-aliases">LIMITATIONS.md</a> for the full list of rules.</li></ul>
+<hr/>
 <h2 id="notes">Notes<a class="anchor" href="#notes" aria-label="Link to section">#</a></h2>
 <ul><li>Your <code>sk-marbor-...</code> key never leaves the marbor. The client <code>Authorization</code> header is stripped before forwarding to a local Ollama node, and replaced with the cloud provider's own configured <code>api_key</code> when a request overflows to cloud. Provider credentials live only in the database (encrypted).</li><li>If your key has a <code>models:</code> allow-list configured, requests for any other model return <code>403 Forbidden</code>.</li><li>Rate limit headers (<code>X-RateLimit-Limit</code>, <code>X-RateLimit-Remaining</code>, <code>X-RateLimit-Reset</code>) are present on every response and follow the same conventions as the OpenAI API.</li><li><code>GET /v1/models</code> returns the union of models loaded or downloaded across all healthy nodes.</li></ul>
 
@@ -489,7 +499,7 @@ print(response.content)"><svg viewBox="0 0 24 24" fill="none" stroke="currentCol
 
   <div class="doc-toc-wrap"><aside class="toc-card" aria-label="On this page">
     <p class="toc-title">On this page</p>
-    <ul class="toc"><li class="lvl-2"><a href="#python---openai-sdk">Python - openai SDK</a></li><li class="lvl-2"><a href="#nodejs---openai-sdk">Node.js - openai SDK</a></li><li class="lvl-2"><a href="#curl---openai-compatible-endpoint">curl - OpenAI-compatible endpoint</a></li><li class="lvl-2"><a href="#curl---native-ollama-endpoint">curl - Native Ollama endpoint</a></li><li class="lvl-2"><a href="#langchain-python">LangChain (Python)</a></li><li class="lvl-2"><a href="#notes">Notes</a></li></ul>
+    <ul class="toc"><li class="lvl-2"><a href="#python---openai-sdk">Python - openai SDK</a></li><li class="lvl-2"><a href="#nodejs---openai-sdk">Node.js - openai SDK</a></li><li class="lvl-2"><a href="#curl---openai-compatible-endpoint">curl - OpenAI-compatible endpoint</a></li><li class="lvl-2"><a href="#curl---native-ollama-endpoint">curl - Native Ollama endpoint</a></li><li class="lvl-2"><a href="#langchain-python">LangChain (Python)</a></li><li class="lvl-2"><a href="#keeping-existing-model-names-openwebui-cursor-apps-built-for-cloud-apis">Keeping existing model names (OpenWebUI, Cursor, apps built for cloud APIs)</a></li><li class="lvl-2"><a href="#notes">Notes</a></li></ul>
   </aside></div>
 </div>
 

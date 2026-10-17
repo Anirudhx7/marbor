@@ -4,17 +4,16 @@ import { LiveRequest } from '../types';
 import { fetchLiveRequests } from '../lib/api';
 import { useDemoMode, currentAppPath } from './useDemoMode';
 
+// Names match the demo model catalog (mockModelCatalog) so a generated request
+// never mentions a model the Models page does not list.
 const MODELS = [
-  'llama3.2:3b',
   'llama3.3:8b',
   'llama3.3:70b',
   'mistral:7b',
   'deepseek-r1:7b',
-  'qwen2.5:7b',
-  'qwen2.5:14b',
   'gemma2:9b',
-  'phi4:14b',
   'qwen2.5-coder:14b',
+  'phi3:medium',
 ];
 
 const NODES = [
@@ -25,10 +24,10 @@ const NODES = [
 ];
 
 const API_KEYS = [
-  'sk-prod-****-a3f2',
-  'sk-prod-****-b7c1',
-  'sk-dev-****-d4e5',
-  'sk-prod-****-f8g9',
+  'sk-eng-****-7a3f',
+  'sk-data-****-9h2i',
+  'sk-sup-****-1p2q',
+  'sk-ci-****-8x9y',
 ];
 
 function generateRequest(): LiveRequest {
