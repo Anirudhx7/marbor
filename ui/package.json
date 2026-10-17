@@ -9,7 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "demo:crawl": "node scripts/demo-crawl.mjs",
-    "test": "node --experimental-strip-types --test scripts/download-only.test.mjs scripts/replica-groups.test.mjs scripts/tokens-per-sec.test.mjs scripts/node-signals.test.mjs scripts/button.test.mjs scripts/status-tokens.test.mjs scripts/sole-replica.test.mjs"
+    "test": "node --experimental-strip-types --test scripts/download-only.test.mjs scripts/replica-groups.test.mjs scripts/tokens-per-sec.test.mjs scripts/node-signals.test.mjs scripts/button.test.mjs scripts/status-tokens.test.mjs scripts/sole-replica.test.mjs scripts/demo-consistency.test.mjs"
   },
   "overrides": {
     "typescript-eslint": {
