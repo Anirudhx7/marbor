@@ -10,6 +10,10 @@ import (
 
 // TGIProbe probes a HuggingFace Text Generation Inference backend.
 // Health check: GET /health must return 200.
+//
+// TGI is a frozen legacy runtime: Hugging Face archived the upstream project in
+// March 2026. This probe stays and gets bug fixes only; new runtime work targets
+// the actively developed runtimes.
 // Model:        GET /info → model_id field.
 // VRAM:         not exposed; always 0.
 type TGIProbe struct {
