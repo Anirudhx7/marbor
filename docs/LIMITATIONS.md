@@ -102,7 +102,7 @@ AMD and Intel GPU support via the marbor agent (`rocm-smi`/`xpu-smi` parsing) ha
 
 ## Validated Runtime x GPU Vendor Matrix
 
-marbor is designed for 5 runtimes (Ollama, vLLM, TGI, llama.cpp, MLX) x 4 GPU vendors (NVIDIA, AMD, Intel, Apple Silicon) - code-level support exists for all 5 runtime probes and all 4 GPU telemetry collectors. **Code existing is not the same as validated on real hardware.** This table states, per cell, what has actually been exercised against the real thing, so scope is stated honestly rather than implied by the feature list above.
+marbor is designed for 4 actively developed runtimes (Ollama, vLLM, llama.cpp, MLX) x 4 GPU vendors (NVIDIA, AMD, Intel, Apple Silicon). TGI stays supported as a frozen legacy runtime: Hugging Face archived the project in March 2026, so marbor only fixes bugs for it. Code-level support exists for all 5 runtime probes and all 4 GPU telemetry collectors. **Code existing is not the same as validated on real hardware.** This table states, per cell, what has actually been exercised against the real thing, so scope is stated honestly rather than implied by the feature list above.
 
 | Runtime \ Vendor | NVIDIA | AMD | Intel | Apple Silicon |
 |---|---|---|---|---|

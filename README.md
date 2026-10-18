@@ -209,7 +209,7 @@ Client Application (Agent / RAG / Copilot)
 | **Cluster Telemetry** | Cluster-wide VRAM | Per-node used-VRAM live across the entire cluster from each node's own `/api/ps`. No sidecar agent required. |
 | | GPU metrics | nvidia-smi integration on marbor host: temperature, power draw, total capacity. Remote nodes: real telemetry via the optional marbor agent, or operator-declared `vram_total_mb` if it is not installed. Every figure labelled with its source (nvidia/api/declared/agent). |
 | | VRAM fit indicators | Green/yellow/red badges per model per node. Ops teams see at a glance whether a model fits in available VRAM. |
-| **Multi-Backend** | Ollama, vLLM, TGI, llama.cpp, MLX | Declare `runtime: ollama/vllm/tgi/llamacpp/mlx` per node. The router is runtime-agnostic; health probes and model-list calls use the correct API per runtime. |
+| **Multi-Backend** | Ollama, vLLM, llama.cpp, MLX, plus TGI (legacy) | Declare `runtime: ollama/vllm/tgi/llamacpp/mlx` per node. The router is runtime-agnostic; health probes and model-list calls use the correct API per runtime. TGI stays supported but frozen: Hugging Face archived the project in March 2026, so marbor only fixes bugs for it. |
 | | Path-aware routing | `/api/*` routes to Ollama nodes only. `/v1/*` routes to any runtime. Non-Ollama nodes are transparent to OpenAI SDK clients. |
 | **Deployment** | Single binary | One static Go binary per platform. Drop onto a VM and run. No package manager, no virtualenv, no container runtime required. |
 | | Docker auto-discovery | Scans Docker socket for `ollama/ollama` containers. Auto-registers nodes. Zero config. |
@@ -266,7 +266,7 @@ Marbor is runtime-agnostic. Declare `runtime:` per node and the router uses the 
 |---------|-----------------|--------------|-----------------|--------------|
 | Ollama | `ollama` (default) | GET /api/ps | /api/ps response | /api/* and /v1/* |
 | vLLM | `vllm` | GET /health | GET /v1/models | /v1/* only |
-| TGI (HuggingFace) | `tgi` | GET /health | GET /info | /v1/* only |
+| TGI (HuggingFace, legacy: upstream archived) | `tgi` | GET /health | GET /info | /v1/* only |
 | llama.cpp server | `llamacpp` | GET /health | GET /v1/models | /v1/* only |
 | MLX (`mlx_lm.server`, Apple Silicon) | `mlx` | GET /v1/models | GET /v1/models | /v1/* only |
 
