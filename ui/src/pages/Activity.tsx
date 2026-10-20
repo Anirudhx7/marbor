@@ -17,7 +17,7 @@ import {
   isFailedLogin,
   matchesKindFilter,
   distinctOperators,
-  isClientNarrowed,
+  olderEventsMayMatch,
   ALL_ACTIVITY_KINDS,
   type ActivityKind,
 } from '../lib/activityKind';
@@ -71,7 +71,7 @@ function actionBadgeClass(action: string): string {
 }
 
 function getActionLabel(action: string): string {
-  return action
+  return (action ?? '')
     .split('_')
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
@@ -225,13 +225,14 @@ export function Activity() {
     return () => window.removeEventListener('keydown', onKey);
   }, [selectedEntry]);
 
-  const uniqueActions = ['all', ...Array.from(new Set(entries.map((e) => e.action))).sort()];
+  const uniqueActions = ['all', ...Array.from(new Set(entries.map((e) => e.action ?? '').filter((a) => a !== ''))).sort()];
   // The server's user filter ignores case, so the same person typed as Admin
   // and admin is one entry here, shown with the first-seen casing.
-  // The selected operator is always an option, even when no loaded row has it.
+  // The selected operator is always an option, even when no loaded row has it,
+  // and is listed first so its casing wins and the select value matches.
   const uniqueUsers = [
     'all',
-    ...distinctOperators([...entries.map((e) => e.username), userFilter === 'all' ? null : userFilter])
+    ...distinctOperators([userFilter === 'all' ? null : userFilter, ...entries.map((e) => e.username)])
       .sort((a, b) => a.localeCompare(b)),
   ];
 
@@ -243,7 +244,7 @@ export function Activity() {
     if (!q) return true;
     return (
       e.username.toLowerCase().includes(q) ||
-      e.action.toLowerCase().includes(q) ||
+      (e.action ?? '').toLowerCase().includes(q) ||
       e.target.toLowerCase().includes(q) ||
       e.details.toLowerCase().includes(q) ||
       (e.source_ip || '').toLowerCase().includes(q) ||
@@ -273,7 +274,7 @@ export function Activity() {
   const failedLoginCount = filteredEntries.filter((e) => isFailedLogin(e.action)).length;
   // Rows narrowed on the client (a config-derived kind or local search) may
   // have older matches that are not loaded yet.
-  const olderMayMatch = isClientNarrowed(kindFilter, searchQuery) && hasMore;
+  const olderMayMatch = olderEventsMayMatch(kindFilter, searchQuery, hasMore);
 
   const handleLoadMore = () => {
     if (entries.length === 0 || loadingMore) return;
@@ -348,9 +349,9 @@ export function Activity() {
           <div className="absolute right-0 top-0 w-24 h-24 bg-gradient-to-br from-purple-500/10 to-transparent rounded-bl-full group-hover:scale-110 transition-transform duration-300" />
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Operators</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Operators (shown)</p>
               <h3 className="text-3xl font-extrabold mt-2 text-foreground">{uniqueOperators}</h3>
-              <p className="text-[10px] text-muted-foreground/60 mt-0.5">ignoring case</p>
+              <p className="text-[10px] text-muted-foreground/60 mt-0.5">ignoring case, excluding failed sign-ins</p>
             </div>
             <div className="p-2.5 bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 rounded-lg">
               <User className="w-5 h-5" />
@@ -377,7 +378,7 @@ export function Activity() {
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Warmup Events (shown)</p>
               <h3 className="text-3xl font-extrabold mt-2 text-foreground">{warmupCount}</h3>
-              <p className="text-[10px] text-muted-foreground/60 mt-0.5">predictive decisions (all loaded)</p>
+              <p className="text-[10px] text-muted-foreground/60 mt-0.5">{decisions.length} predictive decisions (all loaded)</p>
             </div>
             <div className="p-2.5 bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20 rounded-lg">
               <Flame className="w-5 h-5" />
@@ -705,11 +706,13 @@ export function Activity() {
         {/* Pagination */}
         {!loading && !error && (
           <div className="flex items-center justify-between px-5 py-3 border-t border-border bg-secondary/20 text-xs text-muted-foreground">
-            <span role="status">
-              Showing {filteredEntries.length} of {totalFetched} loaded events (newest first)
-              {' - '}
-              {hasActiveFilters ? 'Filters active' : 'All event kinds shown'}
-              {olderMayMatch && '. Older events may also match.'}
+            <span>
+              <span role={filteredEntries.length > 0 ? 'status' : undefined}>
+                Showing {filteredEntries.length} of {totalFetched} loaded events (newest first)
+                {' - '}
+                {hasActiveFilters ? 'Filters active' : 'All event kinds shown'}
+                {olderMayMatch && '. Older events may also match.'}
+              </span>
               {hasActiveFilters && (
                 <button type="button" onClick={clearAllFilters} className="ml-2 font-medium text-primary hover:underline cursor-pointer">
                   Clear filters

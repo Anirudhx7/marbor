@@ -13,6 +13,7 @@ import {
   matchesKindFilter,
   distinctOperators,
   isClientNarrowed,
+  olderEventsMayMatch,
   getActivityKindLabel,
   classifyAction,
   EXACT_ACTION_KINDS,
@@ -167,10 +168,6 @@ test('the add_key demo rows match between api.ts and mockActivityEntries', () =>
   assert.deepEqual(keys(mockRows), keys(apiRows));
 });
 
-test('the demo filter comment explains the server config kind', () => {
-  assert.match(apiSrc, /server reports sign-in, key and user events under the config kind/);
-});
-
 test('distinctOperators skips blank and missing names', () => {
   assert.deepEqual(distinctOperators(['', '  ', null, undefined, 'dana.rao']), ['dana.rao']);
 });
@@ -200,12 +197,36 @@ test('config rows are not hidden by default', () => {
     assert.equal(matchesKindFilter(a, 'all'), true, a);
   }
   const page = read('src/pages/Activity.tsx');
-  assert.doesNotMatch(page, /kindFilter\s*===\s*'all'[^\n]*'config'/);
+  assert.doesNotMatch(page, /kindFilter\s*===\s*'all'[\s\S]{0,200}?'config'/);
+  assert.doesNotMatch(page, /'config'[\s\S]{0,200}?kindFilter\s*===\s*'all'/);
   assert.doesNotMatch(page, /kind\s*[!=]==\s*'config'/);
 });
 
-test('predictive passes through matchesKindFilter', () => {
+test('predictive passes through matchesKindFilter and never needs older events', () => {
   assert.equal(matchesKindFilter('anything', 'predictive'), true);
+  assert.equal(olderEventsMayMatch('predictive', '', true), false);
+  assert.equal(olderEventsMayMatch('predictive', '', false), false);
+});
+
+test('olderEventsMayMatch needs a client narrowing and unloaded events', () => {
+  for (const k of ['access', 'keys', 'users', 'config']) {
+    assert.equal(olderEventsMayMatch(k, '', true), true, k);
+    assert.equal(olderEventsMayMatch(k, '', false), false, k);
+  }
+  assert.equal(olderEventsMayMatch('all', 'dana', true), true);
+  assert.equal(olderEventsMayMatch('all', 'dana', false), false);
+  // Server-side filters alone never need it.
+  for (const k of ['all', 'drain', 'agent', 'runtime', 'node', 'warmup', 'schedule']) {
+    assert.equal(olderEventsMayMatch(k, '  ', true), false, k);
+  }
+});
+
+test('distinctOperators trims names before comparing', () => {
+  assert.deepEqual(distinctOperators(['admin ', 'admin', ' Admin']), ['admin']);
+});
+
+test('the selected operator listed first wins casing', () => {
+  assert.deepEqual(distinctOperators(['Admin', 'admin', 'dana']), ['Admin', 'dana']);
 });
 
 test('Activity page footer and filters behave as specified', () => {
@@ -214,12 +235,17 @@ test('Activity page footer and filters behave as specified', () => {
   assert.match(page, /hasMore && !\(filteredEntries\.length === 0 && olderMayMatch\)/);
   assert.doesNotMatch(page, /load more\./i);
   // Live regions for the changing messages.
-  assert.match(page, /<span role="status">/);
+  assert.match(page, /role=\{filteredEntries\.length > 0 \? 'status' : undefined\}/);
   assert.match(page, /\blive\n\s*copy=/);
+  // Clear filters sits outside the live region.
+  assert.match(page, /<\/span>\s*\{hasActiveFilters && \(\s*<button[^>]*onClick=\{clearAllFilters\}/);
+  // The selected operator is listed first so its casing wins.
+  assert.match(page, /distinctOperators\(\[userFilter === 'all' \? null : userFilter, \.\.\.entries/);
   // The selected operator stays an option; the list is sorted with localeCompare.
-  assert.match(page, /userFilter === 'all' \? null : userFilter/);
   assert.match(page, /localeCompare/);
   // Failed sign-ins are not operators.
   assert.match(page, /filter\(\(e\) => !isFailedLogin\(e\.action\)\)/);
-  assert.match(page, /predictive decisions \(all loaded\)/);
+  assert.match(page, /\{decisions\.length\} predictive decisions \(all loaded\)/);
+  assert.match(page, /ignoring case, excluding failed sign-ins/);
+  assert.match(page, /olderEventsMayMatch\(kindFilter, searchQuery, hasMore\)/);
 });

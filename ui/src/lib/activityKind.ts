@@ -15,7 +15,7 @@ const KIND_PRESENCE: Record<ActivityKind, true> = {
   access: true, keys: true, users: true, config: true, drain: true, agent: true,
   runtime: true, node: true, warmup: true, schedule: true, predictive: true,
 };
-export const ALL_ACTIVITY_KINDS = Object.keys(KIND_PRESENCE) as ActivityKind[];
+export const ALL_ACTIVITY_KINDS: readonly ActivityKind[] = Object.keys(KIND_PRESENCE) as ActivityKind[];
 
 // The action the server records for a sign-in attempt that failed.
 export const LOGIN_FAILURE = 'login_failure';
@@ -160,9 +160,10 @@ export function matchesKindFilter(action: string, kindFilter: ActivityKind | 'al
 export function distinctOperators(names: readonly (string | null | undefined)[]): string[] {
   const seen = new Map<string, string>();
   for (const n of names) {
-    if (n == null || n.trim() === '') continue;
-    const key = n.toLowerCase();
-    if (!seen.has(key)) seen.set(key, n);
+    const name = n == null ? '' : n.trim();
+    if (name === '') continue;
+    const key = name.toLowerCase();
+    if (!seen.has(key)) seen.set(key, name);
   }
   return Array.from(seen.values());
 }
@@ -173,4 +174,11 @@ export function distinctOperators(names: readonly (string | null | undefined)[])
 // the narrowing happens immediately on the client, unlike the server filters.
 export function isClientNarrowed(kindFilter: ActivityKind | 'all', searchText: string): boolean {
   return CONFIG_DERIVED.has(kindFilter) || searchText.trim() !== '';
+}
+
+// olderEventsMayMatch is true when a client-side narrowing (sub-kind or search
+// text) is active and more events remain unloaded. Server-side filters alone
+// never need it, and predictive decisions are all loaded already.
+export function olderEventsMayMatch(kindFilter: ActivityKind | 'all', searchText: string, hasMore: boolean): boolean {
+  return hasMore && isClientNarrowed(kindFilter, searchText);
 }
