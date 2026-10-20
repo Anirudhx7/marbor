@@ -265,7 +265,7 @@ const STORAGE_COMPLETED = 'marbor-setup-completed';
 
 function FleetCapacityCard({ nodes }: { nodes: GPUNode[] }) {
   const reporting = nodes.filter(n => n.vramTotalMB > 0);
-  const usedKnown = nodes.filter(n => n.vramSource !== 'none');
+  const usedKnown = nodes.filter(n => n.vramSource !== 'none' && n.vramSource !== 'declared');
   // Cluster sums over real per-node readings only: used VRAM is each
   // node's own live measurement, capacity comes from nodes that report a
   // total. Nodes missing either figure are excluded from that sum and the

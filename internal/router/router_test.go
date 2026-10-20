@@ -1388,3 +1388,28 @@ func TestCloudChainUsesLiteLLMWhenEnabled(t *testing.T) {
 		}
 	}
 }
+
+// A node added at runtime with a declared VRAM total must carry it from the
+// first listing, for a fresh add and for an upsert, and an upsert that omits
+// the total must not erase an earlier declaration.
+func TestAddNode_DeclaredVRAMTotal(t *testing.T) {
+	read := func(r *Router) (int64, int64, string) {
+		n := r.Nodes()[0]
+		n.RLock()
+		defer n.RUnlock()
+		return n.VRAMTotalMB, n.VRAMTotalMBConfig, n.VRAMSource
+	}
+	r := New(config.RoutingConfig{}, nil, nil)
+	r.AddNode(config.NodeConfig{Name: "v", URL: "http://127.0.0.1:1", Runtime: "vllm", VRAMTotalMB: 24000})
+	if tot, cfg, src := read(r); tot != 24000 || cfg != 24000 || src != "declared" {
+		t.Fatalf("fresh add: total=%d config=%d source=%q", tot, cfg, src)
+	}
+	r.AddNode(config.NodeConfig{Name: "v", URL: "http://127.0.0.1:1", Runtime: "vllm", VRAMTotalMB: 48000})
+	if tot, cfg, _ := read(r); tot != 48000 || cfg != 48000 {
+		t.Fatalf("upsert with new total: total=%d config=%d", tot, cfg)
+	}
+	r.AddNode(config.NodeConfig{Name: "v", URL: "http://127.0.0.1:1", Runtime: "vllm", GPUModel: "x"})
+	if tot, cfg, src := read(r); tot != 48000 || cfg != 48000 || src != "declared" {
+		t.Fatalf("upsert without total: total=%d config=%d source=%q", tot, cfg, src)
+	}
+}

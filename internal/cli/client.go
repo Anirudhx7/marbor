@@ -724,9 +724,13 @@ type NodeResp struct {
 	GPUModel    string `json:"gpuModel"`
 	VRAMTotalMB int64  `json:"vramTotalMB"`
 	VRAMUsedMB  int64  `json:"vramUsedMB"`
-	Runtime     string `json:"runtime"`
-	Health      string `json:"health"`
-	Draining    bool   `json:"draining"`
+	// VRAMSource says where the VRAM figures came from ("nvidia", "agent",
+	// "api", "declared", "none"). Used VRAM is only a reading for the first
+	// three; for "declared" and "none" it is unknown, not zero.
+	VRAMSource string `json:"vramSource"`
+	Runtime    string `json:"runtime"`
+	Health     string `json:"health"`
+	Draining   bool   `json:"draining"`
 	// Signals are the placement signals the server says this node matches
 	// (healthy, degraded, draining, down, agent, warm, pressure). Absent
 	// from servers that predate filtering, which is how the CLI tells. An

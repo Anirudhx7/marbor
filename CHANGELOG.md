@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **A node added with `--vram-total-mb` (or `POST /admin/nodes`) now shows its declared VRAM total.** The value was saved but never reached the running node, so `marbor nodes` and the dashboard showed `0 MB / 0 MB` until a restart. `marbor nodes` also stops printing `0 MB` for used VRAM when it is unknown: a declared total shows `- / 24000 MB (declared)`, and a node with no VRAM information shows `- / -`. The dashboard's fleet capacity card no longer counts a declared-only node as using 0 GB.
+
 ## [0.25.1] - 2026-10-20
 
 ### Added
