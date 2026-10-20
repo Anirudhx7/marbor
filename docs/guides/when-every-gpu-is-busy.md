@@ -1,6 +1,6 @@
 # What happens when every GPU is busy: queueing, timeouts and cloud overflow
 
-When all your GPU nodes are busy, Marbor holds the request in a bounded queue and retries placement as slots free up. If a node becomes available within the queue timeout the request is served; if none does, the client gets a clear `503` instead of hanging. You can also add an optional cloud provider to take overflow, and block that per key.
+When all your GPU nodes are busy, Marbor holds the request in a bounded queue and retries placement as slots free up. If a node becomes available within the queue timeout the request is served; if none does, the client gets a clear `503` instead of hanging. If you added a cloud provider, the request overflows to it at that point instead, and you can block that per key.
 
 ## The queue
 
@@ -11,22 +11,23 @@ Marbor places a request on a node as soon as one is healthy and under its in-fli
 | `routing.queue_max_depth` | 100 | Requests allowed to wait at once |
 | `routing.queue_timeout_ms` | 30000 | How long a request waits before it gives up |
 | `routing.max_in_flight_per_node` | 0 (no cap) | Global cap on concurrent requests per node |
+| `routing.overflow_sla_ms` | 0 (off) | If set and shorter than the queue timeout, how long a request waits before it overflows to cloud (or gets the 503) |
 
-Change them by writing a partial settings file and applying it:
+Change them by writing a partial settings file, applying it, and restarting Marbor. These settings are read once at startup, so `marbor config reload` does not apply them:
 
 ```bash
 cat > queue.json <<'EOF'
 {"routing":{"queue_max_depth":50,"queue_timeout_ms":20000,"max_in_flight_per_node":4}}
 EOF
 marbor settings set --file queue.json
-marbor config reload
+sudo systemctl restart marbor      # or: docker compose restart marbor
 ```
 
-Override the cap for one node, for example a slower card, with `marbor nodes patch vllm-a --max-in-flight 2` (0 clears it back to the global default).
+Override the cap for one node, for example a slower card, with `marbor nodes patch vllm-a --max-in-flight 2` (0 clears it back to the global default). The per-node override takes effect immediately, no restart.
 
 ## What the client sees when nothing is available
 
-If no healthy node can take the request before `queue_timeout_ms` elapses, Marbor returns HTTP `503`:
+If no healthy node can take the request before `queue_timeout_ms` elapses and no cloud provider is enabled, Marbor returns HTTP `503`:
 
 ```json
 {"error":{"message":"no healthy nodes available","type":"server_error","code":"no_nodes_available"}}
@@ -49,7 +50,11 @@ marbor cloud providers list
 marbor cloud budget-status
 ```
 
-Overflow is off until you add a provider, so a fresh Marbor never sends a prompt off your network. To keep sensitive workloads on your own hardware, mark their keys local-only; such a key fails closed with a `503` and code `local_only_blocked` rather than reaching a cloud provider:
+Overflow is off until you add a provider, so a fresh Marbor never sends a prompt off your network.
+
+Overflow does not happen the instant a node is full. The request first waits in the queue, and only when `queue_timeout_ms` (or the shorter `overflow_sla_ms`) runs out with no local slot does it go to the cloud provider. If a node frees up during that wait, the request is served locally. A request that overflows is sent with the provider's `--default-model`, not the model name the client asked for, so pick a default model that suits your clients.
+
+To keep sensitive workloads on your own hardware, mark their keys local-only. Such a key waits in the queue like any other, then fails closed with a `503` and code `local_only_blocked` instead of reaching a cloud provider:
 
 ```bash
 marbor key set-local-only data-team true

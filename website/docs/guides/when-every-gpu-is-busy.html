@@ -286,28 +286,29 @@ section,#install{scroll-margin-top:96px}
     <article class="doc-content doc-card"><div class="doc-card-body">
       <nav class="breadcrumb" aria-label="Breadcrumb"><ol><li><a href="../../index.html">Home</a></li><li aria-hidden="true"><span class="sep">/</span></li><li><a href="../../docs/index.html">Docs</a></li><li aria-hidden="true"><span class="sep">/</span></li><li><span>guides</span></li><li aria-hidden="true"><span class="sep">/</span></li><li><span class="current" aria-current="page">What happens when every GPU is busy: queueing, timeouts and cloud overflow</span></li></ol></nav>
       <h1 id="what-happens-when-every-gpu-is-busy-queueing-timeouts-and-cloud-overflow">What happens when every GPU is busy: queueing, timeouts and cloud overflow<a class="anchor" href="#what-happens-when-every-gpu-is-busy-queueing-timeouts-and-cloud-overflow" aria-label="Link to section">#</a></h1>
-<p>When all your GPU nodes are busy, Marbor holds the request in a bounded queue and retries placement as slots free up. If a node becomes available within the queue timeout the request is served; if none does, the client gets a clear <code>503</code> instead of hanging. You can also add an optional cloud provider to take overflow, and block that per key.</p>
+<p>When all your GPU nodes are busy, Marbor holds the request in a bounded queue and retries placement as slots free up. If a node becomes available within the queue timeout the request is served; if none does, the client gets a clear <code>503</code> instead of hanging. If you added a cloud provider, the request overflows to it at that point instead, and you can block that per key.</p>
 <h2 id="the-queue">The queue<a class="anchor" href="#the-queue" aria-label="Link to section">#</a></h2>
 <p>Marbor places a request on a node as soon as one is healthy and under its in-flight cap. When none qualifies, the request waits. Three settings control it, all visible in <code>marbor settings get</code>:</p>
 <div class="table-scroll" tabindex="0" role="region" aria-label="Data table: scroll horizontally on small screens"><table>
 <thead><tr><th>Setting</th><th>Default</th><th>Meaning</th></tr></thead>
 <tbody><tr><td><code>routing.queue_max_depth</code></td><td>100</td><td>Requests allowed to wait at once</td></tr>
 <tr><td><code>routing.queue_timeout_ms</code></td><td>30000</td><td>How long a request waits before it gives up</td></tr>
-<tr><td><code>routing.max_in_flight_per_node</code></td><td>0 (no cap)</td><td>Global cap on concurrent requests per node</td></tr></tbody>
+<tr><td><code>routing.max_in_flight_per_node</code></td><td>0 (no cap)</td><td>Global cap on concurrent requests per node</td></tr>
+<tr><td><code>routing.overflow_sla_ms</code></td><td>0 (off)</td><td>If set and shorter than the queue timeout, how long a request waits before it overflows to cloud (or gets the 503)</td></tr></tbody>
 </table></div>
-<p>Change them by writing a partial settings file and applying it:</p>
+<p>Change them by writing a partial settings file, applying it, and restarting Marbor. These settings are read once at startup, so <code>marbor config reload</code> does not apply them:</p>
 <div class="code-wrap"><pre class="code" data-lang="bash"><code>cat &gt; queue.json &lt;&lt;'EOF'
 {"routing":{"queue_max_depth":50,"queue_timeout_ms":20000,"max_in_flight_per_node":4}}
 EOF
 marbor settings set --file queue.json
-marbor config reload</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="cat &gt; queue.json &lt;&lt;'EOF'
+sudo systemctl restart marbor      # or: docker compose restart marbor</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="cat &gt; queue.json &lt;&lt;'EOF'
 {&quot;routing&quot;:{&quot;queue_max_depth&quot;:50,&quot;queue_timeout_ms&quot;:20000,&quot;max_in_flight_per_node&quot;:4}}
 EOF
 marbor settings set --file queue.json
-marbor config reload"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-<p>Override the cap for one node, for example a slower card, with <code>marbor nodes patch vllm-a --max-in-flight 2</code> (0 clears it back to the global default).</p>
+sudo systemctl restart marbor      # or: docker compose restart marbor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+<p>Override the cap for one node, for example a slower card, with <code>marbor nodes patch vllm-a --max-in-flight 2</code> (0 clears it back to the global default). The per-node override takes effect immediately, no restart.</p>
 <h2 id="what-the-client-sees-when-nothing-is-available">What the client sees when nothing is available<a class="anchor" href="#what-the-client-sees-when-nothing-is-available" aria-label="Link to section">#</a></h2>
-<p>If no healthy node can take the request before <code>queue_timeout_ms</code> elapses, Marbor returns HTTP <code>503</code>:</p>
+<p>If no healthy node can take the request before <code>queue_timeout_ms</code> elapses and no cloud provider is enabled, Marbor returns HTTP <code>503</code>:</p>
 <div class="code-wrap"><pre class="code" data-lang="json"><code>{"error":{"message":"no healthy nodes available","type":"server_error","code":"no_nodes_available"}}</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="{&quot;error&quot;:{&quot;message&quot;:&quot;no healthy nodes available&quot;,&quot;type&quot;:&quot;server_error&quot;,&quot;code&quot;:&quot;no_nodes_available&quot;}}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>The request waited the full queue timeout first, so set <code>queue_timeout_ms</code> to the longest delay your clients tolerate, and make clients retry on 503 with backoff.</p>
 <p>You can watch the queue live: <code>marbor_queue_depth</code> is a Prometheus gauge (see <a href="monitor-llm-fleet-prometheus-grafana.html">Monitor a self-hosted LLM fleet</a>), and failed requests are counted under <code>marbor_requests_total</code> with <code>status="503"</code> and <code>node="none"</code>.</p>
@@ -324,7 +325,9 @@ marbor cloud budget-status</code></pre><button class="copy-btn" aria-label="Copy
   --default-model gpt-4o-mini --cost-per-1k 0.00015 --enabled
 marbor cloud providers list
 marbor cloud budget-status"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-<p>Overflow is off until you add a provider, so a fresh Marbor never sends a prompt off your network. To keep sensitive workloads on your own hardware, mark their keys local-only; such a key fails closed with a <code>503</code> and code <code>local_only_blocked</code> rather than reaching a cloud provider:</p>
+<p>Overflow is off until you add a provider, so a fresh Marbor never sends a prompt off your network.</p>
+<p>Overflow does not happen the instant a node is full. The request first waits in the queue, and only when <code>queue_timeout_ms</code> (or the shorter <code>overflow_sla_ms</code>) runs out with no local slot does it go to the cloud provider. If a node frees up during that wait, the request is served locally. A request that overflows is sent with the provider's <code>--default-model</code>, not the model name the client asked for, so pick a default model that suits your clients.</p>
+<p>To keep sensitive workloads on your own hardware, mark their keys local-only. Such a key waits in the queue like any other, then fails closed with a <code>503</code> and code <code>local_only_blocked</code> instead of reaching a cloud provider:</p>
 <div class="code-wrap"><pre class="code" data-lang="bash"><code>marbor key set-local-only data-team true
 marbor spill        # per-key counts of requests served locally vs cloud vs blocked</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="marbor key set-local-only data-team true
 marbor spill        # per-key counts of requests served locally vs cloud vs blocked"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>

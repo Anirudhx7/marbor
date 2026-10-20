@@ -2,6 +2,8 @@
 
 Marbor exposes Prometheus metrics for the whole fleet from one place: requests per node and key, queue depth, node health, time to first token, and quota rejections. Metrics are off by default, so the first step is to turn them on, then add one scrape job and import the included Grafana dashboard.
 
+> **Do step 1 first.** A fresh Marbor install does not serve metrics at all, so Prometheus has nothing to scrape and the Grafana dashboard stays empty, including when you use the bundled Docker monitoring overlay. Enabling metrics is a setting plus a restart.
+
 ## 1. Turn metrics on
 
 Metrics are disabled until you enable them. Apply a partial settings file and restart Marbor (the metrics listener starts at boot, so a reload is not enough):
@@ -39,14 +41,14 @@ scrape_configs:
       - targets: ['<marbor-host>:9090']
 ```
 
-Or run the repository's ready-made stack (Marbor, Prometheus, and Grafana with the dashboard provisioned):
+Or run the repository's ready-made stack (Marbor, Prometheus, and Grafana with the dashboard provisioned). Metrics must already be enabled as in step 1; the overlay only adds the scraper and the dashboard, it does not turn metrics on:
 
 ```bash
 git clone https://github.com/Anirudhx7/marbor && cd marbor
 docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d
 ```
 
-Grafana comes up on `127.0.0.1:3000` (login `admin` / `admin`; change it before exposing the port) with the Marbor dashboard from `grafana/marbor.json`. Enable metrics in Marbor as in step 1 first, or the dashboard stays empty.
+Grafana comes up on `127.0.0.1:3000` (login `admin` / `admin`; change it before exposing the port) with the Marbor dashboard from `grafana/marbor.json`. If the dashboard is empty, metrics are not enabled yet: go back to step 1 and restart Marbor.
 
 ## 3. The metrics worth graphing
 

@@ -287,6 +287,7 @@ section,#install{scroll-margin-top:96px}
       <nav class="breadcrumb" aria-label="Breadcrumb"><ol><li><a href="../../index.html">Home</a></li><li aria-hidden="true"><span class="sep">/</span></li><li><a href="../../docs/index.html">Docs</a></li><li aria-hidden="true"><span class="sep">/</span></li><li><span>guides</span></li><li aria-hidden="true"><span class="sep">/</span></li><li><span class="current" aria-current="page">Monitor a self-hosted LLM fleet with Prometheus and Grafana</span></li></ol></nav>
       <h1 id="monitor-a-self-hosted-llm-fleet-with-prometheus-and-grafana">Monitor a self-hosted LLM fleet with Prometheus and Grafana<a class="anchor" href="#monitor-a-self-hosted-llm-fleet-with-prometheus-and-grafana" aria-label="Link to section">#</a></h1>
 <p>Marbor exposes Prometheus metrics for the whole fleet from one place: requests per node and key, queue depth, node health, time to first token, and quota rejections. Metrics are off by default, so the first step is to turn them on, then add one scrape job and import the included Grafana dashboard.</p>
+<blockquote><strong>Do step 1 first.</strong> A fresh Marbor install does not serve metrics at all, so Prometheus has nothing to scrape and the Grafana dashboard stays empty, including when you use the bundled Docker monitoring overlay. Enabling metrics is a setting plus a restart.</blockquote>
 <h2 id="1-turn-metrics-on">1. Turn metrics on<a class="anchor" href="#1-turn-metrics-on" aria-label="Link to section">#</a></h2>
 <p>Metrics are disabled until you enable them. Apply a partial settings file and restart Marbor (the metrics listener starts at boot, so a reload is not enough):</p>
 <div class="code-wrap"><pre class="code" data-lang="bash"><code>echo '{"metrics":{"enabled":true}}' &gt; metrics.json
@@ -315,11 +316,11 @@ scrape_configs:
     scrape_interval: 15s
     static_configs:
       - targets: ['&lt;marbor-host&gt;:9090']"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-<p>Or run the repository's ready-made stack (Marbor, Prometheus, and Grafana with the dashboard provisioned):</p>
+<p>Or run the repository's ready-made stack (Marbor, Prometheus, and Grafana with the dashboard provisioned). Metrics must already be enabled as in step 1; the overlay only adds the scraper and the dashboard, it does not turn metrics on:</p>
 <div class="code-wrap"><pre class="code" data-lang="bash"><code>git clone https://github.com/Anirudhx7/marbor &amp;&amp; cd marbor
 docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="git clone https://github.com/Anirudhx7/marbor &amp;&amp; cd marbor
 docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-<p>Grafana comes up on <code>127.0.0.1:3000</code> (login <code>admin</code> / <code>admin</code>; change it before exposing the port) with the Marbor dashboard from <code>grafana/marbor.json</code>. Enable metrics in Marbor as in step 1 first, or the dashboard stays empty.</p>
+<p>Grafana comes up on <code>127.0.0.1:3000</code> (login <code>admin</code> / <code>admin</code>; change it before exposing the port) with the Marbor dashboard from <code>grafana/marbor.json</code>. If the dashboard is empty, metrics are not enabled yet: go back to step 1 and restart Marbor.</p>
 <h2 id="3-the-metrics-worth-graphing">3. The metrics worth graphing<a class="anchor" href="#3-the-metrics-worth-graphing" aria-label="Link to section">#</a></h2>
 <div class="table-scroll" tabindex="0" role="region" aria-label="Data table: scroll horizontally on small screens"><table>
 <thead><tr><th>Metric</th><th>Use it for</th></tr></thead>

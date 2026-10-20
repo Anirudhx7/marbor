@@ -124,7 +124,7 @@ docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d # ga
 ```
 This starts:
 * **Marbor** ([http://localhost:8080](http://localhost:8080)): Main gateway container.
-* **Prometheus** (with the monitoring overlay): Automatically scraping the Marbor metrics endpoint.
+* **Prometheus** (with the monitoring overlay): configured to scrape the Marbor metrics endpoint. Metrics are off by default, so the dashboard stays empty until you enable them: `echo '{"metrics":{"enabled":true}}' > metrics.json && marbor settings set --file metrics.json`, then restart Marbor (see [Monitor a fleet with Prometheus and Grafana](docs/guides/monitor-llm-fleet-prometheus-grafana.md)).
 * **Grafana** (with the monitoring overlay, [http://localhost:3000](http://localhost:3000)): Pre-provisioned with the official [Marbor dashboard](grafana/marbor.json).
 
 ---
@@ -749,7 +749,7 @@ docker exec <container> marbor status
 
 ### Grafana
 
-Import [`grafana/marbor.json`](grafana/marbor.json) into Grafana and point its Prometheus datasource at your Prometheus instance - which scrapes marbor's `:9090/metrics`. Pre-built panels: request throughput and error rate, latency percentiles, warm-routing hit ratio, active connections per node, healthy-node count, tokens/s by API key. Running the Docker monitoring overlay provisions the datasource and this dashboard automatically (see [Docker Compose](#docker-compose-production-deployment)).
+Import [`grafana/marbor.json`](grafana/marbor.json) into Grafana and point its Prometheus datasource at your Prometheus instance - which scrapes marbor's `:9090/metrics`. Pre-built panels: request throughput and error rate, latency percentiles, warm-routing hit ratio, active connections per node, healthy-node count, tokens/s by API key. Running the Docker monitoring overlay provisions the datasource and this dashboard, but metrics must be enabled in Marbor first or the panels stay empty (see [Docker Compose](#docker-compose-production-deployment)).
 
 ### Structured Logging
 
