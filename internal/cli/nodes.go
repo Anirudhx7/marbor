@@ -141,7 +141,7 @@ func runNodes(ctx *RunCtx) int {
 		}
 		fmt.Fprintf(tw, "%s\t%s:%d\t%s\t%s\t%s\t%s / %s\t%d\t%s\t%s\t%s\t%s\t%s\n",
 			n.Name, n.Host, n.Port, n.Health, n.Runtime, n.GPUModel,
-			fmtMB(n.VRAMUsedMB), fmtMB(n.VRAMTotalMB), len(n.LoadedModels), yesNo(n.Draining),
+			fmtVRAMUsed(n), fmtVRAMTotal(n), len(n.LoadedModels), yesNo(n.Draining),
 			role, replicaHead, formatDetectedGPUs(n), keepWarm)
 	}
 	if err := tw.Flush(); err != nil {
@@ -150,6 +150,31 @@ func runNodes(ctx *RunCtx) int {
 	}
 	printWarmupWarnings(stdout, nodes)
 	return ExitOK
+}
+
+// fmtVRAMUsed shows used VRAM only when it is a real reading. A declared total
+// or no source at all means used is unknown, which is "-", never "0 MB".
+func fmtVRAMUsed(n NodeResp) string {
+	switch n.VRAMSource {
+	case "declared", "none":
+		return "-"
+	}
+	if n.VRAMSource == "" && n.VRAMTotalMB == 0 && n.VRAMUsedMB == 0 {
+		return "-"
+	}
+	return fmtMB(n.VRAMUsedMB)
+}
+
+// fmtVRAMTotal shows the total, marking an operator-declared figure, or "-"
+// when no total is known.
+func fmtVRAMTotal(n NodeResp) string {
+	if n.VRAMTotalMB <= 0 {
+		return "-"
+	}
+	if n.VRAMSource == "declared" {
+		return fmtMB(n.VRAMTotalMB) + " (declared)"
+	}
+	return fmtMB(n.VRAMTotalMB)
 }
 
 // lacksSignals reports whether any node came back without a signals field at

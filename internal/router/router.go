@@ -1613,6 +1613,16 @@ func (r *Router) AddNode(n config.NodeConfig) bool {
 		// are already excluded from this block for the same reason.
 		existingByName.MaxInFlight = n.MaxInFlight
 		existingByName.Runtime = n.Runtime
+		// A re-submitted declared total replaces the old one; an omitted
+		// total (0) keeps whatever was declared before, same as the other
+		// live-patchable fields above.
+		if n.VRAMTotalMB > 0 {
+			existingByName.VRAMTotalMBConfig = n.VRAMTotalMB
+			if existingByName.VRAMSource != "agent" && existingByName.VRAMSource != "nvidia" {
+				existingByName.VRAMTotalMB = n.VRAMTotalMB
+				existingByName.VRAMSource = "declared"
+			}
+		}
 		if n.Runtime == "auto" {
 			existingByName.autoDetect = true
 			existingByName.probe = nil // re-armed; pollNode probes on next cycle
@@ -1633,16 +1643,22 @@ func (r *Router) AddNode(n config.NodeConfig) bool {
 	}
 
 	node := &NodeState{
-		Name:          n.Name,
-		URL:           n.URL,
-		Host:          hostOrDefault(n.Host, n.URL),
-		GPUModel:      n.GPUModel,
-		NvidiaIndex:   n.NvidiaIndex,
-		VRAMOverrides: n.VRAMOverrides,
-		MaxInFlight:   n.MaxInFlight,
-		Healthy:       true,
-		FirstSeenAt:   time.Now(),
-		Runtime:       n.Runtime,
+		Name:              n.Name,
+		URL:               n.URL,
+		Host:              hostOrDefault(n.Host, n.URL),
+		GPUModel:          n.GPUModel,
+		NvidiaIndex:       n.NvidiaIndex,
+		VRAMTotalMBConfig: n.VRAMTotalMB,
+		VRAMOverrides:     n.VRAMOverrides,
+		MaxInFlight:       n.MaxInFlight,
+		Healthy:           true,
+		FirstSeenAt:       time.Now(),
+		Runtime:           n.Runtime,
+	}
+	if n.VRAMTotalMB > 0 {
+		// Visible from the first listing, not only after the first health poll.
+		node.VRAMTotalMB = n.VRAMTotalMB
+		node.VRAMSource = "declared"
 	}
 	if n.Runtime == "auto" {
 		node.autoDetect = true
