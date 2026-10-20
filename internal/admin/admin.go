@@ -763,6 +763,8 @@ type keyResp struct {
 	TokensThisMonth       int64    `json:"tokensThisMonth"`
 	EstimatedCostUsd      float64  `json:"estimatedCostUsd"`
 	RateLimit             int      `json:"rateLimit"`
+	DailyLimit            int      `json:"dailyLimit"`
+	MonthlyLimit          int      `json:"monthlyLimit"`
 	DailyUsdCap           float64  `json:"dailyUsdCap,omitempty"`
 	MonthlyUsdCap         float64  `json:"monthlyUsdCap,omitempty"`
 	Status                string   `json:"status"`
@@ -1740,6 +1742,12 @@ func (s *Server) handleKeys(w http.ResponseWriter, r *http.Request) {
 				dailyUsdCap, monthlyUsdCap = kd, km
 			}
 		}
+		dailyLimit, monthlyLimit := k.DailyLimit, k.MonthlyLimit
+		if s.auth != nil {
+			if dl, ml, lok := s.auth.KeyRequestLimits(k.Name); lok {
+				dailyLimit, monthlyLimit = dl, ml
+			}
+		}
 		localOnly := k.LocalOnly
 		if s.auth != nil {
 			localOnly = s.auth.IsLocalOnly(k.Name)
@@ -1777,6 +1785,8 @@ func (s *Server) handleKeys(w http.ResponseWriter, r *http.Request) {
 			TokensThisMonth:       tokensMonth,
 			EstimatedCostUsd:      estimatedCost,
 			RateLimit:             rateLimit,
+			DailyLimit:            dailyLimit,
+			MonthlyLimit:          monthlyLimit,
 			DailyUsdCap:           dailyUsdCap,
 			MonthlyUsdCap:         monthlyUsdCap,
 			Status:                status,

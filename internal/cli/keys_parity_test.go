@@ -15,7 +15,7 @@ func TestRun_KeyList_Table(t *testing.T) {
 			t.Fatalf("unexpected %s %s", r.Method, r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`[{"name":"finance","key":"sk-****","rateLimit":100,"requestsToday":1,"requestsThisMonth":2,"allowedModels":["llama3"],"status":"active"}]`))
+		w.Write([]byte(`[{"name":"finance","key":"sk-****","rateLimit":100,"dailyLimit":5,"monthlyLimit":0,"requestsToday":1,"requestsThisMonth":2,"allowedModels":["llama3"],"status":"active"}]`))
 	}))
 	defer srv.Close()
 	withTempConfigDir(t)
@@ -27,6 +27,11 @@ func TestRun_KeyList_Table(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "finance") || !strings.Contains(stdout.String(), "sk-****") {
 		t.Fatalf("table missing data %q", stdout.String())
+	}
+	// Usage and limit must both be visible: 1 used of a 5/day quota, 2 used with
+	// no monthly quota.
+	if !strings.Contains(stdout.String(), "1/5") || !strings.Contains(stdout.String(), "2/-") {
+		t.Fatalf("table missing used/limit cells %q", stdout.String())
 	}
 }
 

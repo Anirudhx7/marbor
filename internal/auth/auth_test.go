@@ -265,6 +265,31 @@ func TestPatchKeyUsdCaps(t *testing.T) {
 	}
 }
 
+func TestKeyRequestLimitsLiveAfterPatch(t *testing.T) {
+	mw := NewMiddleware(config.AuthConfig{
+		Enabled: config.BoolPtr(true),
+		Keys: []config.KeyConfig{
+			{Name: "lkey", Key: "sk-limits", DailyLimit: 3, MonthlyLimit: 30},
+		},
+	})
+
+	if d, m, ok := mw.KeyRequestLimits("lkey"); !ok || d != 3 || m != 30 {
+		t.Fatalf("KeyRequestLimits = (%d, %d, %v), want (3, 30, true)", d, m, ok)
+	}
+
+	nd, nm := 9, 90
+	if !mw.PatchKey("lkey", KeyPatch{DailyLimit: &nd, MonthlyLimit: &nm}) {
+		t.Fatal("PatchKey returned false for existing key")
+	}
+	if d, m, ok := mw.KeyRequestLimits("lkey"); !ok || d != 9 || m != 90 {
+		t.Fatalf("after patch = (%d, %d, %v), want (9, 90, true)", d, m, ok)
+	}
+
+	if _, _, ok := mw.KeyRequestLimits("missing"); ok {
+		t.Fatal("unknown key reported ok")
+	}
+}
+
 func TestPatchKeyNotFound(t *testing.T) {
 	mw := NewMiddleware(config.AuthConfig{Enabled: config.BoolPtr(true)})
 	rate := 10
