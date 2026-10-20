@@ -397,16 +397,25 @@ func (r *Router) applyAgentTelemetry(n *NodeState, t marboragent.Telemetry) {
 // hostMembers nodes sharing it; the count decides whether a deployment report
 // with no port can be attributed to this node (see matchDeployment).
 func (r *Router) applyAgentTelemetryForHost(n *NodeState, t marboragent.Telemetry, hostMembers int) {
-	n.mu.Lock()
-	// Deferred so a panic in the body cannot leave the node lock held: the
-	// poll's recover path locks the same node again.
-	defer n.mu.Unlock()
-	r.applyAgentTelemetryLocked(n, t, hostMembers)
+	var thermalDetail string
+	func() {
+		n.mu.Lock()
+		// Deferred so a panic in the body cannot leave the node lock held: the
+		// poll's recover path locks the same node again.
+		defer n.mu.Unlock()
+		thermalDetail = r.applyAgentTelemetryLocked(n, t, hostMembers)
+	}()
+	// Drained after the node lock is released: DrainNode takes r.mu, then n.mu.
+	if thermalDetail != "" {
+		r.thermalDrain(n.Name, thermalDetail)
+	}
 }
 
 // applyAgentTelemetryLocked is the body of applyAgentTelemetryForHost; the
-// caller holds n.mu.
-func (r *Router) applyAgentTelemetryLocked(n *NodeState, t marboragent.Telemetry, hostMembers int) {
+// caller holds n.mu. A non-empty return means the thermal watchdog wants n
+// drained (the text names the triggering device and reading); the caller drains
+// once the lock is released.
+func (r *Router) applyAgentTelemetryLocked(n *NodeState, t marboragent.Telemetry, hostMembers int) string {
 	// One critical section for the reads that steer the writes below: a
 	// separate read lock first let a concurrent poll change the VRAM source or
 	// the runtime pin between the decision and the write.
@@ -647,6 +656,8 @@ func (r *Router) applyAgentTelemetryLocked(n *NodeState, t marboragent.Telemetry
 	// (non-Ollama: always-zero) API on its next poll cycle without ever
 	// re-deriving this attribution.
 	attributeSoleModelVRAM(n)
+	// Last, so the node's GPU scope reflects this poll's deployment report.
+	return r.trackAgentThermalLocked(n, t.GPU)
 }
 
 // matchRuntime picks the *marboragent.RuntimeInfo (from t.Runtimes, or the
@@ -862,6 +873,10 @@ func clearAgentTelemetry(n *NodeState) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	wasAgentSourced := n.VRAMSource == "agent"
+	// The agent was this node's temperature source only if it was applying
+	// telemetry and the local nvidia-smi was not. This runs every cycle for
+	// hosts with no agent, so it must not zero a local streak.
+	agentWasThermalSource := n.AgentPresent && n.VRAMSource != "nvidia"
 	n.AgentFailures = 0
 	n.AgentPresent = false
 	n.AgentNodeID = ""
@@ -896,6 +911,9 @@ func clearAgentTelemetry(n *NodeState) {
 		fallBackAgentVRAM(n)
 		n.Temperature = nil
 		n.PowerDrawW = 0
+	}
+	if agentWasThermalSource {
+		n.ThermalBreaches = 0
 	}
 }
 
@@ -969,6 +987,8 @@ func applyOversizeTelemetry(n *NodeState) {
 	if n.VRAMSource != "nvidia" {
 		n.Temperature = nil
 		n.PowerDrawW = 0
+		// No temperature is known now, so an agent-driven streak ends.
+		n.ThermalBreaches = 0
 	}
 	if wasAgentSourced {
 		fallBackAgentVRAM(n)

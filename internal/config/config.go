@@ -532,8 +532,10 @@ type RoutingConfig struct {
 	// NodePatch.MaxInFlight (0 there means "use this global default").
 	MaxInFlightPerNode int `yaml:"max_in_flight_per_node" json:"max_in_flight_per_node"`
 	// ThermalWatchdog implements "Sustained Degradation Auto-Drain": reuses
-	// the already-polled NVIDIA temperature data to auto-drain a node (via
-	// the existing DrainNode path) after sustained thermal breach.
+	// the already-polled GPU temperature (the local NVIDIA reading, or the
+	// hottest GPU in a remote node's scope as reported by its marbor agent) to
+	// auto-drain a node (via the existing DrainNode path) after sustained
+	// thermal breach.
 	// One-directional - recovery always requires an admin to undrain
 	// manually. Disabled by default.
 	ThermalWatchdog ThermalWatchdogConfig `yaml:"thermal_watchdog" json:"thermal_watchdog"`
