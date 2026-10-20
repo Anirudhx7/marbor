@@ -14,6 +14,10 @@ import {
   distinctOperators,
   isClientNarrowed,
   getActivityKindLabel,
+  classifyAction,
+  EXACT_ACTION_KINDS,
+  ALL_ACTIVITY_KINDS,
+  LOGIN_FAILURE,
 } from '../src/lib/activityKind.ts';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -46,14 +50,29 @@ test('there is no logout mapping', () => {
   assert.equal(toActivityKind('login_something_new'), 'config');
 });
 
-test('exact access/keys/users matches are checked before the catch-all fallbacks', () => {
-  const src = read('src/lib/activityKind.ts');
-  const exact = src.indexOf("return 'access'");
-  const fallback = src.indexOf('Fallback prefix checks');
-  assert.ok(exact > 0 && fallback > 0, 'markers not found');
-  assert.ok(exact < fallback, 'exact matches must come before the fallbacks');
-  assert.ok(src.indexOf("return 'keys'") < fallback);
-  assert.ok(src.indexOf("return 'users'") < fallback);
+test('the exact table is consulted before any prefix or substring fallback', () => {
+  // These would hit a fallback rule (_agent, scheduled_, warmup) if the table were not first.
+  const crafted = {
+    custom_agent_thing: 'keys',
+    scheduled_special: 'users',
+    my_warmup_audit: 'access',
+  };
+  assert.equal(classifyAction('custom_agent_thing', crafted), 'keys');
+  assert.equal(classifyAction('scheduled_special', crafted), 'users');
+  assert.equal(classifyAction('my_warmup_audit', crafted), 'access');
+  // Without a table entry the same actions fall back as before.
+  assert.equal(classifyAction('custom_agent_thing', {}), 'agent');
+  assert.equal(classifyAction('scheduled_special', {}), 'schedule');
+  assert.equal(classifyAction('my_warmup_audit', {}), 'warmup');
+  // The real table drives toActivityKind.
+  for (const [action, kind] of Object.entries(EXACT_ACTION_KINDS)) assert.equal(toActivityKind(action), kind, action);
+});
+
+test('toActivityKind tolerates a missing action and inherited object keys', () => {
+  assert.equal(toActivityKind(''), 'config');
+  assert.equal(toActivityKind(undefined), 'config');
+  assert.equal(toActivityKind('constructor'), 'config');
+  assert.equal(toActivityKind('toString'), 'config');
 });
 
 test('serverKindFor sends config-derived kinds to the server as config', () => {
@@ -113,15 +132,94 @@ test('isClientNarrowed is true for sub-kinds or local search text only', () => {
   assert.equal(isClientNarrowed('all', ''), false);
 });
 
-test('demo audit fixtures show sign-ins, a failed sign-in, key changes and case variants', () => {
-  const api = read('src/lib/api.ts');
-  const mock = read('src/lib/mockData.ts');
-  for (const [name, src] of [['api.ts', api], ['mockData.ts', mock]]) {
-    assert.match(src, /action: 'login_success'/, `${name} login_success`);
-    assert.match(src, /action: 'login_failure'/, `${name} login_failure`);
-    assert.match(src, /action: 'add_key'/, `${name} add_key`);
-    assert.match(src, /action: '(?:revoke_key|patch_key)'/, `${name} revoke/patch key`);
-    assert.match(src, /username: 'Admin'/, `${name} Admin variant`);
-    assert.match(src, /username: 'admin'/, `${name} admin`);
+// mockData.ts and api.ts cannot be imported under plain node (extensionless
+// imports), so the demo rows are read from the source and run through the real helpers.
+function rowsIn(src) {
+  const rows = [];
+  for (const line of src.split('\n')) {
+    const m = line.match(/username: '([^']*)', action: '([^']*)', target: '[^']*', details: '([^']*)'/);
+    if (m) rows.push({ username: m[1], action: m[2], details: m[3] });
   }
+  return rows;
+}
+const mockSrc = read('src/lib/mockData.ts');
+const apiSrc = read('src/lib/api.ts');
+const mockRows = rowsIn(mockSrc.slice(mockSrc.indexOf('export const mockActivityEntries')));
+const apiRows = rowsIn(apiSrc.slice(apiSrc.indexOf('export async function fetchSystemAuditFiltered')));
+
+for (const [name, rows] of [['mockActivityEntries', mockRows], ['api.ts DEMO', apiRows]]) {
+  test(`${name} shows sign-ins, a failed sign-in, key changes and case variants`, () => {
+    assert.ok(rows.length > 0, 'no rows parsed');
+    const kinds = new Set(rows.map((r) => toActivityKind(r.action)));
+    for (const k of ['access', 'keys']) assert.ok(kinds.has(k), k);
+    const failed = rows.filter((r) => isFailedLogin(r.action));
+    assert.ok(failed.length >= 2, 'a failed pair');
+    for (const r of failed) assert.equal(r.details, '', 'real failed logins have empty details');
+    assert.ok(rows.some((r) => r.action === 'add_key') && rows.some((r) => r.action === 'revoke_key' || r.action === 'patch_key'));
+    assert.ok(rows.some((r) => r.username === 'Admin') && rows.some((r) => r.username === 'admin'));
+    const ops = distinctOperators(rows.map((r) => r.username));
+    assert.equal(ops.filter((o) => o.toLowerCase() === 'admin').length, 1, 'case variants collapse');
+  });
+}
+
+test('the add_key demo rows match between api.ts and mockActivityEntries', () => {
+  const keys = (rows) => rows.filter((r) => r.action === 'add_key').map((r) => `${r.username}|${r.details}`).sort();
+  assert.deepEqual(keys(mockRows), keys(apiRows));
+});
+
+test('the demo filter comment explains the server config kind', () => {
+  assert.match(apiSrc, /server reports sign-in, key and user events under the config kind/);
+});
+
+test('distinctOperators skips blank and missing names', () => {
+  assert.deepEqual(distinctOperators(['', '  ', null, undefined, 'dana.rao']), ['dana.rao']);
+});
+
+test('kind labels for the sub-kinds', () => {
+  assert.equal(getActivityKindLabel('access'), 'Access');
+  assert.equal(getActivityKindLabel('keys'), 'Keys');
+  assert.equal(getActivityKindLabel('users'), 'Users');
+});
+
+test('the login failure constant is shared', () => {
+  assert.equal(LOGIN_FAILURE, 'login_failure');
+  assert.equal(isFailedLogin(LOGIN_FAILURE), true);
+  assert.equal(toActivityKind(LOGIN_FAILURE), 'access');
+  const src = read('src/lib/activityKind.ts').replace("export const LOGIN_FAILURE = 'login_failure';", '');
+  assert.doesNotMatch(src, /'login_failure'/);
+});
+
+test('all kinds are listed, so the Kind filter cannot miss one', () => {
+  const expected = ['access', 'keys', 'users', 'config', 'drain', 'agent', 'runtime', 'node', 'warmup', 'schedule', 'predictive'];
+  assert.deepEqual([...ALL_ACTIVITY_KINDS].sort(), expected.sort());
+  assert.match(read('src/pages/Activity.tsx'), /KIND_OPTIONS[^=]*= \['all', \.\.\.ALL_ACTIVITY_KINDS\]/);
+});
+
+test('config rows are not hidden by default', () => {
+  for (const a of ['update_settings', 'some_future_action', 'delete_model_replica']) {
+    assert.equal(matchesKindFilter(a, 'all'), true, a);
+  }
+  const page = read('src/pages/Activity.tsx');
+  assert.doesNotMatch(page, /kindFilter\s*===\s*'all'[^\n]*'config'/);
+  assert.doesNotMatch(page, /kind\s*[!=]==\s*'config'/);
+});
+
+test('predictive passes through matchesKindFilter', () => {
+  assert.equal(matchesKindFilter('anything', 'predictive'), true);
+});
+
+test('Activity page footer and filters behave as specified', () => {
+  const page = read('src/pages/Activity.tsx');
+  // One Load more when the empty state already offers it.
+  assert.match(page, /hasMore && !\(filteredEntries\.length === 0 && olderMayMatch\)/);
+  assert.doesNotMatch(page, /load more\./i);
+  // Live regions for the changing messages.
+  assert.match(page, /<span role="status">/);
+  assert.match(page, /\blive\n\s*copy=/);
+  // The selected operator stays an option; the list is sorted with localeCompare.
+  assert.match(page, /userFilter === 'all' \? null : userFilter/);
+  assert.match(page, /localeCompare/);
+  // Failed sign-ins are not operators.
+  assert.match(page, /filter\(\(e\) => !isFailedLogin\(e\.action\)\)/);
+  assert.match(page, /predictive decisions \(all loaded\)/);
 });

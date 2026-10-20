@@ -41,11 +41,17 @@ test('status surfaces use semantic tokens, not raw palette classes', () => {
 });
 
 test('the red dark-theme exception is only paired with the destructive token', () => {
-  for (const { line, n } of read('pages/ModelAdvisor.tsx').split('\n').map((line, i) => ({ line, n: i + 1 }))) {
-    if (line.includes('dark:text-red-400')) {
-      assert.match(line, /text-destructive dark:text-red-400/, `ModelAdvisor.tsx:${n}`);
+  for (const rel of ['pages/ModelAdvisor.tsx', 'pages/Activity.tsx']) {
+    let seen = 0;
+    for (const { line, n } of read(rel).split('\n').map((line, i) => ({ line, n: i + 1 }))) {
+      if (line.includes('dark:text-red-400')) {
+        seen++;
+        assert.match(line, /text-destructive dark:text-red-400/, `${rel}:${n}`);
+      }
     }
+    assert.ok(seen > 0, `${rel} uses the destructive pairing`);
   }
+  assert.match(read('pages/Activity.tsx'), /FAILED_LOGIN_BADGE = 'bg-destructive\/15 text-destructive dark:text-red-400 border-destructive\/30'/);
 });
 
 test('charts use the chart tokens, not hex colors', () => {
@@ -66,7 +72,11 @@ test('activity kinds map to token classes', () => {
     assert.equal(getActivityKindColor(kind), `bg-${tok}/15 text-${tok} border-${tok}/20`, kind);
   }
   assert.equal(getActivityKindColor('config'), 'bg-muted text-muted-foreground border-border');
-  for (const kind of [...Object.keys(expected), 'config']) {
+  const sub = { access: 'info', keys: 'chart-1', users: 'chart-2' };
+  for (const [kind, tok] of Object.entries(sub)) {
+    assert.equal(getActivityKindColor(kind), `bg-${tok}/15 text-${tok} border-${tok}/20`, kind);
+  }
+  for (const kind of [...Object.keys(expected), ...Object.keys(sub), 'config']) {
     assert.doesNotMatch(getActivityKindColor(kind), RAW, kind);
   }
 });

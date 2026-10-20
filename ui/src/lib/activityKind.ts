@@ -6,89 +6,93 @@ export type ActivityKind = 'drain' | 'agent' | 'runtime' | 'node' | 'warmup' | '
 // with the server one to one. Keep drain vs warmup distinct; predictive is
 // never derived from system_audit, it comes from its own endpoint and gets its
 // own badge/section.
-const CONFIG_DERIVED: ReadonlySet<string> = new Set(['access', 'keys', 'users', 'config']);
+const CONFIG_DERIVED: ReadonlySet<ActivityKind | 'all'> = new Set<ActivityKind | 'all'>(['access', 'keys', 'users', 'config']);
+
+// Every kind. Typed as a full Record so adding a kind to ActivityKind without
+// listing it here fails the type check; the Kind filter options are checked
+// against this list.
+const KIND_PRESENCE: Record<ActivityKind, true> = {
+  access: true, keys: true, users: true, config: true, drain: true, agent: true,
+  runtime: true, node: true, warmup: true, schedule: true, predictive: true,
+};
+export const ALL_ACTIVITY_KINDS = Object.keys(KIND_PRESENCE) as ActivityKind[];
+
+// The action the server records for a sign-in attempt that failed.
+export const LOGIN_FAILURE = 'login_failure';
+
+// Known actions and their kind. Looked up before any prefix or substring
+// fallback so a known action can never be reclassified by a looser rule.
+export const EXACT_ACTION_KINDS: Readonly<Record<string, ActivityKind>> = {
+  // Sign-ins, including failed attempts
+  login_success: 'access',
+  [LOGIN_FAILURE]: 'access',
+  // API key changes
+  add_key: 'keys',
+  patch_key: 'keys',
+  revoke_key: 'keys',
+  rotate_key: 'keys',
+  api_key_expiry_malformed: 'keys',
+  // Dashboard user changes
+  create_user: 'users',
+  patch_user: 'users',
+  delete_user: 'users',
+  suspend_user: 'users',
+  approve_user: 'users',
+  reset_user_password: 'users',
+  // Drain operations: node drain state changes
+  drain_node: 'drain',
+  undrain_node: 'drain',
+  set_node_prewarm: 'drain',
+  // Agent lifecycle: enable/disable/regenerate/enroll
+  enable_marbor_agent: 'agent',
+  disable_marbor_agent: 'agent',
+  regenerate_marbor_agent_token: 'agent',
+  enroll_marbor_agent: 'agent',
+  // Runtime lifecycle: start/stop/restart + control driver accept/clear
+  runtime_start: 'runtime',
+  runtime_stop: 'runtime',
+  runtime_restart: 'runtime',
+  accept_node_control: 'runtime',
+  clear_node_control: 'runtime',
+  // Node membership: join/leave/edit
+  add_node: 'node',
+  update_node: 'node',
+  remove_node: 'node',
+  patch_node: 'node',
+  // Warmup/model lifecycle: unload, keep-warm pinning, pulls
+  unload_model: 'warmup',
+  set_node_warmup: 'warmup',
+  set_pinned_models: 'warmup',
+  pull_model: 'warmup',
+  pull_model_load_failed: 'warmup',
+  pull_model_cancel: 'warmup',
+  delete_model: 'warmup',
+  delete_model_replica: 'warmup',
+  // Schedule management (scheduled firings are matched by prefix below)
+  create_schedule: 'schedule',
+  patch_schedule: 'schedule',
+  delete_schedule: 'schedule',
+};
+
+// classifyAction looks the action up in the exact table first, then the
+// scheduled_ prefix, then the looser prefix and substring rules kept for
+// forward compatibility with future actions.
+export function classifyAction(action: string, exact: Readonly<Record<string, ActivityKind>>): ActivityKind {
+  if (!action) return 'config';
+  if (Object.prototype.hasOwnProperty.call(exact, action)) return exact[action];
+  // Scheduled firings (actor system, distinct from warmup)
+  if (action.startsWith('scheduled_')) return 'schedule';
+  if (action.startsWith('drain_') || action.startsWith('undrain')) return 'drain';
+  if (action.includes('marbor_agent') || action.includes('_agent')) return 'agent';
+  if (action.startsWith('runtime_') || action.includes('_control')) return 'runtime';
+  if (action.startsWith('add_node') || action.startsWith('remove_node') || action.startsWith('patch_node')) return 'node';
+  if (action.startsWith('unload') || action.includes('warmup') || action.includes('pinned') || action.startsWith('pull_model') || action.startsWith('delete_model')) return 'warmup';
+  return 'config';
+}
 
 // toActivityKind maps a system_audit action string to its kind bucket.
 export function toActivityKind(action: string): ActivityKind {
-  // Sign-ins, including failed attempts
-  if (action === 'login_success' || action === 'login_failure') return 'access';
-  // API key changes
-  if (
-    action === 'add_key' ||
-    action === 'patch_key' ||
-    action === 'revoke_key' ||
-    action === 'rotate_key' ||
-    action === 'api_key_expiry_malformed'
-  ) {
-    return 'keys';
-  }
-  // Dashboard user changes
-  if (
-    action === 'create_user' ||
-    action === 'patch_user' ||
-    action === 'delete_user' ||
-    action === 'suspend_user' ||
-    action === 'approve_user' ||
-    action === 'reset_user_password'
-  ) {
-    return 'users';
-  }
-  // Drain operations: node drain state changes
-  if (action === 'drain_node' || action === 'undrain_node' || action === 'set_node_prewarm') {
-    return 'drain';
-  }
-  // Agent lifecycle: enable/disable/regenerate/enroll
-  if (
-    action === 'enable_marbor_agent' ||
-    action === 'disable_marbor_agent' ||
-    action === 'regenerate_marbor_agent_token' ||
-    action === 'enroll_marbor_agent'
-  ) {
-    return 'agent';
-  }
-  // Runtime lifecycle: start/stop/restart + control driver accept/clear
-  if (
-    action === 'runtime_start' ||
-    action === 'runtime_stop' ||
-    action === 'runtime_restart' ||
-    action === 'accept_node_control' ||
-    action === 'clear_node_control'
-  ) {
-    return 'runtime';
-  }
-  // Node membership: join/leave/edit
-  if (action === 'add_node' || action === 'update_node' || action === 'remove_node' || action === 'patch_node') {
-    return 'node';
-  }
-  // Warmup/model lifecycle: unload, keep-warm pinning, pulls
-  if (
-    action === 'unload_model' ||
-    action === 'set_node_warmup' ||
-    action === 'set_pinned_models' ||
-    action === 'pull_model' ||
-    action === 'pull_model_load_failed' ||
-    action === 'pull_model_cancel' ||
-    action === 'delete_model' ||
-    action === 'delete_model_replica'
-  ) {
-    return 'warmup';
-  }
-  // Schedule management and scheduled firings (actor system, distinct from warmup)
-  if (
-    action === 'create_schedule' ||
-    action === 'patch_schedule' ||
-    action === 'delete_schedule' ||
-    action.startsWith('scheduled_')
-  ) {
-    return 'schedule';
-  }
-  // Fallback prefix checks for forward compat with future actions
-  if (action.startsWith('drain_') || action.startsWith('undrain') || action === 'set_node_prewarm') return 'drain';
-  if (action.includes('marbor_agent') || action.includes('_agent')) return 'agent';
-  if (action.startsWith('runtime_') || action.includes('_control')) return 'runtime';
-  if (action.startsWith('add_node') || action.startsWith('remove_node') || action.startsWith('patch_node') || action === 'update_node') return 'node';
-  if (action.startsWith('unload') || action.includes('warmup') || action.includes('pinned') || action.startsWith('pull_model') || action.startsWith('delete_model')) return 'warmup';
-  return 'config';
+  return classifyAction(action, EXACT_ACTION_KINDS);
 }
 
 export function getActivityKindLabel(kind: ActivityKind): string {
@@ -132,7 +136,7 @@ export function serverKindFor(kind: ActivityKind | 'all'): string {
 }
 
 export function isFailedLogin(action: string): boolean {
-  return action === 'login_failure';
+  return action === LOGIN_FAILURE;
 }
 
 // matchesKindFilter is the client-side row test for the selected kind. The
@@ -153,9 +157,10 @@ export function matchesKindFilter(action: string, kindFilter: ActivityKind | 'al
 
 // distinctOperators lists usernames once each, comparing without regard to
 // case and keeping the first-seen casing.
-export function distinctOperators(names: readonly string[]): string[] {
+export function distinctOperators(names: readonly (string | null | undefined)[]): string[] {
   const seen = new Map<string, string>();
   for (const n of names) {
+    if (n == null || n.trim() === '') continue;
     const key = n.toLowerCase();
     if (!seen.has(key)) seen.set(key, n);
   }
@@ -164,7 +169,8 @@ export function distinctOperators(names: readonly string[]): string[] {
 
 // isClientNarrowed is true when the visible rows are narrowed on the client
 // (a config-derived kind or local search text), so older unloaded events may
-// still match.
+// still match. searchText is the raw, undebounced search box value on purpose:
+// the narrowing happens immediately on the client, unlike the server filters.
 export function isClientNarrowed(kindFilter: ActivityKind | 'all', searchText: string): boolean {
   return CONFIG_DERIVED.has(kindFilter) || searchText.trim() !== '';
 }

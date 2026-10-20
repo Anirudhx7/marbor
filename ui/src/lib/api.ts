@@ -1496,7 +1496,9 @@ function demoFilterSystemAudit(all: SystemAuditEntry[], f: SystemAuditFilter): S
   if (f.source_ip) filtered = filtered.filter((e) => (e.source_ip || '').toLowerCase().includes(f.source_ip!.toLowerCase()));
   if (f.kind && f.kind !== 'all') {
     if (f.kind === 'predictive') return [];
-    // Mirror ui/src/lib/activityKind.ts toActivityKind for DEMO filtering
+    // The server reports sign-in, key and user events under the config kind, so
+    // the demo does the same: Access, Keys and Users are split out on the page
+    // side only, and this filter has no branches for them.
     const toKind = (action: string): string => {
       if (['drain_node', 'undrain_node', 'set_node_prewarm'].includes(action)) return 'drain';
       if (['enable_marbor_agent', 'disable_marbor_agent', 'regenerate_marbor_agent_token', 'enroll_marbor_agent'].includes(action)) return 'agent';
@@ -1565,8 +1567,8 @@ export async function fetchSystemAuditFiltered(f: SystemAuditFilter = {}): Promi
       // Sign-ins and key changes: shown by default, narrowed with the Access and Keys kinds
       { time: iso(1), username: 'admin', action: 'login_success', target: 'admin', details: '', source_ip: '192.168.1.5' },
       { time: iso(12), username: 'Admin', action: 'login_success', target: 'Admin', details: '', source_ip: '192.168.1.7' },
-      { time: iso(26), username: 'Admin', action: 'login_failure', target: 'Admin', details: 'Invalid credentials', source_ip: '203.0.113.9' },
-      { time: iso(27), username: 'admin', action: 'login_failure', target: 'admin', details: 'Invalid credentials', source_ip: '203.0.113.9' },
+      { time: iso(26), username: 'Admin', action: 'login_failure', target: 'Admin', details: '', source_ip: '203.0.113.9' },
+      { time: iso(27), username: 'admin', action: 'login_failure', target: 'admin', details: '', source_ip: '203.0.113.9' },
       { time: iso(40), username: 'dana.rao', action: 'login_success', target: 'dana.rao', details: '', source_ip: '192.168.1.12' },
       { time: iso(160), username: 'admin', action: 'revoke_key', target: 'ci-bot', details: '', source_ip: '192.168.1.5' },
     ];

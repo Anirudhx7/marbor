@@ -18,6 +18,7 @@ import {
   matchesKindFilter,
   distinctOperators,
   isClientNarrowed,
+  ALL_ACTIVITY_KINDS,
   type ActivityKind,
 } from '../lib/activityKind';
 import { useTimezone } from '../hooks/useTimezone';
@@ -60,10 +61,10 @@ function formatUpdatedTime(d: Date, tz: string): string {
   } catch { return d.toISOString().slice(11,19); }
 }
 
-const KIND_OPTIONS: readonly (ActivityKind | 'all')[] = ['all', 'access', 'keys', 'users', 'config', 'drain', 'agent', 'runtime', 'node', 'warmup', 'schedule', 'predictive'];
+const KIND_OPTIONS: readonly (ActivityKind | 'all')[] = ['all', ...ALL_ACTIVITY_KINDS];
 
 const ACTION_BADGE = 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20';
-const FAILED_LOGIN_BADGE = 'bg-destructive/15 text-destructive border-destructive/20';
+const FAILED_LOGIN_BADGE = 'bg-destructive/15 text-destructive dark:text-red-400 border-destructive/30';
 
 function actionBadgeClass(action: string): string {
   return isFailedLogin(action) ? FAILED_LOGIN_BADGE : ACTION_BADGE;
@@ -227,7 +228,12 @@ export function Activity() {
   const uniqueActions = ['all', ...Array.from(new Set(entries.map((e) => e.action))).sort()];
   // The server's user filter ignores case, so the same person typed as Admin
   // and admin is one entry here, shown with the first-seen casing.
-  const uniqueUsers = ['all', ...distinctOperators(entries.map((e) => e.username)).sort()];
+  // The selected operator is always an option, even when no loaded row has it.
+  const uniqueUsers = [
+    'all',
+    ...distinctOperators([...entries.map((e) => e.username), userFilter === 'all' ? null : userFilter])
+      .sort((a, b) => a.localeCompare(b)),
+  ];
 
   const filteredEntries = entries.filter((e) => {
     const kind = toActivityKind(e.action);
@@ -260,7 +266,8 @@ export function Activity() {
   const hasActiveFilters = searchQuery.trim() !== '' || kindFilter !== 'all' || actionFilter !== 'all' || userFilter !== 'all' || debouncedTarget.trim() !== '' || debouncedSourceIp.trim() !== '' || fromPicker !== '' || toPicker !== '' || preset !== 'all';
 
   const totalFetched = entries.length;
-  const uniqueOperators = distinctOperators(filteredEntries.map((e) => e.username)).length;
+  // Failed sign-ins carry whatever name was typed, so they are not operators.
+  const uniqueOperators = distinctOperators(filteredEntries.filter((e) => !isFailedLogin(e.action)).map((e) => e.username)).length;
   const drainCount = filteredEntries.filter((e) => toActivityKind(e.action) === 'drain').length;
   const warmupCount = filteredEntries.filter((e) => toActivityKind(e.action) === 'warmup').length;
   const failedLoginCount = filteredEntries.filter((e) => isFailedLogin(e.action)).length;
@@ -341,8 +348,9 @@ export function Activity() {
           <div className="absolute right-0 top-0 w-24 h-24 bg-gradient-to-br from-purple-500/10 to-transparent rounded-bl-full group-hover:scale-110 transition-transform duration-300" />
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Operators (shown, ignoring case)</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Operators</p>
               <h3 className="text-3xl font-extrabold mt-2 text-foreground">{uniqueOperators}</h3>
+              <p className="text-[10px] text-muted-foreground/60 mt-0.5">ignoring case</p>
             </div>
             <div className="p-2.5 bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 rounded-lg">
               <User className="w-5 h-5" />
@@ -369,7 +377,7 @@ export function Activity() {
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Warmup Events (shown)</p>
               <h3 className="text-3xl font-extrabold mt-2 text-foreground">{warmupCount}</h3>
-              <p className="text-[10px] text-muted-foreground/60 mt-0.5">{decisions.length} predictive decisions</p>
+              <p className="text-[10px] text-muted-foreground/60 mt-0.5">predictive decisions (all loaded)</p>
             </div>
             <div className="p-2.5 bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20 rounded-lg">
               <Flame className="w-5 h-5" />
@@ -539,10 +547,12 @@ export function Activity() {
 <EmptyState
   icon={Search}
   title={olderMayMatch ? `None found in the ${totalFetched} loaded events` : 'No activity records found'}
-  copy={olderMayMatch ? 'Older events may also match - load more to keep looking.' : hasActiveFilters ? 'Nothing matches the active filters.' : 'Admin actions will appear here as they happen.'}
+  live
+  copy={olderMayMatch ? 'Older events may also match.' : hasActiveFilters ? 'Nothing matches the active filters.' : 'Admin actions will appear here as they happen.'}
   action={
     olderMayMatch ? (
       <button
+        type="button"
         onClick={handleLoadMore}
         disabled={loadingMore}
         className="text-sm font-medium text-primary hover:underline disabled:opacity-50"
@@ -551,6 +561,7 @@ export function Activity() {
       </button>
     ) : hasActiveFilters ? (
       <button
+        type="button"
         onClick={clearAllFilters}
         className="text-sm font-medium text-primary hover:underline"
       >
@@ -694,19 +705,20 @@ export function Activity() {
         {/* Pagination */}
         {!loading && !error && (
           <div className="flex items-center justify-between px-5 py-3 border-t border-border bg-secondary/20 text-xs text-muted-foreground">
-            <span>
+            <span role="status">
               Showing {filteredEntries.length} of {totalFetched} loaded events (newest first)
               {' - '}
               {hasActiveFilters ? 'Filters active' : 'All event kinds shown'}
-              {olderMayMatch && '. Older events may also match - load more.'}
+              {olderMayMatch && '. Older events may also match.'}
               {hasActiveFilters && (
-                <button onClick={clearAllFilters} className="ml-2 font-medium text-primary hover:underline cursor-pointer">
+                <button type="button" onClick={clearAllFilters} className="ml-2 font-medium text-primary hover:underline cursor-pointer">
                   Clear filters
                 </button>
               )}
             </span>
-            {hasMore && (
+            {hasMore && !(filteredEntries.length === 0 && olderMayMatch) && (
               <button
+                type="button"
                 onClick={handleLoadMore}
                 disabled={loadingMore}
                 className="px-3 py-1.5 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg text-xs font-medium disabled:opacity-50"
