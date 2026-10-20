@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.25.1] - 2026-10-20
+
 ### Added
 - **Eight how-to guides under `docs/guides/`**, published at marbor.in/docs/guides/: load balancing vLLM servers, one endpoint for several Ollama machines, several llama.cpp servers, a Mac fleet with MLX, per-key quotas, what happens when every GPU is busy, Prometheus and Grafana monitoring, and draining a node without downtime. Each one starts from the problem, answers it in the first paragraph and shows the commands. The backend-side commands (`vllm serve`, `llama-server`, `mlx_lm.server`) come from upstream documentation and were not run against real GPUs.
 - **`GET /admin/nodes/{name}/sole-replica` and `marbor runtime drain|restart --dry-run` show what a drain or runtime restart would take out of service, without changing anything.** The response lists `models` (models this node is the only possible server of), `cold_load_only` (models that no other node has warm but an Ollama node would have to load on demand) and `unknown` (places where marbor cannot verify the answer, such as a node that has not been polled yet). `--json` on `marbor runtime drain|restart` includes the same `sole_replica` object. The check only knows about drains and restarts made through marbor.
