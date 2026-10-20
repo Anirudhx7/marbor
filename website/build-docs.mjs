@@ -201,7 +201,28 @@ const DESCRIPTIONS = {
   "integrations/librechat": "Point LibreChat's custom Ollama endpoint at marbor for warm-first routing and fleet-aware GPU placement.",
   "integrations/litellm": "Use LiteLLM as a provider-abstraction gateway in front of marbor for enterprise auth and per-user rate limits.",
   "integrations/open-webui": "Connect Open WebUI to marbor instead of a single Ollama box for warm-first routing across every GPU node.",
+  "guides/load-balance-vllm-servers": "Load balance multiple vLLM servers behind one OpenAI-compatible endpoint with Marbor. Register nodes, route by model, no nginx. Working commands.",
+  "guides/one-endpoint-for-several-ollama-machines": "Put several Ollama machines behind one endpoint with Marbor. Register each node, keep the Ollama and OpenAI APIs, route to the warm GPU. Full commands.",
+  "guides/several-llama-cpp-servers-one-endpoint": "Run several llama-server instances behind one OpenAI-compatible endpoint. Register each as a node in Marbor and route by model name. Copy-paste setup.",
+  "guides/mac-fleet-mlx-one-endpoint": "Turn several Apple Silicon Macs running mlx_lm.server into one OpenAI-compatible endpoint with Marbor: setup, node registration and routing by model.",
+  "guides/per-key-quotas-self-hosted-llm": "Give each app or teammate its own API key with hourly rate limits, daily and monthly quotas, model allow-lists and expiry in front of vLLM or Ollama.",
+  "guides/when-every-gpu-is-busy": "What clients see when every GPU node is busy or down: Marbor queueing, queue timeout, the 503 error, and optional cloud overflow you can block per key.",
+  "guides/monitor-llm-fleet-prometheus-grafana": "Monitor a self-hosted LLM fleet from one Prometheus endpoint: enable Marbor metrics, scrape config, Grafana dashboard, PromQL queries and alert rules.",
+  "guides/drain-gpu-node-without-downtime": "Take a vLLM, Ollama or llama.cpp GPU node out of rotation safely: dry-run the drain, wait for idle, restart or upgrade, then undrain. Exact commands.",
   "cli": "Full reference for the marbor CLI, generated directly from the command registry so it never drifts from the real commands.",
+};
+
+// Search-result <title> overrides (60 chars max, no suffix). Pages without an
+// entry use the H1 plus " · Marbor docs".
+const TITLE_OVERRIDES = {
+  "guides/load-balance-vllm-servers": "Load Balance Multiple vLLM Servers | Marbor",
+  "guides/one-endpoint-for-several-ollama-machines": "One Endpoint for Several Ollama Machines | Marbor",
+  "guides/several-llama-cpp-servers-one-endpoint": "Multiple llama.cpp Servers, One Endpoint | Marbor",
+  "guides/mac-fleet-mlx-one-endpoint": "Several Macs as One MLX Endpoint | Marbor",
+  "guides/per-key-quotas-self-hosted-llm": "Per-Key Quotas for a Self-Hosted LLM Gateway | Marbor",
+  "guides/when-every-gpu-is-busy": "What Happens When Every GPU Is Busy | Marbor",
+  "guides/monitor-llm-fleet-prometheus-grafana": "Monitor a Self-Hosted LLM Fleet with Prometheus | Marbor",
+  "guides/drain-gpu-node-without-downtime": "Drain a GPU Node Without Downtime | Marbor",
 };
 
 // All docs in nav order, grouped.
@@ -213,6 +234,16 @@ const DOC_GROUPS = [
     { slug: "USE-CASES", label: "Ollama alternatives & use cases" },
     { slug: "REVERSE-PROXY", label: "vLLM/Ollama reverse proxy" },
     { slug: "backup", label: "Backup & Restore" },
+  ]},
+  { title: "How-to guides", items: [
+    { slug: "guides/load-balance-vllm-servers", label: "Load balance multiple vLLM servers" },
+    { slug: "guides/one-endpoint-for-several-ollama-machines", label: "One endpoint for several Ollama machines" },
+    { slug: "guides/several-llama-cpp-servers-one-endpoint", label: "Several llama.cpp servers, one endpoint" },
+    { slug: "guides/mac-fleet-mlx-one-endpoint", label: "Several Macs as one MLX endpoint" },
+    { slug: "guides/per-key-quotas-self-hosted-llm", label: "Per-key quotas and rate limits" },
+    { slug: "guides/when-every-gpu-is-busy", label: "When every GPU is busy" },
+    { slug: "guides/monitor-llm-fleet-prometheus-grafana", label: "Monitor the fleet with Prometheus" },
+    { slug: "guides/drain-gpu-node-without-downtime", label: "Drain a GPU node without downtime" },
   ]},
   { title: "Deployment", items: [
     { slug: "PRODUCTION", label: "Production" },
@@ -309,6 +340,20 @@ const FAQ_SCHEMAS = {
     },
   ],
 };
+function articleJsonLd(slug, title, description) {
+  if (!slug.startsWith("guides/")) return null;
+  return JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    headline: title,
+    description,
+    url: `https://marbor.in/docs/${slug}.html`,
+    mainEntityOfPage: `https://marbor.in/docs/${slug}.html`,
+    inLanguage: "en",
+    author: { "@type": "Person", name: "Anirudh Mehandru", url: "https://github.com/Anirudhx7" },
+    publisher: { "@type": "Organization", name: "Marbor", url: "https://marbor.in/" },
+  });
+}
 function faqJsonLd(slug) {
   const entries = FAQ_SCHEMAS[slug];
   if (!entries) return null;
@@ -327,6 +372,7 @@ const DOC_CSS = readFileSync(join(__dirname, "docs.css"), "utf8");
 
 function page({ slug, title, contentHtml, headings }) {
   const r = relRoot(slug);
+  const fullTitle = TITLE_OVERRIDES[slug] || `${title} · Marbor docs`;
   const description = DESCRIPTIONS[slug] || `Marbor documentation: ${title}.`;
   return `<!doctype html>
 <html lang="en">
@@ -338,7 +384,7 @@ function page({ slug, title, contentHtml, headings }) {
 <script>
   (function () { try { var s = localStorage.getItem("marbor-theme")||localStorage.getItem("om-theme"); if (s === "light" || (!s && window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches)) document.documentElement.classList.add("light"); } catch (e) {} })();
 </script>
-<title>${escapeHtml(title)} · Marbor docs</title>
+<title>${escapeHtml(fullTitle)}</title>
 <meta name="description" content="${escapeAttr(description)}" />
 <link rel="canonical" href="https://marbor.in/docs/${slug}.html" />
 <link rel="icon" type="image/svg+xml" href="${r}favicon.svg" />
@@ -347,15 +393,16 @@ function page({ slug, title, contentHtml, headings }) {
 <link rel="shortcut icon" href="${r}favicon.ico" />
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="Marbor" />
-<meta property="og:title" content="${escapeHtml(title)} · Marbor docs" />
+<meta property="og:title" content="${escapeHtml(fullTitle)}" />
 <meta property="og:description" content="${escapeAttr(description)}" />
 <meta property="og:image" content="https://marbor.in/screenshots/dashboard.png" />
 <meta property="og:image:alt" content="marbor admin dashboard" />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="${escapeHtml(title)} · Marbor docs" />
+<meta name="twitter:title" content="${escapeHtml(fullTitle)}" />
 <meta name="twitter:image" content="https://marbor.in/screenshots/dashboard.png" />
 <script type="application/ld+json">${breadcrumbJsonLd(slug, title)}</script>
-${faqJsonLd(slug) ? `<script type="application/ld+json">${faqJsonLd(slug)}</script>\n` : ""}<link rel="preconnect" href="https://fonts.googleapis.com" />
+${articleJsonLd(slug, title, description) ? `<script type="application/ld+json">${articleJsonLd(slug, title, description)}</script>
+` : ""}${faqJsonLd(slug) ? `<script type="application/ld+json">${faqJsonLd(slug)}</script>\n` : ""}<link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400..700&family=Playfair+Display:ital,wght@0,400..800;1,400..800&family=JetBrains+Mono:wght@400..700&display=swap" rel="stylesheet" />
 <meta name="theme-color" content="#d4a853" />

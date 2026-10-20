@@ -66,6 +66,17 @@ export OPENAI_API_KEY=<a key created in the dashboard>
 
 marbor and LiteLLM solve different problems and can be used together. LiteLLM is a provider-abstraction gateway (unify many LLM provider APIs behind one interface); marbor is a fleet-operations control plane for your own GPU hardware (warm-state routing, VRAM-aware placement, safe fleet change across nodes). marbor can sit in front of a LiteLLM deployment as its own upstream, or replace it for the on-prem-fleet use case. They are not competitors for the same job.
 
+## How-to guides
+
+- [Load Balance Multiple vLLM Servers](https://marbor.in/docs/guides/load-balance-vllm-servers.html): Load balance multiple vLLM servers behind one OpenAI-compatible endpoint with Marbor. Register nodes, route by model, no nginx. Working commands.
+- [One Endpoint for Several Ollama Machines](https://marbor.in/docs/guides/one-endpoint-for-several-ollama-machines.html): Put several Ollama machines behind one endpoint with Marbor. Register each node, keep the Ollama and OpenAI APIs, route to the warm GPU. Full commands.
+- [Multiple llama.cpp Servers, One Endpoint](https://marbor.in/docs/guides/several-llama-cpp-servers-one-endpoint.html): Run several llama-server instances behind one OpenAI-compatible endpoint. Register each as a node in Marbor and route by model name. Copy-paste setup.
+- [Several Macs as One MLX Endpoint](https://marbor.in/docs/guides/mac-fleet-mlx-one-endpoint.html): Turn several Apple Silicon Macs running mlx_lm.server into one OpenAI-compatible endpoint with Marbor: setup, node registration and routing by model.
+- [Per-Key Quotas for a Self-Hosted LLM Gateway](https://marbor.in/docs/guides/per-key-quotas-self-hosted-llm.html): Give each app or teammate its own API key with hourly rate limits, daily and monthly quotas, model allow-lists and expiry in front of vLLM or Ollama.
+- [What Happens When Every GPU Is Busy](https://marbor.in/docs/guides/when-every-gpu-is-busy.html): What clients see when every GPU node is busy or down: Marbor queueing, queue timeout, the 503 error, and optional cloud overflow you can block per key.
+- [Monitor a Self-Hosted LLM Fleet with Prometheus](https://marbor.in/docs/guides/monitor-llm-fleet-prometheus-grafana.html): Monitor a self-hosted LLM fleet from one Prometheus endpoint: enable Marbor metrics, scrape config, Grafana dashboard, PromQL queries and alert rules.
+- [Drain a GPU Node Without Downtime](https://marbor.in/docs/guides/drain-gpu-node-without-downtime.html): Take a vLLM, Ollama or llama.cpp GPU node out of rotation safely: dry-run the drain, wait for idle, restart or upgrade, then undrain. Exact commands.
+
 ## Links
 
 - [Website](https://marbor.in/)
