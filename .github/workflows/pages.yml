@@ -109,7 +109,28 @@ jobs:
                 "https://marbor.in/docs/INTEGRATIONS.html",
                 "https://marbor.in/docs/PRODUCTION.html",
                 "https://marbor.in/docs/SAVINGS-MATH.html",
-                "https://marbor.in/docs/LIMITATIONS.html"
+                "https://marbor.in/docs/LIMITATIONS.html",
+                "https://marbor.in/docs/guides/load-balance-vllm-servers.html",
+                "https://marbor.in/docs/guides/one-endpoint-for-several-ollama-machines.html",
+                "https://marbor.in/docs/guides/several-llama-cpp-servers-one-endpoint.html",
+                "https://marbor.in/docs/guides/mac-fleet-mlx-one-endpoint.html",
+                "https://marbor.in/docs/guides/per-key-quotas-self-hosted-llm.html",
+                "https://marbor.in/docs/guides/when-every-gpu-is-busy.html",
+                "https://marbor.in/docs/guides/monitor-llm-fleet-prometheus-grafana.html",
+                "https://marbor.in/docs/guides/drain-gpu-node-without-downtime.html"
               ]
             }' || true
 
+      # Cloudflare caches HTML at the edge for an hour; purge it so a fresh
+      # deploy is visible immediately. Skipped when the secrets are absent
+      # (forks) and non-fatal so a Cloudflare hiccup never fails the deploy.
+      - name: Purge Cloudflare cache
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CF_ZONE_ID: ${{ secrets.CF_ZONE_ID }}
+        run: |
+          if [ -z "$CF_API_TOKEN" ] || [ -z "$CF_ZONE_ID" ]; then
+            echo "Cloudflare secrets not set; skipping purge"
+            exit 0
+          fi
+          curl -sS -X POST "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/purge_cache"             -H "Authorization: Bearer $CF_API_TOKEN"             -H "Content-Type: application/json"             --data '{"purge_everything":true}' || true
