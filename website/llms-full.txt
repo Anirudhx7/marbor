@@ -63,6 +63,14 @@ Different problems, usable together. LiteLLM: provider-abstraction gateway (unif
 - https://marbor.in/docs/backup.html
 - https://marbor.in/docs/cli.html
 - https://marbor.in/docs/PRODUCTION.html
+- https://marbor.in/docs/guides/load-balance-vllm-servers.html
+- https://marbor.in/docs/guides/one-endpoint-for-several-ollama-machines.html
+- https://marbor.in/docs/guides/several-llama-cpp-servers-one-endpoint.html
+- https://marbor.in/docs/guides/mac-fleet-mlx-one-endpoint.html
+- https://marbor.in/docs/guides/per-key-quotas-self-hosted-llm.html
+- https://marbor.in/docs/guides/when-every-gpu-is-busy.html
+- https://marbor.in/docs/guides/monitor-llm-fleet-prometheus-grafana.html
+- https://marbor.in/docs/guides/drain-gpu-node-without-downtime.html
 - https://marbor.in/docs/deploy/aws-ec2.html
 - https://marbor.in/docs/deploy/gpu-node-registration.html
 - https://marbor.in/docs/deploy/marbor-agent-enrollment.html

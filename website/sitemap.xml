@@ -103,6 +103,54 @@
     <priority>0.7</priority>
   </url>
   <url>
+    <loc>https://marbor.in/docs/guides/load-balance-vllm-servers.html</loc>
+    <lastmod>2026-10-20</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://marbor.in/docs/guides/one-endpoint-for-several-ollama-machines.html</loc>
+    <lastmod>2026-10-20</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://marbor.in/docs/guides/several-llama-cpp-servers-one-endpoint.html</loc>
+    <lastmod>2026-10-20</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://marbor.in/docs/guides/mac-fleet-mlx-one-endpoint.html</loc>
+    <lastmod>2026-10-20</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://marbor.in/docs/guides/per-key-quotas-self-hosted-llm.html</loc>
+    <lastmod>2026-10-20</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://marbor.in/docs/guides/when-every-gpu-is-busy.html</loc>
+    <lastmod>2026-10-20</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://marbor.in/docs/guides/monitor-llm-fleet-prometheus-grafana.html</loc>
+    <lastmod>2026-10-20</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://marbor.in/docs/guides/drain-gpu-node-without-downtime.html</loc>
+    <lastmod>2026-10-20</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://marbor.in/llms.txt</loc>
     <lastmod>2026-08-29</lastmod>
     <changefreq>weekly</changefreq>

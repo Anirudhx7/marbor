@@ -800,6 +800,7 @@ See [ROADMAP.md](ROADMAP.md) for the full open-core strategy.
 - [Production Deployment Guide](docs/PRODUCTION.md)
 - [Savings Math](docs/SAVINGS-MATH.md) - how every dollar figure is computed
 - [Ollama Alternatives & Use Cases](docs/USE-CASES.md)
+- How-to guides: [load balance vLLM servers](docs/guides/load-balance-vllm-servers.md), [several Ollama machines](docs/guides/one-endpoint-for-several-ollama-machines.md), [several llama.cpp servers](docs/guides/several-llama-cpp-servers-one-endpoint.md), [a Mac fleet with MLX](docs/guides/mac-fleet-mlx-one-endpoint.md), [per-key quotas](docs/guides/per-key-quotas-self-hosted-llm.md), [when every GPU is busy](docs/guides/when-every-gpu-is-busy.md), [Prometheus and Grafana](docs/guides/monitor-llm-fleet-prometheus-grafana.md), [draining a node](docs/guides/drain-gpu-node-without-downtime.md)
 - [Security](SECURITY.md)
 - [Changelog](CHANGELOG.md)
 - [Contributing](CONTRIBUTING.md)
