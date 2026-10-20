@@ -72,7 +72,7 @@ func runKeyList(flags *globalFlags, stdout, stderr io.Writer) int {
 		return code
 	}
 	tw := newTabWriter(stdout)
-	fmt.Fprintln(tw, "NAME\tKEY\tRATE\tDAILY\tMONTHLY\tMODELS\tEXPIRES\tLOCAL_ONLY\tDEGRADATION\tSTATUS")
+	fmt.Fprintln(tw, "NAME\tKEY\tRATE/HR\tDAILY USED/LIMIT\tMONTHLY USED/LIMIT\tMODELS\tEXPIRES\tLOCAL_ONLY\tDEGRADATION\tSTATUS")
 	for _, k := range keys {
 		models := "-"
 		if len(k.AllowedModels) > 0 {
@@ -86,13 +86,23 @@ func runKeyList(flags *globalFlags, stdout, stderr io.Writer) int {
 		if keyPreview == "" {
 			keyPreview = "-"
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%d\t%d\t%d\t%s\t%s\t%s\t%s\t%s\n", k.Name, keyPreview, k.RateLimit, k.RequestsToday, k.RequestsThisMonth, models, expires, yesNo(k.LocalOnly), yesNo(k.AllowLocalDegradation), k.Status)
+		fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", k.Name, keyPreview, k.RateLimit, usedOverLimit(k.RequestsToday, k.DailyLimit), usedOverLimit(k.RequestsThisMonth, k.MonthlyLimit), models, expires, yesNo(k.LocalOnly), yesNo(k.AllowLocalDegradation), k.Status)
 	}
 	if err := tw.Flush(); err != nil {
 		fmt.Fprintln(stderr, err)
 		return ExitServerError
 	}
 	return ExitOK
+}
+
+// usedOverLimit renders a request count against its quota as "used/limit",
+// with "-" for an unlimited (zero) limit, so the list never shows a bare usage
+// count where an operator would read a limit.
+func usedOverLimit(used, limit int) string {
+	if limit <= 0 {
+		return fmt.Sprintf("%d/-", used)
+	}
+	return fmt.Sprintf("%d/%d", used, limit)
 }
 
 func runKeyCreate(flags *globalFlags, stdout, stderr io.Writer, ctx *RunCtx) int {

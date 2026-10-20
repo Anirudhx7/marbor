@@ -536,6 +536,22 @@ func (m *Middleware) KeyUsdCaps(name string) (daily, monthly float64, ok bool) {
 	return ks.dailyUsdCap, ks.monthlyUsdCap, true
 }
 
+// KeyRequestLimits returns the live (possibly patched) per-key daily and
+// monthly request quotas for name, where 0 means unlimited. Like KeyUsdCaps it
+// reads in-memory key state, because PatchKey does not update config.Config.
+// ok is false if no key with this name exists.
+func (m *Middleware) KeyRequestLimits(name string) (daily, monthly int, ok bool) {
+	m.mu.RLock()
+	ks, found := m.byName[name]
+	m.mu.RUnlock()
+	if !found {
+		return 0, 0, false
+	}
+	ks.mu.RLock()
+	defer ks.mu.RUnlock()
+	return ks.dailyLimit, ks.monthlyLimit, true
+}
+
 // IsLocalOnly reports whether name's live (possibly patched) policy forbids
 // cloud fallback - a request that would otherwise spill to a cloud provider
 // must instead fail closed. Returns false for an unknown key name: an
