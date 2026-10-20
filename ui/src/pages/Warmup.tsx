@@ -1198,9 +1198,9 @@ export function Warmup() {
                     `${(prefixStats.hit_rate * 100).toFixed(1)}% (${prefixStats.hits} hits / ${prefixStats.misses} misses)`
                   ) : (
                     <>
-                      Disabled - turn on Prefix locality hints in{' '}
-                      <Link to="/settings" className="underline hover:text-foreground">Settings &gt; Routing &amp; Reliability</Link>
-                      . It applies immediately, no restart needed.
+                      Disabled - turn on Prefix Locality Hints in{' '}
+                      <Link to="/settings" className="text-foreground underline rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50">Settings &gt; Routing &amp; Reliability</Link>
+                      . Save the change and it applies immediately, no restart needed.
                     </>
                   )}
                 </p>
