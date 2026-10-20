@@ -5,9 +5,12 @@ import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const indexHtml = readFileSync(resolve(here, '../index.html'), 'utf8')
+const indexHtml = readFileSync(resolve(here, '../index.html'), 'utf8').replace(/<!--[\s\S]*?-->/g, (c) => ' '.repeat(c.length))
 const scriptSrc = readFileSync(resolve(here, '../public/assets/theme-init.js'), 'utf8')
+// Comments blanked, so a commented-out call cannot satisfy the cross-check.
 const useThemeSrc = readFileSync(resolve(here, '../src/hooks/useTheme.tsx'), 'utf8')
+  .replace(/\/\*[\s\S]*?\*\//g, (c) => ' '.repeat(c.length))
+  .replace(/^\s*\/\/.*$/gm, '')
 
 const STORAGE_KEY = 'marbor-theme'
 const DARK_QUERY = '(prefers-color-scheme: dark)'
