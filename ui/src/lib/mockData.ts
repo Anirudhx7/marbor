@@ -2030,6 +2030,14 @@ export const mockActivityEntries = [
   { time: new Date(Date.now() - 8 * 24 * 60 * 60_000).toISOString(), username: 'admin', action: 'patch_node', target: 'gpu-node-03', details: 'URLChanged: false, RuntimeChanged: true', source_ip: '192.168.1.5' },
   { time: new Date(Date.now() - 15 * 24 * 60 * 60_000).toISOString(), username: 'system', action: 'scheduled_drain', target: 'gpu-node-03', details: 'Schedule sched-1724100000000000000: action=drain node=gpu-node-03 models=[] status=ok', source_ip: '' },
   { time: new Date(Date.now() - 20 * 24 * 60 * 60_000).toISOString(), username: 'sam.lee', action: 'pull_model', target: 'gpu-node-02', details: 'Model: mistral:7b', source_ip: '192.168.1.20' },
+  { time: new Date(Date.now() - 1 * 60_000).toISOString(), username: 'admin', action: 'login_success', target: 'admin', details: '', source_ip: '192.168.1.5' },
+  { time: new Date(Date.now() - 12 * 60_000).toISOString(), username: 'Admin', action: 'login_success', target: 'Admin', details: '', source_ip: '192.168.1.7' },
+  { time: new Date(Date.now() - 26 * 60_000).toISOString(), username: 'Admin', action: 'login_failure', target: 'Admin', details: '', source_ip: '203.0.113.9' },
+  { time: new Date(Date.now() - 27 * 60_000).toISOString(), username: 'admin', action: 'login_failure', target: 'admin', details: '', source_ip: '203.0.113.9' },
+  { time: new Date(Date.now() - 40 * 60_000).toISOString(), username: 'dana.rao', action: 'login_success', target: 'dana.rao', details: '', source_ip: '192.168.1.12' },
+  { time: new Date(Date.now() - 160 * 60_000).toISOString(), username: 'admin', action: 'revoke_key', target: 'ci-bot', details: '', source_ip: '192.168.1.5' },
+  { time: new Date(Date.now() - 180 * 60_000).toISOString(), username: 'admin', action: 'add_key', target: 'marketing-team', details: 'RateLimit: 50, DailyLimit: 500, MonthlyLimit: 10000, DailyUsdCap: 50.00, MonthlyUsdCap: 200.00, Models: []', source_ip: '192.168.1.5' },
+  { time: new Date(Date.now() - 10 * 24 * 60 * 60_000).toISOString(), username: 'admin', action: 'add_key', target: 'ci-bot', details: 'RateLimit: 1000', source_ip: '10.0.0.1' },
 ];
 
 

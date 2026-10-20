@@ -10,16 +10,18 @@ interface EmptyStateProps {
   copy?: string;
   action?: ReactNode;
   compact?: boolean;
+  // live announces the copy to screen readers when it changes.
+  live?: boolean;
 }
 
-export function EmptyState({ icon: Icon, title, copy, action, compact = false }: EmptyStateProps) {
+export function EmptyState({ icon: Icon, title, copy, action, compact = false, live = false }: EmptyStateProps) {
   return (
     <div className={`flex flex-col items-center text-center ${compact ? 'gap-1.5 py-8' : 'gap-2 py-12'}`}>
       <span className="mb-2 grid h-12 w-12 place-items-center rounded-full bg-secondary text-muted-foreground/60" aria-hidden="true">
         <Icon className="h-6 w-6" />
       </span>
       <h3 className="font-display text-xl font-semibold text-foreground text-balance">{title}</h3>
-      {copy && <p className="max-w-sm text-sm text-muted-foreground">{copy}</p>}
+      {copy && <p role={live ? 'status' : undefined} className="max-w-sm text-sm text-muted-foreground">{copy}</p>}
       {action && <div className="mt-2">{action}</div>}
     </div>
   );
