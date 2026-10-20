@@ -225,6 +225,11 @@ const TITLE_OVERRIDES = {
   "guides/drain-gpu-node-without-downtime": "Drain a GPU Node Without Downtime | Marbor",
 };
 
+// Publication dates for how-to guides (ISO). dateModified defaults to the
+// publication date; add an entry to GUIDE_MODIFIED when a guide is revised.
+const GUIDE_PUBLISHED = "2026-10-20";
+const GUIDE_MODIFIED = {};
+
 // All docs in nav order, grouped.
 const DOC_GROUPS = [
   { title: "Guides", items: [
@@ -350,6 +355,9 @@ function articleJsonLd(slug, title, description) {
     url: `https://marbor.in/docs/${slug}.html`,
     mainEntityOfPage: `https://marbor.in/docs/${slug}.html`,
     inLanguage: "en",
+    datePublished: GUIDE_PUBLISHED,
+    dateModified: GUIDE_MODIFIED[slug] || GUIDE_PUBLISHED,
+    image: "https://marbor.in/screenshots/dashboard.png",
     author: { "@type": "Person", name: "Anirudh Mehandru", url: "https://github.com/Anirudhx7" },
     publisher: { "@type": "Organization", name: "Marbor", url: "https://marbor.in/" },
   });
@@ -387,24 +395,33 @@ function page({ slug, title, contentHtml, headings }) {
 <title>${escapeHtml(fullTitle)}</title>
 <meta name="description" content="${escapeAttr(description)}" />
 <link rel="canonical" href="https://marbor.in/docs/${slug}.html" />
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
 <link rel="icon" type="image/svg+xml" href="${r}favicon.svg" />
 <link rel="icon" type="image/png" sizes="48x48" href="${r}favicon-48.png" />
 <link rel="icon" type="image/png" sizes="96x96" href="${r}favicon-96.png" />
 <link rel="shortcut icon" href="${r}favicon.ico" />
 <meta property="og:type" content="article" />
 <meta property="og:site_name" content="Marbor" />
-<meta property="og:title" content="${escapeHtml(fullTitle)}" />
+<meta property="og:locale" content="en_US" />
+<meta property="og:url" content="https://marbor.in/docs/${slug}.html" />
+${slug.startsWith("guides/") ? `<meta property="article:published_time" content="${GUIDE_PUBLISHED}" />
+<meta property="article:modified_time" content="${GUIDE_MODIFIED[slug] || GUIDE_PUBLISHED}" />
+` : ""}<meta property="og:title" content="${escapeHtml(fullTitle)}" />
 <meta property="og:description" content="${escapeAttr(description)}" />
 <meta property="og:image" content="https://marbor.in/screenshots/dashboard.png" />
 <meta property="og:image:alt" content="marbor admin dashboard" />
+<meta property="og:image:width" content="1600" />
+<meta property="og:image:height" content="1400" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="${escapeHtml(fullTitle)}" />
+<meta name="twitter:description" content="${escapeAttr(description)}" />
 <meta name="twitter:image" content="https://marbor.in/screenshots/dashboard.png" />
 <script type="application/ld+json">${breadcrumbJsonLd(slug, title)}</script>
 ${articleJsonLd(slug, title, description) ? `<script type="application/ld+json">${articleJsonLd(slug, title, description)}</script>
 ` : ""}${faqJsonLd(slug) ? `<script type="application/ld+json">${faqJsonLd(slug)}</script>\n` : ""}<link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400..700&family=Playfair+Display:ital,wght@0,400..800;1,400..800&family=JetBrains+Mono:wght@400..700&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400..700&family=Playfair+Display:ital,wght@0,400..800;1,400..800&family=JetBrains+Mono:wght@400..700&display=swap" rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" />
+<noscript><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400..700&family=Playfair+Display:ital,wght@0,400..800;1,400..800&family=JetBrains+Mono:wght@400..700&display=swap" rel="stylesheet" /></noscript>
 <meta name="theme-color" content="#d4a853" />
 <style>${DOC_CSS}</style>
 </head>
@@ -487,7 +504,8 @@ function docsIndexPage() {
 <link rel="shortcut icon" href="${r}favicon.ico" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400..700&family=Playfair+Display:ital,wght@0,400..800;1,400..800&family=JetBrains+Mono:wght@400..700&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400..700&family=Playfair+Display:ital,wght@0,400..800;1,400..800&family=JetBrains+Mono:wght@400..700&display=swap" rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" />
+<noscript><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400..700&family=Playfair+Display:ital,wght@0,400..800;1,400..800&family=JetBrains+Mono:wght@400..700&display=swap" rel="stylesheet" /></noscript>
 <meta name="theme-color" content="#d4a853" />
 <style>${DOC_CSS}</style>
 </head>
