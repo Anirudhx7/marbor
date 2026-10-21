@@ -68,6 +68,9 @@ jobs:
           cp website/404.html site/404.html 2>/dev/null || cp website/index.html site/404.html
           # Inject version token into all HTML files
           find site -name "*.html" -exec sed -i "s/{{VERSION}}/v${{ steps.version.outputs.version }}/g" {} \;
+          # Rewrite the no-JS fallback text inside every data-version element with the
+          # same tag-derived version, so the hardcoded value in source can never go stale.
+          find site -name "*.html" -exec sed -i -E "s#(<[a-z]+[^>]*data-version[^>]*>)[^<]*(</)#\1v${{ steps.version.outputs.version }}\2#g" {} \;
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
