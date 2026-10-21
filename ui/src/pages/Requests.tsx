@@ -13,6 +13,22 @@ import { useTimezone } from '../hooks/useTimezone';
 import { wallDateTimeToUtcIso } from '../lib/time';
 import { EmptyState } from '../components/EmptyState';
 
+// One entry per table column: the header, the colgroup width and the
+// alignment all come from here, so the column count cannot drift between
+// <col>, <th> and the colSpan of the full-width rows. Widths are percentages
+// summing to 100.
+const COLUMNS: { label: string; width: string; align: 'left' | 'right' }[] = [
+  { label: 'Time', width: 'w-[7%]', align: 'left' },
+  { label: 'Request ID', width: 'w-[12%]', align: 'left' },
+  { label: 'Key', width: 'w-[12%]', align: 'left' },
+  { label: 'Model', width: 'w-[16%]', align: 'left' },
+  { label: 'Node', width: 'w-[12%]', align: 'left' },
+  { label: 'Status', width: 'w-[7%]', align: 'left' },
+  { label: 'Latency', width: 'w-[10%]', align: 'right' },
+  { label: 'Prefill', width: 'w-[8%]', align: 'right' },
+  { label: 'Why', width: 'w-[16%]', align: 'left' },
+];
+
 const REASON_LABELS: Record<string, string> = {
   session_affinity: 'Session affinity',
   pinned_warm: 'Pinned + warm',
@@ -566,36 +582,30 @@ export function Requests() {
               shrunk to w-fit around it) both "fixed" the padding by leaving a
               dead, obviously-unstyled gap next to the table instead - worse
               UX than generous cell padding, not better. The percentages
-              below must have one entry per header (9, summing to 100): a
-              missing col leaves the last column (Why) with no width under
-              table-fixed, pushing it off-screen behind a horizontal scroll.
+              (COLUMNS, above) must stay one per header and sum to 100: a
+              missing width leaves the last column (Why) with none under
+              table-fixed, pushing it off-screen. min-w keeps headers from
+              colliding on narrow cards; below it the region scrolls.
               table-fixed + % (not table-layout:auto/content-fit) still keeps
               widths stable across this page's 3s poll, since percentages
               depend only on container width, never on row content.
             */}
-            <table className="w-full text-sm table-fixed">
+            <table className="w-full min-w-[900px] text-sm table-fixed">
               <colgroup>
-                <col className="w-[7%]" />
-                <col className="w-[12%]" />
-                <col className="w-[12%]" />
-                <col className="w-[16%]" />
-                <col className="w-[12%]" />
-                <col className="w-[7%]" />
-                <col className="w-[8%]" />
-                <col className="w-[8%]" />
-                <col className="w-[18%]" />
+                {COLUMNS.map((c) => (
+                  <col key={c.label} className={c.width} />
+                ))}
               </colgroup>
               <thead>
                 <tr className="border-b border-border bg-secondary/30">
-                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Time</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Request ID</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Key</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Model</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Node</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">Latency</th>
-                  <th className="px-4 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">Prefill</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Why</th>
+                  {COLUMNS.map((c) => (
+                    <th
+                      key={c.label}
+                      className={`px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap ${c.align === 'right' ? 'text-right' : 'text-left'}`}
+                    >
+                      {c.label}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -603,7 +613,7 @@ export function Requests() {
                   [...Array(5)].map((_, i) => <SkeletonRow key={i} />)
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-4">
+                    <td colSpan={COLUMNS.length} className="px-4">
                       <EmptyState
                         compact
                         icon={Inbox}
@@ -687,7 +697,7 @@ export function Requests() {
                     </tr>
                     {expandedId === entry.id && (
                       <tr className="border-b border-border last:border-0 bg-secondary/20">
-                        <td colSpan={9} className="px-4 py-3">
+                        <td colSpan={COLUMNS.length} className="px-4 py-3">
                           <ExplainPanel state={explainData[entry.id]} />
                         </td>
                       </tr>
