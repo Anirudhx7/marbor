@@ -13,20 +13,29 @@ import { useTimezone } from '../hooks/useTimezone';
 import { wallDateTimeToUtcIso } from '../lib/time';
 import { EmptyState } from '../components/EmptyState';
 
-// One entry per table column: the header, the colgroup width and the
-// alignment all come from here, so the column count cannot drift between
-// <col>, <th> and the colSpan of the full-width rows. Widths are percentages
-// summing to 100.
-const COLUMNS: { label: string; width: string; align: 'left' | 'right' }[] = [
-  { label: 'Time', width: 'w-[7%]', align: 'left' },
-  { label: 'Request ID', width: 'w-[12%]', align: 'left' },
-  { label: 'Key', width: 'w-[12%]', align: 'left' },
-  { label: 'Model', width: 'w-[16%]', align: 'left' },
-  { label: 'Node', width: 'w-[12%]', align: 'left' },
-  { label: 'Status', width: 'w-[7%]', align: 'left' },
-  { label: 'Latency', width: 'w-[10%]', align: 'right' },
-  { label: 'Prefill', width: 'w-[8%]', align: 'right' },
-  { label: 'Why', width: 'w-[16%]', align: 'left' },
+// One entry per table column: the header, its sizing and its alignment all
+// come from here, and the full-width rows use COLUMNS.length, so the column
+// count cannot drift between <th> and those rows.
+//
+// Sizing is content-driven, not a fixed share of the card. "fit" columns
+// (short, predictable values) shrink to their content and never wrap, with a
+// min-width so a slightly longer value on a later poll does not make the
+// table jump. "flex" columns (long, variable values: key, model, node) split
+// whatever width is left, weighted by the percentage, and scroll inside their
+// cell when a value is longer than the space (their cells carry max-w-0). So
+// a wide card gives the spare room to the columns that need it, and a narrow
+// one squeezes only those, instead of every column keeping a fixed slice.
+const FIT = 'w-px whitespace-nowrap';
+const COLUMNS: { label: string; size: string; align: 'left' | 'right' }[] = [
+  { label: 'Time', size: `${FIT} min-w-[88px]`, align: 'left' },
+  { label: 'Request ID', size: 'w-[16%]', align: 'left' },
+  { label: 'Key', size: 'w-[18%]', align: 'left' },
+  { label: 'Model', size: 'w-[24%]', align: 'left' },
+  { label: 'Node', size: 'w-[18%]', align: 'left' },
+  { label: 'Status', size: `${FIT} min-w-[80px]`, align: 'left' },
+  { label: 'Latency', size: `${FIT} min-w-[90px]`, align: 'right' },
+  { label: 'Prefill', size: `${FIT} min-w-[84px]`, align: 'right' },
+  { label: 'Why', size: `${FIT} min-w-[156px]`, align: 'left' },
 ];
 
 const REASON_LABELS: Record<string, string> = {
@@ -573,35 +582,17 @@ export function Requests() {
         <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto scroll-region" tabIndex={0} role="region" aria-label="Request log table: scroll horizontally for more columns">
             {/*
-              table-fixed with colgroup percentages, deliberately proportional
-              (not a fixed px table width) - the table fills its card exactly
-              like every other card on this page, it just distributes that
-              width using ratios calibrated to realistic content instead of
-              splitting it arbitrarily. The two things previously tried and
-              reverted here (a table narrower than its card, and the card
-              shrunk to w-fit around it) both "fixed" the padding by leaving a
-              dead, obviously-unstyled gap next to the table instead - worse
-              UX than generous cell padding, not better. The percentages
-              (COLUMNS, above) must stay one per header and sum to 100: a
-              missing width leaves the last column (Why) with none under
-              table-fixed, pushing it off-screen. min-w keeps headers from
-              colliding on narrow cards; below it the region scrolls.
-              table-fixed + % (not table-layout:auto/content-fit) still keeps
-              widths stable across this page's 3s poll, since percentages
-              depend only on container width, never on row content.
+              The table always fills its card (w-full); column sizing is in
+              COLUMNS. min-w stops the flex columns collapsing on a narrow
+              card - below it the region scrolls instead of colliding headers.
             */}
-            <table className="w-full min-w-[900px] text-sm table-fixed">
-              <colgroup>
-                {COLUMNS.map((c) => (
-                  <col key={c.label} className={c.width} />
-                ))}
-              </colgroup>
+            <table className="w-full min-w-[960px] text-sm">
               <thead>
                 <tr className="border-b border-border bg-secondary/30">
                   {COLUMNS.map((c) => (
                     <th
                       key={c.label}
-                      className={`px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap ${c.align === 'right' ? 'text-right' : 'text-left'}`}
+                      className={`px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap ${c.size} ${c.align === 'right' ? 'text-right' : 'text-left'}`}
                     >
                       {c.label}
                     </th>
@@ -675,16 +666,16 @@ export function Requests() {
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 whitespace-nowrap">
                         <StatusBadge status={entry.status} />
                       </td>
-                      <td className="px-4 py-3 text-right font-mono text-xs text-muted-foreground">
+                      <td className="px-4 py-3 whitespace-nowrap text-right font-mono text-xs text-muted-foreground">
                         {entry.latency_ms} ms
                       </td>
-                      <td className="px-4 py-3 text-right font-mono text-xs text-muted-foreground">
+                      <td className="px-4 py-3 whitespace-nowrap text-right font-mono text-xs text-muted-foreground">
                         {entry.prefillMs ? `${entry.prefillMs} ms` : '-'}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 whitespace-nowrap">
                         <button
                           type="button"
                           onClick={() => toggleExplain(entry.id)}
