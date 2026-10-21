@@ -74,6 +74,9 @@ test('every advisor demo node is on the GPU nodes page unless allowlisted', () =
   const gpuEnd = mock.indexOf('\nexport ', gpuStart + 1);
   const gpuNodes = new Set([...mock.slice(gpuStart, gpuEnd).matchAll(/\bname: '(gpu-node-\d+)'/g)].map((m) => m[1]));
   assert.ok(gpuNodes.size > 0, 'no GPU nodes found');
+  for (const [name, reason] of Object.entries(allowlist)) {
+    assert.ok(reason.length > 0, `${name} needs a reason`);
+  }
   for (const name of advisorNodes) {
     if (name in allowlist) continue;
     assert.ok(gpuNodes.has(name), `${name} is in the advisor catalog but not in mockGPUNodes`);

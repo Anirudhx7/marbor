@@ -1150,7 +1150,7 @@ func TestHandleModelSearch_GGUFTrimsToPageSizeAfterFilter(t *testing.T) {
 // The min_* filters must run on all fetched rows before the trim, so a
 // filtered GGUF search still returns a full page of qualifying rows.
 func TestHandleModelSearch_GGUFMinDownloadsFiltersBeforeTrim(t *testing.T) {
-	// 50 fetched rows: m0..m29 are popular-less (10 downloads), m30..m49 have
+	// 50 fetched rows: m0..m29 are low-download rows (10 downloads), m30..m49 have
 	// 1000. With min_downloads=500 only m30..m49 qualify. A trim to 25 before
 	// the filter would keep m0..m24, none of which qualify, and return nothing.
 	var sb strings.Builder
@@ -1343,6 +1343,20 @@ func TestHandleModelSearch_UnlistedRuntimeIsUnfiltered(t *testing.T) {
 // these cases, so this pins the server side of that pairing: a node with no
 // total or an inferred total always classifies as unknown, and a node with a
 // declared or detected total never does.
+// Known divergence, documented rather than hidden: the UI helper treats a zero
+// total as unknown whatever the source, but classifyFit only looks at the
+// source and returns "red" for zero capacity. The catalog never produces this
+// input (it keeps source "unknown" when there is no capacity), so the two agree
+// on every reachable node.
+func TestClassifyFit_ZeroTotalWithKnownSourceIsRed(t *testing.T) {
+	const gib = int64(1) << 30
+	for _, source := range []string{"declared", "nvidia-smi"} {
+		if got := classifyFit(4*gib, 0, source); got != "red" {
+			t.Errorf("classifyFit(zero total, %q) = %q, want red", source, got)
+		}
+	}
+}
+
 func TestClassifyFit_UnknownCasesMirrorUINodeVramUnknown(t *testing.T) {
 	const gib = int64(1) << 30
 	cases := []struct {
@@ -1355,13 +1369,6 @@ func TestClassifyFit_UnknownCasesMirrorUINodeVramUnknown(t *testing.T) {
 		{"inferred source", 4 * gib, 24 * gib, "inferred", "unknown"},
 		{"zero total with unknown source", 4 * gib, 0, "unknown", "unknown"},
 		{"zero total with inferred source", 4 * gib, 0, "inferred", "unknown"},
-		// Known divergence, documented rather than hidden: the UI helper
-		// treats a zero total as unknown whatever the source, but classifyFit
-		// only looks at the source and returns "red" for zero capacity. The
-		// catalog never produces this input (it keeps source "unknown" when
-		// there is no capacity), so the two agree on every reachable node.
-		{"zero total with declared source", 4 * gib, 0, "declared", "red"},
-		{"zero total with detected source", 4 * gib, 0, "nvidia-smi", "red"},
 		{"declared total", 4 * gib, 24 * gib, "declared", "green"},
 		{"agent total", 4 * gib, 24 * gib, "agent", "green"},
 		{"detected total", 4 * gib, 24 * gib, "nvidia-smi", "green"},

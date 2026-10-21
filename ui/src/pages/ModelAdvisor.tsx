@@ -1479,7 +1479,7 @@ export function ModelAdvisor() {
             // A failed search already shows its error above; an empty-state
             // hint on top of it would read as "no results" rather than "failed".
             searchError ? null : (
-<div className="bg-card border border-border rounded-xl shadow-sm px-4">
+              <div className="bg-card border border-border rounded-xl shadow-sm px-4">
                 <EmptyState
                   icon={Package}
                   title="No repositories found"
