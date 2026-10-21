@@ -499,6 +499,8 @@ export interface Savings {
   cloud_spent_usd: number | null;
   saved_usd: number | null;
   total_requests: number;
+  // When the router process started; the counters themselves are all time.
+  since?: string;
 }
 
 export interface ModelNode {
@@ -644,6 +646,8 @@ export interface Analytics {
   total_spent_usd: number | null;
   hourly: HourlyBucket[];
   by_model: ModelStat[];
+  // When the router process started; by_model counts only requests since then.
+  since?: string;
 }
 
 export type FitStatus = 'green' | 'yellow' | 'red' | 'unknown';

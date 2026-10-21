@@ -17,7 +17,7 @@ import { fetchAnalytics, analyticsExportUrl, getSpillCounters } from '../lib/api
 import { mockAnalytics, mockSpillCounters } from '../lib/mockData';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import { useTimezone } from '../hooks/useTimezone';
-import { formatHourLabelInTimezone } from '../lib/time';
+import { formatHourLabelInTimezone, formatDateTimeInZone } from '../lib/time';
 import type { Analytics, HourlyBucket, ModelStat, SpillCounterRow } from '../types';
 
 function formatHourLabel(hour: string, tz: string): string {
@@ -28,12 +28,14 @@ function StatCard({
   title,
   value,
   sub,
+  window,
   icon,
   accent,
 }: {
   title: string;
   value: string;
   sub?: string;
+  window?: string;
   icon: React.ReactNode;
   accent: 'success' | 'primary' | 'amber';
 }) {
@@ -47,7 +49,10 @@ function StatCard({
     <div className="glass-panel rounded-xl p-5 hover:border-primary/50 transition-colors">
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-sm font-medium text-muted-foreground mb-1">{title}</p>
+          <p className="text-sm font-medium text-muted-foreground mb-1">
+            {title}
+            {window && <span className="ml-2 text-xs font-normal text-muted-foreground/70">{window}</span>}
+          </p>
           <p className={`text-2xl font-bold ${c.text}`}>{value}</p>
           {sub && <p className="text-xs font-medium text-muted-foreground mt-0.5">{sub}</p>}
         </div>
@@ -167,7 +172,7 @@ export function Analytics() {
             <div>
               <h1 className="text-2xl font-bold tracking-tight text-foreground">Analytics</h1>
               <p className="text-sm text-muted-foreground mt-0.5">
-                Cost savings and routing breakdown - last 24 hours
+                Cost savings and routing breakdown. Totals are all time; charts show the last 24 hours.
               </p>
             </div>
           </div>
@@ -192,6 +197,7 @@ export function Analytics() {
           title="Estimated saved vs cloud"
           value={loading ? '--' : data?.total_saved_usd != null ? `$${data.total_saved_usd.toFixed(2)}` : '-'}
           sub={`${localPct}% requests served locally`}
+          window="All time"
           icon={<DollarSign className="w-5 h-5" />}
           accent="success"
         />
@@ -199,6 +205,7 @@ export function Analytics() {
           title="Local requests"
           value={loading ? '--' : (data?.local_requests ?? 0).toLocaleString()}
           sub="served by your GPU nodes"
+          window="All time"
           icon={<Server className="w-5 h-5" />}
           accent="primary"
         />
@@ -206,6 +213,7 @@ export function Analytics() {
           title="Cloud spend"
           value={loading ? '--' : data?.total_spent_usd != null ? `$${data.total_spent_usd.toFixed(4)}` : '-'}
           sub={`${(data?.cloud_requests ?? 0).toLocaleString()} cloud fallback requests`}
+          window="All time"
           icon={<Cloud className="w-5 h-5" />}
           accent="amber"
         />
@@ -350,6 +358,11 @@ export function Analytics() {
       <div className="bg-card border border-border shadow-sm rounded-xl overflow-hidden">
         <div className="px-6 py-4 border-b border-border bg-secondary/30">
           <h3 className="text-sm font-semibold text-foreground">Requests by model</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {data?.since && !Number.isNaN(Date.parse(data.since))
+              ? `Since last restart (${formatDateTimeInZone(data.since, tz)}). Resets when marbor restarts.`
+              : 'Since last restart. Resets when marbor restarts.'}
+          </p>
         </div>
         {loading ? (
           <div className="divide-y divide-border">

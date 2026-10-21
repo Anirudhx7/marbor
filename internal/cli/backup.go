@@ -170,8 +170,8 @@ func runSavings(flags *globalFlags, stdout, stderr io.Writer) int {
 	if s.CloudSpentUSD != nil {
 		spentStr = fmt.Sprintf("$%.2f", *s.CloudSpentUSD)
 	}
-	fmt.Fprintf(stdout, "local requests: %d, cloud requests: %d, saved: %s, cloud spent: %s (since %s)\n",
-		s.LocalRequests, s.CloudRequests, savedStr, spentStr, s.Since)
+	fmt.Fprintf(stdout, "local requests: %d, cloud requests: %d, saved: %s, cloud spent: %s (all time)\n",
+		s.LocalRequests, s.CloudRequests, savedStr, spentStr)
 	return ExitOK
 }
 

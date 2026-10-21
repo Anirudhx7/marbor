@@ -121,3 +121,45 @@ test('settingsInflight is declared before the functions that use it', () => {
   assert.ok(decl < api.indexOf('export async function login'), 'declare settingsInflight above login');
   assert.ok(decl < api.indexOf('function withSettingsReset'), 'declare settingsInflight above withSettingsReset');
 });
+
+// Analytics fixture: the summary totals are the same all-time counters the
+// savings card shows, and the per-model table (since last restart) sits
+// between the 24h chart total and the all-time total.
+function block(src, startMarker) {
+  const start = src.indexOf(startMarker);
+  assert.ok(start >= 0, startMarker + ' not found');
+  return src.slice(start, src.indexOf('\n};', start));
+}
+
+test('demo analytics totals reference the savings fixture and both carry since', () => {
+  const analytics = block(mock, 'export const mockAnalytics');
+  const savings = block(mock, 'export const mockSavings');
+  for (const pair of [
+    ['local_requests', 'local_requests'],
+    ['cloud_requests', 'cloud_requests'],
+    ['total_saved_usd', 'saved_usd'],
+    ['total_spent_usd', 'cloud_spent_usd'],
+  ]) {
+    assert.ok(
+      new RegExp(`${pair[0]}: mockSavings\\.${pair[1]}\\b`).test(analytics),
+      `mockAnalytics.${pair[0]} must reference mockSavings.${pair[1]}`,
+    );
+  }
+  assert.ok(/\bsince:/.test(analytics), 'mockAnalytics has no since');
+  assert.ok(/\bsince:/.test(savings), 'mockSavings has no since');
+});
+
+test('demo by-model sums sit between the 24h total and the all-time total', () => {
+  const nums = (re, src) => [...src.matchAll(re)].map((m) => Number(m[1]));
+  const sum = (a) => a.reduce((x, y) => x + y, 0);
+  const hourlyLocal = sum(nums(/(\d+)/g, mock.match(/const _hourlyLocal = \[([^\]]*)\]/)[1]));
+  const hourlyCloud = sum(nums(/(\d+)/g, mock.match(/const _hourlyCloud = \[([^\]]*)\]/)[1]));
+  const sv = block(mock, 'export const mockSavings');
+  const totalLocal = Number(sv.match(/local_requests: (\d+)/)[1]);
+  const totalCloud = Number(sv.match(/cloud_requests: (\d+)/)[1]);
+  const byModel = block(mock, 'export const mockAnalytics').split('by_model: [')[1];
+  const modelLocal = sum(nums(/local:\s*(\d+)/g, byModel));
+  const modelCloud = sum(nums(/cloud:\s*(\d+)/g, byModel));
+  assert.ok(modelLocal >= hourlyLocal && modelLocal <= totalLocal, `local ${hourlyLocal} <= ${modelLocal} <= ${totalLocal}`);
+  assert.ok(modelCloud >= hourlyCloud && modelCloud <= totalCloud, `cloud ${hourlyCloud} <= ${modelCloud} <= ${totalCloud}`);
+});
