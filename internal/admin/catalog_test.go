@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -1020,8 +1021,8 @@ func (rt *recordingHFTransport) calls() []string {
 	return append([]string(nil), rt.urls...)
 }
 
-// Deliberately unsorted by downloads: a single-request search must keep the
-// order Hugging Face returned, so a re-sort would change the result.
+// Deliberately unsorted by downloads: the single-request GGUF path must keep
+// the order Hugging Face returned, so a re-sort would change the result.
 const mixedHFSearchBody = `[
 	{"id":"org/untagged-llm-GGUF","downloads":800},
 	{"id":"org/tts-GGUF","downloads":700,"pipeline_tag":"text-to-speech"},
@@ -1149,17 +1150,30 @@ func TestHandleModelSearch_GGUFTrimsToPageSizeAfterFilter(t *testing.T) {
 // The min_* filters must run on all fetched rows before the trim, so a
 // filtered GGUF search still returns a full page of qualifying rows.
 func TestHandleModelSearch_GGUFMinDownloadsFiltersBeforeTrim(t *testing.T) {
-	// Rows m0..m49 have downloads 1000..951. min_downloads=960 keeps m0..m40;
-	// the first 10 of those are media, so 31 qualify and 25 are returned. A
-	// trim before the filter would return only 15 (m10..m24).
-	w := searchWithTransport(t, &recordingHFTransport{body: numberedHFBody(50, 10)},
-		"/admin/models/search?runtime=ollama&min_downloads=960")
-	ids := searchIDs(t, w)
-	if len(ids) != 25 {
-		t.Fatalf("got %d rows, want 25 qualifying rows out of the 50 fetched", len(ids))
+	// 50 fetched rows: m0..m29 are popular-less (10 downloads), m30..m49 have
+	// 1000. With min_downloads=500 only m30..m49 qualify. A trim to 25 before
+	// the filter would keep m0..m24, none of which qualify, and return nothing.
+	var sb strings.Builder
+	sb.WriteString("[")
+	for i := 0; i < 50; i++ {
+		d := 10
+		if i >= 30 {
+			d = 1000
+		}
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		sb.WriteString(`{"id":"org/m` + strconv.Itoa(i) + `","downloads":` + strconv.Itoa(d) + `,"likes":1,"pipeline_tag":"text-generation"}`)
 	}
-	if ids[0] != "org/m10" || ids[24] != "org/m34" {
-		t.Errorf("rows = %s..%s, want org/m10..org/m34", ids[0], ids[24])
+	sb.WriteString("]")
+	w := searchWithTransport(t, &recordingHFTransport{body: sb.String()},
+		"/admin/models/search?runtime=ollama&min_downloads=500")
+	ids := searchIDs(t, w)
+	if len(ids) != 20 {
+		t.Fatalf("got %d rows, want the 20 qualifying rows out of the 50 fetched", len(ids))
+	}
+	if ids[0] != "org/m30" || ids[19] != "org/m49" {
+		t.Errorf("rows = %s..%s, want org/m30..org/m49", ids[0], ids[19])
 	}
 }
 
@@ -1296,6 +1310,32 @@ func TestFetchHFModelList_OversizedBodyIsAnError(t *testing.T) {
 	if models != nil {
 		t.Errorf("models = %d rows, want nil on error", len(models))
 	}
+	if !strings.Contains(err.Error(), "exceeded 8 MiB") {
+		t.Errorf("error %q should name the 8 MiB cap", err)
+	}
+}
+
+// A runtime outside the known lists (here sglang) gets exactly one request
+// with no format filter, no pipeline_tag and no media dropping: the page makes
+// no claim for it either.
+func TestHandleModelSearch_UnlistedRuntimeIsUnfiltered(t *testing.T) {
+	if f, tags := hfSearchFilters("sglang"); f != "" || tags != nil {
+		t.Fatalf("hfSearchFilters(sglang) = %q, %v, want no filters", f, tags)
+	}
+	rt := &recordingHFTransport{body: mixedHFSearchBody}
+	ids := searchIDs(t, searchWithTransport(t, rt, "/admin/models/search?q=x&runtime=sglang"))
+	urls := rt.calls()
+	if len(urls) != 1 {
+		t.Fatalf("%d upstream requests, want exactly 1", len(urls))
+	}
+	for _, p := range []string{"filter", "pipeline_tag"} {
+		if got := hfQueryParam(t, urls[0], p); got != "" {
+			t.Errorf("%s = %q, want unset: %s", p, got, urls[0])
+		}
+	}
+	if !slices.Contains(ids, "org/tts-GGUF") {
+		t.Errorf("sglang search must not drop media-tagged rows, got %v", ids)
+	}
 }
 
 // The advisor page note reads "Fit cannot be computed" for a node whose VRAM
@@ -1315,6 +1355,13 @@ func TestClassifyFit_UnknownCasesMirrorUINodeVramUnknown(t *testing.T) {
 		{"inferred source", 4 * gib, 24 * gib, "inferred", "unknown"},
 		{"zero total with unknown source", 4 * gib, 0, "unknown", "unknown"},
 		{"zero total with inferred source", 4 * gib, 0, "inferred", "unknown"},
+		// Known divergence, documented rather than hidden: the UI helper
+		// treats a zero total as unknown whatever the source, but classifyFit
+		// only looks at the source and returns "red" for zero capacity. The
+		// catalog never produces this input (it keeps source "unknown" when
+		// there is no capacity), so the two agree on every reachable node.
+		{"zero total with declared source", 4 * gib, 0, "declared", "red"},
+		{"zero total with detected source", 4 * gib, 0, "nvidia-smi", "red"},
 		{"declared total", 4 * gib, 24 * gib, "declared", "green"},
 		{"agent total", 4 * gib, 24 * gib, "agent", "green"},
 		{"detected total", 4 * gib, 24 * gib, "nvidia-smi", "green"},

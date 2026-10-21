@@ -208,6 +208,9 @@ function NodeFitList({
   if (models.length === 0) return null;
   const incompatible = models.every(m => m.recommendation?.reason === 'incompatible_runtime');
   const vramUnknown = nodeVramUnknown(node);
+  // With unknown VRAM on a compatible runtime there is nothing to list: the
+  // page note above already explains why, so render no inert header.
+  if (vramUnknown && !incompatible) return null;
   // Fits first, then the rest; each group keeps catalog order (filter is stable).
   const fitRows = models.filter(m => m.recommendation?.picked);
   const otherRows = models.filter(m => !m.recommendation?.picked);
@@ -295,8 +298,6 @@ function NodeFitList({
     );
   };
 
-  // With unknown VRAM there is nothing to expand: the page note above explains why.
-  const expandable = incompatible || !vramUnknown;
   const groupLabel = (text: string) => (
     <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider pt-1">{text}</p>
   );
@@ -305,9 +306,8 @@ function NodeFitList({
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
-        aria-expanded={open && expandable}
-        disabled={!expandable}
-        className={`w-full flex items-center justify-between gap-2 px-5 py-3 text-left ${expandable ? 'cursor-pointer' : 'cursor-default'}`}
+        aria-expanded={open}
+        className="w-full flex items-center justify-between gap-2 px-5 py-3 text-left cursor-pointer"
       >
         <span className="text-sm font-semibold text-foreground">
           {curatedFitTitle(node.name, vramUnknown, incompatible)}
@@ -320,9 +320,9 @@ function NodeFitList({
             </span>
           )}
         </span>
-        {expandable && <ChevronDown className={`w-4 h-4 shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />}
+        <ChevronDown className={`w-4 h-4 shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
-      {open && expandable && (
+      {open && (
         <div className="px-5 pb-4">
           {incompatible ? (
             <p className="text-xs text-muted-foreground">
@@ -1283,7 +1283,7 @@ export function ModelAdvisor() {
       {activeNode && !(loading && !demoMode) && nodeVramUnknown(activeNode) && (
         <p className="text-xs text-muted-foreground bg-secondary/30 border border-border rounded-xl px-4 py-3">
           {VRAM_UNKNOWN_NOTE}{' '}
-          <Link to="/gpu-nodes" className="text-primary font-medium hover:underline">Go to GPU nodes</Link>
+          <Link to="/gpu-nodes" className="inline-block py-1 text-primary font-medium hover:underline">Go to GPU Nodes</Link>
         </p>
       )}
 
@@ -1297,6 +1297,7 @@ export function ModelAdvisor() {
             </div>
           ) : (
             activeNode && (<><NodeVramCard node={activeNode} /><NodeFitList
+              key={activeNode.name}
               node={activeNode}
               actualRuntime={activeNode.runtime ?? null}
               agentPullCapable={activeNode.capabilities?.includes('models.pull') ?? false}
@@ -1455,6 +1456,7 @@ export function ModelAdvisor() {
             </div>
           ) : (
             activeNode && (<><NodeVramCard node={activeNode} /><NodeFitList
+              key={activeNode.name}
               node={activeNode}
               actualRuntime={activeNode.runtime ?? null}
               agentPullCapable={activeNode.capabilities?.includes('models.pull') ?? false}
@@ -1478,12 +1480,12 @@ export function ModelAdvisor() {
             // hint on top of it would read as "no results" rather than "failed".
             searchError ? null : (
 <div className="bg-card border border-border rounded-xl shadow-sm px-4">
-<EmptyState
-  icon={Package}
-  title="No repositories found"
-  copy={browseEmptyCopy(browseRuntime)}
-/>
-</div>
+                <EmptyState
+                  icon={Package}
+                  title="No repositories found"
+                  copy={browseEmptyCopy(browseRuntime)}
+                />
+              </div>
             )
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">

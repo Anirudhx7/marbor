@@ -1081,7 +1081,11 @@ func (s *Server) fetchHFModelList(ctx context.Context, targetURL string) ([]HFMo
 	// A body over the cap is cut short, so the JSON array is incomplete and
 	// decoding fails instead of yielding a partial list.
 	var models []HFModelInfo
-	if err := json.NewDecoder(io.LimitReader(resp.Body, maxHFListBytes)).Decode(&models); err != nil {
+	lr := &io.LimitedReader{R: resp.Body, N: maxHFListBytes}
+	if err := json.NewDecoder(lr).Decode(&models); err != nil {
+		if lr.N == 0 {
+			return nil, fmt.Errorf("Hugging Face response exceeded %d MiB: %w", maxHFListBytes>>20, err)
+		}
 		return nil, fmt.Errorf("decode Hugging Face response: %w", err)
 	}
 	return models, nil
@@ -1613,9 +1617,6 @@ func (s *Server) handleModelSearch(w http.ResponseWriter, r *http.Request) {
 		hfModels = models
 		if dropMedia {
 			hfModels = dropMediaModels(hfModels)
-			if len(hfModels) > hfSearchPageSize {
-				hfModels = hfModels[:hfSearchPageSize]
-			}
 		}
 	} else {
 		// Fetched concurrently, not sequentially - hfHTTPClient's 10s timeout

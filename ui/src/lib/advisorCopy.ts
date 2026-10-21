@@ -55,4 +55,4 @@ export function curatedFitTitle(nodeName: string, vramUnknown: boolean, incompat
 // Shown once per page (Browse and Favourites) when the selected node's VRAM is
 // unknown, because fit cannot be computed for that node for any runtime.
 export const VRAM_UNKNOWN_NOTE =
-  "Fit cannot be computed without this node's VRAM. Declare it in Edit node > Capacity overrides, or enable the agent.";
+  "Fit cannot be computed without a declared or detected VRAM for this node. Declare it in Edit node > Capacity overrides, or connect the agent.";

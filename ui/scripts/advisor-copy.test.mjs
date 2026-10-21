@@ -63,8 +63,8 @@ test('curated heading is "Curated models for" when VRAM unknown or incompatible'
 });
 
 test('the shared note says why fit is missing and how to fix it', () => {
-  assert.match(VRAM_UNKNOWN_NOTE, /Fit cannot be computed without this node's VRAM/);
+  assert.match(VRAM_UNKNOWN_NOTE, /Fit cannot be computed without a declared or detected VRAM for this node/);
   assert.doesNotMatch(VRAM_UNKNOWN_NOTE, /shows Unknown/);
   assert.match(VRAM_UNKNOWN_NOTE, /Edit node > Capacity overrides/);
-  assert.match(VRAM_UNKNOWN_NOTE, /enable the agent/);
+  assert.match(VRAM_UNKNOWN_NOTE, /connect the agent/);
 });
