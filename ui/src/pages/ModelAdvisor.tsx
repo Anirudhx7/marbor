@@ -22,7 +22,7 @@ import {
   normalizePullTag,
 } from '../lib/api';
 import { startPull, isPullActive, subscribe as subscribePullProgress, getSnapshot as getPullProgressSnapshot } from '../lib/pullProgress';
-import { browseHelpClaim, browseEmptyCopy, nodeVramUnknown, curatedFitTitle, VRAM_UNKNOWN_NOTE } from '../lib/advisorCopy';
+import { browseHelpClaim, browseEmptyCopy, isGGUFSearch, nodeVramUnknown, curatedFitTitle, VRAM_UNKNOWN_NOTE } from '../lib/advisorCopy';
 import { isDownloadOnlyRuntime, pullOptionsFor, sizeNotCurated as isSizeNotCurated } from '../lib/downloadOnly';
 import { useDemoMode } from '../hooks/useDemoMode';
 import { mockHFModels, mockHFSafetensorsModels, mockSafetensorsDetails,mockHFRepoDetails, mockSystemInfo, mockModelCatalogResponse, mockFavorites, pickQuant } from '../lib/mockData';
@@ -168,12 +168,10 @@ function NodeVramCard({ node }: { node: any }) {
   );
 }
 
-// Mirrors ggufOnlyRuntime(runtime) in internal/admin/catalog.go: Ollama and
-// llama.cpp load GGUF files one by one, every other runtime loads a whole
-// safetensors repo. Phrases copy and picks the demo's repo family only; no
-// request is gated on it.
-const isGGUFRuntime = (runtime: string | null | undefined) =>
-  !runtime || runtime === 'ollama' || runtime === 'llamacpp';
+// Same rule as the search filter (see advisorCopy): Ollama and llama.cpp load
+// GGUF files one by one, every other runtime loads a whole safetensors repo.
+// Phrases copy and picks the demo repo family only; no request is gated on it.
+const isGGUFRuntime = isGGUFSearch;
 
 const HF_ROW_CAVEAT ='Size typed from the Hugging Face repo (approximate); VRAM is an estimate for a typical context. Quantization support depends on the GPU.';
 
@@ -297,6 +295,8 @@ function NodeFitList({
     );
   };
 
+  // With unknown VRAM there is nothing to expand: the page note above explains why.
+  const expandable = incompatible || !vramUnknown;
   const groupLabel = (text: string) => (
     <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider pt-1">{text}</p>
   );
@@ -305,8 +305,9 @@ function NodeFitList({
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
-        aria-expanded={open}
-        className="w-full flex items-center justify-between gap-2 px-5 py-3 text-left cursor-pointer"
+        aria-expanded={open && expandable}
+        disabled={!expandable}
+        className={`w-full flex items-center justify-between gap-2 px-5 py-3 text-left ${expandable ? 'cursor-pointer' : 'cursor-default'}`}
       >
         <span className="text-sm font-semibold text-foreground">
           {curatedFitTitle(node.name, vramUnknown, incompatible)}
@@ -319,16 +320,14 @@ function NodeFitList({
             </span>
           )}
         </span>
-        <ChevronDown className={`w-4 h-4 shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
+        {expandable && <ChevronDown className={`w-4 h-4 shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />}
       </button>
-      {open && (
+      {open && expandable && (
         <div className="px-5 pb-4">
           {incompatible ? (
             <p className="text-xs text-muted-foreground">
               Curated models are not offered for {node.runtime || 'this runtime'} nodes yet (they use Ollama-format tags); browse Hugging Face below.
             </p>
-          ) : vramUnknown ? (
-            <p className="text-xs text-muted-foreground">VRAM unknown for this node; fit not shown.</p>
           ) : (
             <div className="space-y-1.5">
               <div className={`hidden text-[10px] font-bold text-muted-foreground uppercase tracking-wider px-2.5 ${rowGrid}`}>
@@ -1199,7 +1198,7 @@ export function ModelAdvisor() {
 
       {demoMode && (
         <div className="p-4 bg-warning/10 border border-warning/20 rounded-xl text-warning text-sm font-medium">
-          Demo mode - 6 inference nodes (Ollama, vLLM, TGI, llama.cpp, MLX). Connect real nodes to see live data.
+          Demo mode - {mockModelCatalogResponse.nodes.length} demo inference nodes. Connect real nodes to see live data.
         </div>
       )}
 
@@ -1284,7 +1283,7 @@ export function ModelAdvisor() {
       {activeNode && !(loading && !demoMode) && nodeVramUnknown(activeNode) && (
         <p className="text-xs text-muted-foreground bg-secondary/30 border border-border rounded-xl px-4 py-3">
           {VRAM_UNKNOWN_NOTE}{' '}
-          <Link to="/gpu-nodes" className="text-primary font-medium hover:underline">Go to GPU Nodes</Link>
+          <Link to="/gpu-nodes" className="text-primary font-medium hover:underline">Go to GPU nodes</Link>
         </p>
       )}
 
@@ -1475,6 +1474,9 @@ export function ModelAdvisor() {
               {[...Array(skeletonModels)].map((_, i) => <AdvisorCardSkeleton key={i} />)}
             </div>
           ) : models.length === 0 ? (
+            // A failed search already shows its error above; an empty-state
+            // hint on top of it would read as "no results" rather than "failed".
+            searchError ? null : (
 <div className="bg-card border border-border rounded-xl shadow-sm px-4">
 <EmptyState
   icon={Package}
@@ -1482,6 +1484,7 @@ export function ModelAdvisor() {
   copy={browseEmptyCopy(browseRuntime)}
 />
 </div>
+            )
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-5">
               {gridItems.map((item) =>

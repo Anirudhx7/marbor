@@ -1564,7 +1564,9 @@ function mockNodeModels(base: ModelCatalogResponse, node: ModelCatalogResponse['
 export const mockModelCatalogResponse: ModelCatalogResponse = {
   ...mockModelCatalogBase,
   // GPU model, runtime and VRAM figures come from the shared node record
-  // (mockGPUNodes) so the advisor and the GPU nodes page cannot disagree.
+  // (mockGPUNodes) wherever one exists. gpu-node-12 is an advisor-only demo
+  // node with no GPU nodes page record; it is allowlisted in the demo
+  // consistency test.
   nodes: mockModelCatalogBase.nodes.map(base => {
     const rec = mockGPUNodes.find(g => g.name === base.name);
     const n = rec && rec.vramTotalMB > 0

@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {
   browseHelpClaim,
   browseEmptyCopy,
+  isGGUFSearch,
   nodeVramUnknown,
   curatedFitTitle,
   VRAM_UNKNOWN_NOTE,
@@ -32,10 +33,17 @@ test('a runtime outside the covered list gets no filtering claim', () => {
   assert.equal(browseHelpClaim('sglang'), '');
 });
 
-test('GGUF empty state says media models are hidden; others do not', () => {
-  assert.match(browseEmptyCopy('ollama'), /speech, image and video models are hidden/i);
-  assert.match(browseEmptyCopy(null), /speech, image and video models are hidden/i);
-  assert.doesNotMatch(browseEmptyCopy('vllm'), /hidden/);
+test('GGUF empty state says media models are left out; never that they were hidden', () => {
+  for (const rt of ['ollama', 'llamacpp', '', null, undefined]) {
+    assert.match(browseEmptyCopy(rt), /speech, image and video models are left out for this runtime/i, String(rt));
+    assert.doesNotMatch(browseEmptyCopy(rt), /hidden/, String(rt));
+  }
+  assert.doesNotMatch(browseEmptyCopy('vllm'), /left out|hidden/);
+});
+
+test('isGGUFSearch is the one GGUF rule', () => {
+  for (const rt of ['', 'ollama', 'llamacpp', null, undefined]) assert.equal(isGGUFSearch(rt), true, String(rt));
+  for (const rt of ['vllm', 'tgi', 'mlx', 'sglang']) assert.equal(isGGUFSearch(rt), false, rt);
 });
 
 test('inferred or zero VRAM counts as unknown; declared or detected does not', () => {
@@ -54,8 +62,9 @@ test('curated heading is "Curated models for" when VRAM unknown or incompatible'
   assert.equal(curatedFitTitle('gpu-1', false, false), 'What fits gpu-1');
 });
 
-test('the shared note says why Fit is Unknown and how to fix it', () => {
-  assert.match(VRAM_UNKNOWN_NOTE, /Fit needs this node's VRAM/);
+test('the shared note says why fit is missing and how to fix it', () => {
+  assert.match(VRAM_UNKNOWN_NOTE, /Fit cannot be computed without this node's VRAM/);
+  assert.doesNotMatch(VRAM_UNKNOWN_NOTE, /shows Unknown/);
   assert.match(VRAM_UNKNOWN_NOTE, /Edit node > Capacity overrides/);
   assert.match(VRAM_UNKNOWN_NOTE, /enable the agent/);
 });

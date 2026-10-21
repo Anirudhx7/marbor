@@ -9,7 +9,8 @@
 const GGUF_SEARCH_RUNTIMES = ['', 'ollama', 'llamacpp'];
 const TAG_FILTERED_SEARCH_RUNTIMES = ['vllm', 'tgi', 'mlx'];
 
-const isGGUFSearch = (runtime: string | null | undefined) =>
+// The one rule for "this runtime browses GGUF repos"; ModelAdvisor uses it too.
+export const isGGUFSearch = (runtime: string | null | undefined) =>
   GGUF_SEARCH_RUNTIMES.includes(runtime ?? '');
 
 // browseHelpClaim is the honest sentence about how Browse results are narrowed
@@ -27,12 +28,13 @@ export function browseHelpClaim(runtime: string | null | undefined): string {
 }
 
 // browseEmptyCopy is the empty-state hint for a Browse search with no rows. For
-// GGUF runtimes it says media models are hidden so an empty list does not read
-// as a broken search.
+// GGUF runtimes it says media models are left out of this runtime's search, so
+// an empty list does not read as a broken search. It never claims anything was
+// hidden for the current query, because the server does not report a count.
 export function browseEmptyCopy(runtime: string | null | undefined): string {
   const hint = 'Try searching for "llama" or "gemma".';
   if (isGGUFSearch(runtime)) {
-    return `${hint} Speech, image and video models are hidden for this runtime.`;
+    return `${hint} Speech, image and video models are left out for this runtime.`;
   }
   return hint;
 }
@@ -51,6 +53,6 @@ export function curatedFitTitle(nodeName: string, vramUnknown: boolean, incompat
 }
 
 // Shown once per page (Browse and Favourites) when the selected node's VRAM is
-// unknown, because every Fit badge on the page reads Unknown for that reason.
+// unknown, because fit cannot be computed for that node for any runtime.
 export const VRAM_UNKNOWN_NOTE =
-  "Fit needs this node's VRAM, so Fit shows Unknown. Declare it in Edit node > Capacity overrides, or enable the agent.";
+  "Fit cannot be computed without this node's VRAM. Declare it in Edit node > Capacity overrides, or enable the agent.";
