@@ -2554,10 +2554,11 @@ export function GPUNodes() {
       >
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-muted-foreground mb-1.5">
-              Node Name <span className="text-destructive">*</span>
+            <label htmlFor="add-node-name" className="block text-sm font-medium text-muted-foreground mb-1.5">
+              Node Name <span aria-hidden="true" className="text-destructive">*</span>
             </label>
             <input
+              id="add-node-name"
               type="text"
               aria-required="true"
               value={newNode.name}
@@ -2567,10 +2568,11 @@ export function GPUNodes() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-muted-foreground mb-1.5">
-              Host <span className="text-destructive">*</span>
+            <label htmlFor="add-node-host" className="block text-sm font-medium text-muted-foreground mb-1.5">
+              Host <span aria-hidden="true" className="text-destructive">*</span>
             </label>
             <input
+              id="add-node-host"
               type="text"
               aria-required="true"
               value={newNode.host}
@@ -2638,17 +2640,19 @@ export function GPUNodes() {
           )}
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
             {(!newNode.name || !newNode.host) && (
-              <p className="mr-auto self-center text-xs text-muted-foreground">Enter a node name and host to add the node.</p>
+              <p id="add-node-hint" className="flex-1 min-w-0 self-center text-xs text-muted-foreground">Enter a node name and host to add the node.</p>
             )}
             <button
               onClick={() => setIsAddModalOpen(false)}
-              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              className="shrink-0 whitespace-nowrap px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
             >
               Cancel
             </button>
             <Button
               onClick={handleAddNode}
               disabled={!newNode.name || !newNode.host}
+              aria-describedby={!newNode.name || !newNode.host ? 'add-node-hint' : undefined}
+              className="shrink-0 whitespace-nowrap"
             >
               Add Node
             </Button>

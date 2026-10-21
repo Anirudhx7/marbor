@@ -7,7 +7,10 @@ export function roundPrice(value: number): number {
 }
 
 // Rate limit label for an API key. 0 (or unset) means no cap, so show
-// "Unlimited" instead of a misleading "0/hr".
+// "Unlimited" instead of a misleading "0/hr". A value that is not a real number
+// shows "-" rather than claiming the key is unlimited.
 export function formatRateLimit(n?: number | null): string {
-  return n == null || n <= 0 ? 'Unlimited' : `${n.toLocaleString()}/hr`;
+  if (n == null) return 'Unlimited';
+  if (!Number.isFinite(n)) return '-';
+  return n <= 0 ? 'Unlimited' : `${n.toLocaleString()}/hr`;
 }

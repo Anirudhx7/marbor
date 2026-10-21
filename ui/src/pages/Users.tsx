@@ -295,8 +295,8 @@ function CreateUserModal({ onClose, onDone }: CreateUserModalProps) {
       <div className="space-y-4">
         <div className="space-y-3">
           <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1.5">Username <span className="text-destructive">*</span></label>
-            <input type="text" value={username} onChange={e => setUsername(e.target.value)} autoFocus aria-required="true"
+            <label htmlFor="create-user-username" className="block text-xs font-medium text-muted-foreground mb-1.5">Username <span aria-hidden="true" className="text-destructive">*</span></label>
+            <input id="create-user-username" type="text" value={username} onChange={e => setUsername(e.target.value)} autoFocus aria-required="true"
               className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
           </div>
           <div>

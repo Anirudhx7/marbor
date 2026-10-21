@@ -209,23 +209,55 @@ func TestRun_KeyList_RateLimitCell(t *testing.T) {
 	if code := Run([]string{"key", "list", "--server", srv.URL}, &stdout, &stderr); code != ExitOK {
 		t.Fatalf("exit %d (stderr: %s)", code, stderr.String())
 	}
-	cells := map[string][]string{}
-	for _, line := range strings.Split(strings.TrimSpace(stdout.String()), "\n")[1:] {
-		f := strings.Fields(line)
-		cells[f[0]] = f
+	// Cells are whitespace-separated and the rate limit is the third column
+	// (name, key preview, rate limit); the test keys have no spaces in any of
+	// the first three, so positional parsing is safe here.
+	cell := func(name string) string {
+		for _, line := range strings.Split(strings.TrimSpace(stdout.String()), "\n")[1:] {
+			if f := strings.Fields(line); len(f) > 2 && f[0] == name {
+				return f[2]
+			}
+		}
+		t.Fatalf("no table row for key %q in %q", name, stdout.String())
+		return ""
 	}
-	if cells["open"][2] != "-" {
-		t.Errorf("rate limit 0 should print -, got %q", cells["open"][2])
+	if got := cell("open"); got != "-" {
+		t.Errorf("rate limit 0 should print -, got %q", got)
 	}
-	if cells["capped"][2] != "1000" {
-		t.Errorf("rate limit 1000 should print 1000, got %q", cells["capped"][2])
+	if got := cell("capped"); got != "1000" {
+		t.Errorf("rate limit 1000 should print 1000, got %q", got)
 	}
 
 	stdout.Reset()
 	if code := Run([]string{"key", "list", "--server", srv.URL, "--json"}, &stdout, &stderr); code != ExitOK {
 		t.Fatalf("json exit %d", code)
 	}
-	if !strings.Contains(stdout.String(), `"rateLimit": 0`) && !strings.Contains(stdout.String(), `"rateLimit":0`) {
-		t.Errorf("--json must keep rateLimit 0, got %s", stdout.String())
+	var keys []struct {
+		Name      string `json:"name"`
+		RateLimit int    `json:"rateLimit"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &keys); err != nil {
+		t.Fatalf("--json output is not valid JSON: %v\n%s", err, stdout.String())
+	}
+	got := map[string]int{}
+	for _, k := range keys {
+		got[k.Name] = k.RateLimit
+	}
+	if v, ok := got["open"]; !ok || v != 0 {
+		t.Errorf("--json must keep rateLimit 0 on open, got %v", got)
+	}
+	if got["capped"] != 1000 {
+		t.Errorf("--json must keep rateLimit 1000 on capped, got %v", got)
+	}
+}
+
+func TestRateLimitCell(t *testing.T) {
+	for _, c := range []struct {
+		in   int
+		want string
+	}{{0, "-"}, {-5, "-"}, {1, "1"}, {1000, "1000"}} {
+		if got := rateLimitCell(c.in); got != c.want {
+			t.Errorf("rateLimitCell(%d) = %q, want %q", c.in, got, c.want)
+		}
 	}
 }

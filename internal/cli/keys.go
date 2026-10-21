@@ -101,7 +101,7 @@ func rateLimitCell(limit int) string {
 	if limit <= 0 {
 		return "-"
 	}
-	return fmt.Sprintf("%d", limit)
+	return strconv.Itoa(limit)
 }
 
 // usedOverLimit renders a request count against its quota as "used/limit",

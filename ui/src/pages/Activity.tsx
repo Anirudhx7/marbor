@@ -417,10 +417,12 @@ export function Activity() {
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5 truncate">
                     triggered by {d.trigger_model} - seen together {d.transition_count}x at {decisionHourLabel(d.hour, tz)}
-                    {!d.was_already_warm && !d.warmup_triggered && (
-                      <span title="The engine does not record why it skipped this prediction."> - Reason: -</span>
-                    )}
                   </p>
+                  {!d.was_already_warm && !d.warmup_triggered && (
+                    <p className="text-xs text-muted-foreground whitespace-normal">
+                      Reason: -<span className="sr-only"> The engine does not record why it skipped this prediction.</span>
+                    </p>
+                  )}
                 </div>
                 <span className="font-mono text-xs text-muted-foreground whitespace-nowrap">{formatDateTime(d.timestamp, tz)}</span>
               </div>

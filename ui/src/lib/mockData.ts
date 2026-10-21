@@ -760,7 +760,7 @@ export const mockAPIKeys: APIKey[] = [
   {
     id: 'key-6',
     name: 'Soak Test',
-    key: 'sk-ext-2k3l-m4n5-o6p7-q8r9',
+    key: 'sk-soak-2k3l-m4n5-o6p7-q8r9',
     created: '2026-03-10',
     requestsToday: 0,
     requestsThisMonth: 4397,
@@ -769,7 +769,7 @@ export const mockAPIKeys: APIKey[] = [
     rateLimit: 0,
     dailyUsdCap: 0,
     monthlyUsdCap: 0,
-    status: 'suspended',
+    status: 'active',
     allowedModels: ['llama3.3:8b'],
     expiresAt: null,
   },

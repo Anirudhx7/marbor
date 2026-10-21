@@ -10,7 +10,14 @@ test('formatRateLimit shows Unlimited for no limit', () => {
   assert.equal(formatRateLimit(0), 'Unlimited');
   assert.equal(formatRateLimit(undefined), 'Unlimited');
   assert.equal(formatRateLimit(null), 'Unlimited');
-  assert.equal(formatRateLimit(1000), '1,000/hr');
+  assert.equal(formatRateLimit(-5), 'Unlimited');
+  assert.equal(formatRateLimit(1000), `${(1000).toLocaleString()}/hr`);
+  assert.equal(formatRateLimit(1234567), `${(1234567).toLocaleString()}/hr`);
+});
+
+test('formatRateLimit shows - for a value that is not a real number', () => {
+  assert.equal(formatRateLimit(NaN), '-');
+  assert.equal(formatRateLimit(Infinity), '-');
 });
 
 test('decisionHourLabel names the zone of the hour', () => {
@@ -18,6 +25,15 @@ test('decisionHourLabel names the zone of the hour', () => {
   assert.equal(decisionHourLabel(9, 'Asia/Kolkata'), 'hour 9 (Asia/Kolkata)');
   assert.equal(decisionHourLabel(3, 'Local'), 'hour 3 (server time)');
   assert.equal(decisionHourLabel(3, ''), 'hour 3 (server time)');
+});
+
+test('decisionHourLabel treats a missing, blank or lowercase local zone as server time', () => {
+  assert.equal(decisionHourLabel(5, undefined), 'hour 5 (server time)');
+  assert.equal(decisionHourLabel(0, 'UTC'), 'hour 0 (UTC)');
+  assert.equal(decisionHourLabel(0, undefined), 'hour 0 (server time)');
+  assert.equal(decisionHourLabel(3, '   '), 'hour 3 (server time)');
+  assert.equal(decisionHourLabel(3, 'local'), 'hour 3 (server time)');
+  assert.equal(decisionHourLabel(3, ' LOCAL '), 'hour 3 (server time)');
 });
 
 const deferred = () => {
@@ -92,4 +108,39 @@ test('dedupeInflight rejection clears the slot and rejects sharers', async () =>
   await assert.rejects(a, /boom/);
   await assert.rejects(b, /boom/);
   assert.deepEqual(await call(), { ok: true });
+});
+
+test('dedupeInflight old rejection after reset does not clear the newer slot', async () => {
+  let calls = 0;
+  const ds = [deferred(), deferred()];
+  const { call, reset } = dedupeInflight(() => ds[calls++].promise);
+  const a = call();
+  reset();
+  const b = call();
+  ds[0].reject(new Error('old'));
+  await assert.rejects(a, /old/);
+  const c = call();
+  assert.equal(calls, 2, 'old rejection must not clear the newer slot');
+  ds[1].resolve({ v: 'b' });
+  assert.deepEqual(await b, { v: 'b' });
+  assert.deepEqual(await c, { v: 'b' });
+});
+
+test('dedupeInflight single caller gets an isolated clone', async () => {
+  const shared = { list: [1] };
+  const { call } = dedupeInflight(async () => shared);
+  const x = await call();
+  x.list.push(2);
+  assert.deepEqual(shared.list, [1]);
+  assert.deepEqual((await call()).list, [1]);
+});
+
+test('dedupeInflight reset with an empty slot is a no-op', async () => {
+  let calls = 0;
+  const { call, reset } = dedupeInflight(async () => ({ n: ++calls }));
+  reset();
+  assert.deepEqual(await call(), { n: 1 });
+  reset();
+  reset();
+  assert.deepEqual(await call(), { n: 2 });
 });

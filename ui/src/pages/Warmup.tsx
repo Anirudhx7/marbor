@@ -1229,10 +1229,12 @@ export function Warmup() {
                       </p>
                       <p className="text-xs text-muted-foreground truncate">
                         triggered by {d.trigger_model} - seen together {d.transition_count}x at {decisionHourLabel(d.hour, tz)}
-                        {!d.was_already_warm && !d.warmup_triggered && (
-                          <span title="The engine does not record why it skipped this prediction."> - Reason: -</span>
-                        )}
                       </p>
+                      {!d.was_already_warm && !d.warmup_triggered && (
+                        <p className="text-xs text-muted-foreground whitespace-normal">
+                          Reason: -<span className="sr-only"> The engine does not record why it skipped this prediction.</span>
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 self-start sm:self-auto mt-1 sm:mt-0 shrink-0">

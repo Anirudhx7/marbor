@@ -52,11 +52,66 @@ test('no test-scaffolding names or raw runtime ids in demo copy', () => {
 });
 
 test('demo shows an unlimited key, a skipped decision and UTC decision hours', () => {
-  assert.ok(/rateLimit: 0,/.test(mock), 'no mock API key with rateLimit 0');
+  const keysStart = mock.indexOf('export const mockAPIKeys');
+  assert.ok(keysStart >= 0, 'mockAPIKeys not found');
+  const keysEnd = mock.indexOf('\n];', keysStart);
+  assert.ok(keysEnd > keysStart, 'end of mockAPIKeys not found');
+  const keys = mock.slice(keysStart, keysEnd);
+  assert.ok(/rateLimit: 0,/.test(keys), 'no mock API key with rateLimit 0');
   const start = api.indexOf('export async function fetchPredictiveDecisions');
-  const body = api.slice(start, api.indexOf('apiFetch', start));
+  assert.ok(start >= 0, 'fetchPredictiveDecisions not found');
+  const apiFetchAt = api.indexOf('apiFetch', start);
+  assert.ok(apiFetchAt > start, 'apiFetch call after fetchPredictiveDecisions not found');
+  const body = api.slice(start, apiFetchAt);
   assert.ok(/was_already_warm: false,\s*warmup_triggered: false/.test(body), 'no skipped demo decision');
   assert.ok(!/\.getHours\(\)/.test(body), 'demo hour must use getUTCHours');
   assert.ok(/getUTCHours\(\)/.test(body), 'demo hour not UTC');
-  assert.ok(!/reason:/.test(body), 'demo decisions must not invent a skip reason');
+  const rows = body.split('\n').filter((l) => l.includes('predicted_model:'));
+  assert.ok(rows.length > 0, 'no demo decision rows found');
+  for (const row of rows) assert.ok(!/reason/i.test(row), 'demo decisions must not invent a skip reason');
+});
+
+test('the Soak Test demo key tells one story', () => {
+  const m = mock.match(/name: 'Soak Test',\n\s*key: '([^']+)',[\s\S]*?rateLimit: (\d+),[\s\S]*?status: '(\w+)'/);
+  assert.ok(m, 'Soak Test mock key not found');
+  assert.ok(/soak/i.test(m[1]), 'Soak Test key string must look like a soak-test key');
+  assert.equal(m[2], '0');
+  assert.equal(m[3], 'active');
+});
+
+// Top-level exported api.ts functions as { name, text, wrapped }.
+function apiExports() {
+  const re = /^export (?:async function|function|const) (\w+)/gm;
+  const marks = [...api.matchAll(re)];
+  return marks.map((m, i) => {
+    const chunk = api.slice(m.index, i + 1 < marks.length ? marks[i + 1].index : api.length);
+    // Stop at the closing brace at column 0 so non-exported code between two
+    // exports is not attributed to the earlier one.
+    const close = chunk.search(/\n\}\)?;?\n/);
+    const text = close >= 0 ? chunk.slice(0, close + 1) : chunk;
+    return { name: m[1], text, wrapped: new RegExp(`^export const ${m[1]} = withSettingsReset\\(`).test(text) };
+  });
+}
+
+test('every api.ts write that can change the settings payload resets the shared settings read', () => {
+  const writes = /method: '(POST|PUT|PATCH|DELETE)'/;
+  const touches = /\/(settings|model-aliases|cloud-providers|config\/reload|backup\/restore)\b/;
+  const exports = apiExports();
+  assert.ok(exports.length > 50, 'api.ts export scan found too few functions');
+  const offenders = exports
+    .filter((e) => writes.test(e.text) && touches.test(e.text) && !e.wrapped)
+    .map((e) => e.name);
+  assert.deepEqual(offenders, [], 'write functions missing withSettingsReset: ' + offenders.join(', '));
+  for (const name of ['login', 'logout']) {
+    const e = exports.find((x) => x.name === name);
+    assert.ok(e, `${name} not found in api.ts`);
+    assert.ok(e.text.includes('settingsInflight.reset()'), `${name} must reset the settings slot`);
+  }
+});
+
+test('settingsInflight is declared before the functions that use it', () => {
+  const decl = api.indexOf('const settingsInflight');
+  assert.ok(decl >= 0, 'settingsInflight declaration not found');
+  assert.ok(decl < api.indexOf('export async function login'), 'declare settingsInflight above login');
+  assert.ok(decl < api.indexOf('function withSettingsReset'), 'declare settingsInflight above withSettingsReset');
 });

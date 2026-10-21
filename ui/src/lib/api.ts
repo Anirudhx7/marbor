@@ -107,6 +107,29 @@ export async function skipPasswordChangeThisSession(): Promise<void> {
 
 // --- Auth ---
 
+// Several components ask for /settings as the dashboard opens. Concurrent
+// callers share one request. Anything that can change the settings payload is
+// wrapped in withSettingsReset so a later read never reuses an older request.
+const settingsInflight = dedupeInflight(async () => {
+  const res = await apiFetch(`${BASE}/settings`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch settings');
+  return res.json();
+});
+
+// Safe as `export const x = withSettingsReset(...)`: api.ts has no runtime import
+// cycle (its imports only pull types back from it), so nothing reads these
+// before they are initialised.
+function withSettingsReset<A extends unknown[], R>(fn: (...args: A) => Promise<R>): (...args: A) => Promise<R> {
+  return async (...args: A) => {
+    settingsInflight.reset();
+    try {
+      return await fn(...args);
+    } finally {
+      settingsInflight.reset();
+    }
+  };
+}
+
 export async function login(username: string, password: string): Promise<LoginResponse> {
   if (import.meta.env.VITE_FORCE_DEMO === 'true') {
     if (username === 'admin' && password === 'admin') {
@@ -121,17 +144,21 @@ export async function login(username: string, password: string): Promise<LoginRe
     throw new Error('Invalid credentials');
   }
   settingsInflight.reset();
-  const r = await fetch('/admin/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password }),
-    credentials: 'include',
-  });
-  if (!r.ok) {
-    const j = await r.json().catch(() => ({}));
-    throw new Error((j as any).error || 'Invalid credentials');
+  try {
+    const r = await fetch('/admin/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+      credentials: 'include',
+    });
+    if (!r.ok) {
+      const j = await r.json().catch(() => ({}));
+      throw new Error((j as any).error || 'Invalid credentials');
+    }
+    return await r.json();
+  } finally {
+    settingsInflight.reset();
   }
-  return r.json();
 }
 
 export async function userLogin(username: string, password: string): Promise<LoginResponse> {
@@ -835,26 +862,6 @@ export async function fetchRoutingStrategy(): Promise<string> {
   if (!res.ok) throw new Error('Failed to fetch routing strategy');
   const data = await res.json();
   return data.strategy ?? 'warm-first';
-}
-
-// Several components ask for /settings as the dashboard opens. Concurrent
-// callers share one request. Anything that can change the settings payload is
-// wrapped in withSettingsReset so a later read never reuses an older request.
-const settingsInflight = dedupeInflight(async () => {
-  const res = await apiFetch(`${BASE}/settings`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch settings');
-  return res.json();
-});
-
-function withSettingsReset<A extends unknown[], R>(fn: (...args: A) => Promise<R>): (...args: A) => Promise<R> {
-  return async (...args: A) => {
-    settingsInflight.reset();
-    try {
-      return await fn(...args);
-    } finally {
-      settingsInflight.reset();
-    }
-  };
 }
 
 export async function fetchSettings() {
