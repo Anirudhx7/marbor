@@ -1461,6 +1461,22 @@ const mockModelCatalogBase: ModelCatalogResponse = {
       capabilities: ['status', 'models.pull', 'models.list', 'runtime.health_check'],
       models: [],
     },
+    {
+      // A node added by URL with no VRAM declared and no agent: fit cannot be
+      // computed, so the demo shows the "Curated models for" heading and the
+      // page note instead of a fit table.
+      name: 'gpu-node-06',
+      url: 'http://10.0.1.24:11434',
+      runtime: 'ollama',
+      vram_free_bytes: 0,
+      vram_total_bytes: 0,
+      vram_used_bytes: 0,
+      vram_source: 'unknown',
+      disk_free_gb: 0,
+      disk_total_gb: 0,
+      disk_known: false,
+      models: [],
+    },
   ],
 };
 

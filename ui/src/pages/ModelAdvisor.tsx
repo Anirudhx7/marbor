@@ -22,6 +22,7 @@ import {
   normalizePullTag,
 } from '../lib/api';
 import { startPull, isPullActive, subscribe as subscribePullProgress, getSnapshot as getPullProgressSnapshot } from '../lib/pullProgress';
+import { browseHelpClaim, browseEmptyCopy, nodeVramUnknown, curatedFitTitle, VRAM_UNKNOWN_NOTE } from '../lib/advisorCopy';
 import { isDownloadOnlyRuntime, pullOptionsFor, sizeNotCurated as isSizeNotCurated } from '../lib/downloadOnly';
 import { useDemoMode } from '../hooks/useDemoMode';
 import { mockHFModels, mockHFSafetensorsModels, mockSafetensorsDetails,mockHFRepoDetails, mockSystemInfo, mockModelCatalogResponse, mockFavorites, pickQuant } from '../lib/mockData';
@@ -208,7 +209,7 @@ function NodeFitList({
   const models = node.models ?? [];
   if (models.length === 0) return null;
   const incompatible = models.every(m => m.recommendation?.reason === 'incompatible_runtime');
-  const vramUnknown = !(node.vram_total_bytes > 0) || node.vram_source === 'unknown' || node.vram_source === 'inferred';
+  const vramUnknown = nodeVramUnknown(node);
   // Fits first, then the rest; each group keeps catalog order (filter is stable).
   const fitRows = models.filter(m => m.recommendation?.picked);
   const otherRows = models.filter(m => !m.recommendation?.picked);
@@ -308,7 +309,7 @@ function NodeFitList({
         className="w-full flex items-center justify-between gap-2 px-5 py-3 text-left cursor-pointer"
       >
         <span className="text-sm font-semibold text-foreground">
-          What fits {node.name}
+          {curatedFitTitle(node.name, vramUnknown, incompatible)}
           {!incompatible && !vramUnknown && (
             <span className="ml-1 font-normal text-muted-foreground">: {fitting} of {models.length} curated models</span>
           )}
@@ -1280,6 +1281,13 @@ export function ModelAdvisor() {
         )
       )}
 
+      {activeNode && !(loading && !demoMode) && nodeVramUnknown(activeNode) && (
+        <p className="text-xs text-muted-foreground bg-secondary/30 border border-border rounded-xl px-4 py-3">
+          {VRAM_UNKNOWN_NOTE}{' '}
+          <Link to="/gpu-nodes" className="text-primary font-medium hover:underline">Go to GPU Nodes</Link>
+        </p>
+      )}
+
       {tab === 'favourites' ? (
         <>
           {loading && !demoMode ? (
@@ -1347,7 +1355,7 @@ export function ModelAdvisor() {
         <>
           <div className="bg-secondary/30 border border-border rounded-xl p-4 text-xs text-muted-foreground leading-relaxed shadow-sm">
             <span className="font-semibold text-foreground block mb-1">How to add models to nodes:</span>
-            1. Search Hugging Face for any model (e.g. <code className="font-mono text-primary font-semibold">llama-3.2</code> or <code className="font-mono text-primary font-semibold">qwen2.5</code>) using the search bar below - results are already filtered to what {browseRuntimeIsGGUF ? 'this runtime (GGUF)' : `this runtime (${browseRuntime})`} can load.
+            1. Search Hugging Face for any model (e.g. <code className="font-mono text-primary font-semibold">llama-3.2</code> or <code className="font-mono text-primary font-semibold">qwen2.5</code>) using the search bar below. {browseHelpClaim(browseRuntime)}
             <br />
             2. Click <strong className="text-foreground">View quantizations & pull</strong> on a card to expand the detail panel inline.
             <br />
@@ -1471,7 +1479,7 @@ export function ModelAdvisor() {
 <EmptyState
   icon={Package}
   title="No repositories found"
-  copy='Try searching for "llama" or "gemma".'
+  copy={browseEmptyCopy(browseRuntime)}
 />
 </div>
           ) : (

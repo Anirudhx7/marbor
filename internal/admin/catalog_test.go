@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -958,5 +959,195 @@ func TestDiskFitOversizeAgentReplyReadsUnknownFromRealNode(t *testing.T) {
 	}
 	if got := classifyUnknownSizeDiskFit(free, total, present); got != "unknown" {
 		t.Errorf("classifyUnknownSizeDiskFit after an oversize reply = %q, want unknown", got)
+	}
+}
+
+// TestIsMediaPipelineTag pins the exact set of Hugging Face pipeline tags a
+// GGUF runtime's search drops, and the tags it must keep. An unknown or new
+// tag fails open (the row is shown) on purpose.
+func TestIsMediaPipelineTag(t *testing.T) {
+	dropped := []string{
+		"text-to-speech", "text-to-audio", "automatic-speech-recognition",
+		"audio-to-audio", "audio-classification", "voice-activity-detection",
+		"text-to-image", "image-to-image", "image-to-video", "text-to-video",
+		"image-text-to-video", "video-classification", "image-classification",
+		"object-detection", "image-segmentation", "depth-estimation",
+		"unconditional-image-generation", "image-to-3d", "text-to-3d",
+		"zero-shot-image-classification", "zero-shot-object-detection",
+		"mask-generation", "keypoint-detection", "video-to-video",
+	}
+	kept := []string{
+		"", "text-generation", "image-text-to-text", "any-to-any",
+		"audio-text-to-text", "image-to-text", "text-ranking",
+		"feature-extraction", "sentence-similarity", "reinforcement-learning",
+		"some-brand-new-tag",
+	}
+	for _, tag := range dropped {
+		if !isMediaPipelineTag(tag) {
+			t.Errorf("isMediaPipelineTag(%q) = false, want true", tag)
+		}
+	}
+	for _, tag := range kept {
+		if isMediaPipelineTag(tag) {
+			t.Errorf("isMediaPipelineTag(%q) = true, want false", tag)
+		}
+	}
+}
+
+// recordingHFTransport records every request URL and answers with a canned body.
+type recordingHFTransport struct {
+	body string
+	mu   sync.Mutex
+	urls []string
+}
+
+func (rt *recordingHFTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	rt.mu.Lock()
+	rt.urls = append(rt.urls, r.URL.String())
+	rt.mu.Unlock()
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(rt.body)),
+		Header:     make(http.Header),
+	}, nil
+}
+
+const mixedHFSearchBody = `[
+	{"id":"org/real-llm-GGUF","downloads":900,"pipeline_tag":"text-generation"},
+	{"id":"org/untagged-llm-GGUF","downloads":800},
+	{"id":"org/tts-GGUF","downloads":700,"pipeline_tag":"text-to-speech"},
+	{"id":"org/vlm-GGUF","downloads":600,"pipeline_tag":"image-text-to-text"},
+	{"id":"org/image-gen-GGUF","downloads":500,"pipeline_tag":"text-to-image"},
+	{"id":"org/embed-GGUF","downloads":400,"pipeline_tag":"feature-extraction"},
+	{"id":"org/asr-GGUF","downloads":300,"pipeline_tag":"automatic-speech-recognition"}
+]`
+
+func searchWithTransport(t *testing.T, rt http.RoundTripper, path string) *httptest.ResponseRecorder {
+	t.Helper()
+	orig := hfHTTPClient.Transport
+	hfHTTPClient.Transport = rt
+	defer func() { hfHTTPClient.Transport = orig }()
+
+	ollama := mockOllamaServer(t)
+	defer ollama.Close()
+	s := newModelFitTestServer(ollama.URL)
+
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, req)
+	return w
+}
+
+func searchIDs(t *testing.T, w *httptest.ResponseRecorder) []string {
+	t.Helper()
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+	}
+	var models []HFModelInfo
+	if err := json.Unmarshal(w.Body.Bytes(), &models); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	ids := make([]string, 0, len(models))
+	for _, m := range models {
+		ids = append(ids, m.ID)
+	}
+	return ids
+}
+
+func TestHandleModelSearch_GGUFRuntimesDropMediaModels(t *testing.T) {
+	for _, runtime := range []string{"", "ollama", "llamacpp"} {
+		rt := &recordingHFTransport{body: mixedHFSearchBody}
+		w := searchWithTransport(t, rt, "/admin/models/search?q=x&runtime="+runtime)
+		ids := searchIDs(t, w)
+
+		want := []string{"org/real-llm-GGUF", "org/untagged-llm-GGUF", "org/vlm-GGUF", "org/embed-GGUF"}
+		if strings.Join(ids, ",") != strings.Join(want, ",") {
+			t.Errorf("runtime %q: got %v, want %v", runtime, ids, want)
+		}
+		if len(rt.urls) != 1 {
+			t.Fatalf("runtime %q: %d upstream requests, want exactly 1", runtime, len(rt.urls))
+		}
+		u := rt.urls[0]
+		if strings.Contains(u, "pipeline_tag") {
+			t.Errorf("runtime %q: upstream URL must not carry pipeline_tag: %s", runtime, u)
+		}
+		if !strings.Contains(u, "filter=gguf") {
+			t.Errorf("runtime %q: upstream URL missing filter=gguf: %s", runtime, u)
+		}
+		if !strings.Contains(u, "limit=50") {
+			t.Errorf("runtime %q: upstream URL should ask for limit=50, got: %s", runtime, u)
+		}
+	}
+}
+
+func TestHandleModelSearch_GGUFTrimsToPageSizeAfterFilter(t *testing.T) {
+	var sb strings.Builder
+	sb.WriteString("[")
+	// 10 media rows first, then 40 text rows: 25 text rows must survive.
+	for i := 0; i < 50; i++ {
+		tag := "text-generation"
+		if i < 10 {
+			tag = "text-to-speech"
+		}
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		sb.WriteString(`{"id":"org/m` + strconv.Itoa(i) + `","downloads":` + strconv.Itoa(1000-i) + `,"pipeline_tag":"` + tag + `"}`)
+	}
+	sb.WriteString("]")
+	w := searchWithTransport(t, &recordingHFTransport{body: sb.String()}, "/admin/models/search?runtime=ollama")
+	ids := searchIDs(t, w)
+	if len(ids) != 25 {
+		t.Fatalf("got %d rows, want 25 (filter first, then trim)", len(ids))
+	}
+	if ids[0] != "org/m10" {
+		t.Errorf("first row = %q, want org/m10 (media rows removed, order kept)", ids[0])
+	}
+}
+
+func TestHandleModelSearch_VLLMDoesNotApplyMediaFilter(t *testing.T) {
+	rt := &recordingHFTransport{body: mixedHFSearchBody}
+	w := searchWithTransport(t, rt, "/admin/models/search?runtime=vllm")
+	ids := searchIDs(t, w)
+	if len(rt.urls) == 0 {
+		t.Fatal("no upstream request")
+	}
+	for _, u := range rt.urls {
+		if !strings.Contains(u, "pipeline_tag=") || !strings.Contains(u, "filter=safetensors") {
+			t.Errorf("vllm upstream URL must carry filter and pipeline_tag: %s", u)
+		}
+	}
+	found := false
+	for _, id := range ids {
+		if id == "org/tts-GGUF" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("vllm results must pass through unfiltered by the media denylist, got %v", ids)
+	}
+}
+
+type errHFTransport struct{}
+
+func (errHFTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: http.StatusInternalServerError,
+		Body:       io.NopCloser(strings.NewReader("boom")),
+		Header:     make(http.Header),
+	}, nil
+}
+
+func TestHandleModelSearch_GGUFErrorStaysCorrelated(t *testing.T) {
+	w := searchWithTransport(t, errHFTransport{}, "/admin/models/search?runtime=ollama")
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "failed to fetch Hugging Face model list") {
+		t.Errorf("error body should be the correlated generic message, got %s", w.Body.String())
+	}
+	if strings.Contains(w.Body.String(), "status 500") {
+		t.Errorf("upstream detail must not leak to the client: %s", w.Body.String())
 	}
 }
