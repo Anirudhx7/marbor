@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Flame, Plus, Trash2, Clock, Server, Pin, ChevronDown, ChevronUp, PauseCircle, PlayCircle, Pencil, BrainCircuit, CheckCircle2, XCircle, Zap } from 'lucide-react';
 import {
   fetchNodes, getNodeWarmup, setNodeWarmup,
@@ -1194,9 +1194,15 @@ export function Warmup() {
               <div>
                 <p className="text-sm font-medium text-foreground">Prefix Locality Hit Rate</p>
                 <p className="text-xs text-muted-foreground">
-                  {prefixStats.enabled
-                    ? `${(prefixStats.hit_rate * 100).toFixed(1)}% (${prefixStats.hits} hits / ${prefixStats.misses} misses)`
-                    : 'Disabled - enable in Settings > Routing and restart marbor to activate this signal'}
+                  {prefixStats.enabled ? (
+                    `${(prefixStats.hit_rate * 100).toFixed(1)}% (${prefixStats.hits} hits / ${prefixStats.misses} misses)`
+                  ) : (
+                    <>
+                      Disabled - turn on Prefix Locality Hints in{' '}
+                      <Link to="/settings" className="text-foreground underline rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50">Settings &gt; Routing &amp; Reliability</Link>
+                      . Save the change and it applies immediately, no restart needed.
+                    </>
+                  )}
                 </p>
               </div>
             </div>
