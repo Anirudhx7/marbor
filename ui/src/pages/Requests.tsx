@@ -566,26 +566,24 @@ export function Requests() {
               shrunk to w-fit around it) both "fixed" the padding by leaving a
               dead, obviously-unstyled gap next to the table instead - worse
               UX than generous cell padding, not better. The percentages
-              below are exactly the pixel ratios from the prior fixed-width
-              attempt (90/170/160/200/140/75/90/160, sum 1085) so on a normal
-              ~1085px-equivalent card they render close to that calibration;
-              on this app's widest card (App.tsx's max-w-[1600px]) columns
-              get proportionally roomier (~1.4x), which reads as a table that
-              fills its space, not one with a wasted column or a wasted void.
+              below must have one entry per header (9, summing to 100): a
+              missing col leaves the last column (Why) with no width under
+              table-fixed, pushing it off-screen behind a horizontal scroll.
               table-fixed + % (not table-layout:auto/content-fit) still keeps
               widths stable across this page's 3s poll, since percentages
               depend only on container width, never on row content.
             */}
             <table className="w-full text-sm table-fixed">
               <colgroup>
-                <col className="w-[8%]" />
+                <col className="w-[7%]" />
+                <col className="w-[12%]" />
+                <col className="w-[12%]" />
                 <col className="w-[16%]" />
-                <col className="w-[15%]" />
-                <col className="w-[18%]" />
-                <col className="w-[13%]" />
+                <col className="w-[12%]" />
                 <col className="w-[7%]" />
                 <col className="w-[8%]" />
-                <col className="w-[15%]" />
+                <col className="w-[8%]" />
+                <col className="w-[18%]" />
               </colgroup>
               <thead>
                 <tr className="border-b border-border bg-secondary/30">
