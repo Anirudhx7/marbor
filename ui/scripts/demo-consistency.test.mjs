@@ -171,7 +171,11 @@ test('demo by-model sums sit between the 24h total and the all-time total', () =
   const modelCloud = sum(nums(/cloud:\s*(\d+)/g, byModel));
   assert.ok(modelLocal >= hourlyLocal && modelLocal <= totalLocal, `local ${hourlyLocal} <= ${modelLocal} <= ${totalLocal}`);
   assert.ok(modelCloud >= hourlyCloud && modelCloud <= totalCloud, `cloud ${hourlyCloud} <= ${modelCloud} <= ${totalCloud}`);
-  const modelSaved = sum(nums(/saved_usd:\s*([\d.]+)/g, byModel));
-  const totalSaved = Number(sv.match(/saved_usd: ([\d.]+)/)[1]);
+  const savedVals = nums(/saved_usd:\s*([\d.]+)/g, byModel);
+  assert.ok(savedVals.length > 0, 'by_model has no saved_usd fields in mockAnalytics');
+  const modelSaved = sum(savedVals);
+  const savedMatch = sv.match(/saved_usd: ([\d.]+)/);
+  assert.ok(savedMatch, 'saved_usd not found in mockSavings');
+  const totalSaved = Number(savedMatch[1]);
   assert.ok(modelSaved <= totalSaved, `by_model saved ${modelSaved} <= all-time saved ${totalSaved}`);
 });

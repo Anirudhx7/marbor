@@ -67,3 +67,17 @@ func TestRun_SavingsJSON_KeepsSince(t *testing.T) {
 		t.Errorf("--json must keep since, got %q", got.Since)
 	}
 }
+
+func TestRun_SavingsJSON_NullAmountsKeepSince(t *testing.T) {
+	out := runSavingsCmd(t, `{"local_requests":3,"cloud_requests":1,"cloud_spent_usd":null,"saved_usd":null,"total_requests":4,"since":"2026-10-01T08:00:00Z"}`, "--json")
+	var got CloudSavings
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("--json output is not valid JSON: %v (%q)", err, out)
+	}
+	if got.Since != "2026-10-01T08:00:00Z" {
+		t.Errorf("--json must keep since, got %q", got.Since)
+	}
+	if got.SavedUSD != nil || got.CloudSpentUSD != nil {
+		t.Errorf("null amounts must stay nil, got saved=%v spent=%v", got.SavedUSD, got.CloudSpentUSD)
+	}
+}
