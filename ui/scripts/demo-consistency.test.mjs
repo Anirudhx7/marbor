@@ -50,3 +50,13 @@ test('no test-scaffolding names or raw runtime ids in demo copy', () => {
   assert.ok(!/fake-/.test(mock.replace(/no-fake-data/g, '')), 'fake- name in mockData');
   assert.ok(!/auto-detected as llamacpp/.test(mock), 'raw llamacpp in user-facing hint');
 });
+
+test('demo shows an unlimited key, a skipped decision and UTC decision hours', () => {
+  assert.ok(/rateLimit: 0,/.test(mock), 'no mock API key with rateLimit 0');
+  const start = api.indexOf('export async function fetchPredictiveDecisions');
+  const body = api.slice(start, api.indexOf('apiFetch', start));
+  assert.ok(/was_already_warm: false,\s*warmup_triggered: false/.test(body), 'no skipped demo decision');
+  assert.ok(!/\.getHours\(\)/.test(body), 'demo hour must use getUTCHours');
+  assert.ok(/getUTCHours\(\)/.test(body), 'demo hour not UTC');
+  assert.ok(!/reason:/.test(body), 'demo decisions must not invent a skip reason');
+});

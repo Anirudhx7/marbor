@@ -26,6 +26,8 @@ VALUES ('91c16f0d6cc1bec3c3603972182a07c66ff4fa71618a975e963d6dbe42b6dd37', 1, '
 -- Insert runtime keys
 INSERT INTO runtime_keys (name, key, rate_limit, daily_limit, monthly_limit, models, revoked)
 VALUES ('demo-key', 'demo-api-key', 1000, 0, 0, '', 0);
+INSERT INTO runtime_keys (name, key, rate_limit, daily_limit, monthly_limit, models, revoked)
+VALUES ('soak-test', 'demo-soak-key', 0, 0, 0, '', 0);
 
 -- Insert runtime nodes
 INSERT INTO runtime_nodes (name, url, runtime, vram_total_mb)

@@ -195,3 +195,37 @@ func TestRun_Spill_Table(t *testing.T) {
 		t.Errorf("expected row data, got %q", out)
 	}
 }
+
+func TestRun_KeyList_RateLimitCell(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`[{"name":"open","key":"k1","rateLimit":0,"status":"active"},{"name":"capped","key":"k2","rateLimit":1000,"status":"active"}]`))
+	}))
+	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
+
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"key", "list", "--server", srv.URL}, &stdout, &stderr); code != ExitOK {
+		t.Fatalf("exit %d (stderr: %s)", code, stderr.String())
+	}
+	cells := map[string][]string{}
+	for _, line := range strings.Split(strings.TrimSpace(stdout.String()), "\n")[1:] {
+		f := strings.Fields(line)
+		cells[f[0]] = f
+	}
+	if cells["open"][2] != "-" {
+		t.Errorf("rate limit 0 should print -, got %q", cells["open"][2])
+	}
+	if cells["capped"][2] != "1000" {
+		t.Errorf("rate limit 1000 should print 1000, got %q", cells["capped"][2])
+	}
+
+	stdout.Reset()
+	if code := Run([]string{"key", "list", "--server", srv.URL, "--json"}, &stdout, &stderr); code != ExitOK {
+		t.Fatalf("json exit %d", code)
+	}
+	if !strings.Contains(stdout.String(), `"rateLimit": 0`) && !strings.Contains(stdout.String(), `"rateLimit":0`) {
+		t.Errorf("--json must keep rateLimit 0, got %s", stdout.String())
+	}
+}

@@ -22,7 +22,7 @@ import {
   type ActivityKind,
 } from '../lib/activityKind';
 import { useTimezone } from '../hooks/useTimezone';
-import { formatDateTimeInZone, formatInTimezone, wallDateTimeToUtcIso } from '../lib/time';
+import { formatDateTimeInZone, formatInTimezone, wallDateTimeToUtcIso, decisionHourLabel } from '../lib/time';
 
 const AUTO_REFRESH_INTERVAL_MS = 30_000;
 const PAGE_LIMIT = 100;
@@ -416,7 +416,10 @@ export function Activity() {
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                    triggered by {d.trigger_model} - seen {d.transition_count}x at hour {d.hour}
+                    triggered by {d.trigger_model} - seen together {d.transition_count}x at {decisionHourLabel(d.hour, tz)}
+                    {!d.was_already_warm && !d.warmup_triggered && (
+                      <span title="The engine does not record why it skipped this prediction."> - Reason: -</span>
+                    )}
                   </p>
                 </div>
                 <span className="font-mono text-xs text-muted-foreground whitespace-nowrap">{formatDateTime(d.timestamp, tz)}</span>

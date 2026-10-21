@@ -208,3 +208,10 @@ export function formatDurationLong(seconds: number): string {
   if (hours > 0) return `${hours}h ${minutes}m`;
   return `${minutes}m`;
 }
+
+// Label for the hour-of-day bucket on a predictive decision. The server buckets
+// by the hour in its configured scheduler time zone; "Local" is a browser-only
+// setting, so name the zone when it is known and otherwise say server time.
+export function decisionHourLabel(hour: number, tz?: string): string {
+  return `hour ${hour} (${tz && tz !== 'Local' ? tz : 'server time'})`;
+}

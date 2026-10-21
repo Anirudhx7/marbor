@@ -18,7 +18,7 @@ import { CustomSelect } from '../components/Select';
 import { RuntimeBadge } from '../components/RuntimeBadge';
 import { CustomTimePicker } from '../components/DateTimePicker';
 import { useTimezone } from '../hooks/useTimezone';
-import { formatDateTimeInZone, formatTimeInZone, formatInTimezone, wallDateTimeToUtcIso } from '../lib/time';
+import { formatDateTimeInZone, formatTimeInZone, formatInTimezone, wallDateTimeToUtcIso, decisionHourLabel } from '../lib/time';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -1228,7 +1228,10 @@ export function Warmup() {
                         {d.predicted_model} <span className="text-muted-foreground font-normal">on</span> {d.node}
                       </p>
                       <p className="text-xs text-muted-foreground truncate">
-                        triggered by {d.trigger_model} - seen together {d.transition_count}x at hour {d.hour}
+                        triggered by {d.trigger_model} - seen together {d.transition_count}x at {decisionHourLabel(d.hour, tz)}
+                        {!d.was_already_warm && !d.warmup_triggered && (
+                          <span title="The engine does not record why it skipped this prediction."> - Reason: -</span>
+                        )}
                       </p>
                     </div>
                   </div>

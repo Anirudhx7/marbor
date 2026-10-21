@@ -2,6 +2,7 @@ import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, CloudProviderInpu
 import { readSoleReplicaImpact, runtimeActionFailureInfo, runtimeActionQuery } from './soleReplica';
 import { auditAddNodeDetails, auditRuntimeUnitDetails, mockAPIKeys, mockCloudProviders, mockGPUNodes, mockSavings, mockReplicaSuggestions, mockSoleReplicaImpact } from './mockData';
 import { sameDeclared } from './replicaGroups';
+import { dedupeInflight } from './inflight';
 
 const BASE = '/admin';
 
@@ -119,6 +120,7 @@ export async function login(username: string, password: string): Promise<LoginRe
     }
     throw new Error('Invalid credentials');
   }
+  settingsInflight.reset();
   const r = await fetch('/admin/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -150,6 +152,7 @@ export async function logout(): Promise<void> {
   try {
     await fetch(`${BASE}/v1/logout`, { method: 'POST', headers: authHeaders(), credentials: 'include' });
   } finally {
+    settingsInflight.reset();
     clearSession();
   }
 }
@@ -834,6 +837,26 @@ export async function fetchRoutingStrategy(): Promise<string> {
   return data.strategy ?? 'warm-first';
 }
 
+// Several components ask for /settings as the dashboard opens. Concurrent
+// callers share one request. Anything that can change the settings payload is
+// wrapped in withSettingsReset so a later read never reuses an older request.
+const settingsInflight = dedupeInflight(async () => {
+  const res = await apiFetch(`${BASE}/settings`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch settings');
+  return res.json();
+});
+
+function withSettingsReset<A extends unknown[], R>(fn: (...args: A) => Promise<R>): (...args: A) => Promise<R> {
+  return async (...args: A) => {
+    settingsInflight.reset();
+    try {
+      return await fn(...args);
+    } finally {
+      settingsInflight.reset();
+    }
+  };
+}
+
 export async function fetchSettings() {
   if (DEMO) {
     const stored = localStorage.getItem('demo_settings');
@@ -855,9 +878,7 @@ export async function fetchSettings() {
       hide_budget_banner: false,
     };
   }
-  const res = await apiFetch(`${BASE}/settings`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch settings');
-  return res.json();
+  return settingsInflight.call();
 }
 
 export async function fetchSavings(): Promise<Savings> {
@@ -884,7 +905,7 @@ export async function fetchCloudProviders(): Promise<CloudProvider[]> {
   return res.json();
 }
 
-export async function addCloudProvider(data: CloudProviderInput): Promise<void> {
+export const addCloudProvider = withSettingsReset(async function addCloudProvider(data: CloudProviderInput): Promise<void> {
   if (DEMO) {
     demoProviderStore().push({ ...(data as CloudProvider) });
     return demoDelay(undefined);
@@ -895,9 +916,9 @@ export async function addCloudProvider(data: CloudProviderInput): Promise<void> 
     body: JSON.stringify(data),
   });
   if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to add cloud provider'); }
-}
+});
 
-export async function updateCloudProvider(name: string, data: CloudProviderInput): Promise<void> {
+export const updateCloudProvider = withSettingsReset(async function updateCloudProvider(name: string, data: CloudProviderInput): Promise<void> {
   if (DEMO) {
     const s = demoProviderStore();
     const i = s.findIndex(p => p.name === name);
@@ -910,7 +931,7 @@ export async function updateCloudProvider(name: string, data: CloudProviderInput
     body: JSON.stringify(data),
   });
   if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to update cloud provider'); }
-}
+});
 
 export async function testCloudProvider(provider: string, base_url: string, api_key: string): Promise<void> {
   if (DEMO) return demoDelay(undefined);
@@ -922,7 +943,7 @@ export async function testCloudProvider(provider: string, base_url: string, api_
   if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Could not verify API key'); }
 }
 
-export async function deleteCloudProvider(name: string): Promise<void> {
+export const deleteCloudProvider = withSettingsReset(async function deleteCloudProvider(name: string): Promise<void> {
   if (DEMO) {
     const s = demoProviderStore();
     const i = s.findIndex(p => p.name === name);
@@ -934,9 +955,9 @@ export async function deleteCloudProvider(name: string): Promise<void> {
     headers: authHeaders(),
   });
   if (!res.ok) throw new Error('Failed to delete cloud provider');
-}
+});
 
-export async function reorderCloudProviders(order: string[]): Promise<void> {
+export const reorderCloudProviders = withSettingsReset(async function reorderCloudProviders(order: string[]): Promise<void> {
   if (DEMO) {
     const s = demoProviderStore();
     const byName = new Map(s.map(p => [p.name, p] as const));
@@ -951,20 +972,20 @@ export async function reorderCloudProviders(order: string[]): Promise<void> {
     body: JSON.stringify({ order }),
   });
   if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Failed to reorder cloud providers'); }
-}
+});
 
 // reloadFromStore re-syncs live nodes/API keys/cloud providers from the
 // database without restarting (no config.yaml to reload anymore - 2026-07
 // elimination). Settings not covered by this (Docker/Webhook wiring,
 // listen ports/addresses) take effect on next restart.
-export async function reloadFromStore(): Promise<{ reloaded: boolean; auth_keys: number; nodes_added: number; nodes_removed: number; cloud_providers: number }> {
+export const reloadFromStore = withSettingsReset(async function reloadFromStore(): Promise<{ reloaded: boolean; auth_keys: number; nodes_added: number; nodes_removed: number; cloud_providers: number }> {
   const res = await apiFetch(`${BASE}/config/reload`, {
     method: 'POST',
     headers: authHeaders(),
   });
   if (!res.ok) throw new Error('Reload failed');
   return res.json();
-}
+});
 
 export async function fetchModels(): Promise<ModelCatalog> {
   const res = await apiFetch(`${BASE}/models`, { headers: authHeaders() });
@@ -1043,7 +1064,7 @@ export async function fetchRequestExplain(id: string): Promise<RoutingDecision> 
   return res.json();
 }
 
-export async function updateSettings(data: Record<string, unknown>) {
+export const updateSettings = withSettingsReset(async function updateSettings(data: Record<string, unknown>) {
   if (DEMO) {
     localStorage.setItem('demo_settings', JSON.stringify(data));
     return;
@@ -1054,7 +1075,7 @@ export async function updateSettings(data: Record<string, unknown>) {
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error('Failed to update settings');
-}
+});
 
 export async function fetchAnalytics(): Promise<Analytics> {
   const res = await apiFetch(`${BASE}/analytics`, { headers: authHeaders() });
@@ -1113,7 +1134,7 @@ export async function fetchBackupList(): Promise<BackupFileInfo[]> {
 // requirement. The connection may drop before a response arrives since the
 // marbor shuts down shortly after responding; callers should treat a network
 // error here as "restore likely proceeding" rather than a hard failure.
-export async function restoreBackup(filename: string): Promise<void> {
+export const restoreBackup = withSettingsReset(async function restoreBackup(filename: string): Promise<void> {
   if (DEMO) throw new Error('Restore is not available in demo mode.');
   const res = await apiFetch(`${BASE}/backup/restore`, {
     method: 'POST',
@@ -1121,7 +1142,7 @@ export async function restoreBackup(filename: string): Promise<void> {
     body: JSON.stringify({ filename }),
   });
   if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Restore failed'); }
-}
+});
 
 // uploadBackup sends an arbitrary local .db file (picked via a plain
 // <input type="file"> - works the same in Chrome/Firefox/Safari/Edge on
@@ -1239,9 +1260,11 @@ export async function fetchPredictiveDecisions(): Promise<PredictiveDecision[]> 
   if (DEMO) {
     const now = Date.now();
     return demoDelay([
-      { timestamp: new Date(now - 2 * 60_000).toISOString(), predicted_model: 'gemma2:9b',        trigger_model: 'deepseek-r1:7b', node: 'gpu-node-01', was_already_warm: false, warmup_triggered: true,  transition_count: 14, hour: new Date(now - 2 * 60_000).getHours() },
-      { timestamp: new Date(now - 9 * 60_000).toISOString(), predicted_model: 'qwen2.5-coder:14b', trigger_model: 'llama3.3:8b',    node: 'gpu-node-02', was_already_warm: false, warmup_triggered: true,  transition_count: 9,  hour: new Date(now - 9 * 60_000).getHours() },
-      { timestamp: new Date(now - 21 * 60_000).toISOString(), predicted_model: 'deepseek-r1:7b',   trigger_model: 'gemma2:9b',     node: 'gpu-node-01', was_already_warm: true,  warmup_triggered: false, transition_count: 14, hour: new Date(now - 21 * 60_000).getHours() },
+      { timestamp: new Date(now - 2 * 60_000).toISOString(), predicted_model: 'gemma2:9b',        trigger_model: 'deepseek-r1:7b', node: 'gpu-node-01', was_already_warm: false, warmup_triggered: true,  transition_count: 14, hour: new Date(now - 2 * 60_000).getUTCHours() },
+      { timestamp: new Date(now - 9 * 60_000).toISOString(), predicted_model: 'qwen2.5-coder:14b', trigger_model: 'llama3.3:8b',    node: 'gpu-node-02', was_already_warm: false, warmup_triggered: true,  transition_count: 9,  hour: new Date(now - 9 * 60_000).getUTCHours() },
+      { timestamp: new Date(now - 15 * 60_000).toISOString(), predicted_model: 'mistral:7b',       trigger_model: 'gemma2:9b',      node: 'gpu-node-02', was_already_warm: false, warmup_triggered: false, transition_count: 6,  hour: new Date(now - 15 * 60_000).getUTCHours() },
+      { timestamp: new Date(now - 21 * 60_000).toISOString(), predicted_model: 'deepseek-r1:7b',   trigger_model: 'gemma2:9b',     node: 'gpu-node-01', was_already_warm: true,  warmup_triggered: false, transition_count: 14, hour: new Date(now - 21 * 60_000).getUTCHours() },
+      { timestamp: new Date(now - 34 * 60_000).toISOString(), predicted_model: 'phi4:14b',         trigger_model: 'mistral:7b',     node: 'gpu-node-01', was_already_warm: false, warmup_triggered: false, transition_count: 4,  hour: new Date(now - 34 * 60_000).getUTCHours() },
     ]);
   }
   const res = await apiFetch(`${BASE}/predictive/decisions`, { headers: authHeaders() });
@@ -1948,7 +1971,7 @@ export async function fetchModelAliases(): Promise<ModelAlias[]> {
   return res.json();
 }
 
-export async function setModelAlias(alias: string, target: string): Promise<ModelAlias> {
+export const setModelAlias = withSettingsReset(async function setModelAlias(alias: string, target: string): Promise<ModelAlias> {
   const res = await apiFetch(`${BASE}/model-aliases`, {
     method: 'PUT',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
@@ -1959,9 +1982,9 @@ export async function setModelAlias(alias: string, target: string): Promise<Mode
     throw new Error(body.error || `Failed to save model alias: ${res.statusText}`);
   }
   return res.json();
-}
+});
 
-export async function deleteModelAlias(alias: string): Promise<void> {
+export const deleteModelAlias = withSettingsReset(async function deleteModelAlias(alias: string): Promise<void> {
   const res = await apiFetch(`${BASE}/model-aliases?alias=${encodeURIComponent(alias)}`, {
     method: 'DELETE',
     headers: authHeaders(),
@@ -1970,4 +1993,4 @@ export async function deleteModelAlias(alias: string): Promise<void> {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error || `Failed to remove model alias: ${res.statusText}`);
   }
-}
+});

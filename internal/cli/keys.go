@@ -86,13 +86,22 @@ func runKeyList(flags *globalFlags, stdout, stderr io.Writer) int {
 		if keyPreview == "" {
 			keyPreview = "-"
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", k.Name, keyPreview, k.RateLimit, usedOverLimit(k.RequestsToday, k.DailyLimit), usedOverLimit(k.RequestsThisMonth, k.MonthlyLimit), models, expires, yesNo(k.LocalOnly), yesNo(k.AllowLocalDegradation), k.Status)
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", k.Name, keyPreview, rateLimitCell(k.RateLimit), usedOverLimit(k.RequestsToday, k.DailyLimit), usedOverLimit(k.RequestsThisMonth, k.MonthlyLimit), models, expires, yesNo(k.LocalOnly), yesNo(k.AllowLocalDegradation), k.Status)
 	}
 	if err := tw.Flush(); err != nil {
 		fmt.Fprintln(stderr, err)
 		return ExitServerError
 	}
 	return ExitOK
+}
+
+// rateLimitCell renders the hourly rate limit, with "-" for no limit (zero),
+// matching the daily and monthly columns.
+func rateLimitCell(limit int) string {
+	if limit <= 0 {
+		return "-"
+	}
+	return fmt.Sprintf("%d", limit)
 }
 
 // usedOverLimit renders a request count against its quota as "used/limit",

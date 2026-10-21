@@ -8,12 +8,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 - **The Activity page now shows every audit event by default.** Sign-ins, failed sign-ins, API key changes, user changes and settings changes were hidden under a default filter. The Kind filter now has Access, Keys, Users and Settings, and Access highlights failed sign-ins. The stat cards state what they count (events shown of events loaded, operators compared without regard to case), and the footer says when a filter is active with a one-click clear. The Admin API and CLI are unchanged; the CLI still reports these events as `config`, and the exact route to failed sign-ins is `marbor activity --action login_failure`.
+- **`marbor keys` prints `-` for a key with no hourly rate limit instead of `0`.** Zero has always meant no cap; the daily and monthly columns already showed `-`. `--json` output is unchanged.
 
 ### Fixed
 - **The Requests page "Why" column is visible without scrolling sideways.** The table defined widths for 8 of its 9 columns, so the routing reason was pushed off the right edge. All nine columns now fit at desktop widths, and on wide screens the spare room goes to the key, model and node columns instead of being left empty.
 - **The dashboard no longer logs a Content Security Policy error on every page load, and a dark-mode user no longer sees a light flash on a hard reload.** The script that applies the saved theme before the first paint was inline, which the dashboard's `script-src 'self'` policy blocks, so the theme was only applied after the page painted. It now loads from a same-origin file, and the policy is unchanged.
 - **The Warmup page no longer tells you to restart marbor to turn on prefix locality hints.** The setting applies immediately once saved, as Settings already said. The Prefix Locality Hit Rate card now names the real section, Settings > Routing & Reliability, and links to it.
 - **A node added with `--vram-total-mb` (or `POST /admin/nodes`) now shows its declared VRAM total.** The value was saved but never reached the running node, so `marbor nodes` and the dashboard showed `0 MB / 0 MB` until a restart. `marbor nodes` also stops printing `0 MB` for used VRAM when it is unknown: a declared total shows `- / 24000 MB (declared)`, and a node with no VRAM information shows `- / -`. The dashboard's fleet capacity card no longer counts a declared-only node as using 0 GB.
+- **An API key with no rate limit shows Unlimited instead of 0/hr.** Zero always meant no cap, and the Edit key form now says so.
+- **Required fields are marked.** Username in Create user, and Node Name and Host in Add GPU node, carry an asterisk, and the disabled Add Node button now says what is missing.
+- **Predictive decisions name the time zone of their hour, and skipped ones show a Reason line.** Activity and Warmup read the same way ("seen together 125x at hour 17 (UTC)"); the engine does not record why a prediction was skipped, so the reason shows `-`. The demo hour now uses UTC to match its clock.
+- **Opening the dashboard sends one settings request instead of several.** Concurrent requests for the same settings now share one call; the 15-second refresh and other endpoints are unchanged.
 
 ## [0.25.1] - 2026-10-20
 
