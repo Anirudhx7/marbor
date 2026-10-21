@@ -66,9 +66,8 @@ test('demo shows an unlimited key, a skipped decision and UTC decision hours', (
   assert.ok(/was_already_warm: false,\s*warmup_triggered: false/.test(body), 'no skipped demo decision');
   assert.ok(!/\.getHours\(\)/.test(body), 'demo hour must use getUTCHours');
   assert.ok(/getUTCHours\(\)/.test(body), 'demo hour not UTC');
-  const rows = body.split('\n').filter((l) => l.includes('predicted_model:'));
-  assert.ok(rows.length > 0, 'no demo decision rows found');
-  for (const row of rows) assert.ok(!/reason/i.test(row), 'demo decisions must not invent a skip reason');
+  assert.ok(/predicted_model:/.test(body), 'no demo decision rows found');
+  assert.ok(!/\breason\b/i.test(body), 'demo decisions must not invent a skip reason');
 });
 
 test('the Soak Test demo key tells one story', () => {
@@ -87,14 +86,18 @@ function apiExports() {
     const chunk = api.slice(m.index, i + 1 < marks.length ? marks[i + 1].index : api.length);
     // Stop at the closing brace at column 0 so non-exported code between two
     // exports is not attributed to the earlier one.
-    const close = chunk.search(/\n\}\)?;?\n/);
-    const text = close >= 0 ? chunk.slice(0, close + 1) : chunk;
+    const close = chunk.search(/\n\}\)?;?(\n|$)/);
+    if (close < 0) throw new Error(`cannot find the end of api.ts export ${m[1]}`);
+    const text = chunk.slice(0, close + 1);
     return { name: m[1], text, wrapped: new RegExp(`^export const ${m[1]} = withSettingsReset\\(`).test(text) };
   });
 }
 
 test('every api.ts write that can change the settings payload resets the shared settings read', () => {
   const writes = /method: '(POST|PUT|PATCH|DELETE)'/;
+  // Endpoints whose handlers write the config that GET /admin/settings returns.
+  // routing-strategy, nodes, keys and model-config are deliberately excluded:
+  // they do not write that payload, so they need no settings reset.
   const touches = /\/(settings|model-aliases|cloud-providers|config\/reload|backup\/restore)\b/;
   const exports = apiExports();
   assert.ok(exports.length > 50, 'api.ts export scan found too few functions');
@@ -105,7 +108,10 @@ test('every api.ts write that can change the settings payload resets the shared 
   for (const name of ['login', 'logout']) {
     const e = exports.find((x) => x.name === name);
     assert.ok(e, `${name} not found in api.ts`);
-    assert.ok(e.text.includes('settingsInflight.reset()'), `${name} must reset the settings slot`);
+    assert.ok(
+      /finally\s*\{[^}]*settingsInflight\.reset\(\)/.test(e.text),
+      `${name} must reset the settings slot inside a finally block`,
+    );
   }
 });
 

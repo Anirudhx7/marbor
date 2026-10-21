@@ -18,6 +18,7 @@ test('formatRateLimit shows Unlimited for no limit', () => {
 test('formatRateLimit shows - for a value that is not a real number', () => {
   assert.equal(formatRateLimit(NaN), '-');
   assert.equal(formatRateLimit(Infinity), '-');
+  assert.equal(formatRateLimit(-Infinity), '-');
 });
 
 test('decisionHourLabel names the zone of the hour', () => {

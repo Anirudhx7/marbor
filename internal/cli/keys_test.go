@@ -199,7 +199,9 @@ func TestRun_Spill_Table(t *testing.T) {
 func TestRun_KeyList_RateLimitCell(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`[{"name":"open","key":"k1","rateLimit":0,"status":"active"},{"name":"capped","key":"k2","rateLimit":1000,"status":"active"}]`))
+		if _, err := w.Write([]byte(`[{"name":"open","key":"k1","rateLimit":0,"status":"active"},{"name":"capped","key":"k2","rateLimit":1000,"status":"active"}]`)); err != nil {
+			t.Errorf("write response: %v", err)
+		}
 	}))
 	defer srv.Close()
 	withTempConfigDir(t)
@@ -229,6 +231,7 @@ func TestRun_KeyList_RateLimitCell(t *testing.T) {
 	}
 
 	stdout.Reset()
+	stderr.Reset()
 	if code := Run([]string{"key", "list", "--server", srv.URL, "--json"}, &stdout, &stderr); code != ExitOK {
 		t.Fatalf("json exit %d", code)
 	}
