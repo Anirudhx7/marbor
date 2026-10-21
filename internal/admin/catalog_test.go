@@ -1338,11 +1338,6 @@ func TestHandleModelSearch_UnlistedRuntimeIsUnfiltered(t *testing.T) {
 	}
 }
 
-// The advisor page note reads "Fit cannot be computed" for a node whose VRAM
-// total is unknown or only inferred. The UI helper nodeVramUnknown mirrors
-// these cases, so this pins the server side of that pairing: a node with no
-// total or an inferred total always classifies as unknown, and a node with a
-// declared or detected total never does.
 // Known divergence, documented rather than hidden: the UI helper treats a zero
 // total as unknown whatever the source, but classifyFit only looks at the
 // source and returns "red" for zero capacity. The catalog never produces this
@@ -1357,6 +1352,11 @@ func TestClassifyFit_ZeroTotalWithKnownSourceIsRed(t *testing.T) {
 	}
 }
 
+// The advisor page note reads "Fit cannot be computed" for a node whose VRAM
+// total is unknown or only inferred. The UI helper nodeVramUnknown mirrors
+// these cases, so this pins the server side of that pairing: a node with no
+// total or an inferred total always classifies as unknown, and a node with a
+// declared or detected total never does.
 func TestClassifyFit_UnknownCasesMirrorUINodeVramUnknown(t *testing.T) {
 	const gib = int64(1) << 30
 	cases := []struct {
