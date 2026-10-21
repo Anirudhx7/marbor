@@ -480,7 +480,7 @@ export function APIKeys() {
                   <td className="px-6 py-4">
                     <div className="flex flex-col">
                       <span className="font-mono text-foreground font-medium">
-                        {key.tokensThisMonth > 0 ? formatNumber(key.tokensThisMonth) : '-'} <span className="text-muted-foreground text-xs font-sans">tokens this month</span>
+                        {key.tokensThisMonth > 0 ? formatNumber(key.tokensThisMonth) : '-'} <span className="text-muted-foreground text-xs font-sans whitespace-nowrap">tokens this month</span>
                       </span>
                       <span className="text-xs font-mono text-muted-foreground">
                         {key.estimatedCostUsd > 0 ? `~$${key.estimatedCostUsd.toFixed(2)}` : '-'} <span className="font-sans">est.</span>
@@ -587,7 +587,7 @@ export function APIKeys() {
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Usage (mo)</p>
                 <p className="text-sm text-foreground font-mono">
-                  {key.tokensThisMonth > 0 ? formatNumber(key.tokensThisMonth) : '-'} <span className="text-muted-foreground text-xs font-sans">tokens this month</span>
+                  {key.tokensThisMonth > 0 ? formatNumber(key.tokensThisMonth) : '-'} <span className="text-muted-foreground text-xs font-sans">tokens</span>
                 </p>
                 <p className="text-xs text-muted-foreground font-mono">
                   {key.estimatedCostUsd > 0 ? `~$${key.estimatedCostUsd.toFixed(2)}` : '-'} <span className="font-sans">est.</span>

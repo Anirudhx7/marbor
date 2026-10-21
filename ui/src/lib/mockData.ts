@@ -1245,6 +1245,7 @@ export const mockAnalytics: Analytics = {
   cloud_requests: mockSavings.cloud_requests,
   total_saved_usd: mockSavings.saved_usd,
   total_spent_usd: mockSavings.cloud_spent_usd,
+  // Relative on purpose so the demo always shows a recent restart.
   since: mockSavings.since,
   hourly: Array.from({ length: 24 }, (_, i) => ({
     hour: makeHourKey(23 - i),
@@ -1257,14 +1258,14 @@ export const mockAnalytics: Analytics = {
       : { tokens: 0, gen_duration_ms: 0, tokens_per_sec: 0 }),
   })),
   by_model: [
-    { model: 'deepseek-r1:7b', local: 3660, cloud: 120, saved_usd: 36.60 },
-    { model: 'llama3.3:8b',    local: 2610, cloud: 84, saved_usd: 26.10 },
-    { model: 'qwen3:8b',       local:  1864, cloud: 64, saved_usd:  18.64 },
-    { model: 'qwen2.5:14b',    local:  1040, cloud: 36, saved_usd:  10.40 },
-    { model: 'llama3.3:70b',   local:  430, cloud:  16, saved_usd:  12.90 },
-    { model: 'qwen2.5-coder:14b',  local:  296, cloud:  12, saved_usd:  2.96 },
-    { model: 'gemma4:12b',     local:  624, cloud: 24, saved_usd:  6.24 },
-    { model: 'mistral:7b',     local:  406, cloud:  16, saved_usd:  4.06 },
+    { model: 'deepseek-r1:7b',    local: 3660, cloud: 120, saved_usd: 36.60 },
+    { model: 'llama3.3:8b',       local: 2610, cloud:  84, saved_usd: 26.10 },
+    { model: 'qwen3:8b',          local: 1864, cloud:  64, saved_usd: 18.64 },
+    { model: 'qwen2.5:14b',       local: 1040, cloud:  36, saved_usd: 10.40 },
+    { model: 'llama3.3:70b',      local:  430, cloud:  16, saved_usd: 12.90 },
+    { model: 'qwen2.5-coder:14b', local:  296, cloud:  12, saved_usd:  2.96 },
+    { model: 'gemma4:12b',        local:  624, cloud:  24, saved_usd:  6.24 },
+    { model: 'mistral:7b',        local:  406, cloud:  16, saved_usd:  4.06 },
   ],
 };
 

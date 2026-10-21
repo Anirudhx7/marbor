@@ -128,7 +128,9 @@ test('settingsInflight is declared before the functions that use it', () => {
 function block(src, startMarker) {
   const start = src.indexOf(startMarker);
   assert.ok(start >= 0, startMarker + ' not found');
-  return src.slice(start, src.indexOf('\n};', start));
+  const end = src.indexOf('\n};', start);
+  assert.ok(end > start, startMarker + ' end marker not found');
+  return src.slice(start, end);
 }
 
 test('demo analytics totals reference the savings fixture and both carry since', () => {
@@ -145,15 +147,22 @@ test('demo analytics totals reference the savings fixture and both carry since',
       `mockAnalytics.${pair[0]} must reference mockSavings.${pair[1]}`,
     );
   }
-  assert.ok(/\bsince:/.test(analytics), 'mockAnalytics has no since');
-  assert.ok(/\bsince:/.test(savings), 'mockSavings has no since');
+  assert.ok(/\bsince: mockSavings\.since\b/.test(analytics), 'mockAnalytics must use since: mockSavings.since');
+  assert.ok(
+    /\bsince: (new Date\(|'\d{4}-\d{2}-\d{2}T)/.test(savings),
+    'mockSavings.since must be built from Date or an ISO literal',
+  );
 });
 
 test('demo by-model sums sit between the 24h total and the all-time total', () => {
   const nums = (re, src) => [...src.matchAll(re)].map((m) => Number(m[1]));
   const sum = (a) => a.reduce((x, y) => x + y, 0);
-  const hourlyLocal = sum(nums(/(\d+)/g, mock.match(/const _hourlyLocal = \[([^\]]*)\]/)[1]));
-  const hourlyCloud = sum(nums(/(\d+)/g, mock.match(/const _hourlyCloud = \[([^\]]*)\]/)[1]));
+  const localArr = mock.match(/const _hourlyLocal = \[([^\]]*)\]/);
+  const cloudArr = mock.match(/const _hourlyCloud = \[([^\]]*)\]/);
+  assert.ok(localArr, '_hourlyLocal array not found in mockData');
+  assert.ok(cloudArr, '_hourlyCloud array not found in mockData');
+  const hourlyLocal = sum(nums(/(\d+)/g, localArr[1]));
+  const hourlyCloud = sum(nums(/(\d+)/g, cloudArr[1]));
   const sv = block(mock, 'export const mockSavings');
   const totalLocal = Number(sv.match(/local_requests: (\d+)/)[1]);
   const totalCloud = Number(sv.match(/cloud_requests: (\d+)/)[1]);
@@ -162,4 +171,7 @@ test('demo by-model sums sit between the 24h total and the all-time total', () =
   const modelCloud = sum(nums(/cloud:\s*(\d+)/g, byModel));
   assert.ok(modelLocal >= hourlyLocal && modelLocal <= totalLocal, `local ${hourlyLocal} <= ${modelLocal} <= ${totalLocal}`);
   assert.ok(modelCloud >= hourlyCloud && modelCloud <= totalCloud, `cloud ${hourlyCloud} <= ${modelCloud} <= ${totalCloud}`);
+  const modelSaved = sum(nums(/saved_usd:\s*([\d.]+)/g, byModel));
+  const totalSaved = Number(sv.match(/saved_usd: ([\d.]+)/)[1]);
+  assert.ok(modelSaved <= totalSaved, `by_model saved ${modelSaved} <= all-time saved ${totalSaved}`);
 });

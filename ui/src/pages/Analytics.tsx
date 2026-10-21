@@ -24,18 +24,20 @@ function formatHourLabel(hour: string, tz: string): string {
   return formatHourLabelInTimezone(hour, tz);
 }
 
+const ALL_TIME_LABEL = 'All time';
+
 function StatCard({
   title,
   value,
   sub,
-  window,
+  windowLabel,
   icon,
   accent,
 }: {
   title: string;
   value: string;
   sub?: string;
-  window?: string;
+  windowLabel?: string;
   icon: React.ReactNode;
   accent: 'success' | 'primary' | 'amber';
 }) {
@@ -51,7 +53,12 @@ function StatCard({
         <div>
           <p className="text-sm font-medium text-muted-foreground mb-1">
             {title}
-            {window && <span className="ml-2 text-xs font-normal text-muted-foreground/70">{window}</span>}
+            {windowLabel && (
+              <>
+                <span className="sr-only">: </span>
+                <span className="ml-2 text-xs font-normal text-muted-foreground">{windowLabel}</span>
+              </>
+            )}
           </p>
           <p className={`text-2xl font-bold ${c.text}`}>{value}</p>
           {sub && <p className="text-xs font-medium text-muted-foreground mt-0.5">{sub}</p>}
@@ -159,6 +166,7 @@ export function Analytics() {
   const totalRequests = (data?.local_requests ?? 0) + (data?.cloud_requests ?? 0);
   const localPct =
     totalRequests > 0 ? Math.round(((data?.local_requests ?? 0) / totalRequests) * 100) : 0;
+  const sinceOk = !!data?.since && !Number.isNaN(Date.parse(data.since));
 
   return (
     <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">
@@ -197,7 +205,7 @@ export function Analytics() {
           title="Estimated saved vs cloud"
           value={loading ? '--' : data?.total_saved_usd != null ? `$${data.total_saved_usd.toFixed(2)}` : '-'}
           sub={`${localPct}% requests served locally`}
-          window="All time"
+          windowLabel={ALL_TIME_LABEL}
           icon={<DollarSign className="w-5 h-5" />}
           accent="success"
         />
@@ -205,7 +213,7 @@ export function Analytics() {
           title="Local requests"
           value={loading ? '--' : (data?.local_requests ?? 0).toLocaleString()}
           sub="served by your GPU nodes"
-          window="All time"
+          windowLabel={ALL_TIME_LABEL}
           icon={<Server className="w-5 h-5" />}
           accent="primary"
         />
@@ -213,7 +221,7 @@ export function Analytics() {
           title="Cloud spend"
           value={loading ? '--' : data?.total_spent_usd != null ? `$${data.total_spent_usd.toFixed(4)}` : '-'}
           sub={`${(data?.cloud_requests ?? 0).toLocaleString()} cloud fallback requests`}
-          window="All time"
+          windowLabel={ALL_TIME_LABEL}
           icon={<Cloud className="w-5 h-5" />}
           accent="amber"
         />
@@ -358,11 +366,13 @@ export function Analytics() {
       <div className="bg-card border border-border shadow-sm rounded-xl overflow-hidden">
         <div className="px-6 py-4 border-b border-border bg-secondary/30">
           <h3 className="text-sm font-semibold text-foreground">Requests by model</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {data?.since && !Number.isNaN(Date.parse(data.since))
-              ? `Since last restart (${formatDateTimeInZone(data.since, tz)}). Resets when marbor restarts.`
-              : 'Since last restart. Resets when marbor restarts.'}
-          </p>
+          {!loading && data && (
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {sinceOk && data.since
+                ? `Since last restart (${formatDateTimeInZone(data.since, tz)}). Resets when marbor restarts.`
+                : 'Since last restart. Resets when marbor restarts.'}
+            </p>
+          )}
         </div>
         {loading ? (
           <div className="divide-y divide-border">

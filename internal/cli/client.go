@@ -2462,7 +2462,7 @@ type CloudSavings struct {
 	TotalRequests int64    `json:"total_requests"`
 	CloudSpentUSD *float64 `json:"cloud_spent_usd"`
 	SavedUSD      *float64 `json:"saved_usd"`
-	Since         string   `json:"since"`
+	Since         string   `json:"since"` // process start time, not a counting window; the totals are all time
 }
 
 // Savings calls GET /admin/metrics/savings.

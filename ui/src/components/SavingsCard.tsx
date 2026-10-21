@@ -71,7 +71,7 @@ export function SavingsCard({ savings, loading }: SavingsCardProps) {
           </span>
         </div>
       )}
-      <p className="mt-2 text-[10px] text-muted-foreground/70 leading-snug">
+      <p className="mt-2 text-xs text-muted-foreground leading-snug">
         all time, estimated: parsed token counts priced at the configured cloud reference rate
       </p>
     </div>
