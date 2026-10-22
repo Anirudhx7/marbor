@@ -8723,23 +8723,23 @@ func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if v := q.Get("before_id"); v != "" {
-		n, err := strconv.ParseInt(v, 10, 64)
-		if err != nil || n < 1 {
-			http.Error(w, `{"error":"invalid before_id"}`, http.StatusBadRequest)
+		n, ok := parsePositiveID(v)
+		if !ok {
+			writeJSONError(w, http.StatusBadRequest, "invalid before_id")
 			return
 		}
 		opts.BeforeID = n
 	}
 	if v := q.Get("after_id"); v != "" {
-		n, err := strconv.ParseInt(v, 10, 64)
-		if err != nil || n < 1 {
-			http.Error(w, `{"error":"invalid after_id"}`, http.StatusBadRequest)
+		n, ok := parsePositiveID(v)
+		if !ok {
+			writeJSONError(w, http.StatusBadRequest, "invalid after_id")
 			return
 		}
 		opts.AfterID = n
 	}
 	if opts.BeforeID > 0 && opts.AfterID > 0 {
-		http.Error(w, `{"error":"before_id and after_id are mutually exclusive"}`, http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "before_id and after_id are mutually exclusive")
 		return
 	}
 
@@ -8766,6 +8766,16 @@ func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
+}
+
+// parsePositiveID parses a row-id query value, reporting false unless it is a
+// base-10 integer of at least 1.
+func parsePositiveID(v string) (int64, bool) {
+	n, err := strconv.ParseInt(v, 10, 64)
+	if err != nil || n < 1 {
+		return 0, false
+	}
+	return n, true
 }
 
 func (s *Server) handleSystemAudit(w http.ResponseWriter, r *http.Request) {

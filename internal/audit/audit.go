@@ -4,6 +4,7 @@
 package audit
 
 import (
+	"fmt"
 	"log"
 	"strings"
 	"sync"
@@ -243,21 +244,31 @@ type Page struct {
 	PrevAfterID  int64
 }
 
-// defaultPageLimit mirrors the store's default when Limit is unset.
-const defaultPageLimit = 100
-
 // QueryPage returns one page of entries matching opts plus exact cursors for
 // the neighbouring pages. It fetches one extra row to learn whether more rows
 // exist in the direction of travel and asks the store for a single row to learn
 // whether any exist behind the cursor. The extra row only decides presence;
 // the cursor values are the edge ids of the rows actually returned.
+//
+// Cursors are exact as of the read: the page read and the existence check are
+// separate reads, so a row inserted in between can leave a flag momentarily
+// stale. The existence checks apply the full filter set and, for a rare
+// substring filter, can scan the whole log. A cursor past either end of the log
+// returns an empty page with no cursors (end of log). BeforeID and AfterID are
+// mutually exclusive and must not be negative.
 func (l *Logger) QueryPage(opts QueryOptions) (Page, error) {
 	if l == nil {
 		return Page{Entries: []Entry{}}, nil
 	}
+	if opts.BeforeID < 0 || opts.AfterID < 0 {
+		return Page{}, fmt.Errorf("audit: QueryPage: before_id and after_id must not be negative")
+	}
+	if opts.BeforeID > 0 && opts.AfterID > 0 {
+		return Page{}, fmt.Errorf("audit: QueryPage: before_id and after_id are mutually exclusive")
+	}
 	limit := opts.Limit
 	if limit <= 0 {
-		limit = defaultPageLimit
+		limit = store.DefaultAuditQueryLimit
 	}
 	probe := opts
 	probe.Limit = limit + 1

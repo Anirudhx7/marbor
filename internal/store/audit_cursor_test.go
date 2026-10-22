@@ -274,7 +274,7 @@ func TestQueryAuditLogZeroCursorsMatchOldBehaviour(t *testing.T) {
 
 func TestBuildAuditQueryCursorUsesPrimaryKey(t *testing.T) {
 	st := openCursorStore(t)
-	seedAudit(t, st, 50)
+	seedAudit(t, st, 500)
 	s := st.(*sqliteStore)
 
 	for name, opts := range map[string]AuditQuery{
@@ -301,13 +301,46 @@ func TestBuildAuditQueryCursorUsesPrimaryKey(t *testing.T) {
 		if !strings.Contains(joined, "SEARCH") {
 			t.Errorf("%s: plan lacks SEARCH: %s", name, joined)
 		}
-		if !strings.Contains(joined, "PRIMARY KEY") && !strings.Contains(joined, "rowid") {
-			t.Errorf("%s: plan does not use the primary key: %s", name, joined)
+		if !strings.Contains(joined, "USING INTEGER PRIMARY KEY") {
+			t.Errorf("%s: plan does not use the integer primary key: %s", name, joined)
 		}
 		for _, d := range details {
-			if strings.HasPrefix(d, "SCAN audit_log") {
+			if strings.HasPrefix(d, "SCAN") {
 				t.Errorf("%s: bare table scan: %s", name, d)
 			}
 		}
+	}
+}
+
+func TestQueryAuditLogRejectsInvalidCursors(t *testing.T) {
+	st := openCursorStore(t)
+	seedAudit(t, st, 5)
+	for name, opts := range map[string]AuditQuery{
+		"both":            {BeforeID: 4, AfterID: 2},
+		"negative before": {BeforeID: -1},
+		"negative after":  {AfterID: -1},
+	} {
+		if _, err := st.QueryAuditLog(opts); err == nil {
+			t.Errorf("%s: want an error, got nil", name)
+		}
+	}
+	_, err := st.QueryAuditLog(AuditQuery{BeforeID: 4, AfterID: 2})
+	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("both cursors error = %v, want mutually exclusive", err)
+	}
+}
+
+// Since is a strict lower bound and Until a strict upper bound: a row stamped
+// exactly on either bound is excluded.
+func TestQueryAuditLogSinceUntilAreStrictBounds(t *testing.T) {
+	st := openCursorStore(t)
+	seedAudit(t, st, 10)
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	got, err := st.QueryAuditLog(AuditQuery{Limit: 100, Since: base.Add(3 * time.Second), Until: base.Add(7 * time.Second)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g, w := auditIDs(got), "[6 5 4]"; g != w {
+		t.Fatalf("ids = %s, want %s (rows at the bounds excluded)", g, w)
 	}
 }

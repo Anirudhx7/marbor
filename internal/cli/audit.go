@@ -9,6 +9,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"strconv"
 )
 
 // auditCursorArgs carries the --before-id / --after-id flag values and
@@ -42,6 +43,7 @@ func runAudit(flags *globalFlags, limit int, model, key, node, status, cloud, si
 		fmt.Fprintf(stderr, "error: %s\n", msg)
 		return ExitUserError
 	}
+	// Cursor flags are plain ints, so row ids above 2^31-1 need a 64-bit build.
 	f := AuditFilter{
 		BeforeID: int64(cur.before),
 		AfterID:  int64(cur.after),
@@ -80,6 +82,9 @@ func runAudit(flags *globalFlags, limit int, model, key, node, status, cloud, si
 		fmt.Fprintln(stderr, err)
 		return ExitServerError
 	}
+	if len(result.Entries) == 0 && (cur.beforeSet || cur.afterSet) {
+		fmt.Fprintln(stdout, "(no entries: end of log)")
+	}
 	if result.NextBeforeID > 0 {
 		fmt.Fprintf(stdout, "(more: --before-id %d for older entries)\n", result.NextBeforeID)
 	}
@@ -98,5 +103,5 @@ func auditIDCell(id int64) string {
 	if id <= 0 {
 		return "-"
 	}
-	return fmt.Sprintf("%d", id)
+	return strconv.FormatInt(id, 10)
 }

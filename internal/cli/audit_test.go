@@ -176,6 +176,9 @@ func TestRun_AuditCursorAgainstOldServerIsAnError(t *testing.T) {
 		if code != ExitServerError {
 			t.Errorf("%s: exit %d, want %d", flag, code, ExitServerError)
 		}
+		if !strings.Contains(stderr.String(), flag[:strings.Index(flag, "=")]) {
+			t.Errorf("%s: stderr %q does not name the flag", flag, stderr.String())
+		}
 		if !strings.Contains(stderr.String(), "does not support") {
 			t.Errorf("%s: stderr %q lacks a does-not-support message", flag, stderr.String())
 		}
@@ -187,5 +190,25 @@ func TestRun_AuditCursorAgainstOldServerEmptyPageIsFine(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := Run([]string{"audit", "--before-id=5", "--server", srv.URL}, &stdout, &stderr); code != ExitOK {
 		t.Fatalf("exit %d, stderr %s", code, stderr.String())
+	}
+}
+
+func TestRun_AuditCursorEmptyPagePrintsEndOfLogHint(t *testing.T) {
+	srv, _, _ := auditServer(t, `{"entries":[],"total":0,"truncated":false}`)
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"audit", "--after-id=5", "--server", srv.URL}, &stdout, &stderr); code != ExitOK {
+		t.Fatalf("exit %d, stderr %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "(no entries: end of log)") {
+		t.Errorf("stdout %q lacks the end-of-log hint", stdout.String())
+	}
+
+	srv, _, _ = auditServer(t, `{"entries":[],"total":0,"truncated":false}`)
+	stdout.Reset()
+	if code := Run([]string{"audit", "--server", srv.URL}, &stdout, &stderr); code != ExitOK {
+		t.Fatalf("exit %d", code)
+	}
+	if strings.Contains(stdout.String(), "end of log") {
+		t.Errorf("hint printed without a cursor flag: %q", stdout.String())
 	}
 }

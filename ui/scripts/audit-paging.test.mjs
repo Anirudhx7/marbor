@@ -16,7 +16,7 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const src = fs.readFileSync(path.join(here, '..', 'src/lib/mockData.ts'), 'utf8').replace(/\r\n/g, '\n');
 
-const START = 'const now = Date.now();';
+const START = '// start of audit paging mock';
 const END = '// end of audit paging mock';
 
 async function loadMock() {
@@ -54,14 +54,12 @@ test('older walk covers every row once, newest-first, with exact cursors', () =>
   const seen = [];
   let before;
   let pages = 0;
-  let prevAfter;
   for (;;) {
     const page = pageMockRequests({}, { limit: 50, beforeId: before });
     if (pages === 0) assert.equal(page.prevAfterId, undefined, 'newest page has no prev cursor');
     else assert.equal(page.prevAfterId, page.entries[0].auditId, 'prev cursor is the first id');
     seen.push(...ids(page));
     pages += 1;
-    prevAfter = page.prevAfterId;
     if (page.nextBeforeId === undefined) break;
     assert.equal(page.nextBeforeId, page.entries[page.entries.length - 1].auditId, 'next cursor is the last id');
     before = page.nextBeforeId;
@@ -70,7 +68,7 @@ test('older walk covers every row once, newest-first, with exact cursors', () =>
   assert.equal(seen.length, mockAuditRows.length);
   assert.equal(new Set(seen).size, seen.length, 'duplicate rows across pages');
   assert.deepEqual(seen, mockAuditRows.map((r) => r.auditId));
-  assert.ok(prevAfter !== undefined || pages === 1);
+  assert.ok(pages > 1, 'walk should span several pages');
 });
 
 test('walking back with after_id returns the same pages newest-first', () => {

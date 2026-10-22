@@ -1054,6 +1054,13 @@ export interface AuditPage {
 // filter and page without pulling every row. Model, key and node filters are
 // substring matches over the whole log, not index lookups.
 export async function fetchAuditPage(filters: AuditLogFilters = {}): Promise<AuditPage> {
+  const validCursor = (n: number | undefined) => n === undefined || (Number.isInteger(n) && n > 0);
+  if (!validCursor(filters.beforeId) || !validCursor(filters.afterId)) {
+    throw new Error('beforeId and afterId must be positive integers');
+  }
+  if (filters.beforeId !== undefined && filters.afterId !== undefined) {
+    throw new Error('beforeId and afterId are mutually exclusive');
+  }
   const params = new URLSearchParams();
   if (filters.model) params.set('model', filters.model);
   if (filters.key) params.set('key', filters.key);
@@ -1067,7 +1074,7 @@ export async function fetchAuditPage(filters: AuditLogFilters = {}): Promise<Aud
   if (filters.afterId !== undefined) params.set('after_id', String(filters.afterId));
 
   const res = await apiFetch(`${BASE}/audit?${params.toString()}`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch audit log');
+  if (!res.ok) throw new Error(`Failed to fetch audit log (HTTP ${res.status})`);
   const data = await res.json();
   const entries: AuditLogEntry[] = data.entries ?? [];
   const cursorSent = filters.beforeId !== undefined || filters.afterId !== undefined;
@@ -1099,17 +1106,7 @@ export async function fetchAuditPage(filters: AuditLogFilters = {}): Promise<Aud
 // Requests page has always consumed.
 export async function fetchAuditLog(filters: AuditLogFilters = {}): Promise<RequestEntry[]> {
   const page = await fetchAuditPage(filters);
-  return page.entries.map((e) => ({
-    id: e.id,
-    time: e.time,
-    key_name: e.key_name,
-    model: e.model,
-    node: e.node,
-    status: e.status,
-    latency_ms: e.latency_ms,
-    cloud: e.cloud,
-    routingReason: e.routingReason,
-  }));
+  return page.entries;
 }
 
 // fetchRequestExplain queries GET /admin/requests/{id}/explain - the

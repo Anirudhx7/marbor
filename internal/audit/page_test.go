@@ -197,6 +197,90 @@ func TestQueryPagePeeksHonourFilters(t *testing.T) {
 	}
 }
 
+// The existence peeks must apply the filters: with no filter on the peek,
+// each of these would report a neighbour that does not match.
+func TestQueryPagePeeksIgnoreNonMatchingNeighbours(t *testing.T) {
+	l := pageLogger(t, 10) // even ids are m-even
+
+	// Page is [9 7] (m-odd, before 10). The only newer row is 10 (m-even), so
+	// no newer matching row exists.
+	p, err := l.QueryPage(QueryOptions{Limit: 2, Model: "m-odd", BeforeID: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g := pageIDs(p); g != "[9 7]" {
+		t.Fatalf("entries = %s, want [9 7]", g)
+	}
+	if p.PrevAfterID != 0 {
+		t.Errorf("PrevAfterID = %d, want 0 (row 10 does not match m-odd)", p.PrevAfterID)
+	}
+	if p.NextBeforeID != 7 {
+		t.Errorf("NextBeforeID = %d, want 7", p.NextBeforeID)
+	}
+
+	// after_id=8 limit 1 with m-even: page is [10]; the only older row above
+	// the cursor is 9 (m-odd), and rows 8,6,... are not above the cursor, so
+	// the older peek (id < 10, matching) finds 8 -> NextBeforeID 10.
+	p, err = l.QueryPage(QueryOptions{Limit: 1, Model: "m-even", AfterID: 8})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g := pageIDs(p); g != "[10]" {
+		t.Fatalf("entries = %s, want [10]", g)
+	}
+	if p.PrevAfterID != 0 {
+		t.Errorf("PrevAfterID = %d, want 0 (nothing newer than 10)", p.PrevAfterID)
+	}
+	if p.NextBeforeID != 10 {
+		t.Errorf("NextBeforeID = %d, want 10 (row 8 matches and is older)", p.NextBeforeID)
+	}
+
+	// m-even page [4 2] has older rows only if a matching one exists below 2:
+	// row 1 is m-odd, so there is none.
+	p, err = l.QueryPage(QueryOptions{Limit: 2, Model: "m-even", AfterID: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g := pageIDs(p); g != "[4 2]" {
+		t.Fatalf("entries = %s, want [4 2]", g)
+	}
+	if p.NextBeforeID != 0 {
+		t.Errorf("NextBeforeID = %d, want 0 (row 1 does not match m-even)", p.NextBeforeID)
+	}
+}
+
+// With after_id, hasMore false must not hide older rows: the older cursor
+// comes from an existence check, not from the page size.
+func TestQueryPageAfterIDWithoutMoreStillHasOlder(t *testing.T) {
+	l := pageLogger(t, 10)
+	p, err := l.QueryPage(QueryOptions{Limit: 50, AfterID: 6})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g := pageIDs(p); g != "[10 9 8 7]" {
+		t.Fatalf("entries = %s, want [10 9 8 7]", g)
+	}
+	if p.PrevAfterID != 0 {
+		t.Errorf("PrevAfterID = %d, want 0", p.PrevAfterID)
+	}
+	if p.NextBeforeID != 7 {
+		t.Errorf("NextBeforeID = %d, want 7 (rows 1-6 are older)", p.NextBeforeID)
+	}
+}
+
+func TestQueryPageRejectsInvalidCursors(t *testing.T) {
+	l := pageLogger(t, 3)
+	for name, opts := range map[string]QueryOptions{
+		"both":            {BeforeID: 3, AfterID: 1},
+		"negative before": {BeforeID: -1},
+		"negative after":  {AfterID: -1},
+	} {
+		if _, err := l.QueryPage(opts); err == nil {
+			t.Errorf("%s: want an error, got nil", name)
+		}
+	}
+}
+
 func TestQueryPageStaleCursorIsEmptyWithNoCursors(t *testing.T) {
 	l := pageLogger(t, 3)
 	p, err := l.QueryPage(QueryOptions{Limit: 5, AfterID: 99})

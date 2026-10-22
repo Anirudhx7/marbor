@@ -2168,7 +2168,7 @@ func escapeLikeWildcards(s string) string {
 // QueryAuditLog reverses those rows to newest-first.
 func buildAuditQuery(opts AuditQuery) (string, []interface{}) {
 	if opts.Limit <= 0 {
-		opts.Limit = 100
+		opts.Limit = DefaultAuditQueryLimit
 	}
 
 	query := `SELECT id, ts, request_id, key_name, model, node, status, latency_ms, cloud, cloud_model, routing_reason
@@ -2228,7 +2228,17 @@ func buildAuditQuery(opts AuditQuery) (string, []interface{}) {
 	return query, args
 }
 
+// QueryAuditLog returns audit rows matching opts. Results are always
+// newest-first, including when AfterID is set (the query walks upward from the
+// cursor and the rows are reversed before returning). BeforeID and AfterID are
+// mutually exclusive and must not be negative.
 func (s *sqliteStore) QueryAuditLog(opts AuditQuery) ([]AuditEntry, error) {
+	if opts.BeforeID < 0 || opts.AfterID < 0 {
+		return nil, fmt.Errorf("store: QueryAuditLog: before_id and after_id must not be negative")
+	}
+	if opts.BeforeID > 0 && opts.AfterID > 0 {
+		return nil, fmt.Errorf("store: QueryAuditLog: before_id and after_id are mutually exclusive")
+	}
 	query, args := buildAuditQuery(opts)
 	rows, err := s.db.Query(query, args...)
 	if err != nil {

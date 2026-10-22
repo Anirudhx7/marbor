@@ -105,6 +105,9 @@ func TestHandleAuditCursorBadRequests(t *testing.T) {
 			if rec.Code != http.StatusBadRequest {
 				t.Fatalf("status = %d, want 400, body %s", rec.Code, rec.Body.String())
 			}
+			if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
+				t.Fatalf("Content-Type = %q, want application/json", ct)
+			}
 			if body := rec.Body.String(); !strings.Contains(body, c.want) {
 				t.Fatalf("body %q does not mention %q", body, c.want)
 			}

@@ -1,5 +1,5 @@
 import { NodeSignalId, GPUNode, APIKey, Settings, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelCatalogResponse, ModelConfig, BenchmarkRun, SpillCounterRow, RoutingDecision, ModelAlias, QuantRecommendation } from '../types';
-import type { SystemInfo, ReplicaSuggestionsResponse, SoleReplicaImpact } from './api';
+import type { SystemInfo, ReplicaSuggestionsResponse, SoleReplicaImpact, AuditPage, AuditPageEntry } from './api';
 
 const GB = 1024;
 const GiB = 1024 * 1024 * 1024;
@@ -1030,6 +1030,8 @@ export const mockCloudProviders: CloudProvider[] = [
   },
 ];
 
+// start of audit paging mock (the block through the end marker below is
+// evaluated standalone by scripts/audit-paging.test.mjs)
 const now = Date.now();
 const mins = (n: number) => new Date(now - n * 60000).toISOString();
 const secs = (n: number) => new Date(now - n * 1000).toISOString();
@@ -1098,7 +1100,7 @@ export function filterMockRequests(filters: MockRequestFilters): RequestEntry[] 
 // shapes so every key, model, node and status filter hits more than one page.
 // Each row carries a numeric auditId (unique, strictly descending), the demo
 // stand-in for the server's row id used as before_id / after_id.
-export type MockAuditRow = RequestEntry & { auditId: number };
+export type MockAuditRow = AuditPageEntry;
 
 const MOCK_AUDIT_ROW_COUNT = 120;
 const MOCK_AUDIT_TOP_ID = 7345;
@@ -1122,11 +1124,7 @@ export interface MockPageOptions {
   afterId?: number;
 }
 
-export interface MockAuditPage {
-  entries: MockAuditRow[];
-  nextBeforeId?: number;
-  prevAfterId?: number;
-}
+export type MockAuditPage = Omit<AuditPage, 'truncated'>;
 
 // pageMockRequests simulates GET /admin/audit with limit, before_id and
 // after_id: newest-first, limit clamped to 1..1000, and next/prev cursors

@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -1670,10 +1671,10 @@ func (c *Client) AuditQuery(f AuditFilter) (*AuditResult, error) {
 		"until", f.Until,
 	)
 	if f.BeforeID > 0 {
-		params.Set("before_id", fmt.Sprintf("%d", f.BeforeID))
+		params.Set("before_id", strconv.FormatInt(f.BeforeID, 10))
 	}
 	if f.AfterID > 0 {
-		params.Set("after_id", fmt.Sprintf("%d", f.AfterID))
+		params.Set("after_id", strconv.FormatInt(f.AfterID, 10))
 	}
 	path := "/admin/audit"
 	if len(params) > 0 {
