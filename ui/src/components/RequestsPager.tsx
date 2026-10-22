@@ -66,7 +66,7 @@ export function RequestsPager({
           <ChevronRight className="w-4 h-4" aria-hidden="true" />
         </button>
       </div>
-      <span className="text-xs text-muted-foreground" role={announce ? 'status' : undefined}>
+      <span className="text-xs text-muted-foreground" role={announce ? 'status' : undefined} aria-live={announce ? 'polite' : undefined} aria-atomic={announce ? true : undefined}>
         {summary}
       </span>
       {livePaused && onResume && (

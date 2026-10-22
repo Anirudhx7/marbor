@@ -88,7 +88,7 @@ export function parseRequestsViewNotes(params: URLSearchParams): ParsedRequestsV
   const rangeValid = rangeParam !== null && RANGE_VALUES.includes(rangeParam);
   if (present('range') && rangeParam !== 'all' && !rangeValid) ignored.push('range');
   const sizeNum = Number(sizeParam);
-  const sizeValid = sizeParam !== null && (PAGE_SIZES as readonly number[]).includes(sizeNum);
+  const sizeValid = sizeParam !== null && /^\d+$/.test(sizeParam) && (PAGE_SIZES as readonly number[]).includes(sizeNum);
   if (present('size') && !sizeValid) ignored.push('size');
   if (present('from') && !from) ignored.push('from');
   if (present('until') && !until) ignored.push('until');
@@ -220,6 +220,19 @@ export function clearedView(view: RequestsView): RequestsView {
     model: '', key: '', node: '', cloud: 'all', status: 'all', range: 'all', from: '', until: '',
     size: view.size, cursor: null,
   };
+}
+
+// How the page should treat the query string the router now reports: 'same'
+// when it matches what the page last agreed with the URL (the write has been
+// echoed back, so earlier writes are forgotten), 'echo' when it is a late echo
+// of an earlier write, and 'external' for a link the page did not write. The
+// `written` set is updated in place.
+export function classifyUrlChange(raw: string, lastSynced: string, written: Set<string>): 'same' | 'echo' | 'external' {
+  if (raw === lastSynced) {
+    written.clear();
+    return 'same';
+  }
+  return written.delete(raw) ? 'echo' : 'external';
 }
 
 export type EmptyStateKind = 'pastEnd' | 'filtered' | 'none';

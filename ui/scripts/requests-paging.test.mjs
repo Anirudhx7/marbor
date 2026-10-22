@@ -13,7 +13,7 @@ const mod = await import(pathToFileURL(path.join(here, '..', 'src/lib/requestsVi
 const {
   parseRequestsView, parseRequestsViewNotes, serializeRequestsView, activeFilterChips, loadedSummary,
   filtersKey, resolveCursor, shouldGoLive, pollIntervalMs, cursorParams, removeChipFromView, clearedView,
-  emptyStateKind, PAGE_SIZES, DEFAULT_PAGE_SIZE, LIVE_POLL_MS,
+  emptyStateKind, classifyUrlChange, PAGE_SIZES, DEFAULT_PAGE_SIZE, LIVE_POLL_MS,
 } = mod;
 
 const parse = (qs) => parseRequestsView(new URLSearchParams(qs));
@@ -183,6 +183,21 @@ test('removing a chip returns to the newest page and Clear all keeps the page si
   assert.deepEqual(activeFilterChips(cleared), []);
   assert.equal(cleared.size, 250);
   assert.equal(cleared.cursor, null);
+});
+
+test('a bare link after earlier writes is adopted, not mistaken for a late echo', () => {
+  const written = new Set();
+  // The page wrote "", then "model=x"; the router echoed the latest one.
+  written.add('');
+  written.add('model=x');
+  assert.equal(classifyUrlChange('model=x', 'model=x', written), 'same');
+  assert.equal(written.size, 0);
+  // The sidebar link to bare /requests is now an external change.
+  assert.equal(classifyUrlChange('', 'model=x', written), 'external');
+  // A genuine late echo of a write still in flight is ignored once.
+  written.add('status=success');
+  assert.equal(classifyUrlChange('status=success', 'size=50', written), 'echo');
+  assert.equal(classifyUrlChange('status=success', 'size=50', written), 'external');
 });
 
 test('an empty page is named for what caused it', () => {

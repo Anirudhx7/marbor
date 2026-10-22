@@ -1086,7 +1086,7 @@ export async function fetchAuditPage(filters: AuditLogFilters = {}): Promise<Aud
   } catch {
     throw new Error('Failed to fetch audit log: the server returned an unreadable response');
   }
-  if (data.entries !== undefined && !Array.isArray(data.entries)) {
+  if (data === null || typeof data !== 'object' || (data.entries !== undefined && !Array.isArray(data.entries))) {
     throw new Error('Failed to fetch audit log: unexpected response shape');
   }
   const entries = (data.entries ?? []) as AuditLogEntry[];

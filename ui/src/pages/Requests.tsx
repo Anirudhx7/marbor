@@ -20,6 +20,7 @@ import {
   serializeRequestsView,
   filtersKey,
   resolveCursor,
+  classifyUrlChange,
   shouldGoLive,
   pollIntervalMs,
   cursorParams,
@@ -361,14 +362,16 @@ export function Requests() {
     if (currentAppPath() !== '/requests' || viewQuery === lastSynced.current) return;
     lastSynced.current = viewQuery;
     written.current.add(viewQuery);
+    // A view change the user made makes the "link had unusable values" notice
+    // out of date.
+    setNotice(null);
     setSearchParams(new URLSearchParams(viewQuery), { replace: true });
   }, [viewQuery, setSearchParams]);
 
   useEffect(() => {
     if (currentAppPath() !== '/requests') return;
     const raw = searchParams.toString();
-    if (raw === lastSynced.current) return;
-    if (written.current.delete(raw)) return;
+    if (classifyUrlChange(raw, lastSynced.current, written.current) !== 'external') return;
     const { view: next, ignored } = parseRequestsViewNotes(searchParams);
     const canonical = serializeRequestsView(next).toString();
     setNotice(ignoredNotice(ignored));
@@ -509,7 +512,7 @@ export function Requests() {
       {notice && (
         <div role="status" className="flex items-start justify-between gap-3 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-sm text-amber-700 dark:text-amber-300">
           <span>{notice}</span>
-          <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss notice" className="shrink-0 min-h-[32px] min-w-[32px] grid place-items-center">
+          <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss notice" className="shrink-0 min-h-[40px] min-w-[40px] grid place-items-center">
             <X className="w-4 h-4" aria-hidden="true" />
           </button>
         </div>
@@ -609,11 +612,17 @@ export function Requests() {
         )}
       </FilterBar>
 
-      <div ref={topRef} tabIndex={-1} className="scroll-mt-4 outline-none">
+      <div
+        ref={topRef}
+        tabIndex={-1}
+        role="group"
+        aria-label="Request log pages"
+        className="scroll-mt-4 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+      >
         <RequestsPager
           {...pagerProps}
           label="Request log pages, top"
-          announce
+          announce={livePaused}
           size={pageSize}
           onSize={setPageSize}
           livePaused={livePaused && !isDemoMode}
@@ -641,7 +650,10 @@ export function Requests() {
           <span>{fetchError}</span>
           <button
             type="button"
-            onClick={() => setRetryTick((n) => n + 1)}
+            onClick={() => {
+              setRetryTick((n) => n + 1);
+              afterPageChange();
+            }}
             className="min-h-[40px] px-3 rounded-lg border border-destructive/30 hover:bg-destructive/10 transition-colors"
           >
             Retry
