@@ -1074,9 +1074,22 @@ export async function fetchAuditPage(filters: AuditLogFilters = {}): Promise<Aud
   if (filters.afterId !== undefined) params.set('after_id', String(filters.afterId));
 
   const res = await apiFetch(`${BASE}/audit?${params.toString()}`, { headers: authHeaders() });
-  if (!res.ok) throw new Error(`Failed to fetch audit log (HTTP ${res.status})`);
-  const data = await res.json();
-  const entries: AuditLogEntry[] = data.entries ?? [];
+  if (!res.ok) {
+    // Surface the server's own explanation (a bad filter, a rejected cursor)
+    // when it sent one, instead of only the status code.
+    const detail = await res.text().then((t) => t.trim().slice(0, 200)).catch(() => '');
+    throw new Error(detail ? `Failed to fetch audit log (HTTP ${res.status}): ${detail}` : `Failed to fetch audit log (HTTP ${res.status})`);
+  }
+  let data: { entries?: unknown; next_before_id?: number; prev_after_id?: number; truncated?: boolean };
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error('Failed to fetch audit log: the server returned an unreadable response');
+  }
+  if (data.entries !== undefined && !Array.isArray(data.entries)) {
+    throw new Error('Failed to fetch audit log: unexpected response shape');
+  }
+  const entries = (data.entries ?? []) as AuditLogEntry[];
   const cursorSent = filters.beforeId !== undefined || filters.afterId !== undefined;
   // A server that predates cursors ignores the parameters and returns the
   // first page with no ids; walking it would loop on page one forever.

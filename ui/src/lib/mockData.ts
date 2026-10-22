@@ -1102,8 +1102,19 @@ export function filterMockRequests(filters: MockRequestFilters): RequestEntry[] 
 // stand-in for the server's row id used as before_id / after_id.
 export type MockAuditRow = AuditPageEntry;
 
-const MOCK_AUDIT_ROW_COUNT = 120;
+// Enough rows that the default page of 100 has several pages behind it and a
+// filtered view (an error status, one key) still spans more than one page.
+const MOCK_AUDIT_ROW_COUNT = 600;
 const MOCK_AUDIT_TOP_ID = 7345;
+
+// Generated rows vary their status on a fixed pattern (about 1 in 9 a client
+// error, 1 in 13 a server error) so status filters have real matches deep in
+// the log instead of only on the handful of hand-written rows.
+function mockGeneratedStatus(i: number, base: number): number {
+  if (i % 13 === 5) return 500;
+  if (i % 9 === 4) return 429;
+  return base;
+}
 
 export const mockAuditRows: MockAuditRow[] = Array.from({ length: MOCK_AUDIT_ROW_COUNT }, (_, i) => {
   const auditId = MOCK_AUDIT_TOP_ID - i;
@@ -1113,6 +1124,7 @@ export const mockAuditRows: MockAuditRow[] = Array.from({ length: MOCK_AUDIT_ROW
     ...base,
     id: `req-demo-${auditId}`,
     time: mins(20 + (i - mockRequests.length) * 3),
+    status: mockGeneratedStatus(i, base.status),
     latency_ms: base.latency_ms + (i % 7),
     auditId,
   };
