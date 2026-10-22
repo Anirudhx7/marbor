@@ -400,10 +400,14 @@ func TestDrain_MutualPeersExactlyOneSucceeds(t *testing.T) {
 	readyNode(t, s, "b", "", soleModel)
 	readyNode(t, s, "c", "")
 
+	// drainRequest calls AdminToken, which sets the server's demo-auth flag, so
+	// build both requests before any handler goroutine reads that flag.
+	reqs := []*http.Request{drainRequest(s, "a", ""), drainRequest(s, "b", "")}
+
 	var wg sync.WaitGroup
 	codes := make([]int, 2)
-	for i, name := range []string{"a", "b"} {
-		req := drainRequest(s, name, "")
+	for i := range reqs {
+		req := reqs[i]
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
