@@ -515,6 +515,9 @@ type SpillCounterRow struct {
 
 // AuditEntry is one structured audit log record persisted to SQLite.
 type AuditEntry struct {
+	// ID is the row id (monotonic insertion order), used as a paging cursor.
+	// Real ids start at 1, so zero means the entry was not read from the store.
+	ID            int64     `json:"id,omitempty"`
 	Time          time.Time `json:"time"`
 	RequestID     string    `json:"request_id"`
 	KeyName       string    `json:"key_name"`
@@ -555,6 +558,9 @@ type SystemAuditFilter struct {
 	SourceIP string
 }
 
+// DefaultAuditQueryLimit is the row count QueryAuditLog returns when Limit is unset.
+const DefaultAuditQueryLimit = 100
+
 // AuditQuery controls filtering for QueryAuditLog.
 type AuditQuery struct {
 	Limit int
@@ -567,6 +573,11 @@ type AuditQuery struct {
 	Cloud          *bool
 	Since          time.Time
 	Until          time.Time
+	// BeforeID returns only rows with id < BeforeID (older rows). AfterID
+	// returns only rows with id > AfterID (newer rows). Zero means no bound.
+	// Results are always newest-first, whichever cursor is used.
+	BeforeID int64
+	AfterID  int64
 }
 
 // User is a dashboard administrator or API-consumer user with role-based access.

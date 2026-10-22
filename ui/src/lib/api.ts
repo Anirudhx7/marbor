@@ -1015,9 +1015,14 @@ export interface AuditLogFilters {
   since?: string; // RFC3339
   until?: string; // RFC3339
   limit?: number;
+  // Keyset cursors: ids taken from a previous response's next_before_id
+  // (older rows) or prev_after_id (newer rows). At most one may be set.
+  beforeId?: number;
+  afterId?: number;
 }
 
 interface AuditLogEntry {
+  id?: number;
   time: string;
   request_id: string;
   key_name: string;
@@ -1030,10 +1035,32 @@ interface AuditLogEntry {
   routing_reason?: string;
 }
 
-// fetchAuditLog queries the server-side filterable /admin/audit endpoint
-// (backed by SQLite audit_log, indexed on key_name/model/node/ts) so the
-// Requests page can filter without pulling every row and matching client-side.
-export async function fetchAuditLog(filters: AuditLogFilters = {}): Promise<RequestEntry[]> {
+// AuditPageEntry is a request row plus the server row id used as the cursor.
+export type AuditPageEntry = RequestEntry & { auditId: number };
+
+export interface AuditPage {
+  entries: AuditPageEntry[];
+  // Present only when an older / newer matching row exists. Pass as beforeId /
+  // afterId to fetch that page; newest-first order holds for both directions.
+  nextBeforeId?: number;
+  prevAfterId?: number;
+  // True when the page is full (not a statement that more rows exist; the
+  // cursors are the exact signal).
+  truncated: boolean;
+}
+
+// fetchAuditPage queries the server-side filterable /admin/audit endpoint
+// (SQLite audit_log) with optional keyset cursors, so the Requests page can
+// filter and page without pulling every row. Model, key and node filters are
+// substring matches over the whole log, not index lookups.
+export async function fetchAuditPage(filters: AuditLogFilters = {}): Promise<AuditPage> {
+  const validCursor = (n: number | undefined) => n === undefined || (Number.isInteger(n) && n > 0);
+  if (!validCursor(filters.beforeId) || !validCursor(filters.afterId)) {
+    throw new Error('beforeId and afterId must be positive integers');
+  }
+  if (filters.beforeId !== undefined && filters.afterId !== undefined) {
+    throw new Error('beforeId and afterId are mutually exclusive');
+  }
   const params = new URLSearchParams();
   if (filters.model) params.set('model', filters.model);
   if (filters.key) params.set('key', filters.key);
@@ -1043,22 +1070,43 @@ export async function fetchAuditLog(filters: AuditLogFilters = {}): Promise<Requ
   if (filters.since) params.set('since', filters.since);
   if (filters.until) params.set('until', filters.until);
   params.set('limit', String(filters.limit ?? 50));
+  if (filters.beforeId !== undefined) params.set('before_id', String(filters.beforeId));
+  if (filters.afterId !== undefined) params.set('after_id', String(filters.afterId));
 
   const res = await apiFetch(`${BASE}/audit?${params.toString()}`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch audit log');
+  if (!res.ok) throw new Error(`Failed to fetch audit log (HTTP ${res.status})`);
   const data = await res.json();
   const entries: AuditLogEntry[] = data.entries ?? [];
-  return entries.map((e) => ({
-    id: e.request_id,
-    time: e.time,
-    key_name: e.key_name,
-    model: e.cloud && e.cloud_model ? e.cloud_model : e.model,
-    node: e.node,
-    status: Number(e.status) || 0,
-    latency_ms: e.latency_ms,
-    cloud: e.cloud,
-    routingReason: e.routing_reason || undefined,
-  }));
+  const cursorSent = filters.beforeId !== undefined || filters.afterId !== undefined;
+  // A server that predates cursors ignores the parameters and returns the
+  // first page with no ids; walking it would loop on page one forever.
+  if (cursorSent && entries.length > 0 && entries.some((e) => e.id === undefined)) {
+    throw new Error('This server does not support audit cursors; upgrade marbor');
+  }
+  return {
+    entries: entries.map((e) => ({
+      id: e.request_id,
+      auditId: e.id ?? 0,
+      time: e.time,
+      key_name: e.key_name,
+      model: e.cloud && e.cloud_model ? e.cloud_model : e.model,
+      node: e.node,
+      status: Number(e.status) || 0,
+      latency_ms: e.latency_ms,
+      cloud: e.cloud,
+      routingReason: e.routing_reason || undefined,
+    })),
+    nextBeforeId: data.next_before_id || undefined,
+    prevAfterId: data.prev_after_id || undefined,
+    truncated: Boolean(data.truncated),
+  };
+}
+
+// fetchAuditLog returns just the rows of the first page, the shape the
+// Requests page has always consumed.
+export async function fetchAuditLog(filters: AuditLogFilters = {}): Promise<RequestEntry[]> {
+  const page = await fetchAuditPage(filters);
+  return page.entries;
 }
 
 // fetchRequestExplain queries GET /admin/requests/{id}/explain - the
