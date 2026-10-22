@@ -558,10 +558,10 @@ type SystemAuditFilter struct {
 	SourceIP string
 }
 
-// AuditQuery controls filtering for QueryAuditLog.
 // DefaultAuditQueryLimit is the row count QueryAuditLog returns when Limit is unset.
 const DefaultAuditQueryLimit = 100
 
+// AuditQuery controls filtering for QueryAuditLog.
 type AuditQuery struct {
 	Limit int
 	Model string

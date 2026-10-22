@@ -218,9 +218,8 @@ func TestQueryPagePeeksIgnoreNonMatchingNeighbours(t *testing.T) {
 		t.Errorf("NextBeforeID = %d, want 7", p.NextBeforeID)
 	}
 
-	// after_id=8 limit 1 with m-even: page is [10]; the only older row above
-	// the cursor is 9 (m-odd), and rows 8,6,... are not above the cursor, so
-	// the older peek (id < 10, matching) finds 8 -> NextBeforeID 10.
+	// after_id=8 limit 1 with m-even: the page is [10] and row 8, which is
+	// older than the page and matches, makes the older cursor present.
 	p, err = l.QueryPage(QueryOptions{Limit: 1, Model: "m-even", AfterID: 8})
 	if err != nil {
 		t.Fatal(err)
