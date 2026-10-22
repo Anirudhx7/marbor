@@ -144,7 +144,7 @@ Rate limiting on the proxy port (`11434`) is implemented per API key via a token
 ### Analytics dashboard: traffic history restored, per-model breakdown still gaps after restart
 Hourly traffic buckets (requests, tokens, local/cloud split, cost) are persisted to SQLite and now restored into the in-memory analytics store on startup, so the traffic charts show continuous history immediately after a restart instead of a dip.
 
-The "By Model" table's Local/Cloud breakdown is not backfilled the same way. Per-model stats are persisted as an aggregate request count with no local/cloud split, but the dashboard needs that split - attributing the aggregate to either side on restart would fabricate a false 100%-local or 100%-cloud number, which violates the project's no-fake-data rule. So the by-model view still shows a gap that fills back in as new traffic arrives. No data is lost in either case - the SQLite records are intact.
+The "By Model" table's Local/Cloud breakdown is not backfilled the same way. Per-model stats are persisted as an aggregate request count with no local/cloud split, but the dashboard needs that split - attributing the aggregate to either side on restart would fabricate a false 100%-local or 100%-cloud number, which violates the project's no-fake-data rule. So the by-model table counts only requests since the last restart (the page shows the restart time) and starts over each time marbor restarts, while the summary cards above it are all time and the charts cover the last 24 hours. No data is lost in either case - the SQLite records are intact.
 
 ### Routing rules persist to SQLite
 Routing rules added via the admin API (the UI or `POST /admin/v1/routing/rules`) are written to SQLite and survive restarts.

@@ -854,6 +854,7 @@ export const mockSavings: Savings = {
   cloud_spent_usd: 248.63,
   saved_usd: 4724.18,
   total_requests: 342467,
+  since: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
 };
 
 // Fleet-level figures (node count, healthy count, per-model warm count) are
@@ -1240,10 +1241,12 @@ const _hourlyTps =   [52.4, 48.1,  0,  0, 55.2, 57.9, 61.3, 58.6, 49.7, 44.2, 42
 const _hourlyGenMs = [310000, 262000, 0, 0, 340000, 365000, 488000, 702000, 905000, 1010000, 1140000, 1080000, 880000, 640000, 760000, 925000, 990000, 870000, 640000, 470000, 390000, 310000, 335000, 280000];
 
 export const mockAnalytics: Analytics = {
-  local_requests: 5465,
-  cloud_requests: 186,
-  total_saved_usd: 58.95,
-  total_spent_usd: 1.86,
+  local_requests: mockSavings.local_requests,
+  cloud_requests: mockSavings.cloud_requests,
+  total_saved_usd: mockSavings.saved_usd,
+  total_spent_usd: mockSavings.cloud_spent_usd,
+  // Relative on purpose so the demo always shows a recent restart.
+  since: mockSavings.since,
   hourly: Array.from({ length: 24 }, (_, i) => ({
     hour: makeHourKey(23 - i),
     local: _hourlyLocal[i],
@@ -1255,14 +1258,14 @@ export const mockAnalytics: Analytics = {
       : { tokens: 0, gen_duration_ms: 0, tokens_per_sec: 0 }),
   })),
   by_model: [
-    { model: 'deepseek-r1:7b', local: 1830, cloud: 60, saved_usd: 18.30 },
-    { model: 'llama3.3:8b',    local: 1305, cloud: 42, saved_usd: 13.05 },
-    { model: 'qwen3:8b',       local:  932, cloud: 32, saved_usd:  9.32 },
-    { model: 'qwen2.5:14b',    local:  520, cloud: 18, saved_usd:  5.20 },
-    { model: 'llama3.3:70b',   local:  215, cloud:  8, saved_usd:  6.45 },
-    { model: 'qwen2.5-coder:14b',  local:  148, cloud:  6, saved_usd:  1.48 },
-    { model: 'gemma4:12b',     local:  312, cloud: 12, saved_usd:  3.12 },
-    { model: 'mistral:7b',     local:  203, cloud:  8, saved_usd:  2.03 },
+    { model: 'deepseek-r1:7b',    local: 3660, cloud: 120, saved_usd: 36.60 },
+    { model: 'llama3.3:8b',       local: 2610, cloud:  84, saved_usd: 26.10 },
+    { model: 'qwen3:8b',          local: 1864, cloud:  64, saved_usd: 18.64 },
+    { model: 'qwen2.5:14b',       local: 1040, cloud:  36, saved_usd: 10.40 },
+    { model: 'llama3.3:70b',      local:  430, cloud:  16, saved_usd: 12.90 },
+    { model: 'qwen2.5-coder:14b', local:  296, cloud:  12, saved_usd:  2.96 },
+    { model: 'gemma4:12b',        local:  624, cloud:  24, saved_usd:  6.24 },
+    { model: 'mistral:7b',        local:  406, cloud:  16, saved_usd:  4.06 },
   ],
 };
 

@@ -121,3 +121,61 @@ test('settingsInflight is declared before the functions that use it', () => {
   assert.ok(decl < api.indexOf('export async function login'), 'declare settingsInflight above login');
   assert.ok(decl < api.indexOf('function withSettingsReset'), 'declare settingsInflight above withSettingsReset');
 });
+
+// Analytics fixture: the summary totals are the same all-time counters the
+// savings card shows, and the per-model table (since last restart) sits
+// between the 24h chart total and the all-time total.
+function block(src, startMarker) {
+  const start = src.indexOf(startMarker);
+  assert.ok(start >= 0, startMarker + ' not found');
+  const end = src.indexOf('\n};', start);
+  assert.ok(end > start, startMarker + ' end marker not found');
+  return src.slice(start, end);
+}
+
+test('demo analytics totals reference the savings fixture and both carry since', () => {
+  const analytics = block(mock, 'export const mockAnalytics');
+  const savings = block(mock, 'export const mockSavings');
+  for (const pair of [
+    ['local_requests', 'local_requests'],
+    ['cloud_requests', 'cloud_requests'],
+    ['total_saved_usd', 'saved_usd'],
+    ['total_spent_usd', 'cloud_spent_usd'],
+  ]) {
+    assert.ok(
+      new RegExp(`${pair[0]}: mockSavings\\.${pair[1]}\\b`).test(analytics),
+      `mockAnalytics.${pair[0]} must reference mockSavings.${pair[1]}`,
+    );
+  }
+  assert.ok(/\bsince: mockSavings\.since\b/.test(analytics), 'mockAnalytics must use since: mockSavings.since');
+  assert.ok(
+    /\bsince: (new Date\(|'\d{4}-\d{2}-\d{2}T)/.test(savings),
+    'mockSavings.since must be built from Date or an ISO literal',
+  );
+});
+
+test('demo by-model sums sit between the 24h total and the all-time total', () => {
+  const nums = (re, src) => [...src.matchAll(re)].map((m) => Number(m[1]));
+  const sum = (a) => a.reduce((x, y) => x + y, 0);
+  const localArr = mock.match(/const _hourlyLocal = \[([^\]]*)\]/);
+  const cloudArr = mock.match(/const _hourlyCloud = \[([^\]]*)\]/);
+  assert.ok(localArr, '_hourlyLocal array not found in mockData');
+  assert.ok(cloudArr, '_hourlyCloud array not found in mockData');
+  const hourlyLocal = sum(nums(/(\d+)/g, localArr[1]));
+  const hourlyCloud = sum(nums(/(\d+)/g, cloudArr[1]));
+  const sv = block(mock, 'export const mockSavings');
+  const totalLocal = Number(sv.match(/local_requests: (\d+)/)[1]);
+  const totalCloud = Number(sv.match(/cloud_requests: (\d+)/)[1]);
+  const byModel = block(mock, 'export const mockAnalytics').split('by_model: [')[1];
+  const modelLocal = sum(nums(/local:\s*(\d+)/g, byModel));
+  const modelCloud = sum(nums(/cloud:\s*(\d+)/g, byModel));
+  assert.ok(modelLocal >= hourlyLocal && modelLocal <= totalLocal, `local ${hourlyLocal} <= ${modelLocal} <= ${totalLocal}`);
+  assert.ok(modelCloud >= hourlyCloud && modelCloud <= totalCloud, `cloud ${hourlyCloud} <= ${modelCloud} <= ${totalCloud}`);
+  const savedVals = nums(/saved_usd:\s*([\d.]+)/g, byModel);
+  assert.ok(savedVals.length > 0, 'by_model has no saved_usd fields in mockAnalytics');
+  const modelSaved = sum(savedVals);
+  const savedMatch = sv.match(/saved_usd: ([\d.]+)/);
+  assert.ok(savedMatch, 'saved_usd not found in mockSavings');
+  const totalSaved = Number(savedMatch[1]);
+  assert.ok(modelSaved <= totalSaved, `by_model saved ${modelSaved} <= all-time saved ${totalSaved}`);
+});
