@@ -1,305 +1,189 @@
-import { useState, useEffect, useMemo, Fragment, type ReactNode } from 'react';
-import { useLocation } from 'react-router-dom';
-import { ChevronDown, ChevronRight, Inbox } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useLocation, useSearchParams } from 'react-router-dom';
+import { Inbox, X } from 'lucide-react';
 import { CustomSelect, CustomCombobox } from '../components/Select';
 import { CustomDateTimePicker } from '../components/DateTimePicker';
 import { ClearableInput, FilterField, FilterBar, FilterBarGrid, FilterBarClear } from '../components/FilterField';
+import { RequestsPager } from '../components/RequestsPager';
+import { RequestRow, RequestCard } from '../components/RequestRows';
+import { COLUMNS, SkeletonRow } from '../components/RequestLogParts';
 import { RequestEntry, RoutingDecision } from '../types';
-import { fetchAuditLog, fetchNodes, fetchKeys, fetchRequestExplain } from '../lib/api';
+import { fetchAuditPage, fetchNodes, fetchKeys, fetchRequestExplain } from '../lib/api';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
-import { filterMockRequests, mockGPUNodes, mockAPIKeys, mockExplainForRequest } from '../lib/mockData';
-import { formatRelativeTime } from '../lib/time';
+import { useMediaQuery } from '../hooks/useMediaQuery';
+import { pageMockRequests, mockGPUNodes, mockAPIKeys, mockExplainForRequest } from '../lib/mockData';
 import { useTimezone } from '../hooks/useTimezone';
 import { wallDateTimeToUtcIso } from '../lib/time';
 import { EmptyState } from '../components/EmptyState';
+import {
+  parseRequestsViewNotes,
+  serializeRequestsView,
+  filtersKey,
+  resolveCursor,
+  classifyUrlChange,
+  shouldGoLive,
+  pollIntervalMs,
+  cursorParams,
+  removeChipFromView,
+  clearedView,
+  emptyStateKind,
+  activeFilterChips,
+  loadedSummary,
+  type CloudFilter,
+  type StatusFilter,
+  type SincePreset,
+  type PageCursor,
+  type RequestsView,
+  type FilterChip,
+} from '../lib/requestsView';
 
-// One entry per table column: the header, its sizing and its alignment all
-// come from here, and the full-width rows use COLUMNS.length, so the column
-// count cannot drift between <th> and those rows.
-//
-// Sizing is content-driven, not a fixed share of the card. "fit" columns
-// (short, predictable values) shrink to their content and never wrap, with a
-// min-width so a slightly longer value on a later poll does not make the
-// table jump. "flex" columns (long, variable values: key, model, node) split
-// whatever width is left, weighted by the percentage, and scroll inside their
-// cell when a value is longer than the space (their cells carry max-w-0). So
-// a wide card gives the spare room to the columns that need it, and a narrow
-// one squeezes only those, instead of every column keeping a fixed slice.
-const FIT = 'w-px whitespace-nowrap';
-const COLUMNS: { label: string; size: string; align: 'left' | 'right' }[] = [
-  { label: 'Time', size: `${FIT} min-w-[88px]`, align: 'left' },
-  { label: 'Request ID', size: 'w-[16%]', align: 'left' },
-  { label: 'Key', size: 'w-[18%]', align: 'left' },
-  { label: 'Model', size: 'w-[24%]', align: 'left' },
-  { label: 'Node', size: 'w-[18%]', align: 'left' },
-  { label: 'Status', size: `${FIT} min-w-[80px]`, align: 'left' },
-  { label: 'Latency', size: `${FIT} min-w-[90px]`, align: 'right' },
-  { label: 'Prefill', size: `${FIT} min-w-[84px]`, align: 'right' },
-  { label: 'Why', size: `${FIT} min-w-[156px]`, align: 'left' },
-];
-
-const REASON_LABELS: Record<string, string> = {
-  session_affinity: 'Session affinity',
-  pinned_warm: 'Pinned + warm',
-  score_based: 'Score-based',
-};
-
-// ScrollableValue backs every cell that can legitimately hold a value longer
-// than its column (request IDs, key names, model paths). Instead of
-// truncating with an ellipsis (which hides the rest of the value with no way
-// to read it short of a hover tooltip - useless on touch, and this app's
-// mobile dashboard is a real, actively-used surface) the value scrolls in
-// place: the cell's width stays fixed, but dragging/swiping inside it reveals
-// the rest of the text, like a horizontally-scrollable code line. `title`
-// stays as a hover bonus for desktop mouse users. .no-scrollbar (index.css)
-// keeps the row height uniform regardless of whether a given cell's content
-// happens to overflow.
-//
-// The outer div is a plain, unstyled scroll viewport - it's deliberately kept
-// free of background/padding classes. valueClassName (badge background,
-// padding, rounded corners, color) goes on the inner inline-block span
-// instead, which sizes to its own text rather than stretching to fill the
-// cell: a `bg-primary/10` pill on the outer (full-cell-width) div would
-// otherwise paint the entire column, not just the text it's meant to badge.
-function ScrollableValue({ value, valueClassName }: { value: string; valueClassName: string }) {
-  return (
-    <div className="overflow-x-auto whitespace-nowrap no-scrollbar" title={value}>
-      <span className={`inline-block ${valueClassName}`}>{value}</span>
-    </div>
-  );
+// One fetched page of the request log: the rows plus the cursors the server
+// returned. A cursor is present only when a matching newer / older row exists.
+interface PageData {
+  entries: RequestEntry[];
+  nextBeforeId?: number;
+  prevAfterId?: number;
 }
 
-// EXCLUDED_REASON_LABELS translates ExcludedCandidate.reason (a stable,
-// machine-readable identifier from the Admin API) into display text - kept
-// as a local mapping rather than trusting the wire value to already be a
-// sentence. The nine identifiers (unhealthy, draining, runtime_mismatch,
-// ineligible_model, over_capacity, insufficient_gpu_group, replica_worker,
-// replica_unresolved, replica_member_unreachable) mirror the ExcludeReason
-// constants in internal/router/explain.go.
-const EXCLUDED_REASON_LABELS: Record<string, string> = {
-  unhealthy: 'node is unhealthy',
-  draining: 'node is draining',
-  runtime_mismatch: 'runtime does not match the request',
-  ineligible_model: 'model not loaded on this node',
-  over_capacity: 'over the per-node request cap',
-  insufficient_gpu_group: "insufficient GPUs for this model's parallelism requirement",
-  replica_worker: 'non-head member of a multi-host replica; requests go to its head',
-  replica_unresolved: 'replica declaration conflicts with another node and needs reconciling',
-  replica_member_unreachable: "a replica member's host agent is not answering (the worker itself may still be up)",
-};
+// The bottom pager saves scrolling back up on a long page.
+const BOTTOM_PAGER_MIN_ROWS = 25;
+// Relative times ("3m ago") are re-rendered on this cadence even when a
+// refresh returns the same rows.
+const TIME_TICK_MS = 30_000;
 
-// ExplainTable is the shared table shell for the explain panel's score
-// breakdown and excluded-candidates blocks - same scroll-region wrapper,
-// header styling, and cell padding, so a future visual tweak to one applies
-// to both instead of drifting between two hand-copied markup blocks.
-function ExplainTable({
-  ariaLabel,
-  columns,
-  children,
-}: {
-  ariaLabel: string;
-  columns: { label: string; align?: 'right' }[];
-  children: ReactNode;
-}) {
-  return (
-    <div className="overflow-x-auto scroll-region" tabIndex={0} role="region" aria-label={ariaLabel}>
-      <table className="text-xs font-mono">
-        <thead>
-          <tr className="text-muted-foreground">
-            {columns.map((col, i) => (
-              <th
-                key={col.label}
-                className={`${col.align === 'right' ? 'text-right' : 'text-left'} ${i < columns.length - 1 ? 'pr-4' : ''} py-1`}
-              >
-                {col.label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>{children}</tbody>
-      </table>
-    </div>
-  );
-}
-
-function ReasonBadge({ reason }: { reason?: string }) {
-  if (!reason) return <span className="text-muted-foreground/40 text-xs">-</span>;
-  return (
-    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border bg-secondary text-foreground/80 border-border">
-      {REASON_LABELS[reason] ?? reason}
-    </span>
-  );
-}
-
-// ExplainPanel renders the routing-decision breakdown for one request,
-// lazily fetched (or looked up from static mock data in demo mode) on first
-// expand. State is one of: undefined (not yet fetched), 'loading', 'error',
-// or the resolved RoutingDecision.
-function ExplainPanel({ state }: { state: RoutingDecision | 'loading' | 'error' | undefined }) {
-  if (state === 'loading' || state === undefined) {
-    return <div className="text-sm text-muted-foreground">Loading routing explanation...</div>;
-  }
-  if (state === 'error') {
-    return <div className="text-sm text-muted-foreground">No routing decision recorded for this request.</div>;
-  }
-  return (
-    <div className="space-y-2 text-sm">
-      {/* Decision strip - landing-page trace language: where it landed and why */}
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="sr-only">Decision: </span>
-        <span className="font-mono text-xs text-muted-foreground" aria-hidden="true">Decision →</span>
-        <span className="font-mono text-xs font-semibold text-foreground">{state.node}</span>
-        <ReasonBadge reason={state.reason} />
-        {typeof state.score === 'number' && (
-          <span className="font-mono text-xs text-muted-foreground tabular-nums">
-            score {state.score.toFixed(2)}
-          </span>
-        )}
-        {state.affinityLost && (
-          <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
-            affinity lost
-          </span>
-        )}
-      </div>
-      {state.detail && <div className="text-muted-foreground text-xs">{state.detail}</div>}
-      {state.components && state.components.length > 0 && (
-        <ExplainTable
-          ariaLabel="Score components table: scroll horizontally for more columns"
-          columns={[
-            { label: 'Component' },
-            { label: 'Raw', align: 'right' },
-            { label: 'Weight', align: 'right' },
-            { label: 'Value', align: 'right' },
-            { label: 'Phase' },
-          ]}
-        >
-          {state.components.map((c) => (
-            <tr key={c.name}>
-              <td className="pr-4 py-0.5">{c.name}</td>
-              <td className="text-right pr-4 py-0.5">{c.raw.toFixed(2)}</td>
-              <td className="text-right pr-4 py-0.5">{c.weight}</td>
-              <td className="text-right pr-4 py-0.5">{c.value.toFixed(2)}</td>
-              <td className="py-0.5">{c.phase}</td>
-            </tr>
-          ))}
-          <tr className="border-t border-border font-semibold">
-            <td className="pr-4 py-0.5">Score</td>
-            <td colSpan={2} />
-            <td className="text-right pr-4 py-0.5">{state.score?.toFixed(2)}</td>
-            <td />
-          </tr>
-        </ExplainTable>
-      )}
-      {state.excluded && state.excluded.length > 0 && (
-        <div>
-          <div className="text-xs font-mono text-muted-foreground pt-1">Excluded</div>
-          <ExplainTable
-            ariaLabel="Excluded candidates table: scroll horizontally for more columns"
-            columns={[{ label: 'Node' }, { label: 'Reason' }]}
-          >
-            {state.excluded.map((e) => (
-              <tr key={e.node}>
-                <td className="pr-4 py-0.5">{e.node}</td>
-                <td className="py-0.5">{EXCLUDED_REASON_LABELS[e.reason] ?? e.reason}</td>
-              </tr>
-            ))}
-          </ExplainTable>
-          {typeof state.excludedTotal === 'number' && state.excludedTotal > state.excluded.length && (
-            <div className="text-xs text-muted-foreground pt-1">
-              ...and {state.excludedTotal - state.excluded.length} more
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function StatusBadge({ status }: { status: number }) {
-  let cls = 'text-xs font-mono font-semibold px-1.5 py-0.5 rounded-md border ';
-  if (status >= 200 && status < 300) cls += 'bg-green-500/15 text-green-600 dark:text-green-400 border-green-500/20';
-  else if (status >= 400 && status < 500) cls += 'bg-yellow-500/15 text-yellow-600 dark:text-yellow-400 border-yellow-500/20';
-  else cls += 'bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/20';
-  return <span className={cls}>{status}</span>;
-}
-
-function SkeletonRow() {
-  return (
-    <tr className="border-b border-border">
-      {[...Array(7)].map((_, i) => (
-        <td key={i} className="px-4 py-3">
-          <div className="h-4 bg-secondary rounded animate-pulse" style={{ width: `${40 + (i * 17) % 50}%` }} />
-        </td>
-      ))}
-    </tr>
-  );
-}
-
-// Cloud filter tri-state: 'all' | 'local' | 'cloud'.
-type CloudFilter = 'all' | 'local' | 'cloud';
-
-// Status category filter: 'all' sends no status param.
-type StatusFilter = 'all' | 'success' | 'client_error' | 'server_error';
-
-// Since filter presets map to a lookback window; 'all' sends no since param.
-// 'custom' is not a selectable option - it's an internal marker meaning "a
-// hand-picked From value is active", so the Quick range select's displayed
-// label falls back to its placeholder (no matching option) instead of
-// showing a stale preset name while a custom range is actually in effect.
-type SincePreset = 'all' | '15m' | '1h' | '24h' | 'custom';
-
+// Quick-range presets map to a lookback window; 'all' sends no since param.
 function sinceIso(preset: SincePreset): string | undefined {
   if (preset === 'all' || preset === 'custom') return undefined;
   const ms = { '15m': 15 * 60_000, '1h': 60 * 60_000, '24h': 24 * 60 * 60_000 }[preset];
   return new Date(Date.now() - ms).toISOString();
 }
 
+// Keep the previous row objects when a refreshed row is unchanged, so memoized
+// rows skip re-rendering, and keep the whole previous page when nothing moved.
+function reusePage(prev: PageData | null, next: PageData): PageData {
+  if (prev === null) return next;
+  const old = new Map(prev.entries.map((e) => [e.id, e]));
+  let allSame =
+    prev.entries.length === next.entries.length &&
+    prev.nextBeforeId === next.nextBeforeId &&
+    prev.prevAfterId === next.prevAfterId;
+  const entries = next.entries.map((e, i) => {
+    const before = old.get(e.id);
+    const same = before !== undefined && JSON.stringify(before) === JSON.stringify(e);
+    if (!same || prev.entries[i]?.id !== e.id) allSame = false;
+    return same ? before : e;
+  });
+  return allSame ? prev : { ...next, entries };
+}
+
+// The notice shown when a pasted or old link carried values the page could not
+// use, so a shared link never silently shows a different view.
+function ignoredNotice(ignored: string[]): string | null {
+  if (ignored.length === 0) return null;
+  return `This link had values the page could not use (${[...new Set(ignored)].join(', ')}); defaults are shown for them.`;
+}
+
 export function Requests() {
   const tz = useTimezone();
   const { demoMode: isDemoMode } = useDemoMode();
   const location = useLocation();
-  const [entries, setEntries] = useState<RequestEntry[]>([]);
+  const [searchParams, setSearchParams] = useSearchParams();
+  // The URL seeds the view on mount and whenever it changes from outside (a
+  // pasted link, the sidebar link, history); the page's own changes are
+  // written back with replace so each keystroke is not a history entry.
+  const [parsed] = useState(() => parseRequestsViewNotes(searchParams));
+  const initial = parsed.view;
+  const [notice, setNotice] = useState<string | null>(() => ignoredNotice(parsed.ignored));
+  const [page, setPage] = useState<PageData | null>(null);
+  const entries = page?.entries ?? [];
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [retryTick, setRetryTick] = useState(0);
+  const [timeTick, setTimeTick] = useState(0);
+  const topRef = useRef<HTMLDivElement>(null);
+  const focusAfterLoad = useRef(false);
+  const keepPage = useRef(false);
+  // Render one layout, not both: with a 500-row page the hidden twin would
+  // double the DOM.
+  const isDesktop = useMediaQuery('(min-width: 768px)', true);
 
-  // Routing explainability: which row (if any) has its breakdown
-  // expanded, and a per-id cache of the fetched/looked-up decision so
-  // re-expanding a row already viewed this session doesn't re-fetch.
+  // Routing explainability: which row (if any) has its breakdown expanded,
+  // and a per-id cache of the fetched/looked-up decision so re-expanding a row
+  // already viewed this session doesn't re-fetch.
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [explainData, setExplainData] = useState<Record<string, RoutingDecision | 'loading' | 'error'>>({});
+  const explainRequested = useRef(new Set<string>());
 
-  function toggleExplain(id: string) {
-    if (expandedId === id) {
-      setExpandedId(null);
-      return;
-    }
-    setExpandedId(id);
-    if (explainData[id]) return;
-    setExplainData((prev) => ({ ...prev, [id]: 'loading' }));
-    if (isDemoMode) {
-      const decision = mockExplainForRequest(id);
-      setExplainData((prev) => ({ ...prev, [id]: decision ?? 'error' }));
-      return;
-    }
-    fetchRequestExplain(id)
-      .then((decision) => setExplainData((prev) => ({ ...prev, [id]: decision })))
-      .catch(() => setExplainData((prev) => ({ ...prev, [id]: 'error' })));
-  }
+  const toggleExplain = useCallback(
+    (id: string) => {
+      setExpandedId((cur) => (cur === id ? null : id));
+      if (explainRequested.current.has(id)) return;
+      explainRequested.current.add(id);
+      setExplainData((prev) => ({ ...prev, [id]: 'loading' }));
+      if (isDemoMode) {
+        const decision = mockExplainForRequest(id);
+        setExplainData((prev) => ({ ...prev, [id]: decision ?? 'error' }));
+        return;
+      }
+      fetchRequestExplain(id)
+        .then((decision) => setExplainData((prev) => ({ ...prev, [id]: decision })))
+        .catch(() => {
+          explainRequested.current.delete(id);
+          setExplainData((prev) => ({ ...prev, [id]: 'error' }));
+        });
+    },
+    [isDemoMode],
+  );
 
   // Raw text inputs (debounced before becoming active filters).
-  const [modelInput, setModelInput] = useState('');
-  const [keyInput, setKeyInput] = useState('');
-  const [nodeInput, setNodeInput] = useState('');
-  const [cloudFilter, setCloudFilter] = useState<CloudFilter>('all');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [sincePreset, setSincePreset] = useState<SincePreset>('all');
-  const [sinceInput, setSinceInput] = useState(''); // datetime-local value, overrides sincePreset
-  const [untilInput, setUntilInput] = useState(''); // datetime-local value
+  const [modelInput, setModelInput] = useState(initial.model);
+  const [keyInput, setKeyInput] = useState(initial.key);
+  const [nodeInput, setNodeInput] = useState(initial.node);
+  const [cloudFilter, setCloudFilter] = useState<CloudFilter>(initial.cloud);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(initial.status);
+  const [sincePreset, setSincePreset] = useState<SincePreset>(initial.range);
+  const [sinceInput, setSinceInput] = useState(initial.from); // datetime-local value, overrides sincePreset
+  const [untilInput, setUntilInput] = useState(initial.until); // datetime-local value
+  const [pageSize, setPageSize] = useState(initial.size);
 
   // Debounced text filters actually sent as query params.
-  const [modelFilter, setModelFilter] = useState('');
-  const [keyFilter, setKeyFilter] = useState('');
-  const [nodeFilter, setNodeFilter] = useState('');
+  const [modelFilter, setModelFilter] = useState(initial.model);
+  const [keyFilter, setKeyFilter] = useState(initial.key);
+  const [nodeFilter, setNodeFilter] = useState(initial.node);
+
+  // The page cursor belongs to one filter set. It is stored with the key of
+  // the filters it was issued under; when the key changes the stored cursor is
+  // replaced during render, so changing a filter or the page size and then
+  // changing it back cannot bring the old page back.
+  const filterKey = filtersKey({
+    model: modelFilter, key: keyFilter, node: nodeFilter, cloud: cloudFilter, status: statusFilter,
+    range: sincePreset, from: sinceInput, until: untilInput, size: pageSize,
+  });
+  const [cursorState, setCursorState] = useState<{ key: string; cursor: PageCursor | null }>(() => ({
+    key: filtersKey(initial),
+    cursor: initial.cursor,
+  }));
+  if (cursorState.key !== filterKey) setCursorState({ key: filterKey, cursor: null });
+  const cursor = resolveCursor(cursorState, filterKey);
+  const setCursor = (next: PageCursor | null) => setCursorState({ key: filterKey, cursor: next });
+
+  // Set every part of the view at once (URL adoption, chip removal, Clear all).
+  // The debounced filters are set too, so nothing waits out the typing delay.
+  const applyView = useCallback((next: RequestsView) => {
+    setModelInput(next.model);
+    setKeyInput(next.key);
+    setNodeInput(next.node);
+    setModelFilter(next.model);
+    setKeyFilter(next.key);
+    setNodeFilter(next.node);
+    setCloudFilter(next.cloud);
+    setStatusFilter(next.status);
+    setSincePreset(next.range);
+    setSinceInput(next.from);
+    setUntilInput(next.until);
+    setPageSize(next.size);
+    setCursorState({ key: filtersKey(next), cursor: next.cursor });
+  }, []);
 
   // Known node names / key names for this marbor's current config, so the
   // filter bar offers a searchable list instead of demanding an exact
@@ -320,8 +204,9 @@ export function Requests() {
         setNodeOptions(nodes.map((n) => n.name));
         setKeyOptions(keys.map((k) => k.name));
       })
-      .catch(() => {
-        // Filter bar still works as free text if this fails - non-fatal.
+      .catch((err) => {
+        // Non-fatal: the filter bar still works as free text.
+        console.warn('Requests: could not load node and key suggestions', err);
       });
     return () => {
       cancelled = true;
@@ -342,6 +227,11 @@ export function Requests() {
     const t = setTimeout(() => setNodeFilter(nodeInput.trim()), 350);
     return () => clearTimeout(t);
   }, [nodeInput]);
+
+  useEffect(() => {
+    const id = setInterval(() => setTimeTick((n) => n + 1), TIME_TICK_MS);
+    return () => clearInterval(id);
+  }, []);
 
   // Deliberately NOT memoized: a "since" quick-range preset (e.g. "Last
   // hour") must mean a rolling window computed at request time, not a value
@@ -372,70 +262,218 @@ export function Requests() {
       cloud: cloudFilter === 'all' ? undefined : cloudFilter === 'cloud',
       since: sinceIsoUtc,
       until: untilIsoUtc,
-      // No pagination UI on this page yet, so request the server's max page
-      // size (admin.go caps at 1000) rather than silently truncating to the
-      // client default of 50 - "all requests" means all within that cap.
-      limit: 1000,
     };
   };
 
+  // Paging: the newest page (no cursor) is live and polls; any page reached
+  // with Older, or a Newer that has not yet reached the top, is a fixed view
+  // that is fetched once and never refreshed, so a refresh cannot move the
+  // operator off the rows they are reading. Resume returns to the newest page.
+  // A new effect run means a new view (filters, size, cursor, retry), so the
+  // previous rows are dropped rather than shown under the wrong heading,
+  // except when Newer has just reached the top and the page is going live.
   useEffect(() => {
     if (currentAppPath() !== '/requests') return;
+    const params = cursorParams(cursor);
+    setFetchError(null);
+    if (keepPage.current) keepPage.current = false;
+    else setPage(null);
+
     if (isDemoMode) {
-      setEntries(filterMockRequests(buildActiveFilters()));
+      const demoPage = pageMockRequests(buildActiveFilters(), { limit: pageSize, ...params });
+      if (shouldGoLive(cursor, demoPage)) {
+        keepPage.current = true;
+        setPage(demoPage);
+        setCursor(null);
+        return;
+      }
+      setPage(demoPage);
       setLoading(false);
       return;
     }
 
     let cancelled = false;
+    let inFlight = false;
 
     async function poll() {
+      if (inFlight) return;
+      inFlight = true;
       try {
-        const data = await fetchAuditLog(buildActiveFilters());
+        const data = await fetchAuditPage({ ...buildActiveFilters(), limit: pageSize, ...params });
+        if (cancelled || currentAppPath() !== '/requests') return;
+        setFetchError(null);
+        setLoading(false);
+        if (shouldGoLive(cursor, data)) {
+          // Newer reached the top: show what was fetched and go live.
+          keepPage.current = true;
+          setPage(data);
+          setCursor(null);
+          return;
+        }
+        setPage((prev) => reusePage(prev, data));
+      } catch (err: unknown) {
         if (!cancelled && currentAppPath() === '/requests') {
-          setEntries(Array.isArray(data) ? data : []);
-          setFetchError(null);
+          setFetchError(err instanceof Error && err.message ? err.message : 'Failed to load requests');
           setLoading(false);
         }
-      } catch (err: any) {
-        if (!cancelled && currentAppPath() === '/requests') {
-          setFetchError(err.message || 'Failed to load requests');
-          setLoading(false);
-        }
+      } finally {
+        inFlight = false;
       }
     }
 
     setLoading(true);
     poll();
-    const interval = setInterval(poll, 3000);
+    const everyMs = pollIntervalMs(cursor);
+    const interval = everyMs === null ? null : setInterval(poll, everyMs);
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      if (interval !== null) clearInterval(interval);
     };
+    // filterKey stands for every filter and the page size; buildActiveFilters,
+    // setCursor and the cursor object are rebuilt each render but are fully
+    // determined by it plus the cursor's direction and id.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDemoMode, modelFilter, keyFilter, nodeFilter, statusFilter, cloudFilter, sincePreset, sinceInput, untilInput, location.pathname, tz]);
+  }, [isDemoMode, filterKey, cursor?.dir, cursor?.id, location.pathname, tz, retryTick]);
 
-  const filtered = entries;
-  const hasActiveFilter =
-    !!modelFilter || !!keyFilter || !!nodeFilter || statusFilter !== 'all' || cloudFilter !== 'all' || sincePreset !== 'all' || !!sinceInput || !!untilInput;
+  const view: RequestsView = {
+    model: modelFilter,
+    key: keyFilter,
+    node: nodeFilter,
+    cloud: cloudFilter,
+    status: statusFilter,
+    range: sincePreset,
+    from: sinceInput,
+    until: untilInput,
+    size: pageSize,
+    cursor,
+  };
+  const viewQuery = serializeRequestsView(view).toString();
 
+  // The URL and the view stay in step both ways. lastSynced is the query the
+  // two last agreed on. A view change not yet in the URL is written out so the
+  // page can be shared or bookmarked; `written` remembers those writes so a
+  // late router update for an earlier one is not mistaken for a new link. A URL
+  // the page did not write (a pasted link, the sidebar link, history) is
+  // adopted as the new view; unusable values in it are named in a notice and
+  // the address bar is rewritten to the view actually shown.
+  const lastSynced = useRef(viewQuery);
+  const written = useRef(new Set<string>());
+  useEffect(() => {
+    if (currentAppPath() !== '/requests' || viewQuery === lastSynced.current) return;
+    lastSynced.current = viewQuery;
+    written.current.add(viewQuery);
+    // A view change the user made makes the "link had unusable values" notice
+    // out of date.
+    setNotice(null);
+    setSearchParams(new URLSearchParams(viewQuery), { replace: true });
+  }, [viewQuery, setSearchParams]);
+
+  useEffect(() => {
+    if (currentAppPath() !== '/requests') return;
+    const raw = searchParams.toString();
+    if (classifyUrlChange(raw, lastSynced.current, written.current) !== 'external') return;
+    const { view: next, ignored } = parseRequestsViewNotes(searchParams);
+    const canonical = serializeRequestsView(next).toString();
+    setNotice(ignoredNotice(ignored));
+    if (canonical !== lastSynced.current) {
+      lastSynced.current = canonical;
+      applyView(next);
+    }
+    if (raw !== canonical) setSearchParams(new URLSearchParams(canonical), { replace: true });
+  }, [searchParams, applyView, setSearchParams]);
+
+  const chips = activeFilterChips(view);
+  const hasActiveFilter = chips.length > 0;
+  const hasOlder = page !== null && page.nextBeforeId !== undefined;
+  const hasNewer = page !== null && page.prevAfterId !== undefined;
+  const livePaused = cursor !== null;
+  const inputsPending = modelInput.trim() !== modelFilter || keyInput.trim() !== keyFilter || nodeInput.trim() !== nodeFilter;
+  const pagerBusy = loading || inputsPending;
+  const showSkeleton = page === null && !fetchError;
+  const showEmpty = page !== null && entries.length === 0;
+  const summary = page === null ? (fetchError ? '' : 'Loading requests') : loadedSummary(entries.length, hasOlder);
+
+  // After a user-driven page change, bring the top of the list into view and,
+  // once the new rows are in, put focus on the list top so keyboard and
+  // screen-reader users are not left on a control that just changed.
+  const afterPageChange = () => {
+    focusAfterLoad.current = true;
+    topRef.current?.scrollIntoView?.({ block: 'start' });
+  };
+  useEffect(() => {
+    if (!focusAfterLoad.current || page === null) return;
+    focusAfterLoad.current = false;
+    topRef.current?.focus({ preventScroll: true });
+  }, [page]);
+
+  const goOlder = () => {
+    if (pagerBusy || page?.nextBeforeId === undefined) return;
+    setCursor({ dir: 'before', id: page.nextBeforeId });
+    afterPageChange();
+  };
+  const goNewer = () => {
+    if (pagerBusy || page?.prevAfterId === undefined) return;
+    setCursor({ dir: 'after', id: page.prevAfterId });
+    afterPageChange();
+  };
+  const resumeLive = () => {
+    setCursor(null);
+    afterPageChange();
+  };
+  const removeChip = (id: FilterChip['id']) => {
+    applyView(removeChipFromView(view, id));
+    afterPageChange();
+  };
   const clearAllFilters = () => {
-    setModelInput('');
-    setKeyInput('');
-    setNodeInput('');
-    setCloudFilter('all');
-    setStatusFilter('all');
-    setSincePreset('all');
-    setSinceInput('');
-    setUntilInput('');
+    applyView(clearedView(view));
+    afterPageChange();
   };
 
-  const localCount = filtered.filter((e) => !e.cloud).length;
-  const cloudCount = filtered.filter((e) => e.cloud).length;
-  const avgLatency =
-    filtered.length > 0
-      ? Math.round(filtered.reduce((sum, e) => sum + e.latency_ms, 0) / filtered.length)
-      : 0;
+  // The empty state says what is filtering, in the same words as the chips.
+  const emptyState = (compact: boolean) => {
+    const kind = emptyStateKind(cursor, hasActiveFilter);
+    const title = kind === 'pastEnd' ? 'No more requests here' : kind === 'filtered' ? 'No requests match your filters' : 'No requests yet';
+    const copy =
+      kind === 'pastEnd'
+        ? 'This page is past the end of the log. Go back to the newest requests.'
+        : kind === 'filtered'
+          ? `Nothing matches ${chips.map((c) => c.label).join(', ')}. Remove a filter or widen the time range.`
+          : 'Send a request through the proxy to see it here.';
+    const actionLabel = kind === 'pastEnd' ? 'Back to newest' : kind === 'filtered' ? 'Clear all filters' : null;
+    return (
+      <EmptyState
+        compact={compact}
+        icon={Inbox}
+        title={title}
+        copy={copy}
+        action={
+          actionLabel ? (
+            <button
+              type="button"
+              onClick={kind === 'pastEnd' ? resumeLive : clearAllFilters}
+              className="min-h-[40px] px-2 text-sm font-medium text-primary hover:underline"
+            >
+              {actionLabel}
+            </button>
+          ) : undefined
+        }
+      />
+    );
+  };
+
+  const localCount = entries.filter((e) => !e.cloud).length;
+  const cloudCount = entries.filter((e) => e.cloud).length;
+  const avgLatency = entries.length > 0 ? `${Math.round(entries.reduce((sum, e) => sum + e.latency_ms, 0) / entries.length)} ms` : '-';
+  const stat = (n: number) => (page === null ? '-' : n);
+
+  const pagerProps = {
+    summary,
+    hasNewer,
+    hasOlder,
+    onNewer: goNewer,
+    onOlder: goOlder,
+    busy: pagerBusy,
+  };
 
   return (
     <div className="space-y-6">
@@ -449,6 +487,11 @@ export function Requests() {
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500 dark:bg-amber-400" />
                 Demo Mode
               </span>
+            ) : livePaused ? (
+              <span className="flex items-center gap-1.5 text-xs font-medium text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 dark:bg-amber-400" />
+                Paused
+              </span>
             ) : (
               <span className="flex items-center gap-1.5 text-xs font-medium text-green-600 dark:text-green-400 bg-green-500/10 px-2 py-0.5 rounded-md">
                 <span className="w-1.5 h-1.5 rounded-full bg-green-500 dark:bg-green-400 animate-pulse" />
@@ -457,10 +500,23 @@ export function Requests() {
             )}
           </div>
           <p className="text-sm text-muted-foreground mt-1">
-            {isDemoMode ? 'Showing static sample data' : 'Server-side filtered - auto-refreshes every 3s'}
+            {isDemoMode
+              ? 'Showing static sample data'
+              : livePaused
+                ? 'Viewing an earlier page - live refresh is paused'
+                : 'Newest requests - server-side filtered, auto-refreshes every 3s'}
           </p>
         </div>
       </div>
+
+      {notice && (
+        <div role="status" className="flex items-start justify-between gap-3 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-sm text-amber-700 dark:text-amber-300">
+          <span>{notice}</span>
+          <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss notice" className="shrink-0 min-h-[40px] min-w-[40px] grid place-items-center">
+            <X className="w-4 h-4" aria-hidden="true" />
+          </button>
+        </div>
+      )}
 
       {/* Filter bar - uses FilterBar/FilterField shared primitives (parity with Activity) */}
       <FilterBar>
@@ -475,20 +531,10 @@ export function Requests() {
             />
           </FilterField>
           <FilterField label="Key name">
-            <CustomCombobox
-              value={keyInput}
-              onChange={setKeyInput}
-              options={keyOptions}
-              placeholder="Any key"
-            />
+            <CustomCombobox value={keyInput} onChange={setKeyInput} options={keyOptions} placeholder="Any key" />
           </FilterField>
           <FilterField label="Node">
-            <CustomCombobox
-              value={nodeInput}
-              onChange={setNodeInput}
-              options={nodeOptions}
-              placeholder="Any node"
-            />
+            <CustomCombobox value={nodeInput} onChange={setNodeInput} options={nodeOptions} placeholder="Any node" />
           </FilterField>
           <FilterField label="Local / cloud">
             <CustomSelect
@@ -541,44 +587,81 @@ export function Requests() {
             />
           </FilterField>
           <FilterField label="Until">
-            <CustomDateTimePicker
-              value={untilInput}
-              onChange={setUntilInput}
-              placeholder="Any end time"
-            />
+            <CustomDateTimePicker value={untilInput} onChange={setUntilInput} placeholder="Any end time" />
           </FilterField>
         </FilterBarGrid>
         {hasActiveFilter && (
-          <FilterBarClear countText={`Showing ${filtered.length} requests`} onClear={clearAllFilters} />
+          <>
+            <ul aria-label="Active filters" className="flex flex-wrap gap-2">
+              {chips.map((chip) => (
+                <li key={chip.id} className="min-w-0 max-w-full">
+                  <button
+                    type="button"
+                    onClick={() => removeChip(chip.id)}
+                    aria-label={`Remove filter ${chip.label}`}
+                    className="inline-flex items-center gap-1.5 min-h-[40px] max-w-full px-3 py-1 rounded-full border border-border bg-secondary/50 text-xs text-foreground hover:bg-secondary transition-colors"
+                  >
+                    <span className="truncate">{chip.label}</span>
+                    <X className="w-3 h-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <FilterBarClear countText={`${chips.length} active ${chips.length === 1 ? 'filter' : 'filters'}`} onClear={clearAllFilters} />
+          </>
         )}
       </FilterBar>
 
-      {/* Stats chips */}
+      <div
+        ref={topRef}
+        tabIndex={-1}
+        role="group"
+        aria-label="Request log pages"
+        className="scroll-mt-4 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+      >
+        <RequestsPager
+          {...pagerProps}
+          label="Request log pages, top"
+          announce={livePaused}
+          size={pageSize}
+          onSize={setPageSize}
+          livePaused={livePaused && !isDemoMode}
+          onResume={resumeLive}
+        />
+      </div>
+
+      {/* Stats chips - computed over the rows on this page */}
       <div className="flex flex-wrap gap-3">
         {[
-          { label: 'Total shown', value: filtered.length },
-          { label: 'Local', value: localCount },
-          { label: 'Cloud', value: cloudCount },
-          { label: 'Avg latency', value: `${avgLatency} ms` },
-        ].map((stat) => (
-          <div
-            key={stat.label}
-            className="flex items-center gap-2 bg-card border border-border rounded-lg px-4 py-2 text-sm"
-          >
-            <span className="text-muted-foreground">{stat.label}</span>
-            <span className="font-semibold text-foreground">{stat.value}</span>
+          { label: 'On this page', value: stat(entries.length) },
+          { label: 'Local', value: stat(localCount) },
+          { label: 'Cloud', value: stat(cloudCount) },
+          { label: 'Avg latency', value: avgLatency },
+        ].map((s) => (
+          <div key={s.label} className="flex items-center gap-2 bg-card border border-border rounded-lg px-4 py-2 text-sm">
+            <span className="text-muted-foreground">{s.label}</span>
+            <span className="font-semibold text-foreground">{s.value}</span>
           </div>
         ))}
       </div>
 
       {fetchError && (
-        <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-sm font-medium">
-          {fetchError}
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 p-4 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-sm font-medium">
+          <span>{fetchError}</span>
+          <button
+            type="button"
+            onClick={() => {
+              setRetryTick((n) => n + 1);
+              afterPageChange();
+            }}
+            className="min-h-[40px] px-3 rounded-lg border border-destructive/30 hover:bg-destructive/10 transition-colors"
+          >
+            Retry
+          </button>
         </div>
       )}
 
-      {/* Table (md and up) - parity: same card + header + row treatment as Activity */}
-      <div className="hidden md:block">
+      {isDesktop ? (
         <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto scroll-region" tabIndex={0} role="region" aria-label="Request log table: scroll horizontally for more columns">
             {/*
@@ -600,219 +683,60 @@ export function Requests() {
                 </tr>
               </thead>
               <tbody>
-                {loading ? (
+                {showSkeleton ? (
                   [...Array(5)].map((_, i) => <SkeletonRow key={i} />)
-                ) : filtered.length === 0 ? (
+                ) : showEmpty ? (
                   <tr>
                     <td colSpan={COLUMNS.length} className="px-4">
-                      <EmptyState
-                        compact
-                        icon={Inbox}
-                        title={hasActiveFilter ? 'No requests match your filter' : 'No requests yet'}
-                        copy={hasActiveFilter ? 'Try widening the time range or clearing a filter.' : 'Send a request through the proxy to see it here.'}
-                        action={
-                          hasActiveFilter ? (
-                            <button
-                              onClick={clearAllFilters}
-                              className="text-sm font-medium text-primary hover:underline"
-                            >
-                              Clear filters
-                            </button>
-                          ) : undefined
-                        }
-                      />
+                      {emptyState(true)}
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((entry) => (
-                    <Fragment key={entry.id}>
-                    <tr
-                      className="border-b border-border last:border-0 hover:bg-secondary/30 transition-colors"
-                    >
-                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
-                        {formatRelativeTime(entry.time)}
-                      </td>
-                      <td className="px-4 py-3 max-w-0">
-                        <ScrollableValue value={entry.id} valueClassName="font-mono text-xs text-foreground" />
-                      </td>
-                      <td className="px-4 py-3 max-w-0">
-                        {entry.key_name ? (
-                          <ScrollableValue
-                            value={entry.key_name}
-                            valueClassName="font-mono text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded"
-                          />
-                        ) : entry.source_ip ? (
-                          <span className="block truncate font-mono text-xs text-muted-foreground" title="No API key - showing source IP">
-                            {entry.source_ip}
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground/40 text-xs">-</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 max-w-0">
-                        <ScrollableValue value={entry.model} valueClassName="font-mono text-xs text-foreground" />
-                      </td>
-                      <td className="px-4 py-3 max-w-0">
-                        {entry.cloud ? (
-                          <span
-                            className="inline-block max-w-full truncate align-middle text-xs font-medium px-2 py-0.5 rounded-md border bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20"
-                            title={`cloud:${(entry.node || '').replace('cloud:', '')}`}
-                          >
-                            cloud:{(entry.node || '').replace('cloud:', '')}
-                          </span>
-                        ) : (
-                          <span className="block truncate text-foreground" title={entry.node || '-'}>
-                            {entry.node || '-'}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <StatusBadge status={entry.status} />
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-right font-mono text-xs text-muted-foreground">
-                        {entry.latency_ms} ms
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-right font-mono text-xs text-muted-foreground">
-                        {entry.prefillMs ? `${entry.prefillMs} ms` : '-'}
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <button
-                          type="button"
-                          onClick={() => toggleExplain(entry.id)}
-                          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                        >
-                          {expandedId === entry.id ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                          <ReasonBadge reason={entry.routingReason} />
-                        </button>
-                      </td>
-                    </tr>
-                    {expandedId === entry.id && (
-                      <tr className="border-b border-border last:border-0 bg-secondary/20">
-                        <td colSpan={COLUMNS.length} className="px-4 py-3">
-                          <ExplainPanel state={explainData[entry.id]} />
-                        </td>
-                      </tr>
-                    )}
-                    </Fragment>
+                  entries.map((entry) => (
+                    <RequestRow
+                      key={entry.id}
+                      entry={entry}
+                      expanded={expandedId === entry.id}
+                      explain={explainData[entry.id]}
+                      onToggle={toggleExplain}
+                      timeTick={timeTick}
+                    />
                   ))
                 )}
               </tbody>
             </table>
           </div>
         </div>
-      </div>
+      ) : (
+        <div className="space-y-3">
+          {showSkeleton ? (
+            [...Array(5)].map((_, i) => (
+              <div key={i} className="bg-card/50 backdrop-blur-sm border border-border/60 rounded-xl p-4 space-y-2">
+                {[...Array(4)].map((_, j) => (
+                  <div key={j} className="h-4 bg-secondary rounded animate-pulse" style={{ width: `${40 + (j * 17) % 50}%` }} />
+                ))}
+              </div>
+            ))
+          ) : showEmpty ? (
+            <div className="bg-card/50 backdrop-blur-sm border border-border/60 rounded-xl px-4">{emptyState(false)}</div>
+          ) : (
+            entries.map((entry) => (
+              <RequestCard
+                key={entry.id}
+                entry={entry}
+                expanded={expandedId === entry.id}
+                explain={explainData[entry.id]}
+                onToggle={toggleExplain}
+                timeTick={timeTick}
+              />
+            ))
+          )}
+        </div>
+      )}
 
-      {/* Card list (below md) */}
-      <div className="md:hidden space-y-3">
-        {loading ? (
-          [...Array(5)].map((_, i) => (
-            <div
-              key={i}
-              className="bg-card/50 backdrop-blur-sm border border-border/60 rounded-xl p-4 space-y-2"
-            >
-              {[...Array(4)].map((_, j) => (
-                <div
-                  key={j}
-                  className="h-4 bg-secondary rounded animate-pulse"
-                  style={{ width: `${40 + (j * 17) % 50}%` }}
-                />
-              ))}
-            </div>
-          ))
-        ) : filtered.length === 0 ? (
-          <div className="bg-card/50 backdrop-blur-sm border border-border/60 rounded-xl px-4">
-            <EmptyState
-              icon={Inbox}
-              title={hasActiveFilter ? 'No requests match your filter' : 'No requests yet'}
-              copy={hasActiveFilter ? 'Try widening the time range or clearing a filter.' : 'Send a request through the proxy to see it here.'}
-              action={
-                hasActiveFilter ? (
-                  <button
-                    onClick={clearAllFilters}
-                    className="text-sm font-medium text-primary hover:underline"
-                  >
-                    Clear filters
-                  </button>
-                ) : undefined
-              }
-            />
-          </div>
-        ) : (
-          filtered.map((entry) => (
-            <div
-              key={entry.id}
-              className="bg-card/50 backdrop-blur-sm border border-border/60 rounded-xl p-4 space-y-3 active:bg-secondary/50 transition-colors"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-mono text-xs text-foreground truncate" title={entry.id}>
-                  {entry.id}
-                </span>
-                <StatusBadge status={entry.status} />
-              </div>
-              <div className="grid grid-cols-2 gap-x-3 gap-y-2">
-                <div>
-                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Time</div>
-                  <div className="text-sm text-foreground">{formatRelativeTime(entry.time)}</div>
-                </div>
-                <div>
-                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Latency</div>
-                  <div className="text-sm text-foreground font-mono">{entry.latency_ms} ms</div>
-                </div>
-                <div>
-                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Prefill</div>
-                  <div className="text-sm text-foreground font-mono">{entry.prefillMs ? `${entry.prefillMs} ms` : '-'}</div>
-                </div>
-                <div>
-                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Model</div>
-                  <div className="text-sm text-foreground font-mono truncate">{entry.model}</div>
-                </div>
-                <div>
-                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Node</div>
-                  <div className="text-sm text-foreground">
-                    {entry.cloud ? (
-                      <span className="text-xs font-medium px-2 py-0.5 rounded-md border bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20">
-                        cloud:{(entry.node || '').replace('cloud:', '')}
-                      </span>
-                    ) : (
-                      entry.node || '-'
-                    )}
-                  </div>
-                </div>
-                <div className="col-span-2">
-                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Key</div>
-                  <div className="text-sm text-foreground">
-                    {entry.key_name ? (
-                      <span className="font-mono text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded-md border border-primary/20">
-                        {entry.key_name}
-                      </span>
-                    ) : entry.source_ip ? (
-                      <span className="font-mono text-xs text-muted-foreground" title="No API key - showing source IP">
-                        {entry.source_ip}
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground/40 text-xs">-</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => toggleExplain(entry.id)}
-                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors pt-1 border-t border-border/60 w-full"
-              >
-                {expandedId === entry.id ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                <span>Why this node?</span>
-                <ReasonBadge reason={entry.routingReason} />
-              </button>
-              {expandedId === entry.id && (
-                <div className="pt-2">
-                  <ExplainPanel state={explainData[entry.id]} />
-                </div>
-              )}
-            </div>
-          ))
-        )}
-      </div>
+      {(entries.length >= BOTTOM_PAGER_MIN_ROWS || hasNewer || hasOlder) && (
+        <RequestsPager {...pagerProps} label="Request log pages, bottom" />
+      )}
     </div>
   );
 }
