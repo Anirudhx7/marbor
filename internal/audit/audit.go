@@ -16,6 +16,9 @@ import (
 
 // Entry is one audit log record. Matches store.AuditEntry field for field.
 type Entry struct {
+	// ID is the persisted row id, usable as a paging cursor. Zero for entries
+	// that have not been read back from the store.
+	ID            int64     `json:"id,omitempty"`
 	Time          time.Time `json:"time"`
 	RequestID     string    `json:"request_id"`
 	KeyName       string    `json:"key_name"`
@@ -223,6 +226,104 @@ type QueryOptions struct {
 	Cloud          *bool
 	Since          time.Time
 	Until          time.Time
+	// BeforeID restricts results to rows with id < BeforeID (older rows) and
+	// AfterID to rows with id > AfterID (newer rows). Zero means no bound.
+	// Results are always newest-first.
+	BeforeID int64
+	AfterID  int64
+}
+
+// Page is one cursor-paged slice of the audit log, newest-first. NextBeforeID
+// is the id to pass as BeforeID for the next older page, zero when no older
+// matching row exists. PrevAfterID is the id to pass as AfterID for the next
+// newer page, zero when no newer matching row exists.
+type Page struct {
+	Entries      []Entry
+	NextBeforeID int64
+	PrevAfterID  int64
+}
+
+// defaultPageLimit mirrors the store's default when Limit is unset.
+const defaultPageLimit = 100
+
+// QueryPage returns one page of entries matching opts plus exact cursors for
+// the neighbouring pages. It fetches one extra row to learn whether more rows
+// exist in the direction of travel and asks the store for a single row to learn
+// whether any exist behind the cursor. The extra row only decides presence;
+// the cursor values are the edge ids of the rows actually returned.
+func (l *Logger) QueryPage(opts QueryOptions) (Page, error) {
+	if l == nil {
+		return Page{Entries: []Entry{}}, nil
+	}
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = defaultPageLimit
+	}
+	probe := opts
+	probe.Limit = limit + 1
+	rows, err := l.Query(probe)
+	if err != nil {
+		return Page{}, err
+	}
+
+	hasMore := len(rows) > limit
+	if hasMore {
+		if opts.AfterID > 0 {
+			// Rows are newest-first, so the extra row (the one farthest from
+			// the cursor) is the first one.
+			rows = rows[1:]
+		} else {
+			rows = rows[:limit]
+		}
+	}
+	page := Page{Entries: rows}
+	if len(rows) == 0 {
+		page.Entries = []Entry{}
+		return page, nil
+	}
+	first, last := rows[0].ID, rows[len(rows)-1].ID
+
+	if opts.AfterID > 0 {
+		if hasMore {
+			page.PrevAfterID = first
+		}
+		exists, err := l.rowExists(opts, last, 0)
+		if err != nil {
+			return Page{}, err
+		}
+		if exists {
+			page.NextBeforeID = last
+		}
+		return page, nil
+	}
+
+	if hasMore {
+		page.NextBeforeID = last
+	}
+	if opts.BeforeID > 0 {
+		exists, err := l.rowExists(opts, 0, first)
+		if err != nil {
+			return Page{}, err
+		}
+		if exists {
+			page.PrevAfterID = first
+		}
+	}
+	return page, nil
+}
+
+// rowExists reports whether any row matching opts's filters exists strictly
+// older than beforeID (when > 0) or strictly newer than afterID (when > 0).
+func (l *Logger) rowExists(opts QueryOptions, beforeID, afterID int64) (bool, error) {
+	peek := opts
+	peek.Limit = 1
+	peek.BeforeID = beforeID
+	peek.AfterID = afterID
+	rows, err := l.Query(peek)
+	if err != nil {
+		return false, err
+	}
+	return len(rows) > 0, nil
 }
 
 // Query returns audit entries matching opts, newest first.
@@ -239,6 +340,8 @@ func (l *Logger) Query(opts QueryOptions) ([]Entry, error) {
 		Cloud:          opts.Cloud,
 		Since:          opts.Since,
 		Until:          opts.Until,
+		BeforeID:       opts.BeforeID,
+		AfterID:        opts.AfterID,
 	})
 	if err != nil {
 		return nil, err
@@ -246,6 +349,7 @@ func (l *Logger) Query(opts QueryOptions) ([]Entry, error) {
 	out := make([]Entry, 0, len(raw))
 	for _, e := range raw {
 		out = append(out, Entry{
+			ID:            e.ID,
 			Time:          e.Time,
 			RequestID:     e.RequestID,
 			KeyName:       e.KeyName,

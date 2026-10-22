@@ -1232,6 +1232,8 @@ Flags:
 - `--cloud string` - filter by cloud fallback: true or false
 - `--since string` - filter from time (RFC3339)
 - `--until string` - filter to time (RFC3339)
+- `--before-id int` - page back: show entries older than this row id (taken from the previous page's footer)
+- `--after-id int` - page forward: show entries newer than this row id (cannot be combined with --before-id)
 
 requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).
 

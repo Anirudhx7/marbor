@@ -1605,6 +1605,9 @@ func (c *Client) LiveRequests() ([]LiveRequestEntry, error) {
 // audit row (distinct from SystemAuditEntry, which covers operator actions
 // like drain/agent/runtime, not individual proxied requests).
 type AuditEntry struct {
+	// ID is the row id, usable as a --before-id / --after-id cursor. Zero when
+	// talking to a server that predates cursor paging.
+	ID            int64     `json:"id,omitempty"`
 	Time          time.Time `json:"time"`
 	RequestID     string    `json:"request_id"`
 	KeyName       string    `json:"key_name"`
@@ -1627,13 +1630,21 @@ type AuditFilter struct {
 	Cloud  *bool
 	Since  string // RFC3339
 	Until  string // RFC3339
+	// BeforeID (older rows) and AfterID (newer rows) are optional, mutually
+	// exclusive row-id cursors. Values <= 0 are not sent.
+	BeforeID int64
+	AfterID  int64
 }
 
-// AuditResult mirrors GET /admin/audit's wrapped response shape.
+// AuditResult mirrors GET /admin/audit's wrapped response shape. NextBeforeID
+// and PrevAfterID are the cursors for the older and newer page; zero means
+// there is none.
 type AuditResult struct {
-	Entries   []AuditEntry `json:"entries"`
-	Total     int          `json:"total"`
-	Truncated bool         `json:"truncated"`
+	Entries      []AuditEntry `json:"entries"`
+	Total        int          `json:"total"`
+	Truncated    bool         `json:"truncated"`
+	NextBeforeID int64        `json:"next_before_id,omitempty"`
+	PrevAfterID  int64        `json:"prev_after_id,omitempty"`
 }
 
 // AuditQuery calls GET /admin/audit with the request audit log's own filter
@@ -1658,6 +1669,12 @@ func (c *Client) AuditQuery(f AuditFilter) (*AuditResult, error) {
 		"since", f.Since,
 		"until", f.Until,
 	)
+	if f.BeforeID > 0 {
+		params.Set("before_id", fmt.Sprintf("%d", f.BeforeID))
+	}
+	if f.AfterID > 0 {
+		params.Set("after_id", fmt.Sprintf("%d", f.AfterID))
+	}
 	path := "/admin/audit"
 	if len(params) > 0 {
 		path += "?" + params.Encode()
@@ -1670,6 +1687,15 @@ func (c *Client) AuditQuery(f AuditFilter) (*AuditResult, error) {
 	var out AuditResult
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return nil, serverErrorf("could not parse /admin/audit response: %v", err)
+	}
+	// A server that predates cursor paging ignores the cursor and returns the
+	// newest page without row ids; surface that instead of silently looping.
+	if f.BeforeID > 0 || f.AfterID > 0 {
+		for _, e := range out.Entries {
+			if e.ID == 0 {
+				return nil, serverErrorf("this server does not support --before-id / --after-id (upgrade marbor on the server)")
+			}
+		}
 	}
 	return &out, nil
 }
