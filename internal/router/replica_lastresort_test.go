@@ -347,7 +347,7 @@ func TestExcludeReasonsReturnsACopy(t *testing.T) {
 // TestDashboardLabelsEveryExcludeReason fails when the Requests page has no
 // display label for a reason the router can send.
 func TestDashboardLabelsEveryExcludeReason(t *testing.T) {
-	const page = "../../ui/src/pages/Requests.tsx"
+	const page = "../../ui/src/components/RequestLogParts.tsx"
 	if _, err := os.Stat("../../ui/src"); os.IsNotExist(err) {
 		t.Skip("ui sources are not present in this checkout")
 	}
@@ -358,7 +358,7 @@ func TestDashboardLabelsEveryExcludeReason(t *testing.T) {
 	text := string(src)
 	start := strings.Index(text, "const EXCLUDED_REASON_LABELS")
 	if start < 0 {
-		t.Fatal("EXCLUDED_REASON_LABELS not found in Requests.tsx")
+		t.Fatal("EXCLUDED_REASON_LABELS not found in RequestLogParts.tsx")
 	}
 	end := strings.Index(text[start:], "\n};")
 	if end < 0 {
@@ -372,7 +372,7 @@ func TestDashboardLabelsEveryExcludeReason(t *testing.T) {
 	}
 	for _, reason := range ExcludeReasons() {
 		if !keys[reason] {
-			t.Errorf("Requests.tsx EXCLUDED_REASON_LABELS has no key %q", reason)
+			t.Errorf("RequestLogParts.tsx EXCLUDED_REASON_LABELS has no key %q", reason)
 		}
 	}
 }
