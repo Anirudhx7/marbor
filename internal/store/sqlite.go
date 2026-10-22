@@ -2162,15 +2162,27 @@ func escapeLikeWildcards(s string) string {
 	return s
 }
 
-func (s *sqliteStore) QueryAuditLog(opts AuditQuery) ([]AuditEntry, error) {
+// buildAuditQuery assembles the audit_log SELECT for opts. Rows come back in
+// id order: descending, except when AfterID is set, where the query walks
+// upward from the cursor (ascending) so LIMIT keeps the rows closest to it;
+// QueryAuditLog reverses those rows to newest-first.
+func buildAuditQuery(opts AuditQuery) (string, []interface{}) {
 	if opts.Limit <= 0 {
-		opts.Limit = 100
+		opts.Limit = DefaultAuditQueryLimit
 	}
 
-	query := `SELECT ts, request_id, key_name, model, node, status, latency_ms, cloud, cloud_model, routing_reason
+	query := `SELECT id, ts, request_id, key_name, model, node, status, latency_ms, cloud, cloud_model, routing_reason
 	          FROM audit_log WHERE 1=1`
 	args := []interface{}{}
 
+	if opts.BeforeID > 0 {
+		query += " AND id < ?"
+		args = append(args, opts.BeforeID)
+	}
+	if opts.AfterID > 0 {
+		query += " AND id > ?"
+		args = append(args, opts.AfterID)
+	}
 	if !opts.Since.IsZero() {
 		query += " AND ts > ?"
 		args = append(args, formatAuditTS(opts.Since))
@@ -2207,9 +2219,27 @@ func (s *sqliteStore) QueryAuditLog(opts AuditQuery) ([]AuditEntry, error) {
 		query += " AND ts < ?"
 		args = append(args, formatAuditTS(opts.Until))
 	}
-	query += " ORDER BY id DESC LIMIT ?"
+	if opts.AfterID > 0 {
+		query += " ORDER BY id ASC LIMIT ?"
+	} else {
+		query += " ORDER BY id DESC LIMIT ?"
+	}
 	args = append(args, opts.Limit)
+	return query, args
+}
 
+// QueryAuditLog returns audit rows matching opts. Results are always
+// newest-first, including when AfterID is set (the query walks upward from the
+// cursor and the rows are reversed before returning). BeforeID and AfterID are
+// mutually exclusive and must not be negative.
+func (s *sqliteStore) QueryAuditLog(opts AuditQuery) ([]AuditEntry, error) {
+	if opts.BeforeID < 0 || opts.AfterID < 0 {
+		return nil, fmt.Errorf("store: QueryAuditLog: before_id and after_id must not be negative")
+	}
+	if opts.BeforeID > 0 && opts.AfterID > 0 {
+		return nil, fmt.Errorf("store: QueryAuditLog: before_id and after_id are mutually exclusive")
+	}
+	query, args := buildAuditQuery(opts)
 	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("store: QueryAuditLog: %w", err)
@@ -2221,7 +2251,7 @@ func (s *sqliteStore) QueryAuditLog(opts AuditQuery) ([]AuditEntry, error) {
 		var e AuditEntry
 		var tsStr string
 		var cloud int
-		if err := rows.Scan(&tsStr, &e.RequestID, &e.KeyName, &e.Model,
+		if err := rows.Scan(&e.ID, &tsStr, &e.RequestID, &e.KeyName, &e.Model,
 			&e.Node, &e.Status, &e.LatencyMs, &cloud, &e.CloudModel, &e.RoutingReason); err != nil {
 			return nil, fmt.Errorf("store: QueryAuditLog scan: %w", err)
 		}
@@ -2231,6 +2261,11 @@ func (s *sqliteStore) QueryAuditLog(opts AuditQuery) ([]AuditEntry, error) {
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("store: QueryAuditLog rows: %w", err)
+	}
+	if opts.AfterID > 0 {
+		for i, j := 0, len(entries)-1; i < j; i, j = i+1, j-1 {
+			entries[i], entries[j] = entries[j], entries[i]
+		}
 	}
 	return entries, nil
 }

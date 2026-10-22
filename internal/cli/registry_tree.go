@@ -1392,9 +1392,15 @@ func buildRoot() *Command {
 					{Name: "cloud", Kind: FlagString, DefString: "", Usage: "filter by cloud fallback: true or false"},
 					{Name: "since", Kind: FlagString, DefString: "", Usage: "filter from time (RFC3339)"},
 					{Name: "until", Kind: FlagString, DefString: "", Usage: "filter to time (RFC3339)"},
+					{Name: "before-id", Kind: FlagInt, DefInt: 0, Usage: "page back: show entries older than this row id (taken from the previous page's footer)"},
+					{Name: "after-id", Kind: FlagInt, DefInt: 0, Usage: "page forward: show entries newer than this row id (cannot be combined with --before-id)"},
 				},
 				Run: func(ctx *RunCtx) int {
-					return runAudit(ctx.Flags, ctx.Int("limit"), ctx.String("model"), ctx.String("key"), ctx.String("node"), ctx.String("status"), ctx.String("cloud"), ctx.String("since"), ctx.String("until"), ctx.Stdout, ctx.Stderr)
+					cur := auditCursorArgs{
+						before: ctx.Int("before-id"), beforeSet: ctx.IsSet("before-id"),
+						after: ctx.Int("after-id"), afterSet: ctx.IsSet("after-id"),
+					}
+					return runAudit(ctx.Flags, ctx.Int("limit"), ctx.String("model"), ctx.String("key"), ctx.String("node"), ctx.String("status"), ctx.String("cloud"), ctx.String("since"), ctx.String("until"), cur, ctx.Stdout, ctx.Stderr)
 				},
 			},
 			{

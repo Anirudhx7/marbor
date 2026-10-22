@@ -8652,7 +8652,11 @@ func buildAgentUnloadURL(nodeURL string, port int, scheme string, model string) 
 }
 
 // handleAudit queries the audit log with optional filters.
-// GET /admin/v1/audit?limit=100&model=llama3&key=prod&node=gpu-node-01&status=client_error&cloud=true&since=2026-05-23T00:00:00Z&until=2026-05-24T00:00:00Z
+// GET /admin/audit?limit=100&before_id=7345012&model=llama3&key=prod&node=gpu-node-01&status=client_error&cloud=true&since=2026-05-23T00:00:00Z&until=2026-05-24T00:00:00Z
+//
+// before_id (older rows) and after_id (newer rows) are optional, mutually
+// exclusive row-id cursors taken from next_before_id / prev_after_id of a
+// previous response. Entries are always newest-first.
 func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
 	if s.auditLog == nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -8718,21 +8722,60 @@ func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
 		opts.Until = t
 	}
 
-	entries, err := s.auditLog.Query(opts)
+	if v := q.Get("before_id"); v != "" {
+		n, ok := parsePositiveID(v)
+		if !ok {
+			writeJSONError(w, http.StatusBadRequest, "invalid before_id")
+			return
+		}
+		opts.BeforeID = n
+	}
+	if v := q.Get("after_id"); v != "" {
+		n, ok := parsePositiveID(v)
+		if !ok {
+			writeJSONError(w, http.StatusBadRequest, "invalid after_id")
+			return
+		}
+		opts.AfterID = n
+	}
+	if opts.BeforeID > 0 && opts.AfterID > 0 {
+		writeJSONError(w, http.StatusBadRequest, "before_id and after_id are mutually exclusive")
+		return
+	}
+
+	page, err := s.auditLog.QueryPage(opts)
 	if err != nil {
 		writeServerError(w, r, err)
 		return
 	}
+	entries := page.Entries
 	if entries == nil {
 		entries = []audit.Entry{}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	resp := map[string]interface{}{
 		"entries":   entries,
 		"total":     len(entries),
 		"truncated": len(entries) == limit,
-	})
+	}
+	if page.NextBeforeID > 0 {
+		resp["next_before_id"] = page.NextBeforeID
+	}
+	if page.PrevAfterID > 0 {
+		resp["prev_after_id"] = page.PrevAfterID
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+// parsePositiveID parses a row-id query value, reporting false unless it is a
+// base-10 integer of at least 1.
+func parsePositiveID(v string) (int64, bool) {
+	n, err := strconv.ParseInt(v, 10, 64)
+	if err != nil || n < 1 {
+		return 0, false
+	}
+	return n, true
 }
 
 func (s *Server) handleSystemAudit(w http.ResponseWriter, r *http.Request) {
