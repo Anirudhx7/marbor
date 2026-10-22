@@ -24,6 +24,7 @@ function maskKey(key: string): string {
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import { useCurrency } from '../hooks/useCurrency';
 import { CustomDateTimePicker } from '../components/DateTimePicker';
+import { formatRateLimit } from '../lib/roundPrice';
 
 function nowLocalISO(): string {
   const d = new Date();
@@ -488,7 +489,7 @@ export function APIKeys() {
                   </td>
                   <td className="px-6 py-4">
                     <span className="font-mono text-sm text-foreground">
-                      {(key.rateLimit ?? 0).toLocaleString()}<span className="text-muted-foreground font-sans">/hr</span>
+                      {formatRateLimit(key.rateLimit)}
                     </span>
                   </td>
                   <td className="px-6 py-4">
@@ -571,7 +572,7 @@ export function APIKeys() {
               <div>
                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Rate Limit</p>
                 <p className="text-sm text-foreground font-mono">
-                  {(key.rateLimit ?? 0).toLocaleString()}<span className="text-muted-foreground font-sans">/hr</span>
+                  {formatRateLimit(key.rateLimit)}
                 </p>
               </div>
               <div>
@@ -757,6 +758,7 @@ export function APIKeys() {
                 placeholder="e.g. 1000"
                 className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
               />
+              <p className="text-xs text-muted-foreground mt-1">0 means unlimited.</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1.5">Daily Limit</label>
