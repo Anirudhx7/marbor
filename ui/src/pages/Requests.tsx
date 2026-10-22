@@ -1,17 +1,32 @@
-import { useState, useEffect, useMemo, Fragment, type ReactNode } from 'react';
-import { useLocation } from 'react-router-dom';
-import { ChevronDown, ChevronRight, Inbox } from 'lucide-react';
+import { useState, useEffect, useRef, Fragment, type ReactNode } from 'react';
+import { useLocation, useSearchParams } from 'react-router-dom';
+import { ChevronDown, ChevronRight, Inbox, X } from 'lucide-react';
 import { CustomSelect, CustomCombobox } from '../components/Select';
 import { CustomDateTimePicker } from '../components/DateTimePicker';
 import { ClearableInput, FilterField, FilterBar, FilterBarGrid, FilterBarClear } from '../components/FilterField';
+import { RequestsPager } from '../components/RequestsPager';
 import { RequestEntry, RoutingDecision } from '../types';
-import { fetchAuditLog, fetchNodes, fetchKeys, fetchRequestExplain } from '../lib/api';
+import { fetchAuditPage, fetchNodes, fetchKeys, fetchRequestExplain } from '../lib/api';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
-import { filterMockRequests, mockGPUNodes, mockAPIKeys, mockExplainForRequest } from '../lib/mockData';
+import { useMediaQuery } from '../hooks/useMediaQuery';
+import { pageMockRequests, mockGPUNodes, mockAPIKeys, mockExplainForRequest } from '../lib/mockData';
 import { formatRelativeTime } from '../lib/time';
 import { useTimezone } from '../hooks/useTimezone';
 import { wallDateTimeToUtcIso } from '../lib/time';
 import { EmptyState } from '../components/EmptyState';
+import {
+  parseRequestsView,
+  serializeRequestsView,
+  filtersKey,
+  activeFilterChips,
+  loadedSummary,
+  type CloudFilter,
+  type StatusFilter,
+  type SincePreset,
+  type PageCursor,
+  type RequestsView,
+  type FilterChip,
+} from '../lib/requestsView';
 
 // One entry per table column: the header, its sizing and its alignment all
 // come from here, and the full-width rows use COLUMNS.length, so the column
@@ -235,19 +250,15 @@ function SkeletonRow() {
   );
 }
 
-// Cloud filter tri-state: 'all' | 'local' | 'cloud'.
-type CloudFilter = 'all' | 'local' | 'cloud';
+// One fetched page of the request log: the rows plus the cursors the server
+// returned. A cursor is present only when a matching newer / older row exists.
+interface PageData {
+  entries: RequestEntry[];
+  nextBeforeId?: number;
+  prevAfterId?: number;
+}
 
-// Status category filter: 'all' sends no status param.
-type StatusFilter = 'all' | 'success' | 'client_error' | 'server_error';
-
-// Since filter presets map to a lookback window; 'all' sends no since param.
-// 'custom' is not a selectable option - it's an internal marker meaning "a
-// hand-picked From value is active", so the Quick range select's displayed
-// label falls back to its placeholder (no matching option) instead of
-// showing a stale preset name while a custom range is actually in effect.
-type SincePreset = 'all' | '15m' | '1h' | '24h' | 'custom';
-
+// Quick-range presets map to a lookback window; 'all' sends no since param.
 function sinceIso(preset: SincePreset): string | undefined {
   if (preset === 'all' || preset === 'custom') return undefined;
   const ms = { '15m': 15 * 60_000, '1h': 60 * 60_000, '24h': 24 * 60 * 60_000 }[preset];
@@ -258,8 +269,18 @@ export function Requests() {
   const tz = useTimezone();
   const { demoMode: isDemoMode } = useDemoMode();
   const location = useLocation();
-  const [entries, setEntries] = useState<RequestEntry[]>([]);
+  const [searchParams, setSearchParams] = useSearchParams();
+  // The URL seeds the view once, on mount. After that the page state drives
+  // the URL (replace, so Back leaves the page rather than stepping through
+  // every filter keystroke).
+  const [initial] = useState(() => parseRequestsView(searchParams));
+  const [page, setPage] = useState<PageData | null>(null);
+  const entries = page?.entries ?? [];
   const [loading, setLoading] = useState(true);
+  const topRef = useRef<HTMLDivElement>(null);
+  // Render one layout, not both: with a 500-row page the hidden twin would
+  // double the DOM.
+  const isDesktop = useMediaQuery('(min-width: 768px)', true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   // Routing explainability: which row (if any) has its breakdown
@@ -287,19 +308,34 @@ export function Requests() {
   }
 
   // Raw text inputs (debounced before becoming active filters).
-  const [modelInput, setModelInput] = useState('');
-  const [keyInput, setKeyInput] = useState('');
-  const [nodeInput, setNodeInput] = useState('');
-  const [cloudFilter, setCloudFilter] = useState<CloudFilter>('all');
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [sincePreset, setSincePreset] = useState<SincePreset>('all');
-  const [sinceInput, setSinceInput] = useState(''); // datetime-local value, overrides sincePreset
-  const [untilInput, setUntilInput] = useState(''); // datetime-local value
+  const [modelInput, setModelInput] = useState(initial.model);
+  const [keyInput, setKeyInput] = useState(initial.key);
+  const [nodeInput, setNodeInput] = useState(initial.node);
+  const [cloudFilter, setCloudFilter] = useState<CloudFilter>(initial.cloud);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>(initial.status);
+  const [sincePreset, setSincePreset] = useState<SincePreset>(initial.range);
+  const [sinceInput, setSinceInput] = useState(initial.from); // datetime-local value, overrides sincePreset
+  const [untilInput, setUntilInput] = useState(initial.until); // datetime-local value
+  const [pageSize, setPageSize] = useState(initial.size);
 
   // Debounced text filters actually sent as query params.
-  const [modelFilter, setModelFilter] = useState('');
-  const [keyFilter, setKeyFilter] = useState('');
-  const [nodeFilter, setNodeFilter] = useState('');
+  const [modelFilter, setModelFilter] = useState(initial.model);
+  const [keyFilter, setKeyFilter] = useState(initial.key);
+  const [nodeFilter, setNodeFilter] = useState(initial.node);
+
+  // The page cursor belongs to one filter set. It is stored with the key of
+  // the filters it was made under, so changing any filter or the page size
+  // drops it (back to the newest page) without an effect to remember.
+  const filterKey = filtersKey({
+    model: modelFilter, key: keyFilter, node: nodeFilter, cloud: cloudFilter, status: statusFilter,
+    range: sincePreset, from: sinceInput, until: untilInput, size: pageSize,
+  });
+  const [cursorState, setCursorState] = useState<{ key: string; cursor: PageCursor | null }>(() => ({
+    key: filtersKey(initial),
+    cursor: initial.cursor,
+  }));
+  const cursor = cursorState.key === filterKey ? cursorState.cursor : null;
+  const setCursor = (next: PageCursor | null) => setCursorState({ key: filterKey, cursor: next });
 
   // Known node names / key names for this marbor's current config, so the
   // filter bar offers a searchable list instead of demanding an exact
@@ -372,17 +408,24 @@ export function Requests() {
       cloud: cloudFilter === 'all' ? undefined : cloudFilter === 'cloud',
       since: sinceIsoUtc,
       until: untilIsoUtc,
-      // No pagination UI on this page yet, so request the server's max page
-      // size (admin.go caps at 1000) rather than silently truncating to the
-      // client default of 50 - "all requests" means all within that cap.
-      limit: 1000,
     };
   };
 
+  // Paging: the newest page (no cursor) is live and polls; any page reached
+  // with Older, or a Newer that has not yet reached the top, is a fixed view
+  // that is fetched once and never refreshed, so a refresh cannot move the
+  // operator off the rows they are reading. Resume returns to the newest page.
   useEffect(() => {
     if (currentAppPath() !== '/requests') return;
+    const cursorParams = cursor === null ? {} : cursor.dir === 'before' ? { beforeId: cursor.id } : { afterId: cursor.id };
+
     if (isDemoMode) {
-      setEntries(filterMockRequests(buildActiveFilters()));
+      const demoPage = pageMockRequests(buildActiveFilters(), { limit: pageSize, ...cursorParams });
+      if (cursor?.dir === 'after' && demoPage.prevAfterId === undefined) {
+        setCursor(null);
+        return;
+      }
+      setPage(demoPage);
       setLoading(false);
       return;
     }
@@ -391,12 +434,16 @@ export function Requests() {
 
     async function poll() {
       try {
-        const data = await fetchAuditLog(buildActiveFilters());
-        if (!cancelled && currentAppPath() === '/requests') {
-          setEntries(Array.isArray(data) ? data : []);
-          setFetchError(null);
-          setLoading(false);
+        const data = await fetchAuditPage({ ...buildActiveFilters(), limit: pageSize, ...cursorParams });
+        if (cancelled || currentAppPath() !== '/requests') return;
+        // Newer reached the top: go live instead of showing a short page.
+        if (cursor?.dir === 'after' && data.prevAfterId === undefined) {
+          setCursor(null);
+          return;
         }
+        setPage(data);
+        setFetchError(null);
+        setLoading(false);
       } catch (err: any) {
         if (!cancelled && currentAppPath() === '/requests') {
           setFetchError(err.message || 'Failed to load requests');
@@ -407,22 +454,103 @@ export function Requests() {
 
     setLoading(true);
     poll();
-    const interval = setInterval(poll, 3000);
+    const interval = cursor === null ? setInterval(poll, 3000) : null;
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      if (interval !== null) clearInterval(interval);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDemoMode, modelFilter, keyFilter, nodeFilter, statusFilter, cloudFilter, sincePreset, sinceInput, untilInput, location.pathname, tz]);
+  }, [isDemoMode, modelFilter, keyFilter, nodeFilter, statusFilter, cloudFilter, sincePreset, sinceInput, untilInput, pageSize, cursor?.dir, cursor?.id, location.pathname, tz]);
 
-  const filtered = entries;
-  const hasActiveFilter =
-    !!modelFilter || !!keyFilter || !!nodeFilter || statusFilter !== 'all' || cloudFilter !== 'all' || sincePreset !== 'all' || !!sinceInput || !!untilInput;
+  const view: RequestsView = {
+    model: modelFilter,
+    key: keyFilter,
+    node: nodeFilter,
+    cloud: cloudFilter,
+    status: statusFilter,
+    range: sincePreset,
+    from: sinceInput,
+    until: untilInput,
+    size: pageSize,
+    cursor,
+  };
+  const viewQuery = serializeRequestsView(view).toString();
+
+  // The URL and the view stay in step both ways. lastSynced is the query the
+  // two last agreed on: a view change not yet in the URL is written out so the
+  // page can be shared or bookmarked; a URL change the page did not write (Back,
+  // Forward, a pasted link, the sidebar link) is adopted as the new view.
+  const lastSynced = useRef(viewQuery);
+  useEffect(() => {
+    if (currentAppPath() !== '/requests' || viewQuery === lastSynced.current) return;
+    lastSynced.current = viewQuery;
+    setSearchParams(new URLSearchParams(viewQuery), { replace: true });
+  }, [viewQuery, setSearchParams]);
+
+  useEffect(() => {
+    if (currentAppPath() !== '/requests' || searchParams.toString() === lastSynced.current) return;
+    const next = parseRequestsView(searchParams);
+    lastSynced.current = serializeRequestsView(next).toString();
+    setModelInput(next.model);
+    setKeyInput(next.key);
+    setNodeInput(next.node);
+    setModelFilter(next.model);
+    setKeyFilter(next.key);
+    setNodeFilter(next.node);
+    setCloudFilter(next.cloud);
+    setStatusFilter(next.status);
+    setSincePreset(next.range);
+    setSinceInput(next.from);
+    setUntilInput(next.until);
+    setPageSize(next.size);
+    setCursorState({ key: filtersKey(next), cursor: next.cursor });
+  }, [searchParams]);
+
+  const chips = activeFilterChips(view);
+  const hasActiveFilter = chips.length > 0;
+  const hasOlder = page?.nextBeforeId !== undefined;
+  const hasNewer = page?.prevAfterId !== undefined;
+  const livePaused = cursor !== null;
+  const summary = loadedSummary(entries.length, hasOlder);
+
+  const scrollToTop = () => topRef.current?.scrollIntoView?.({ block: 'start' });
+  const goOlder = () => {
+    if (page?.nextBeforeId === undefined) return;
+    setCursor({ dir: 'before', id: page.nextBeforeId });
+    scrollToTop();
+  };
+  const goNewer = () => {
+    if (page?.prevAfterId === undefined) return;
+    setCursor({ dir: 'after', id: page.prevAfterId });
+    scrollToTop();
+  };
+  const resumeLive = () => {
+    setCursor(null);
+    scrollToTop();
+  };
+
+  // Chip and Clear all apply at once; they set the debounced filter too, so
+  // removing a filter does not wait out the typing delay.
+  const removeChip = (id: FilterChip['id']) => {
+    switch (id) {
+      case 'model': setModelInput(''); setModelFilter(''); break;
+      case 'key': setKeyInput(''); setKeyFilter(''); break;
+      case 'node': setNodeInput(''); setNodeFilter(''); break;
+      case 'cloud': setCloudFilter('all'); break;
+      case 'status': setStatusFilter('all'); break;
+      case 'range': setSincePreset('all'); break;
+      case 'from': setSinceInput(''); setSincePreset('all'); break;
+      case 'until': setUntilInput(''); break;
+    }
+  };
 
   const clearAllFilters = () => {
     setModelInput('');
     setKeyInput('');
     setNodeInput('');
+    setModelFilter('');
+    setKeyFilter('');
+    setNodeFilter('');
     setCloudFilter('all');
     setStatusFilter('all');
     setSincePreset('all');
@@ -430,6 +558,34 @@ export function Requests() {
     setUntilInput('');
   };
 
+  // The empty state says what is filtering, in the same words as the chips.
+  const emptyState = (compact: boolean) => {
+    const pastEnd = cursor !== null;
+    const title = pastEnd ? 'No more requests here' : hasActiveFilter ? 'No requests match your filters' : 'No requests yet';
+    const copy = pastEnd
+      ? 'This page is past the end of the log. Go back to the newest requests.'
+      : hasActiveFilter
+        ? `Nothing matches ${chips.map((c) => c.label).join(', ')}. Remove a filter or widen the time range.`
+        : 'Send a request through the proxy to see it here.';
+    const actionLabel = pastEnd ? 'Back to newest' : hasActiveFilter ? 'Clear all filters' : null;
+    return (
+      <EmptyState
+        compact={compact}
+        icon={Inbox}
+        title={title}
+        copy={copy}
+        action={
+          actionLabel ? (
+            <button onClick={pastEnd ? resumeLive : clearAllFilters} className="text-sm font-medium text-primary hover:underline">
+              {actionLabel}
+            </button>
+          ) : undefined
+        }
+      />
+    );
+  };
+
+  const filtered = entries;
   const localCount = filtered.filter((e) => !e.cloud).length;
   const cloudCount = filtered.filter((e) => e.cloud).length;
   const avgLatency =
@@ -449,6 +605,11 @@ export function Requests() {
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500 dark:bg-amber-400" />
                 Demo Mode
               </span>
+            ) : livePaused ? (
+              <span className="flex items-center gap-1.5 text-xs font-medium text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 dark:bg-amber-400" />
+                Paused
+              </span>
             ) : (
               <span className="flex items-center gap-1.5 text-xs font-medium text-green-600 dark:text-green-400 bg-green-500/10 px-2 py-0.5 rounded-md">
                 <span className="w-1.5 h-1.5 rounded-full bg-green-500 dark:bg-green-400 animate-pulse" />
@@ -457,7 +618,11 @@ export function Requests() {
             )}
           </div>
           <p className="text-sm text-muted-foreground mt-1">
-            {isDemoMode ? 'Showing static sample data' : 'Server-side filtered - auto-refreshes every 3s'}
+            {isDemoMode
+              ? 'Showing static sample data'
+              : livePaused
+                ? 'Viewing an earlier page - live refresh is paused'
+                : 'Newest requests - server-side filtered, auto-refreshes every 3s'}
           </p>
         </div>
       </div>
@@ -549,14 +714,47 @@ export function Requests() {
           </FilterField>
         </FilterBarGrid>
         {hasActiveFilter && (
-          <FilterBarClear countText={`Showing ${filtered.length} requests`} onClear={clearAllFilters} />
+          <>
+            <ul aria-label="Active filters" className="flex flex-wrap gap-2">
+              {chips.map((chip) => (
+                <li key={chip.id}>
+                  <button
+                    type="button"
+                    onClick={() => removeChip(chip.id)}
+                    aria-label={`Remove filter ${chip.label}`}
+                    className="inline-flex items-center gap-1.5 min-h-[32px] max-w-full px-2.5 py-1 rounded-full border border-border bg-secondary/50 text-xs text-foreground hover:bg-secondary transition-colors"
+                  >
+                    <span className="truncate">{chip.label}</span>
+                    <X className="w-3 h-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <FilterBarClear countText={`${chips.length} active ${chips.length === 1 ? 'filter' : 'filters'}`} onClear={clearAllFilters} />
+          </>
         )}
       </FilterBar>
 
-      {/* Stats chips */}
+      <div ref={topRef} className="scroll-mt-4">
+        <RequestsPager
+          label="Request log pages, top"
+          summary={summary}
+          hasNewer={hasNewer}
+          hasOlder={hasOlder}
+          onNewer={goNewer}
+          onOlder={goOlder}
+          size={pageSize}
+          onSize={setPageSize}
+          livePaused={livePaused}
+          onResume={resumeLive}
+          busy={loading}
+        />
+      </div>
+
+      {/* Stats chips - computed over the rows on this page */}
       <div className="flex flex-wrap gap-3">
         {[
-          { label: 'Total shown', value: filtered.length },
+          { label: 'On this page', value: filtered.length },
           { label: 'Local', value: localCount },
           { label: 'Cloud', value: cloudCount },
           { label: 'Avg latency', value: `${avgLatency} ms` },
@@ -578,7 +776,8 @@ export function Requests() {
       )}
 
       {/* Table (md and up) - parity: same card + header + row treatment as Activity */}
-      <div className="hidden md:block">
+      {isDesktop && (
+      <div>
         <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto scroll-region" tabIndex={0} role="region" aria-label="Request log table: scroll horizontally for more columns">
             {/*
@@ -605,22 +804,7 @@ export function Requests() {
                 ) : filtered.length === 0 ? (
                   <tr>
                     <td colSpan={COLUMNS.length} className="px-4">
-                      <EmptyState
-                        compact
-                        icon={Inbox}
-                        title={hasActiveFilter ? 'No requests match your filter' : 'No requests yet'}
-                        copy={hasActiveFilter ? 'Try widening the time range or clearing a filter.' : 'Send a request through the proxy to see it here.'}
-                        action={
-                          hasActiveFilter ? (
-                            <button
-                              onClick={clearAllFilters}
-                              className="text-sm font-medium text-primary hover:underline"
-                            >
-                              Clear filters
-                            </button>
-                          ) : undefined
-                        }
-                      />
+                      {emptyState(true)}
                     </td>
                   </tr>
                 ) : (
@@ -701,9 +885,11 @@ export function Requests() {
           </div>
         </div>
       </div>
+      )}
 
       {/* Card list (below md) */}
-      <div className="md:hidden space-y-3">
+      {!isDesktop && (
+      <div className="space-y-3">
         {loading ? (
           [...Array(5)].map((_, i) => (
             <div
@@ -721,21 +907,7 @@ export function Requests() {
           ))
         ) : filtered.length === 0 ? (
           <div className="bg-card/50 backdrop-blur-sm border border-border/60 rounded-xl px-4">
-            <EmptyState
-              icon={Inbox}
-              title={hasActiveFilter ? 'No requests match your filter' : 'No requests yet'}
-              copy={hasActiveFilter ? 'Try widening the time range or clearing a filter.' : 'Send a request through the proxy to see it here.'}
-              action={
-                hasActiveFilter ? (
-                  <button
-                    onClick={clearAllFilters}
-                    className="text-sm font-medium text-primary hover:underline"
-                  >
-                    Clear filters
-                  </button>
-                ) : undefined
-              }
-            />
+            {emptyState(false)}
           </div>
         ) : (
           filtered.map((entry) => (
@@ -813,6 +985,19 @@ export function Requests() {
           ))
         )}
       </div>
+      )}
+
+      {entries.length >= 25 && (
+        <RequestsPager
+          label="Request log pages, bottom"
+          summary={summary}
+          hasNewer={hasNewer}
+          hasOlder={hasOlder}
+          onNewer={goNewer}
+          onOlder={goOlder}
+          busy={loading}
+        />
+      )}
     </div>
   );
 }
