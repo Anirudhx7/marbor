@@ -6,8 +6,11 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -958,5 +961,424 @@ func TestDiskFitOversizeAgentReplyReadsUnknownFromRealNode(t *testing.T) {
 	}
 	if got := classifyUnknownSizeDiskFit(free, total, present); got != "unknown" {
 		t.Errorf("classifyUnknownSizeDiskFit after an oversize reply = %q, want unknown", got)
+	}
+}
+
+// TestIsMediaPipelineTag pins the exact set of Hugging Face pipeline tags a
+// GGUF runtime's search drops, and the tags it must keep. An unknown or new
+// tag fails open (the row is shown) on purpose.
+func TestIsMediaPipelineTag(t *testing.T) {
+	dropped := []string{
+		"text-to-speech", "text-to-audio", "automatic-speech-recognition",
+		"audio-to-audio", "audio-classification", "voice-activity-detection",
+		"text-to-image", "image-to-image", "image-to-video", "text-to-video",
+		"image-text-to-video", "video-classification", "image-classification",
+		"object-detection", "image-segmentation", "depth-estimation",
+		"unconditional-image-generation", "image-to-3d", "text-to-3d",
+		"zero-shot-image-classification", "zero-shot-object-detection",
+		"mask-generation", "keypoint-detection", "video-to-video",
+	}
+	kept := []string{
+		"", "text-generation", "image-text-to-text", "any-to-any",
+		"audio-text-to-text", "image-to-text", "text-ranking",
+		"feature-extraction", "sentence-similarity", "reinforcement-learning",
+		"some-brand-new-tag",
+	}
+	for _, tag := range dropped {
+		if !isMediaPipelineTag(tag) {
+			t.Errorf("isMediaPipelineTag(%q) = false, want true", tag)
+		}
+	}
+	for _, tag := range kept {
+		if isMediaPipelineTag(tag) {
+			t.Errorf("isMediaPipelineTag(%q) = true, want false", tag)
+		}
+	}
+}
+
+// recordingHFTransport records every request URL and answers with a canned body.
+type recordingHFTransport struct {
+	body string
+	mu   sync.Mutex
+	urls []string
+}
+
+func (rt *recordingHFTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	rt.mu.Lock()
+	rt.urls = append(rt.urls, r.URL.String())
+	rt.mu.Unlock()
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(rt.body)),
+		Header:     make(http.Header),
+	}, nil
+}
+
+// calls returns a copy of the recorded request URLs, taken under the lock.
+func (rt *recordingHFTransport) calls() []string {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	return append([]string(nil), rt.urls...)
+}
+
+// Deliberately unsorted by downloads: the single-request GGUF path must keep
+// the order Hugging Face returned, so a re-sort would change the result.
+const mixedHFSearchBody = `[
+	{"id":"org/untagged-llm-GGUF","downloads":800},
+	{"id":"org/tts-GGUF","downloads":700,"pipeline_tag":"text-to-speech"},
+	{"id":"org/real-llm-GGUF","downloads":100,"pipeline_tag":"text-generation"},
+	{"id":"org/vlm-GGUF","downloads":600,"pipeline_tag":"image-text-to-text"},
+	{"id":"org/image-gen-GGUF","downloads":500,"pipeline_tag":"text-to-image"},
+	{"id":"org/embed-GGUF","downloads":900,"pipeline_tag":"feature-extraction"},
+	{"id":"org/asr-GGUF","downloads":300,"pipeline_tag":"automatic-speech-recognition"}
+]`
+
+// searchWithTransport swaps the process-wide hfHTTPClient transport, so tests
+// that use it must not call t.Parallel.
+func searchWithTransport(t *testing.T, rt http.RoundTripper, path string) *httptest.ResponseRecorder {
+	t.Helper()
+	orig := hfHTTPClient.Transport
+	hfHTTPClient.Transport = rt
+	defer func() { hfHTTPClient.Transport = orig }()
+
+	ollama := mockOllamaServer(t)
+	defer ollama.Close()
+	s := newModelFitTestServer(ollama.URL)
+
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
+	w := httptest.NewRecorder()
+	s.Handler().ServeHTTP(w, req)
+	return w
+}
+
+func searchIDs(t *testing.T, w *httptest.ResponseRecorder) []string {
+	t.Helper()
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+	}
+	var models []HFModelInfo
+	if err := json.Unmarshal(w.Body.Bytes(), &models); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	ids := make([]string, 0, len(models))
+	for _, m := range models {
+		ids = append(ids, m.ID)
+	}
+	return ids
+}
+
+// hfQueryParam parses a recorded upstream URL and returns one query value.
+func hfQueryParam(t *testing.T, raw, key string) string {
+	t.Helper()
+	u, err := url.Parse(raw)
+	if err != nil {
+		t.Fatalf("parse %q: %v", raw, err)
+	}
+	return u.Query().Get(key)
+}
+
+// numberedHFBody builds n rows org/m0..m(n-1) with descending downloads; the
+// first mediaRows carry a media pipeline tag.
+func numberedHFBody(n, mediaRows int) string {
+	var sb strings.Builder
+	sb.WriteString("[")
+	for i := 0; i < n; i++ {
+		tag := "text-generation"
+		if i < mediaRows {
+			tag = "text-to-speech"
+		}
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		sb.WriteString(`{"id":"org/m` + strconv.Itoa(i) + `","downloads":` + strconv.Itoa(1000-i) + `,"likes":` + strconv.Itoa(n-i) + `,"pipeline_tag":"` + tag + `"}`)
+	}
+	sb.WriteString("]")
+	return sb.String()
+}
+
+func TestHandleModelSearch_GGUFRuntimesDropMediaModels(t *testing.T) {
+	// The runtime param omitted entirely behaves as a GGUF runtime too.
+	paths := map[string]string{
+		"omitted":  "/admin/models/search?q=x",
+		"empty":    "/admin/models/search?q=x&runtime=",
+		"ollama":   "/admin/models/search?q=x&runtime=ollama",
+		"llamacpp": "/admin/models/search?q=x&runtime=llamacpp",
+	}
+	for name, path := range paths {
+		t.Run(name, func(t *testing.T) {
+			rt := &recordingHFTransport{body: mixedHFSearchBody}
+			ids := searchIDs(t, searchWithTransport(t, rt, path))
+
+			// HF order is kept: the input is not sorted by downloads.
+			want := []string{"org/untagged-llm-GGUF", "org/real-llm-GGUF", "org/vlm-GGUF", "org/embed-GGUF"}
+			if strings.Join(ids, ",") != strings.Join(want, ",") {
+				t.Errorf("got %v, want %v", ids, want)
+			}
+			urls := rt.calls()
+			if len(urls) != 1 {
+				t.Fatalf("%d upstream requests, want exactly 1", len(urls))
+			}
+			if hfQueryParam(t, urls[0], "pipeline_tag") != "" {
+				t.Errorf("upstream URL must not carry pipeline_tag: %s", urls[0])
+			}
+			if got := hfQueryParam(t, urls[0], "filter"); got != "gguf" {
+				t.Errorf("filter = %q, want gguf: %s", got, urls[0])
+			}
+			if got := hfQueryParam(t, urls[0], "limit"); got != "50" {
+				t.Errorf("limit = %q, want 50: %s", got, urls[0])
+			}
+		})
+	}
+}
+
+func TestHandleModelSearch_GGUFTrimsToPageSizeAfterFilter(t *testing.T) {
+	// 10 media rows first, then 40 text rows: 25 text rows must survive.
+	w := searchWithTransport(t, &recordingHFTransport{body: numberedHFBody(50, 10)}, "/admin/models/search?runtime=ollama")
+	ids := searchIDs(t, w)
+	if len(ids) != 25 {
+		t.Fatalf("got %d rows, want 25 (filter first, then trim)", len(ids))
+	}
+	if ids[0] != "org/m10" {
+		t.Errorf("first row = %q, want org/m10 (media rows removed, order kept)", ids[0])
+	}
+	if ids[24] != "org/m34" {
+		t.Errorf("last row = %q, want org/m34", ids[24])
+	}
+}
+
+// The min_* filters must run on all fetched rows before the trim, so a
+// filtered GGUF search still returns a full page of qualifying rows.
+func TestHandleModelSearch_GGUFMinDownloadsFiltersBeforeTrim(t *testing.T) {
+	// 50 fetched rows: m0..m29 are low-download rows (10 downloads), m30..m49 have
+	// 1000. With min_downloads=500 only m30..m49 qualify. A trim to 25 before
+	// the filter would keep m0..m24, none of which qualify, and return nothing.
+	var sb strings.Builder
+	sb.WriteString("[")
+	for i := 0; i < 50; i++ {
+		d := 10
+		if i >= 30 {
+			d = 1000
+		}
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		sb.WriteString(`{"id":"org/m` + strconv.Itoa(i) + `","downloads":` + strconv.Itoa(d) + `,"likes":1,"pipeline_tag":"text-generation"}`)
+	}
+	sb.WriteString("]")
+	w := searchWithTransport(t, &recordingHFTransport{body: sb.String()},
+		"/admin/models/search?runtime=ollama&min_downloads=500")
+	ids := searchIDs(t, w)
+	if len(ids) != 20 {
+		t.Fatalf("got %d rows, want the 20 qualifying rows out of the 50 fetched", len(ids))
+	}
+	if ids[0] != "org/m30" || ids[19] != "org/m49" {
+		t.Errorf("rows = %s..%s, want org/m30..org/m49", ids[0], ids[19])
+	}
+}
+
+func TestHandleModelSearch_MultiTagTrimsToPageSize(t *testing.T) {
+	for _, runtime := range []string{"vllm", "tgi", "mlx"} {
+		t.Run(runtime, func(t *testing.T) {
+			rt := &recordingHFTransport{body: numberedHFBody(30, 0)}
+			ids := searchIDs(t, searchWithTransport(t, rt, "/admin/models/search?runtime="+runtime))
+			if len(ids) != 25 {
+				t.Fatalf("got %d rows, want 25", len(ids))
+			}
+			if ids[24] != "org/m24" {
+				t.Errorf("last row = %q, want org/m24", ids[24])
+			}
+		})
+	}
+}
+
+func TestHandleModelSearch_NonGGUFRuntimesDoNotApplyMediaFilter(t *testing.T) {
+	filters := map[string]string{"vllm": "safetensors", "tgi": "safetensors", "mlx": "mlx"}
+	for runtime, filter := range filters {
+		t.Run(runtime, func(t *testing.T) {
+			rt := &recordingHFTransport{body: mixedHFSearchBody}
+			ids := searchIDs(t, searchWithTransport(t, rt, "/admin/models/search?runtime="+runtime))
+			urls := rt.calls()
+			if len(urls) == 0 {
+				t.Fatal("no upstream request")
+			}
+			for _, u := range urls {
+				if hfQueryParam(t, u, "pipeline_tag") == "" || hfQueryParam(t, u, "filter") != filter {
+					t.Errorf("upstream URL must carry filter=%s and a pipeline_tag: %s", filter, u)
+				}
+				if got := hfQueryParam(t, u, "limit"); got != "25" {
+					t.Errorf("limit = %q, want 25: %s", got, u)
+				}
+			}
+			found := false
+			for _, id := range ids {
+				if id == "org/tts-GGUF" {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("results must pass through unfiltered by the media denylist, got %v", ids)
+			}
+		})
+	}
+}
+
+func TestDropMediaModels(t *testing.T) {
+	t.Run("keeps order and does not mutate input", func(t *testing.T) {
+		in := []HFModelInfo{
+			{ID: "a", PipelineTag: "text-generation"},
+			{ID: "b", PipelineTag: "text-to-speech"},
+			{ID: "c"},
+		}
+		out := dropMediaModels(in)
+		if len(out) != 2 || out[0].ID != "a" || out[1].ID != "c" {
+			t.Errorf("got %+v, want a then c", out)
+		}
+		if len(in) != 3 || in[1].ID != "b" || in[2].ID != "c" {
+			t.Errorf("input was mutated: %+v", in)
+		}
+	})
+	t.Run("empty input", func(t *testing.T) {
+		if out := dropMediaModels(nil); len(out) != 0 {
+			t.Errorf("got %+v, want empty", out)
+		}
+	})
+	t.Run("all media", func(t *testing.T) {
+		out := dropMediaModels([]HFModelInfo{{ID: "a", PipelineTag: "text-to-image"}, {ID: "b", PipelineTag: "video-to-video"}})
+		if len(out) != 0 {
+			t.Errorf("got %+v, want empty", out)
+		}
+	})
+}
+
+type errHFTransport struct{}
+
+func (errHFTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: http.StatusInternalServerError,
+		Body:       io.NopCloser(strings.NewReader("boom")),
+		Header:     make(http.Header),
+	}, nil
+}
+
+func TestHandleModelSearch_GGUFErrorStaysCorrelated(t *testing.T) {
+	w := searchWithTransport(t, errHFTransport{}, "/admin/models/search?runtime=ollama")
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "failed to fetch Hugging Face model list") {
+		t.Errorf("error body should be the correlated generic message, got %s", body)
+	}
+	if strings.Contains(body, "status 500") || strings.Contains(body, "boom") {
+		t.Errorf("upstream detail must not leak to the client: %s", body)
+	}
+}
+
+func TestHandleModelSearch_GGUFMalformedJSONStaysCorrelated(t *testing.T) {
+	w := searchWithTransport(t, &recordingHFTransport{body: `{"leaky":"detail"`}, "/admin/models/search?runtime=ollama")
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "failed to fetch Hugging Face model list") {
+		t.Errorf("error body should be the correlated generic message, got %s", body)
+	}
+	if strings.Contains(body, "leaky") || strings.Contains(body, "decode") {
+		t.Errorf("decode detail must not leak to the client: %s", body)
+	}
+}
+
+// An oversized Hugging Face reply must produce an error, never a partial list.
+func TestFetchHFModelList_OversizedBodyIsAnError(t *testing.T) {
+	var sb strings.Builder
+	sb.WriteString("[")
+	for sb.Len() < maxHFListBytes+1024 {
+		sb.WriteString(`{"id":"org/m","downloads":1},`)
+	}
+	sb.WriteString(`{"id":"org/last"}]`)
+
+	orig := hfHTTPClient.Transport
+	hfHTTPClient.Transport = &recordingHFTransport{body: sb.String()}
+	defer func() { hfHTTPClient.Transport = orig }()
+
+	s := newModelFitTestServer("http://127.0.0.1:1")
+	models, err := s.fetchHFModelList(context.Background(), "https://huggingface.co/api/models")
+	if err == nil {
+		t.Fatalf("got %d models and no error, want an error for an oversized body", len(models))
+	}
+	if models != nil {
+		t.Errorf("models = %d rows, want nil on error", len(models))
+	}
+	if !strings.Contains(err.Error(), "exceeded 8 MiB") {
+		t.Errorf("error %q should name the 8 MiB cap", err)
+	}
+}
+
+// A runtime outside the known lists (here sglang) gets exactly one request
+// with no format filter, no pipeline_tag and no media dropping: the page makes
+// no claim for it either.
+func TestHandleModelSearch_UnlistedRuntimeIsUnfiltered(t *testing.T) {
+	if f, tags := hfSearchFilters("sglang"); f != "" || tags != nil {
+		t.Fatalf("hfSearchFilters(sglang) = %q, %v, want no filters", f, tags)
+	}
+	rt := &recordingHFTransport{body: mixedHFSearchBody}
+	ids := searchIDs(t, searchWithTransport(t, rt, "/admin/models/search?q=x&runtime=sglang"))
+	urls := rt.calls()
+	if len(urls) != 1 {
+		t.Fatalf("%d upstream requests, want exactly 1", len(urls))
+	}
+	for _, p := range []string{"filter", "pipeline_tag"} {
+		if got := hfQueryParam(t, urls[0], p); got != "" {
+			t.Errorf("%s = %q, want unset: %s", p, got, urls[0])
+		}
+	}
+	if !slices.Contains(ids, "org/tts-GGUF") {
+		t.Errorf("sglang search must not drop media-tagged rows, got %v", ids)
+	}
+}
+
+// Known divergence, documented rather than hidden: the UI helper treats a zero
+// total as unknown whatever the source, but classifyFit only looks at the
+// source and returns "red" for zero capacity. The catalog never produces this
+// input (it keeps source "unknown" when there is no capacity), so the two agree
+// on every reachable node.
+func TestClassifyFit_ZeroTotalWithKnownSourceIsRed(t *testing.T) {
+	const gib = int64(1) << 30
+	for _, source := range []string{"declared", "nvidia-smi"} {
+		if got := classifyFit(4*gib, 0, source); got != "red" {
+			t.Errorf("classifyFit(zero total, %q) = %q, want red", source, got)
+		}
+	}
+}
+
+// The advisor page note reads "Fit cannot be computed" for a node whose VRAM
+// total is unknown or only inferred. The UI helper nodeVramUnknown mirrors
+// these cases, so this pins the server side of that pairing: a node with no
+// total or an inferred total always classifies as unknown, and a node with a
+// declared or detected total never does.
+func TestClassifyFit_UnknownCasesMirrorUINodeVramUnknown(t *testing.T) {
+	const gib = int64(1) << 30
+	cases := []struct {
+		name     string
+		est, cap int64
+		source   string
+		want     string
+	}{
+		{"unknown source", 4 * gib, 24 * gib, "unknown", "unknown"},
+		{"inferred source", 4 * gib, 24 * gib, "inferred", "unknown"},
+		{"zero total with unknown source", 4 * gib, 0, "unknown", "unknown"},
+		{"zero total with inferred source", 4 * gib, 0, "inferred", "unknown"},
+		{"declared total", 4 * gib, 24 * gib, "declared", "green"},
+		{"agent total", 4 * gib, 24 * gib, "agent", "green"},
+		{"detected total", 4 * gib, 24 * gib, "nvidia-smi", "green"},
+		{"api total", 4 * gib, 24 * gib, "api", "green"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := classifyFit(c.est, c.cap, c.source); got != c.want {
+				t.Errorf("classifyFit(%d, %d, %q) = %q, want %q", c.est, c.cap, c.source, got, c.want)
+			}
+		})
 	}
 }

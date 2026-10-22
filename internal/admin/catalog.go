@@ -937,10 +937,18 @@ func ggufAdvisoryRuntimeCaveat(runtime string) string {
 	return ""
 }
 
+// The UI copy helper in ui/src/lib/advisorCopy.ts mirrors the runtime lists
+// below (which runtimes are GGUF searches and which are tag filtered). Change
+// them together.
+//
 // hfSearchFilters returns the HF format filter tag (for the "filter=" param)
 // and the set of pipeline_tag values relevant to a given runtime's search.
-// GGUF runtimes use the "gguf" format filter alone with no pipeline_tag
-// restriction, as before (unaffected by this).
+//
+// GGUF runtimes use the "gguf" format filter with no pipeline_tag restriction.
+// HF's gguf tag also covers speech, image and video models, so handleModelSearch
+// drops those afterwards with isMediaPipelineTag. That is a best-effort filter
+// on the tags HF publishes: repos with no pipeline_tag are still listed, and
+// some of them may not be text models.
 //
 // vLLM/TGI/MLX need a format filter too - verified live against HF's
 // /api/models: the bare "safetensors"/"mlx" format filters alone return
@@ -968,6 +976,72 @@ func hfSearchFilters(runtime string) (formatFilter string, pipelineTags []string
 	default:
 		return "", nil
 	}
+}
+
+// hfSearchPageSize is the most rows a model search returns to the client.
+const hfSearchPageSize = 25
+
+// ggufSearchFetchLimit is how many rows a GGUF-runtime search asks HF for.
+// It is larger than the page size so that dropping media-tagged rows and
+// applying the min_* filters still leaves a full page; the result is trimmed
+// back to hfSearchPageSize only after those filters have run.
+const ggufSearchFetchLimit = 50
+
+// maxHFListBytes caps how much of a Hugging Face model-list response is read
+// before decoding, so an oversized or hostile reply cannot exhaust memory.
+const maxHFListBytes = 8 << 20
+
+// mediaPipelineTags lists the Hugging Face pipeline_tag values for speech,
+// audio, image, video, 3D and detection models. A GGUF runtime's search drops
+// repos carrying one of these. It is a denylist on purpose: a tag that is
+// absent or not listed (text-generation, image-text-to-text, embeddings, a
+// brand-new tag) fails open and the row is shown. It is read-only after
+// package init: never mutate it.
+var mediaPipelineTags = map[string]bool{
+	"text-to-speech":                 true,
+	"text-to-audio":                  true,
+	"automatic-speech-recognition":   true,
+	"audio-to-audio":                 true,
+	"audio-classification":           true,
+	"voice-activity-detection":       true,
+	"text-to-image":                  true,
+	"image-to-image":                 true,
+	"image-to-video":                 true,
+	"text-to-video":                  true,
+	"image-text-to-video":            true,
+	"video-classification":           true,
+	"image-classification":           true,
+	"object-detection":               true,
+	"image-segmentation":             true,
+	"depth-estimation":               true,
+	"unconditional-image-generation": true,
+	"image-to-3d":                    true,
+	"text-to-3d":                     true,
+	"zero-shot-image-classification": true,
+	"zero-shot-object-detection":     true,
+	"mask-generation":                true,
+	"keypoint-detection":             true,
+	"video-to-video":                 true,
+}
+
+// isMediaPipelineTag reports whether a pipeline_tag marks a non-text model.
+func isMediaPipelineTag(tag string) bool {
+	return mediaPipelineTags[tag]
+}
+
+// dropMediaModels returns models without the entries whose pipeline_tag is a
+// media tag, keeping the original order. It never mutates its input. It is
+// only applied for GGUF runtimes, which get no pipeline_tag restriction in
+// hfSearchFilters; the other runtimes request an explicit text tag instead.
+func dropMediaModels(models []HFModelInfo) []HFModelInfo {
+	out := make([]HFModelInfo, 0, len(models))
+	for _, m := range models {
+		if isMediaPipelineTag(m.PipelineTag) {
+			continue
+		}
+		out = append(out, m)
+	}
+	return out
 }
 
 // hfAuthedGet issues a GET to targetURL with the Hugging Face bearer token
@@ -1004,8 +1078,14 @@ func (s *Server) fetchHFModelList(ctx context.Context, targetURL string) ([]HFMo
 		return nil, err
 	}
 	defer resp.Body.Close()
+	// A body over the cap is cut short, so the JSON array is incomplete and
+	// decoding fails instead of yielding a partial list.
 	var models []HFModelInfo
-	if err := json.NewDecoder(resp.Body).Decode(&models); err != nil {
+	lr := &io.LimitedReader{R: resp.Body, N: maxHFListBytes}
+	if err := json.NewDecoder(lr).Decode(&models); err != nil {
+		if lr.N == 0 {
+			return nil, fmt.Errorf("Hugging Face response exceeded %d MiB: %w", maxHFListBytes>>20, err)
+		}
 		return nil, fmt.Errorf("decode Hugging Face response: %w", err)
 	}
 	return models, nil
@@ -1491,7 +1571,9 @@ func computeContextFeasibility(
 	return totalEstBytes, fit, cf
 }
 
-// handleModelSearch searches Hugging Face GGUF models.
+// handleModelSearch searches Hugging Face models for the selected runtime.
+// For GGUF runtimes (Ollama, llama.cpp) it hides models tagged as speech,
+// image, video or detection; repos with no tag are still listed.
 // GET /admin/models/search?q={query} (also /admin/v1/models/search)
 func (s *Server) handleModelSearch(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("q")
@@ -1509,12 +1591,17 @@ func (s *Server) handleModelSearch(w http.ResponseWriter, r *http.Request) {
 		direction = "1"
 	}
 
-	baseURL := fmt.Sprintf("https://huggingface.co/api/models?sort=%s&direction=%s&limit=25", sortField, direction)
+	formatFilter, pipelineTags := hfSearchFilters(runtime)
+	dropMedia := ggufOnlyRuntime(runtime)
+	fetchLimit := hfSearchPageSize
+	if dropMedia {
+		fetchLimit = ggufSearchFetchLimit
+	}
+
+	baseURL := fmt.Sprintf("https://huggingface.co/api/models?sort=%s&direction=%s&limit=%d", sortField, direction, fetchLimit)
 	if query != "" {
 		baseURL += "&search=" + url.QueryEscape(query)
 	}
-
-	formatFilter, pipelineTags := hfSearchFilters(runtime)
 
 	var hfModels []HFModelInfo
 	if len(pipelineTags) == 0 {
@@ -1528,6 +1615,9 @@ func (s *Server) handleModelSearch(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		hfModels = models
+		if dropMedia {
+			hfModels = dropMediaModels(hfModels)
+		}
 	} else {
 		// Fetched concurrently, not sequentially - hfHTTPClient's 10s timeout
 		// would otherwise compound to ~20s worst case for a 2-tag runtime.
@@ -1553,7 +1643,7 @@ func (s *Server) handleModelSearch(w http.ResponseWriter, r *http.Request) {
 		}
 		wg.Wait()
 
-		seen := make(map[string]bool, len(pipelineTags)*25)
+		seen := make(map[string]bool, len(pipelineTags)*hfSearchPageSize)
 		var lastErr error
 		successCount := 0
 		for _, o := range outcomes {
@@ -1575,9 +1665,6 @@ func (s *Server) handleModelSearch(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		sortHFModelsInPlace(hfModels, sortField, direction)
-		if len(hfModels) > 25 {
-			hfModels = hfModels[:25]
-		}
 	}
 
 	// Post-filter on fields the HF search API returns per-model but has no
@@ -1616,6 +1703,12 @@ func (s *Server) handleModelSearch(w http.ResponseWriter, r *http.Request) {
 			filtered = append(filtered, m)
 		}
 		hfModels = filtered
+	}
+
+	// One trim for every path, after the media drop and the min_* filters so a
+	// filtered search still fills the page from the rows it fetched.
+	if len(hfModels) > hfSearchPageSize {
+		hfModels = hfModels[:hfSearchPageSize]
 	}
 
 	w.Header().Set("Content-Type", "application/json")

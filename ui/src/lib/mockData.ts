@@ -1461,6 +1461,22 @@ const mockModelCatalogBase: ModelCatalogResponse = {
       capabilities: ['status', 'models.pull', 'models.list', 'runtime.health_check'],
       models: [],
     },
+    {
+      // A node added by URL with no VRAM declared and no agent: fit cannot be
+      // computed, so the demo shows the "Curated models for" heading and the
+      // page note instead of a fit table.
+      name: 'gpu-node-12',
+      url: 'http://10.0.1.24:11434',
+      runtime: 'ollama',
+      vram_free_bytes: 0,
+      vram_total_bytes: 0,
+      vram_used_bytes: 0,
+      vram_source: 'unknown',
+      disk_free_gb: 0,
+      disk_total_gb: 0,
+      disk_known: false,
+      models: [],
+    },
   ],
 };
 
@@ -1548,7 +1564,9 @@ function mockNodeModels(base: ModelCatalogResponse, node: ModelCatalogResponse['
 export const mockModelCatalogResponse: ModelCatalogResponse = {
   ...mockModelCatalogBase,
   // GPU model, runtime and VRAM figures come from the shared node record
-  // (mockGPUNodes) so the advisor and the GPU nodes page cannot disagree.
+  // (mockGPUNodes) wherever one exists. gpu-node-12 is an advisor-only demo
+  // node with no GPU nodes page record; it is allowlisted in the
+  // advisor wiring test.
   nodes: mockModelCatalogBase.nodes.map(base => {
     const rec = mockGPUNodes.find(g => g.name === base.name);
     const n = rec && rec.vramTotalMB > 0
