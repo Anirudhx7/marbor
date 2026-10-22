@@ -499,6 +499,9 @@ export interface Savings {
   cloud_spent_usd: number | null;
   saved_usd: number | null;
   total_requests: number;
+  // Process start, not the counting window; the counters are all time.
+  // Optional for servers older than this field.
+  since?: string;
 }
 
 export interface ModelNode {
@@ -644,6 +647,9 @@ export interface Analytics {
   total_spent_usd: number | null;
   hourly: HourlyBucket[];
   by_model: ModelStat[];
+  // When the router process started. Applies to by_model only; the totals
+  // above are all time. Optional for servers older than this field.
+  since?: string;
 }
 
 export type FitStatus = 'green' | 'yellow' | 'red' | 'unknown';
