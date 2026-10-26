@@ -25,6 +25,19 @@ import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import { useCurrency } from '../hooks/useCurrency';
 import { CustomDateTimePicker } from '../components/DateTimePicker';
 import { formatRateLimit } from '../lib/roundPrice';
+import { parseKeyForm } from '../lib/formValidation';
+import { useModalForm, errorMessage } from '../lib/useModalForm';
+import { FormError } from '../components/FormError';
+
+// Which input to focus for the first invalid field after a failed submit.
+const CREATE_KEY_FIELD_IDS: Record<string, string> = { name: 'create-key-name', rateLimit: 'create-key-rate-limit' };
+
+const EMPTY_KEY_FORM = {
+  name: '',
+  rateLimit: '1000',
+  allowedModels: [] as string[],
+  expiresAt: '',
+};
 
 function nowLocalISO(): string {
   const d = new Date();
@@ -165,13 +178,24 @@ export function APIKeys() {
     }
   };
 
-  const [newKeyForm, setNewKeyForm] = useState({
-    name: '',
-    rateLimit: '1000',
-    allowedModels: [] as string[],
-    expiresAt: '',
-  });
-  const [formErrors, setFormErrors] = useState<string[]>([]);
+  const [newKeyForm, setNewKeyForm] = useState(EMPTY_KEY_FORM);
+  const keyModal = useModalForm();
+
+  // Every edit to the create form also clears its error.
+  const updateKeyForm = (patch: Partial<typeof EMPTY_KEY_FORM>) => {
+    setNewKeyForm((prev) => ({ ...prev, ...patch }));
+    keyModal.edit();
+  };
+  const openCreateModal = () => {
+    keyModal.reset();
+    setNewKeyForm(EMPTY_KEY_FORM);
+    setIsCreateModalOpen(true);
+  };
+  const closeCreateModal = () => {
+    keyModal.reset();
+    setNewKeyForm(EMPTY_KEY_FORM);
+    setIsCreateModalOpen(false);
+  };
 
   const loadKeys = async (active: boolean = true) => {
     if (demoMode) {
@@ -272,26 +296,20 @@ export function APIKeys() {
   };
 
   const handleCreateKey = async () => {
-    const errors: string[] = [];
-    if (!newKeyForm.name.trim()) {
-      errors.push('Name is required');
-    }
-    const parsedRateLimit = parseInt(newKeyForm.rateLimit, 10);
-    if (isNaN(parsedRateLimit) || parsedRateLimit < 0) {
-      errors.push('Rate limit must be a non-negative integer');
-    }
-
+    const { errors, invalid, values } = parseKeyForm(newKeyForm.name, newKeyForm.rateLimit);
     if (errors.length > 0) {
-      setFormErrors(errors);
+      keyModal.fail(errors, invalid);
       return;
     }
+    const keyName = values.name;
+    const parsedRateLimit = values.rateLimit;
 
     if (demoMode) {
       // Demo mode: fabricate a key locally for UI preview only
       const demoKey: APIKey = {
         id: `key-${Date.now()}`,
-        name: newKeyForm.name,
-        key: `sk-demo-${newKeyForm.name.toLowerCase().replace(/\s+/g, '-')}-preview`,
+        name: keyName,
+        key: `sk-demo-${keyName.toLowerCase().replace(/\s+/g, '-')}-preview`,
         created: new Date().toISOString().split('T')[0],
         requestsToday: 0,
         requestsThisMonth: 0,
@@ -303,32 +321,38 @@ export function APIKeys() {
         expiresAt: newKeyForm.expiresAt || null,
       };
       setKeys([demoKey, ...keys]);
-      setIsCreateModalOpen(false);
-      setNewKeyForm({ name: '', rateLimit: '1000', allowedModels: [], expiresAt: '' });
-      setFormErrors([]);
+      closeCreateModal();
       return;
     }
 
     const newKeyData = {
-      name: newKeyForm.name,
+      name: keyName,
       rate_limit: parsedRateLimit,
       models: newKeyForm.allowedModels,
       expires_at: newKeyForm.expiresAt || "",
     };
 
+    const token = keyModal.begin();
+    if (token === null) return; // a submit is already in flight
+    let result: Awaited<ReturnType<typeof createKey>>;
     try {
-      const result = await createKey(newKeyData);
-      await loadKeys();
-      setIsCreateModalOpen(false);
-      setNewKeyForm({ name: '', rateLimit: '1000', allowedModels: [], expiresAt: '' });
-      setFormErrors([]);
-      // Show the generated key for 30 seconds
-      setNewlyCreatedKey(result.key);
-      const timer = setTimeout(() => setNewlyCreatedKey(null), 30000);
-      setNewKeyDismissTimer(timer);
-    } catch (e: any) {
-      setFormErrors([e?.message || 'Failed to create key on server']);
+      result = await createKey(newKeyData);
+    } catch (e: unknown) {
+      // A late failure for a modal the operator already closed is dropped on
+      // purpose: nothing was created and the form it would describe is gone.
+      if (keyModal.finish(token)) keyModal.fail([errorMessage(e, 'Failed to create key on server')]);
+      return;
     }
+    // The key exists now and its secret is shown only once, so surface it even
+    // when the modal was closed while the request ran.
+    if (keyModal.finish(token)) closeCreateModal();
+    setNewlyCreatedKey(result.key);
+    const timer = setTimeout(() => setNewlyCreatedKey(null), 30000);
+    setNewKeyDismissTimer(timer);
+    // Refreshing the list is separate from creating the key: loadKeys reports
+    // its own failure in the page-level banner, so it is never mislabelled as
+    // "Failed to create key".
+    try { await loadKeys(); } catch { /* reported by loadKeys */ }
   };
 
   const handleRevokeKey = async () => {
@@ -376,7 +400,7 @@ export function APIKeys() {
             </span>
           </div>
           <button
-            onClick={() => setIsCreateModalOpen(true)}
+            onClick={openCreateModal}
             className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg transition-colors shadow-sm"
           >
             <Plus className="w-4 h-4" />
@@ -633,47 +657,42 @@ export function APIKeys() {
       {/* Create Key Modal */}
       <Modal
         isOpen={isCreateModalOpen}
-        onClose={() => {
-          setIsCreateModalOpen(false);
-          setFormErrors([]);
-          setNewKeyForm({ name: '', rateLimit: '1000', allowedModels: [], expiresAt: '' });
-        }}
+        onClose={closeCreateModal}
         title="Create new API key"
       >
         <div className="space-y-4">
-          {formErrors.length > 0 && (
-            <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
-              {formErrors.map((error, i) => (
-                <p key={i} className="text-sm font-medium text-destructive">{error}</p>
-              ))}
-            </div>
-          )}
-          
           <div>
-            <label className="block text-sm font-medium text-muted-foreground mb-1.5">
-              Key Name <span className="text-destructive">*</span>
+            <label htmlFor="create-key-name" className="block text-sm font-medium text-muted-foreground mb-1.5">
+              Key Name <span aria-hidden="true" className="text-destructive">*</span>
             </label>
             <input
+              id="create-key-name"
               type="text"
+              aria-required="true"
+              aria-invalid={keyModal.state.invalid.includes('name') || undefined}
+              aria-describedby={keyModal.state.invalid.includes('name') ? 'create-key-error' : undefined}
               value={newKeyForm.name}
-              onChange={(e) => setNewKeyForm({ ...newKeyForm, name: e.target.value })}
+              onChange={(e) => updateKeyForm({ name: e.target.value })}
               placeholder="e.g., Production API"
               className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
             />
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+            <label htmlFor="create-key-rate-limit" className="block text-sm font-medium text-muted-foreground mb-1.5">
               Rate Limit (requests/hour)
             </label>
             <input
+              id="create-key-rate-limit"
               type="number"
+              aria-invalid={keyModal.state.invalid.includes('rateLimit') || undefined}
+              aria-describedby={keyModal.state.invalid.includes('rateLimit') ? 'create-key-error' : undefined}
               value={newKeyForm.rateLimit}
-              onChange={(e) => setNewKeyForm({ ...newKeyForm, rateLimit: e.target.value })}
+              onChange={(e) => updateKeyForm({ rateLimit: e.target.value })}
               className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
             />
           </div>
-          
+
           <div>
             <label className="block text-sm font-medium text-muted-foreground mb-1.5">
               Allowed Models (optional)
@@ -683,7 +702,7 @@ export function APIKeys() {
                 <input
                   type="checkbox"
                   checked={newKeyForm.allowedModels.length === 0}
-                  onChange={() => setNewKeyForm({ ...newKeyForm, allowedModels: [] })}
+                  onChange={() => updateKeyForm({ allowedModels: [] })}
                   className="rounded border-border bg-background text-primary focus:ring-primary/20"
                 />
                 <span className="text-sm text-foreground">All models</span>
@@ -693,19 +712,11 @@ export function APIKeys() {
                   <input
                     type="checkbox"
                     checked={newKeyForm.allowedModels.includes(model)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setNewKeyForm({
-                          ...newKeyForm,
-                          allowedModels: [...newKeyForm.allowedModels, model],
-                        });
-                      } else {
-                        setNewKeyForm({
-                          ...newKeyForm,
-                          allowedModels: newKeyForm.allowedModels.filter(m => m !== model),
-                        });
-                      }
-                    }}
+                    onChange={(e) => updateKeyForm({
+                      allowedModels: e.target.checked
+                        ? [...newKeyForm.allowedModels, model]
+                        : newKeyForm.allowedModels.filter(m => m !== model),
+                    })}
                     className="rounded border-border bg-background text-primary focus:ring-primary/20"
                   />
                   <span className="text-sm font-mono text-muted-foreground">{model}</span>
@@ -720,21 +731,27 @@ export function APIKeys() {
             </label>
             <CustomDateTimePicker
               value={newKeyForm.expiresAt}
-              onChange={(val) => setNewKeyForm({ ...newKeyForm, expiresAt: val })}
+              onChange={(val) => updateKeyForm({ expiresAt: val })}
               placeholder="Never expires"
               min={nowLocalISO()}
             />
           </div>
           
+          <FormError
+            id="create-key-error"
+            errors={keyModal.state.errors}
+            attempt={keyModal.state.attempt}
+            focusFieldId={CREATE_KEY_FIELD_IDS[keyModal.state.invalid[0] ?? '']}
+          />
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
             <button
-              onClick={() => setIsCreateModalOpen(false)}
+              onClick={closeCreateModal}
               className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
             >
               Cancel
             </button>
             <Button onClick={handleCreateKey}>
-              Create Key
+              {keyModal.state.busy ? 'Creating...' : 'Create Key'}
             </Button>
           </div>
         </div>
