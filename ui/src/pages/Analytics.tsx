@@ -18,6 +18,7 @@ import { mockAnalytics, mockSpillCounters } from '../lib/mockData';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import { useTimezone } from '../hooks/useTimezone';
 import { formatHourLabelInTimezone, formatDateTimeInZone } from '../lib/time';
+import { pollNotice, errorReason, createPollSequence } from '../lib/pollNotice';
 import type { Analytics, HourlyBucket, ModelStat, SpillCounterRow } from '../types';
 
 function formatHourLabel(hour: string, tz: string): string {
@@ -90,6 +91,10 @@ export function Analytics() {
   const [error, setError] = useState<string | null>(null);
   const [spillRows, setSpillRows] = useState<SpillCounterRow[]>(demoMode ? mockSpillCounters : []);
   const [spillLoading, setSpillLoading] = useState(!demoMode);
+  const [spillError, setSpillError] = useState<string | null>(null);
+  // Browser receipt time of the last good response (not a server timestamp).
+  const [lastOkAt, setLastOkAt] = useState<string | null>(null);
+  const [spillOkAt, setSpillOkAt] = useState<string | null>(null);
 
   useEffect(() => {
     if (currentAppPath() !== '/analytics') return;
@@ -99,19 +104,20 @@ export function Analytics() {
       return;
     }
     let active = true;
+    const seq = createPollSequence();
     const load = async () => {
+      const n = seq.next();
       try {
         const d = await fetchAnalytics();
-        if (!active || currentAppPath() !== '/analytics') return;
+        if (!active || currentAppPath() !== '/analytics' || !seq.accept(n)) return;
         setData(d);
         setError(null);
+        setLastOkAt(new Date().toISOString());
+        setLoading(false);
       } catch (e: unknown) {
-        if (!active || currentAppPath() !== '/analytics') return;
-        setError(e instanceof Error ? e.message : 'Failed to load analytics');
-      } finally {
-        if (active && currentAppPath() === '/analytics') {
-          setLoading(false);
-        }
+        if (!active || currentAppPath() !== '/analytics' || !seq.accept(n)) return;
+        setError(errorReason(e, 'Failed to load analytics'));
+        setLoading(false);
       }
     };
     load();
@@ -130,18 +136,22 @@ export function Analytics() {
       return;
     }
     let active = true;
+    const seq = createPollSequence();
     const loadSpill = async () => {
+      const n = seq.next();
       try {
         const rows = await getSpillCounters();
-        if (!active || currentAppPath() !== '/analytics') return;
+        if (!active || currentAppPath() !== '/analytics' || !seq.accept(n)) return;
         setSpillRows(rows || []);
-      } catch {
-        if (!active || currentAppPath() !== '/analytics') return;
-        setSpillRows([]);
-      } finally {
-        if (active && currentAppPath() === '/analytics') {
-          setSpillLoading(false);
-        }
+        setSpillError(null);
+        setSpillOkAt(new Date().toISOString());
+        setSpillLoading(false);
+      } catch (e: unknown) {
+        if (!active || currentAppPath() !== '/analytics' || !seq.accept(n)) return;
+        // Keep the last good rows (flagged as stale below) and say why they
+        // may be out of date, instead of showing an empty table.
+        setSpillError(errorReason(e, 'Failed to load cloud spill'));
+        setSpillLoading(false);
       }
     };
     loadSpill();
@@ -151,6 +161,17 @@ export function Analytics() {
       clearInterval(id);
     };
   }, [demoMode, location.pathname]);
+
+  const analyticsNotice = pollNotice(
+    { hasData: !!data, lastOkAt, error },
+    'figures',
+    (iso) => formatDateTimeInZone(iso, tz),
+  );
+  const spillNotice = pollNotice(
+    { hasData: spillRows.length > 0 && !!spillOkAt, lastOkAt: spillOkAt, error: spillError },
+    'rows',
+    (iso) => formatDateTimeInZone(iso, tz),
+  );
 
   const chartData = (data?.hourly ?? []).map((b: HourlyBucket) => ({
     hour: formatHourLabel(b.hour, tz),
@@ -193,9 +214,12 @@ export function Analytics() {
         </div>
       </div>
 
-      {error && (
-        <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-sm font-medium">
-          {error}
+      {analyticsNotice.kind !== 'none' && (
+        <div
+          role="alert"
+          className="p-4 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-sm font-medium break-words"
+        >
+          {analyticsNotice.message}
         </div>
       )}
 
@@ -506,12 +530,21 @@ export function Analytics() {
               </div>
             ))}
           </div>
+        ) : !spillRows.length && spillError ? (
+          <div role="alert" className="px-6 py-12 text-center text-sm text-destructive font-medium break-words">
+            {spillNotice.message}
+          </div>
         ) : !spillRows.length ? (
           <div className="px-6 py-12 text-center text-sm text-muted-foreground font-medium">
             No spill data yet. Send requests through the proxy to populate this table.
           </div>
         ) : (
           <>
+            {spillNotice.kind !== 'none' && (
+              <div role="alert" className="px-6 py-2 text-xs text-destructive font-medium border-b border-border break-words">
+                {spillNotice.message}
+              </div>
+            )}
             <div className="hidden md:block overflow-x-auto scroll-region" tabIndex={0} role="region" aria-label="Analytics table: scroll horizontally for more columns">
               <table className="w-full text-sm">
                 <thead>

@@ -216,6 +216,9 @@ type Server struct {
 	// node-list lock already protects individual reads/writes; this mutex
 	// only prevents two full PATCH transactions from interleaving).
 	nodePatchMu sync.Mutex
+	// cloudTokensFlushed is the cloudTokens value last written to the store
+	// (atomic), so a flush can skip the write when nothing changed.
+	cloudTokensFlushed atomic.Int64
 	// replicaSuggestMu serializes the read-modify-write of the dismissed
 	// replica suggestion list stored in settings.
 	replicaSuggestMu sync.Mutex
@@ -320,6 +323,19 @@ func (s *Server) LoadFromStore() error {
 		s.mu.Unlock()
 	} else {
 		log.Printf("store: could not load counters: %v", err)
+	}
+	// The cloud token count lives in a settings key rather than the counters
+	// table. A database written before it was persisted has no key, which
+	// leaves the count at 0 and the spend figure at "-" instead of guessed.
+	if v, err := s.st.GetSetting(cloudTokensSettingKey); err != nil {
+		if !errors.Is(err, store.ErrNotFound) {
+			log.Printf("store: could not load cloud token count: %v", err)
+		}
+	} else if n, perr := strconv.ParseInt(v, 10, 64); perr != nil || n < 0 {
+		log.Printf("store: ignoring invalid saved cloud token count %q", v)
+	} else {
+		atomic.StoreInt64(&s.cloudTokens, n)
+		s.cloudTokensFlushed.Store(n)
 	}
 	// Restore last 50 request log entries.
 	if recs, err := s.st.LastRequests(50); err == nil {
@@ -428,6 +444,10 @@ func (s *Server) StartCounterFlush(ctx context.Context) {
 	}()
 }
 
+// cloudTokensSettingKey stores the lifetime cloud token count beside the
+// counters row so restoring it needs no schema change.
+const cloudTokensSettingKey = "counters_cloud_tokens"
+
 func (s *Server) flushCounters() {
 	local := atomic.LoadInt64(&s.localCount)
 	cloud := atomic.LoadInt64(&s.cloudCount)
@@ -435,12 +455,27 @@ func (s *Server) flushCounters() {
 	s.mu.RLock()
 	spent := s.cloudSpentUSD
 	s.mu.RUnlock()
-	_ = s.st.SetCounters(store.Counters{
+	if err := s.st.SetCounters(store.Counters{
 		LocalRequests: local,
 		CloudRequests: cloud,
 		TotalTokens:   localTok,
 		CloudSpentUSD: spent,
-	})
+	}); err != nil {
+		log.Printf("store: could not persist counters: %v", err)
+	}
+	// The token count is written after the counters row on purpose: a crash
+	// between the two leaves the count behind, so the spend shows "-" or a
+	// slightly low token figure, never a number that was not measured. It is
+	// skipped when nothing changed since the last successful write.
+	tok := atomic.LoadInt64(&s.cloudTokens)
+	if tok == s.cloudTokensFlushed.Load() {
+		return
+	}
+	if err := s.st.SetSetting(cloudTokensSettingKey, strconv.FormatInt(tok, 10)); err != nil {
+		log.Printf("store: could not persist cloud token count: %v", err)
+		return
+	}
+	s.cloudTokensFlushed.Store(tok)
 }
 
 type RequestLog struct {
@@ -6728,7 +6763,7 @@ func (s *Server) handleAnalytics(w http.ResponseWriter, r *http.Request) {
 		"total_spent_usd": cloudSpent,
 		"local_requests":  local,
 		"cloud_requests":  cloud,
-		"since":           s.startTime.Format(time.RFC3339),
+		"since":           s.startTime.UTC().Format(time.RFC3339),
 	})
 }
 
@@ -6769,7 +6804,7 @@ func (s *Server) handleSavings(w http.ResponseWriter, r *http.Request) {
 		"cloud_spent_usd": cloudSpent,
 		"saved_usd":       savedUSD,
 		"total_requests":  local + cloud,
-		"since":           s.startTime.Format(time.RFC3339),
+		"since":           s.startTime.UTC().Format(time.RFC3339),
 	})
 }
 
