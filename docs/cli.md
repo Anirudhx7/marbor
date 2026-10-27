@@ -932,19 +932,41 @@ requires credentials: run "marbor login" once (recommended), or pass --username+
 
 #### `now`
 
-trigger an on-demand backup and download it
+trigger an on-demand backup and download it (gzip, .db.gz)
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
 Flags:
 
 - `--output string` - local file path to save to (default: server-suggested filename)
+- `--force` - replace the output file if it already exists (default: refuse)
 
 #### `list`
 
-list backup files on the server
+list backup files on the server, with the last backup result
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--check` - exit 3, with the reasons on stderr, when something needs attention: no backups or no directory, a scheduled backup that never succeeded or is overdue, a failed, refused or cancelled backup, a damaged or unverified file, a note or notice, entries that could not be listed, a backup running over an hour, a retention problem, leftover files, or a restore that failed or finished with a note (for cron and monitoring)
+
+#### `ack-restore`
+
+clear the remembered result of the last restore
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+#### `download <name>`
+
+download a stored backup file from the server
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--output string` - local file path to save to (default: the backup's own name)
+- `--force` - replace the output file if it already exists (default: refuse)
 
 #### `restore <filename>`
 
@@ -955,16 +977,27 @@ Requires authentication - see the root README's CLI auth section, or run `marbor
 Flags:
 
 - `--yes` - confirm restore without prompting
+- `--wait` - wait for marbor to restart (up to 5 minutes) and exit nonzero unless the restore is reported as done
 
-#### `upload`
+#### `delete <name>`
 
-upload a local .db file as a restorable backup
+delete a stored backup file from the server (cannot be undone)
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
 Flags:
 
-- `--file string` - local .db file path (required) (required)
+- `--yes` - confirm deletion without prompting
+
+#### `upload`
+
+upload a local .db or .db.gz file as a restorable backup
+
+Requires authentication - see the root README's CLI auth section, or run `marbor login`.
+
+Flags:
+
+- `--file string` - local .db or .db.gz file path (required) (required)
 
 ### `analytics`
 

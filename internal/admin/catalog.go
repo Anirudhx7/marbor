@@ -1661,7 +1661,7 @@ func (s *Server) handleModelSearch(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if successCount == 0 {
-			writeJSONError(w, http.StatusBadGateway, lastErr.Error())
+			writeCorrelatedError(w, r, http.StatusBadGateway, "failed to fetch Hugging Face model list", lastErr)
 			return
 		}
 		sortHFModelsInPlace(hfModels, sortField, direction)

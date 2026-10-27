@@ -2,8 +2,11 @@ package admin
 
 import (
 	"bytes"
+	"compress/gzip"
+	"context"
 	"database/sql"
 	"encoding/json"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -160,8 +163,13 @@ func TestFreshInstallBackup_BlockedUntilPasswordStep(t *testing.T) {
 	if backupRec2.Code != http.StatusOK {
 		t.Fatalf("post-change backup status = %d, want 200; body: %s", backupRec2.Code, backupRec2.Body.String())
 	}
-	if !bytes.HasPrefix(backupRec2.Body.Bytes(), []byte("SQLite format 3")) {
-		t.Errorf("post-change backup body does not start with the SQLite magic header")
+	zr, zerr := gzip.NewReader(bytes.NewReader(backupRec2.Body.Bytes()))
+	if zerr != nil {
+		t.Fatalf("post-change backup body is not gzip: %v", zerr)
+	}
+	head := make([]byte, 15)
+	if _, err := io.ReadFull(zr, head); err != nil || !bytes.HasPrefix(head, []byte("SQLite format 3")) {
+		t.Errorf("decompressed post-change backup does not start with the SQLite magic header (err=%v)", err)
 	}
 }
 
@@ -172,30 +180,29 @@ func TestRunScheduledBackup_WritesFileAndRecordsResult(t *testing.T) {
 	s := newRealStoreTestServer(t)
 	targetDir := t.TempDir()
 
-	if err := s.runScheduledBackup(config.BackupConfig{TargetDir: targetDir, RetentionCount: 7}); err != nil {
+	if err := s.runScheduledBackup(context.Background(), config.BackupConfig{TargetDir: targetDir, RetentionCount: 7}); err != nil {
 		t.Fatalf("runScheduledBackup: %v", err)
 	}
 
-	entries, err := os.ReadDir(targetDir)
-	if err != nil {
-		t.Fatalf("ReadDir: %v", err)
-	}
-	if len(entries) != 1 {
-		t.Fatalf("target dir has %d files, want 1", len(entries))
+	if files := backupFilesIn(t, targetDir); len(files) != 1 {
+		t.Fatalf("target dir has %d backup files, want 1: %v", len(files), files)
 	}
 
-	s.backupMu.Lock()
-	at, errStr := s.lastBackupAt, s.lastBackupErr
-	s.backupMu.Unlock()
-	if at.IsZero() {
-		t.Error("lastBackupAt not recorded after successful run")
+	st := s.backupStatusSnapshot(targetDir)
+	if st.Scheduled.SuccessAt == "" || st.LastSuccessAt == "" {
+		t.Error("success time not recorded after successful run")
 	}
-	if errStr != "" {
-		t.Errorf("lastBackupErr = %q, want empty after successful run", errStr)
+	if st.LastError != "" || st.Scheduled.Result != backupResultSuccess {
+		t.Errorf("status = %+v, want a clean scheduled success", st)
 	}
 
-	if persisted, err := s.st.GetSetting("backup_last_at"); err != nil || persisted == "" {
-		t.Errorf("backup_last_at setting not persisted: v=%q err=%v", persisted, err)
+	// The outcome is persisted next to the backups, not in the database being
+	// snapshotted.
+	if data, err := os.ReadFile(filepath.Join(targetDir, backupStatusFileName)); err != nil || !strings.Contains(string(data), `"success"`) {
+		t.Errorf("backup status file not persisted: %q err=%v", data, err)
+	}
+	if v, _ := s.st.GetSetting("backup_last_at"); v != "" {
+		t.Errorf("a backup run must not write backup_last_at into marbor.db, got %q", v)
 	}
 }
 
@@ -208,26 +215,19 @@ func TestRunScheduledBackup_SkipsDuplicateOfUnchangedDB(t *testing.T) {
 	targetDir := t.TempDir()
 	cfg := config.BackupConfig{TargetDir: targetDir, RetentionCount: 7}
 
-	if err := s.runScheduledBackup(cfg); err != nil {
+	if err := s.runScheduledBackup(context.Background(), cfg); err != nil {
 		t.Fatalf("first runScheduledBackup: %v", err)
 	}
-	if err := s.runScheduledBackup(cfg); err != nil {
+	if err := s.runScheduledBackup(context.Background(), cfg); err != nil {
 		t.Fatalf("second runScheduledBackup: %v", err)
 	}
 
-	entries, err := os.ReadDir(targetDir)
-	if err != nil {
-		t.Fatalf("ReadDir: %v", err)
-	}
-	if len(entries) != 1 {
-		t.Fatalf("target dir has %d files after two unchanged runs, want 1: %v", len(entries), entries)
+	if files := backupFilesIn(t, targetDir); len(files) != 1 {
+		t.Fatalf("target dir has %d backups after two unchanged runs, want 1: %v", len(files), files)
 	}
 
-	s.backupMu.Lock()
-	errStr := s.lastBackupErr
-	s.backupMu.Unlock()
-	if errStr != "" {
-		t.Errorf("lastBackupErr = %q, want empty after skipped-duplicate run", errStr)
+	if st := s.backupStatusSnapshot(targetDir); st.LastError != "" || st.LastResult != backupResultSuccess {
+		t.Errorf("status = %+v, want success with no error after a skipped-duplicate run", st)
 	}
 }
 
@@ -237,15 +237,18 @@ func TestRunScheduledBackup_SkipsDuplicateOfUnchangedDB(t *testing.T) {
 func TestRunScheduledBackup_NoTargetDirRecordsError(t *testing.T) {
 	s := newRealStoreTestServer(t)
 
-	if err := s.runScheduledBackup(config.BackupConfig{}); err == nil {
+	if err := s.runScheduledBackup(context.Background(), config.BackupConfig{}); err == nil {
 		t.Fatal("runScheduledBackup with empty TargetDir should return an error")
 	}
 
-	s.backupMu.Lock()
-	errStr := s.lastBackupErr
-	s.backupMu.Unlock()
-	if errStr == "" {
-		t.Error("lastBackupErr should be recorded after a failed run")
+	if st := s.backupStatusSnapshot(""); st.LastError == "" || st.LastResult != backupResultFailed {
+		t.Errorf("status = %+v, want the failure recorded", st)
+	}
+	// With no target directory the failure is still saved, next to the database,
+	// so it survives a restart.
+	data, err := os.ReadFile(filepath.Join(s.dirOfDB(), backupStatusFileName))
+	if err != nil || !strings.Contains(string(data), `"failed"`) {
+		t.Errorf("no-target-dir failure not persisted: %q err=%v", data, err)
 	}
 }
 
@@ -258,9 +261,9 @@ func TestPruneOldBackups(t *testing.T) {
 	base := time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)
 	var names []string
 	for i := 0; i < 5; i++ {
-		name := backupFilename(base.Add(time.Duration(i) * time.Hour))
+		name := legacyBackupFilename(base.Add(time.Duration(i) * time.Hour))
 		names = append(names, name)
-		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, name), validSQLiteBytes(t), 0o644); err != nil {
 			t.Fatalf("WriteFile: %v", err)
 		}
 	}
@@ -271,7 +274,9 @@ func TestPruneOldBackups(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	s.pruneOldBackups(dir, 2)
+	if problem := s.pruneBackups(context.Background(), dir, 2, false); problem != "" {
+		t.Fatalf("prune reported a problem: %s", problem)
+	}
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -318,8 +323,8 @@ func TestHandleListBackups_FiltersAndSortsNewestFirst(t *testing.T) {
 	setBackupTargetDir(s, dir)
 
 	base := time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)
-	older := backupFilename(base)
-	newer := backupFilename(base.Add(time.Hour))
+	older := legacyBackupFilename(base)
+	newer := legacyBackupFilename(base.Add(time.Hour))
 	for _, name := range []string{older, newer, "notes.txt"} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o644); err != nil {
 			t.Fatalf("WriteFile(%s): %v", name, err)
@@ -377,7 +382,7 @@ func TestHandleRestoreBackup_RejectsMissingAndInvalidFiles(t *testing.T) {
 	setBackupTargetDir(s, dir)
 
 	// Missing file.
-	missingName := backupFilename(time.Now())
+	missingName := legacyBackupFilename(time.Now())
 	body, _ := json.Marshal(map[string]string{"filename": missingName})
 	req := httptest.NewRequest(http.MethodPost, "/admin/backup/restore", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
@@ -387,7 +392,7 @@ func TestHandleRestoreBackup_RejectsMissingAndInvalidFiles(t *testing.T) {
 	}
 
 	// Present but not a real SQLite database.
-	corruptName := backupFilename(time.Now().Add(time.Hour))
+	corruptName := legacyBackupFilename(time.Now().Add(time.Hour))
 	if err := os.WriteFile(filepath.Join(dir, corruptName), []byte("not a database"), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
@@ -407,8 +412,8 @@ func TestHandleRestoreBackup_RejectsMissingAndInvalidFiles(t *testing.T) {
 }
 
 // TestHandleRestoreBackup_ValidRequestSendsToChannel verifies a well-formed
-// request for a real, valid backup file is accepted (202) and its full path
-// is sent down restoreCh - never acted on directly by the handler itself.
+// request for a real, valid backup file is accepted (202) and the staged copy
+// of it is sent down restoreCh - never acted on directly by the handler itself.
 func TestHandleRestoreBackup_ValidRequestSendsToChannel(t *testing.T) {
 	s := newRealStoreTestServer(t)
 	ch := make(chan string, 1)
@@ -417,9 +422,9 @@ func TestHandleRestoreBackup_ValidRequestSendsToChannel(t *testing.T) {
 	setBackupTargetDir(s, dir)
 
 	// A real backup file: use BackupTo against the test server's own store.
-	name := backupFilename(time.Now())
+	name := legacyBackupFilename(time.Now())
 	fullPath := filepath.Join(dir, name)
-	if err := s.st.BackupTo(fullPath); err != nil {
+	if err := s.st.BackupTo(context.Background(), fullPath); err != nil {
 		t.Fatalf("BackupTo: %v", err)
 	}
 
@@ -433,11 +438,18 @@ func TestHandleRestoreBackup_ValidRequestSendsToChannel(t *testing.T) {
 
 	select {
 	case got := <-ch:
-		if got != fullPath {
-			t.Errorf("restoreCh received %q, want %q", got, fullPath)
+		wantPrefix := s.st.DBPath() + ".restoring-"
+		if !strings.HasPrefix(got, wantPrefix) {
+			t.Errorf("restoreCh received %q, want a uniquely named staged copy starting %q", got, wantPrefix)
+		}
+		if err := store.ValidateBackupFile(got); err != nil {
+			t.Errorf("staged restore file is not a valid database: %v", err)
+		}
+		if _, err := os.Stat(fullPath); err != nil {
+			t.Errorf("the source backup must stay in place: %v", err)
 		}
 	default:
-		t.Error("restoreCh received nothing, want the validated backup path")
+		t.Error("restoreCh received nothing, want the staged restore file")
 	}
 }
 
@@ -446,7 +458,7 @@ func TestHandleRestoreBackup_ValidRequestSendsToChannel(t *testing.T) {
 // loudly instead of silently accepting a restore it can't act on.
 func TestHandleRestoreBackup_NoChannelReturns501(t *testing.T) {
 	s := newRealStoreTestServer(t)
-	body, _ := json.Marshal(map[string]string{"filename": backupFilename(time.Now())})
+	body, _ := json.Marshal(map[string]string{"filename": legacyBackupFilename(time.Now())})
 	req := httptest.NewRequest(http.MethodPost, "/admin/backup/restore", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
 	s.handleRestoreBackup(rec, req)
@@ -622,7 +634,7 @@ func TestHandleRestoreBackup_RejectsForeignSQLite(t *testing.T) {
 	dir := t.TempDir()
 	setBackupTargetDir(s, dir)
 
-	name := backupFilename(time.Now())
+	name := legacyBackupFilename(time.Now())
 	if err := os.WriteFile(filepath.Join(dir, name), foreignSQLiteBytes(t), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
@@ -652,7 +664,7 @@ func TestHandleRestoreBackup_RejectsNewerSchema(t *testing.T) {
 	dir := t.TempDir()
 	setBackupTargetDir(s, dir)
 
-	name := backupFilename(time.Now())
+	name := legacyBackupFilename(time.Now())
 	if err := os.WriteFile(filepath.Join(dir, name), newerSchemaMarborDBBytes(t), 0o644); err != nil {
 		t.Fatalf("WriteFile: %v", err)
 	}
@@ -726,8 +738,8 @@ func TestHandleUploadBackup_ValidFileIsSavedAndListed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadDir: %v", err)
 	}
-	if len(entries) != 1 {
-		t.Errorf("target dir has %d entries, want exactly 1 (the saved backup): %v", len(entries), entries)
+	if n := countBackupDirEntries(entries); n != 1 {
+		t.Errorf("target dir has %d entries, want exactly 1 (the saved backup): %v", n, entries)
 	}
 }
 
@@ -776,8 +788,8 @@ func TestHandleUploadBackup_DuplicateReusesExistingFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadDir: %v", err)
 	}
-	if len(entries) != 1 {
-		t.Errorf("target dir has %d entries after duplicate upload, want exactly 1: %v", len(entries), entries)
+	if n := countBackupDirEntries(entries); n != 1 {
+		t.Errorf("target dir has %d entries after duplicate upload, want exactly 1: %v", n, entries)
 	}
 }
 
@@ -839,4 +851,9 @@ func TestHandleUploadBackup_MissingFileFieldRejected(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want 400", rec.Code)
 	}
+}
+
+// countBackupDirEntries counts the entries of a backup directory listing.
+func countBackupDirEntries(entries []os.DirEntry) int {
+	return len(entries)
 }

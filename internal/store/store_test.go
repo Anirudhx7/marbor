@@ -1,6 +1,7 @@
 package store_test
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -1619,7 +1620,7 @@ func TestBackupTo(t *testing.T) {
 	}
 
 	backupPath := filepath.Join(dir, "backup.db")
-	if err := s.BackupTo(backupPath); err != nil {
+	if err := s.BackupTo(context.Background(), backupPath); err != nil {
 		t.Fatalf("BackupTo: %v", err)
 	}
 
@@ -1645,7 +1646,7 @@ func TestBackupTo(t *testing.T) {
 
 	// VACUUM INTO refuses to write over an existing file - BackupTo must
 	// surface that as an error, not silently succeed or corrupt the target.
-	if err := s.BackupTo(backupPath); err == nil {
+	if err := s.BackupTo(context.Background(), backupPath); err == nil {
 		t.Error("BackupTo to an already-existing path should return an error, got nil")
 	}
 }

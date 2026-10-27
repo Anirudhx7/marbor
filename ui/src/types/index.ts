@@ -480,6 +480,66 @@ export interface BackupFileInfo {
   name: string;
   size_bytes: number;
   modified_at: string;
+  compressed: boolean;
+  // True for a file an operator uploaded (as opposed to one marbor made).
+  uploaded?: boolean;
+  // "ok" = read in full and checked by the server, "unverified" = looks like a
+  // backup but was not read in full, "invalid" = failed the check.
+  integrity?: 'ok' | 'unverified' | 'invalid';
+}
+
+// BackupResult is what one backup attempt ended as. The server may add
+// outcomes later, so a reader must treat any other string as unknown.
+export type BackupResult = '' | 'success' | 'failed' | 'refused' | 'cancelled';
+
+// BackupOutcome is what one source (scheduled or manual) last did.
+export interface BackupOutcome {
+  result: BackupResult | string;
+  attempt_at?: string;
+  success_at?: string;
+  error?: string;
+  // A success that needs a look (for example a directory that could not be flushed).
+  warning?: string;
+  // What happened after the backup was made (for example a download cut short).
+  note?: string;
+}
+
+// BackupStatus is the "status" object of GET /admin/backup/list: the last
+// backup outcome (scheduled or on-demand) and any warning about the backup
+// directory itself.
+export interface BackupStatus {
+  last_result: BackupResult | string;
+  last_attempt_at?: string;
+  last_success_at?: string;
+  last_error?: string;
+  last_source?: string;
+  scheduled?: BackupOutcome;
+  manual?: BackupOutcome;
+  running: boolean;
+  dir_exists?: boolean;
+  dir_warning?: string;
+  status_not_saved?: string;
+  prune_error?: string;
+  // Retention problem of the uploaded-files pool, which has its own limit.
+  upload_prune_error?: string;
+  // A one-off remark, for example that the backup directory was changed.
+  notice?: string;
+  leftover_files?: number;
+  // The last leftover-file scan could not read the backup directory.
+  dir_scan_error?: string;
+  // When the running backup started, and what the scheduler is set to do.
+  running_since?: string;
+  schedule_enabled?: boolean;
+  schedule_interval_hours?: number;
+  last_restore?: { result: string; at?: string; error?: string; note?: string; ref?: string };
+}
+
+export interface BackupListResponse {
+  backups: BackupFileInfo[];
+  status: BackupStatus | null;
+  // Directory entries the server could not list (not regular files, or
+  // unreadable). 0 when everything was listed.
+  skipped: number;
 }
 
 export interface SystemAuditEntry {

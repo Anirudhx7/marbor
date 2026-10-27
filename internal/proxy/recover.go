@@ -40,6 +40,10 @@ func (rw *recoverWriter) Flush() {
 	}
 }
 
+// Unwrap exposes the underlying writer so http.ResponseController can reach
+// the connection (per-request read and write deadlines, flush, hijack).
+func (rw *recoverWriter) Unwrap() http.ResponseWriter { return rw.ResponseWriter }
+
 // isProxyAPIPath reports whether p belongs to the inference proxy (OpenAI or
 // Ollama-native API). This middleware also wraps the admin and metrics
 // listeners, which keep their own flat error shape; only proxy paths get the

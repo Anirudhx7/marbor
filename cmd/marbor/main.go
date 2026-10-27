@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"text/tabwriter"
@@ -879,7 +881,7 @@ func main() {
 
 	adminHttpSrv := &http.Server{
 		Addr:              cfg.Admin.BindAddress,
-		Handler:           proxy.RecoverMiddleware(proxy.SecurityHeaders(adminSrv.Handler())),
+		Handler:           adminChain(adminSrv.Handler()),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      30 * time.Second,
@@ -922,6 +924,12 @@ func main() {
 		}
 		break
 	}
+	// From here no new restore is accepted. A restore handed off in the instant
+	// the shutdown began (the signal can win the race against the channel) is
+	// carried out all the same: its request was already answered with a 202.
+	if pending := adminSrv.CloseRestores(); pendingRestorePath == "" {
+		pendingRestorePath = pending
+	}
 	if pendingRestorePath != "" {
 		log.Printf("Restore requested: shutting down to swap marbor.db for %s", pendingRestorePath)
 	} else {
@@ -936,6 +944,14 @@ func main() {
 	shutdownDone := make(chan struct{})
 	go func() {
 		defer close(shutdownDone)
+
+		// A restore is about to replace the database: stop the scheduler and any
+		// running backup first (bounded), so no snapshot has the database open when
+		// it has to be closed and swapped, and a restore never fails because a
+		// scheduled backup happened to be mid-flight.
+		if pendingRestorePath != "" {
+			adminSrv.StopBackups()
+		}
 
 		// Each server gets its own fresh timeout budget at the point of its own
 		// Shutdown call, rather than sharing one context/budget across
@@ -998,7 +1014,10 @@ func main() {
 			// st.Close() (deferred near store.Open above) never fires on this
 			// path, so close what still needs closing explicitly before calling it.
 			auditLog.Close()
-			performRestore(dbPath, pendingRestorePath, st)
+			// Whether the staged file is still the one that was validated is decided
+			// now, after the drain: only a file whose identity cannot be proven is read
+			// in full again (see swapStagedRestore).
+			performRestore(dbPath, pendingRestorePath, st, adminSrv.StagedRestoreUnchanged(pendingRestorePath))
 			// performRestore always calls os.Exit itself; never returns.
 		}
 
@@ -1013,90 +1032,156 @@ func main() {
 	}
 }
 
-// performRestore swaps dbPath for the contents of backupPath (already
-// validated by admin.go's handleRestoreBackup before this was ever reached)
-// and exits the process non-zero so the deployment's process supervisor
-// (systemd Restart=on-failure, Docker restart:unless-stopped, Kubernetes'
-// default restartPolicy) brings the marbor back up with the restored database.
-// Always calls os.Exit - a bare-metal run with no supervisor configured will
-// simply stay down until started manually; docs/backup.md documents that
-// caveat explicitly rather than leaving it a silent surprise.
-func performRestore(dbPath, backupPath string, st store.Store) {
+// adminChain wraps the admin handler in the middleware the real admin listener
+// uses. It is a function of its own so a test can serve the admin API through
+// exactly this chain: a backup transfer replaces the listener's fixed timeouts
+// through http.ResponseController, which only works while every wrapper passes
+// the call through to the connection.
+func adminChain(h http.Handler) http.Handler {
+	return proxy.RecoverMiddleware(proxy.SecurityHeaders(h))
+}
+
+// performRestore swaps dbPath for the staged restore file and exits non-zero so
+// the deployment's process supervisor (systemd Restart=on-failure, Docker
+// restart:unless-stopped, Kubernetes' default restartPolicy) brings marbor back
+// up with the restored database. The admin handler already decompressed,
+// verified and staged the file next to the database before it answered 202; the
+// swap checks the staged file again in full once the servers are down (see
+// swapStagedRestore). Every outcome ends in os.Exit, and the outcome is written
+// next to the database first so the next start can show it on the Backups page:
+// on a failure the live database is untouched and the process still exits,
+// because the servers are already shut down and the store is closed -
+// restarting is the only way back to a serving process, and a bare-metal run
+// with no supervisor stays down until started by hand.
+func performRestore(dbPath, stagedPath string, st store.Store, unchanged bool) {
+	var swapErr error
+	note := ""
 	if err := st.Close(); err != nil {
-		log.Printf("WARNING: error closing store before restore: %v", err)
+		// A store that did not close cleanly may still hold unflushed
+		// write-ahead data; renaming a database over it could lose that data or
+		// leave the old log to be replayed against the new file. Not replacing
+		// anything is the safe answer.
+		swapErr = fmt.Errorf("the database did not close cleanly, so it was not replaced: %w", err)
+		if rmErr := os.Remove(stagedPath); rmErr != nil && !errors.Is(rmErr, os.ErrNotExist) {
+			log.Printf("WARNING: could not remove the staged restore file: %v", rmErr)
+		}
+	} else {
+		note, swapErr = swapStagedRestore(dbPath, stagedPath, unchanged)
+	}
+	if swapErr != nil {
+		// The staged file is gone; say so in the pending marker, so that if the
+		// outcome below cannot be written the next start still reports precisely.
+		admin.MarkRestoreNotCarriedOut(dbPath)
 	}
 
-	tmpPath, err := stageRestoreCopy(dbPath, backupPath)
-	if err != nil {
-		log.Printf("ERROR: %v", err)
-		log.Println("ERROR: marbor.db was NOT modified - restart marbor manually; it resumes with the existing database")
+	ref, outErr := admin.WriteRestoreOutcome(dbPath, swapErr, note)
+	if outErr != nil {
+		log.Printf("WARNING: could not record the restore outcome: %v", outErr)
+	}
+	if swapErr != nil {
+		log.Printf("ERROR: restore failed (ref %s): %v", ref, swapErr)
+		log.Println("ERROR: marbor.db was NOT replaced - restart marbor manually; it resumes with the existing database")
 		winexit.Exit(1)
 	}
 
-	// WAL/SHM sidecars belong to the OLD database contents - remove them so
-	// the restored file isn't reconciled against stale write-ahead data on
-	// next boot.
-	os.Remove(dbPath + "-wal")
-	os.Remove(dbPath + "-shm")
-	if err := os.Rename(tmpPath, dbPath); err != nil {
-		log.Printf("ERROR: restore failed at the final swap: %v", err)
-		log.Printf("ERROR: the validated replacement is staged at %s - move it to %s manually, then restart", tmpPath, dbPath)
-		winexit.Exit(1)
+	if note != "" {
+		log.Printf("WARNING: restore (ref %s): %s", ref, note)
 	}
-
-	log.Printf("Restore complete: %s -> %s", backupPath, dbPath)
+	log.Printf("Restore complete (ref %s): %s now holds the restored database", ref, dbPath)
 	log.Println("Exiting so the process supervisor restarts marbor with the restored database")
 	winexit.Exit(1)
 }
 
-// stageRestoreCopy copies backupPath into a temp file alongside dbPath
-// (dbPath + ".restoring") and re-validates that staged copy with
-// store.ValidateBackupFile before returning its path, so a mid-copy failure
-// or a file that changed/was swapped underneath the earlier admin.go
-// validation never leaves the live marbor.db truncated, corrupt, or swapped
-// for an incompatible backup - the live file is only ever touched by the
-// caller's separate atomic rename, once this function has proven the
-// replacement complete and valid. On any failure the partial/invalid staged
-// file is removed and the live database is left completely untouched.
+// swapStagedRestore replaces dbPath with stagedPath by an atomic rename. The
+// staged file was validated in full (SQLite integrity and schema) before the
+// restore was accepted and sat next to the database, in a directory only marbor
+// writes to, while marbor drained. When the caller can prove it is still that
+// same file (unchanged: same file, size and modification time), only a header
+// check is repeated here: re-reading a multi-gigabyte file in full would hold
+// the swap while nothing is serving, for a risk the identity check already
+// covers. When identity cannot be proven the full validation runs again, so a
+// file that rotted or was replaced in that window never becomes the database.
+// The old write-ahead log must be empty - a clean
+// close leaves none - otherwise the swap is refused: a log left over from the
+// old database would be replayed against the new file. The sidecars are removed
+// only after the rename succeeded, and failing to remove an empty one is a
+// warning, not a failed restore. On any failure the staged file is removed and
+// the live database is untouched.
 //
-// Pulled out of performRestore as a pure function (no process-exit calls) so
-// the staging/re-validation decisions - including the schema-version and
-// foreign-file rejections in store.ValidateBackupFile - are directly
-// testable; performRestore itself still can't be unit tested since every
-// path through it ends in winexit.Exit.
-func stageRestoreCopy(dbPath, backupPath string) (string, error) {
-	tmpPath := dbPath + ".restoring"
-	src, err := os.Open(backupPath)
-	if err != nil {
-		return "", fmt.Errorf("restore aborted - could not open backup file %s: %w", backupPath, err)
+// note is non-empty when the swap succeeded but needs a caveat: the directory
+// could not be flushed afterwards, so a power loss before the next checkpoint
+// could bring the old database back.
+func swapStagedRestore(dbPath, stagedPath string, unchanged bool) (note string, err error) {
+	began := time.Now()
+	defer func() {
+		log.Printf("restore swap took %s (full re-validation: %v)", time.Since(began).Round(time.Millisecond), !unchanged)
+	}()
+	defer func() {
+		if err != nil {
+			for _, f := range []string{stagedPath, stagedPath + "-journal", stagedPath + "-wal", stagedPath + "-shm"} {
+				if rmErr := os.Remove(f); rmErr != nil && !errors.Is(rmErr, os.ErrNotExist) {
+					err = errors.Join(err, fmt.Errorf("could not remove the staged file %s: %w", filepath.Base(f), rmErr))
+				}
+			}
+		}
+	}()
+	if unchanged {
+		if herr := checkStagedHeader(stagedPath); herr != nil {
+			return "", fmt.Errorf("the staged restore file is no longer a valid database: %w", herr)
+		}
+	} else if verr := store.ValidateBackupFileContext(context.Background(), stagedPath); verr != nil {
+		return "", fmt.Errorf("the staged restore file is no longer a valid database: %w", verr)
 	}
-	dst, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
-	if err != nil {
-		src.Close()
-		return "", fmt.Errorf("restore aborted - could not create %s: %w", tmpPath, err)
+	for _, side := range []string{dbPath + "-wal", dbPath + "-shm"} {
+		fi, serr := os.Stat(side)
+		switch {
+		case serr == nil:
+			if side == dbPath+"-wal" && fi.Size() > 0 {
+				return "", fmt.Errorf("the old database still has unflushed write-ahead data (%d bytes); not replacing it", fi.Size())
+			}
+		case !errors.Is(serr, os.ErrNotExist):
+			return "", fmt.Errorf("could not inspect the old write-ahead sidecar: %w", serr)
+		}
 	}
-	_, copyErr := io.Copy(dst, src)
-	src.Close()
-	closeErr := dst.Close()
-	if copyErr != nil || closeErr != nil {
-		os.Remove(tmpPath)
-		return "", fmt.Errorf("restore aborted mid-copy (copy error: %v, close error: %v)", copyErr, closeErr)
+	if err := os.Rename(stagedPath, dbPath); err != nil {
+		return "", fmt.Errorf("could not move the staged database into place: %w", err)
 	}
+	for _, side := range []string{dbPath + "-wal", dbPath + "-shm"} {
+		if rmErr := os.Remove(side); rmErr != nil && !errors.Is(rmErr, os.ErrNotExist) {
+			log.Printf("WARNING: could not remove the old sidecar %s after the restore: %v", filepath.Base(side), rmErr)
+		}
+	}
+	if serr := syncDirOf(dbPath); serr != nil {
+		log.Printf("WARNING: could not fsync the database directory after the restore swap: %v", serr)
+		note = "the database was replaced, but the directory could not be flushed to disk; if the machine loses power before the next checkpoint the old database may come back"
+	}
+	return note, nil
+}
 
-	// Re-validate the staged copy itself, not just backupPath earlier in
-	// admin.go: the graceful-shutdown drain above can take up to
-	// proxySrv.WriteTimeout+5s between that validation and this copy, during
-	// which the source file could change underneath it (e.g. a concurrent
-	// scheduled backup/retention prune, or filesystem trouble). This is the
-	// last chance to catch corruption or an incompatible schema before the
-	// swap makes tmpPath the live database - never fabricate a "restore
-	// complete" on unverified bytes.
-	if err := store.ValidateBackupFile(tmpPath); err != nil {
-		os.Remove(tmpPath)
-		return "", fmt.Errorf("restore aborted - staged copy failed validation: %w", err)
+// checkStagedHeader is the cheap check made when the staged file's identity is
+// proven: it still starts with a sane SQLite header.
+func checkStagedHeader(path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
 	}
+	defer f.Close()
+	return store.CheckPlainBackupHeaderFile(f)
+}
 
-	return tmpPath, nil
+// syncDirOf fsyncs the directory holding path. Windows cannot open a directory
+// for sync, so it is skipped there.
+func syncDirOf(path string) error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	d, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	syncErr := d.Sync()
+	closeErr := d.Close()
+	return errors.Join(syncErr, closeErr)
 }
 
 // applyNodeOverrides re-applies every persisted per-node override to the

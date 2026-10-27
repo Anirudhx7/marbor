@@ -262,6 +262,12 @@ type BackupConfig struct {
 	// fabricated "backed up" status.
 	LastBackupAt    string `yaml:"-" json:"last_backup_at,omitempty"`
 	LastBackupError string `yaml:"-" json:"last_backup_error,omitempty"`
+	// LastBackupResult is "success", "failed" or "refused" (not enough disk
+	// space) for the most recent attempt, scheduled or on demand;
+	// LastBackupAttemptAt is when that attempt finished. Read-only like the
+	// two fields above.
+	LastBackupResult    string `yaml:"-" json:"last_backup_result,omitempty"`
+	LastBackupAttemptAt string `yaml:"-" json:"last_backup_attempt_at,omitempty"`
 }
 
 // SavingsConfig controls how locally-served tokens are valued in the

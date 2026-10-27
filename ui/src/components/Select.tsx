@@ -109,6 +109,9 @@ interface CustomSelectProps {
   disabled?: boolean;
   placeholder?: string;
   size?: 'sm' | 'md';
+  // Makes the trigger at least 44px tall on a phone, for pages where the
+  // control sits next to other tap targets of that size.
+  touchTarget?: boolean;
 }
 
 export function CustomSelect({
@@ -119,6 +122,7 @@ export function CustomSelect({
   disabled = false,
   placeholder = 'Select...',
   size = 'md',
+  touchTarget = false,
 }: CustomSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -145,7 +149,7 @@ export function CustomSelect({
 
   const selectedOption = options.find((o) => o.value === value);
 
-  const sizeClasses = size === 'sm' ? 'px-2.5 py-1 text-xs rounded-md' : 'px-3 py-2 text-sm rounded-lg';
+  const sizeClasses = (size === 'sm' ? 'px-2.5 py-1 text-xs rounded-md' : 'px-3 py-2 text-sm rounded-lg') + (touchTarget ? ' min-h-[44px] sm:min-h-0' : '');
 
   return (
     <div ref={containerRef} className={`relative min-w-0 w-full ${className}`}>

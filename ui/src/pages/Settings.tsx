@@ -1,10 +1,15 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useSyncExternalStore } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Save, Check, Terminal, Shield, Activity, MonitorPlay, RefreshCw, KeyRound, DollarSign, Sliders, Lock, Container, Webhook, Network, Flame, Ruler, Plus, Trash2, Gauge, HardDrive, Download } from 'lucide-react';
 import { Modal } from '../components/Modal';
 import { defaultSettings, mockModelCatalog } from '../lib/mockData';
-import { fetchSettings, updateSettings, reloadFromStore, changePassword, triggerBackupNow, fetchBackupList, restoreBackup, uploadBackup, fetchModels } from '../lib/api';
-import type { Settings, BackupFileInfo } from '../types';
+import { mockBackupResponse } from '../lib/backupMock';
+import { fetchSettings, updateSettings, reloadFromStore, changePassword, triggerBackupNow, downloadStoredBackup, fetchBackupList, restoreBackup, acknowledgeRestoreResult, uploadBackup, deleteBackup, fetchModels } from '../lib/api';
+import { getRestoreWatch, subscribeRestoreWatch, startRestoreWatch, resumeRestoreWatch, dismissRestoreWatch, readProcessStart } from '../lib/restoreWatch';
+import type { RestoreWatchPhase } from '../lib/restoreWatch';
+import { formatBackupSize, backupStatusLines, backupFileNameFor, errorText, isAbortError, pollDelayMs, POLL_GIVE_UP_AFTER, MAX_MEMORY_DOWNLOAD_BYTES } from '../lib/backupUi';
+import type { Settings, BackupFileInfo, BackupStatus } from '../types';
+
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import { useCurrency, CURRENCY_PRESETS } from '../hooks/useCurrency';
 import { CustomSelect, CustomCombobox } from '../components/Select';
@@ -13,6 +18,22 @@ import { useTimezone } from '../hooks/useTimezone';
 import { formatDateTimeInZone } from '../lib/time';
 import { notifyTimezoneChanged } from '../hooks/useTimezone';
 import { roundPrice } from '../lib/roundPrice';
+
+const DEMO_BACKUP_TITLE = 'Demo mode: backups, downloads, uploads and restores are turned off. The backup data shown here is sample data.';
+
+// The wording for each state of a followed restore (see lib/restoreWatch.ts).
+// None of these points at another line of the page: that line may not exist.
+const RESTORE_FOLLOW_TEXT: Record<RestoreWatchPhase, string> = {
+  restarting: 'Restore accepted - marbor is restarting. This page reloads when it is back.',
+  checking: 'The connection dropped while the restore was being requested. marbor may be restarting to finish it - checking...',
+  restarted: 'marbor is back. Checking the result of the restore...',
+  succeeded: 'The restore succeeded. Reloading...',
+  failed: 'The restore failed. marbor is still using the previous database.',
+  signin: 'marbor is back but this session has ended. Reloading so you can sign in again...',
+  unknown: 'marbor is back, but this page could not confirm the result of the restore. Reload the page and check your data before relying on it.',
+  'still-running': 'marbor kept running, so the restore most likely did not start. Try again, or check the marbor log.',
+  timeout: 'marbor has not come back within 90 seconds. If it was started by hand, start it again; otherwise check its supervisor and log.',
+};
 
 
 
@@ -58,6 +79,7 @@ const getTimezoneOffsetMinutes = (tz: string): number => {
     }
     return 0;
   } catch {
+    // A time zone this browser cannot format (unknown name): sort it as UTC.
     return 0;
   }
 };
@@ -67,6 +89,7 @@ const timezones: string[] = (() => {
   try {
     list = ['Local', ...Intl.supportedValuesOf('timeZone')];
   } catch {
+    // Older browsers lack Intl.supportedValuesOf: fall back to a short fixed list.
     list = [
       'Local', 'UTC', 'America/New_York', 'America/Los_Angeles', 'America/Chicago',
       'Europe/London', 'Europe/Paris', 'Asia/Kolkata', 'Asia/Tokyo', 'Asia/Shanghai',
@@ -109,6 +132,7 @@ const getTimezoneLabel = (tz: string): string => {
     const displayOffset = formattedOffset ? `(${formattedOffset}) ` : '';
     return `${displayOffset}${tz.replace(/_/g, ' ')}`;
   } catch {
+    // A time zone this browser cannot format: show its bare name.
     return tz.replace(/_/g, ' ');
   }
 };
@@ -159,7 +183,12 @@ export function SettingsPage() {
     fetchModels().then((data) => {
       if (!active || currentAppPath() !== '/settings') return;
       setKnownModelNames((data.models || []).map((m) => m.name));
-    }).catch(() => {});
+    }).catch((err: unknown) => {
+      // The names only feed suggestions; an empty list still lets a model name
+      // be typed by hand, so a failure here is not shown to the operator. It is
+      // logged so a broken model list can still be diagnosed.
+      console.warn('Settings: could not load known model names', err);
+    });
     return () => { active = false; };
   }, [demoMode, location.pathname]);
 
@@ -174,101 +203,335 @@ export function SettingsPage() {
   // Backup & restore
   const [backupDownloading, setBackupDownloading] = useState(false);
   const [backupDownloadError, setBackupDownloadError] = useState<string | null>(null);
+  const [backupDownloadNotice, setBackupDownloadNotice] = useState<string | null>(null);
 
-  const handleBackupNow = async () => {
-    setBackupDownloading(true);
-    setBackupDownloadError(null);
-    try {
-      await triggerBackupNow();
-    } catch (err: any) {
-      const message = err.message === 'password_change_required'
-        ? 'Change or skip your password first'
-        : (err.message || 'Backup failed');
-      setBackupDownloadError(message);
-    } finally {
-      setBackupDownloading(false);
-    }
-  };
+  // Set false on unmount so a request that finishes after the operator left the
+  // page never touches state, and every transfer still running is cancelled (no
+  // file is offered for saving after the operator navigated away).
+  const mountedRef = useRef(true);
+  const backupAbortRef = useRef<AbortController | null>(null);
+  const storedAbortRef = useRef<AbortController | null>(null);
+  const uploadAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      backupAbortRef.current?.abort();
+      storedAbortRef.current?.abort();
+      uploadAbortRef.current?.abort();
+    };
+  }, []);
+
+  // A restore asked for earlier is followed by a module-level watcher, so it
+  // survives leaving this page and a reload of the tab.
+  const restoreWatch = useSyncExternalStore(subscribeRestoreWatch, getRestoreWatch);
+  useEffect(() => {
+    resumeRestoreWatch();
+  }, []);
 
   // Restore-from-backup picker
   const [backupList, setBackupList] = useState<BackupFileInfo[]>([]);
+  const [backupStatus, setBackupStatus] = useState<BackupStatus | null>(null);
+  const [backupSkipped, setBackupSkipped] = useState(0);
   const [backupListLoading, setBackupListLoading] = useState(false);
+  // backupListError: the first load failed and nothing is on screen yet.
+  // backupStale: a later refresh failed while the earlier list is still shown.
+  const [backupListError, setBackupListError] = useState<string | null>(null);
+  const [backupStale, setBackupStale] = useState<string | null>(null);
   const [selectedBackupName, setSelectedBackupName] = useState<string>('');
   const [restoreTarget, setRestoreTarget] = useState<BackupFileInfo | null>(null);
   const [restoring, setRestoring] = useState(false);
   const [restoreError, setRestoreError] = useState<string | null>(null);
-  const [restoreInitiated, setRestoreInitiated] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<BackupFileInfo | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  // How many status refreshes in a row failed, and whether the automatic
+  // refresh gave up. retryClicked turns the failure line into an alert once the
+  // operator has asked for another try.
+  const failuresRef = useRef(0);
+  const [pollFailures, setPollFailures] = useState(0);
+  const [pollGaveUp, setPollGaveUp] = useState(false);
+  const [retryClicked, setRetryClicked] = useState(false);
+  const lastStatusRef = useRef<BackupStatus | null>(null);
+  // The on-demand attempt whose file did not reach this computer (cancelled or
+  // failed in the browser), identified by its attempt time.
+  const [notSavedAttempt, setNotSavedAttempt] = useState<string | null>(null);
 
-  // Guards against the mount-time fetch and a later upload's own refetch
-  // resolving out of order - only the result of the most recently issued
-  // fetchBackupList() call is ever applied to state.
+  // Guards against two list fetches (mount, an upload's refetch, the "running"
+  // poll, a backup finishing) resolving out of order - only the result of the
+  // most recently issued fetch is ever applied to state. The in-flight flag lets
+  // the poll skip a tick instead of superseding a request that is still running.
   const backupListRequestId = useRef(0);
+  const backupListInFlight = useRef(false);
+  const backupLoadedRef = useRef(false);
+
+  // loadBackups reads the backup list and status through the guard above. The
+  // demo (build-time or the runtime toggle) reads the sample data instead of
+  // the server. quiet skips the "Loading" placeholder, for refreshes of a list
+  // that is already on screen. poll marks a timer tick, which is skipped while
+  // another read is in flight. Returns whether this call's result was applied.
+  const loadBackups = async (opts: { quiet?: boolean; select?: string; poll?: boolean } = {}): Promise<boolean> => {
+    if (!mountedRef.current) return false;
+    if (opts.poll && backupListInFlight.current) return false;
+    const requestId = ++backupListRequestId.current;
+    backupListInFlight.current = true;
+    if (!opts.quiet) setBackupListLoading(true);
+    try {
+      const r = demoMode ? mockBackupResponse() : await fetchBackupList();
+      if (!mountedRef.current || requestId !== backupListRequestId.current) return false;
+      backupLoadedRef.current = true;
+      failuresRef.current = 0;
+      lastStatusRef.current = r.status;
+      setPollFailures(0);
+      setPollGaveUp(false);
+      setRetryClicked(false);
+      setBackupList(r.backups);
+      setBackupStatus(r.status);
+      setBackupSkipped(r.skipped);
+      setBackupListError(null);
+      setBackupStale(null);
+      setSelectedBackupName(prev => {
+        if (opts.select && r.backups.some(b => b.name === opts.select)) return opts.select;
+        return (prev && r.backups.some(b => b.name === prev)) ? prev : (r.backups[0]?.name || '');
+      });
+      return true;
+    } catch (err) {
+      if (!mountedRef.current || requestId !== backupListRequestId.current) return false;
+      const message = errorText(err, 'Could not load the backup list.');
+      failuresRef.current += 1;
+      setPollFailures(failuresRef.current);
+      if (backupLoadedRef.current) setBackupStale(message);
+      else setBackupListError(message);
+      return false;
+    } finally {
+      if (requestId === backupListRequestId.current) {
+        backupListInFlight.current = false;
+        if (mountedRef.current) setBackupListLoading(false);
+      }
+    }
+  };
 
   useEffect(() => {
     if (currentAppPath() !== '/settings') return;
-    let active = true;
-    const requestId = ++backupListRequestId.current;
-    setBackupListLoading(true);
-    fetchBackupList()
-      .then(list => {
-        if (!active || requestId !== backupListRequestId.current) return;
-        setBackupList(list);
-        setSelectedBackupName(prev => (prev && list.some(b => b.name === prev)) ? prev : (list[0]?.name || ''));
-      })
-      .catch(() => { if (active && requestId === backupListRequestId.current) setBackupList([]); })
-      .finally(() => { if (active) setBackupListLoading(false); });
-    return () => { active = false; };
+    backupLoadedRef.current = false;
+    setBackupStale(null);
+    void loadBackups();
+    // Invalidate this effect's request when the page or mode changes.
+    return () => {
+      backupListRequestId.current++;
+      backupListInFlight.current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [demoMode, location.pathname]);
 
+  // While a backup is running (a scheduled run, or one started elsewhere) the
+  // status is refreshed every few seconds so "running" clears by itself. Ticks
+  // pause while the tab is hidden and catch up when it is shown again. After a
+  // failed refresh the wait doubles (up to 30 s); after POLL_GIVE_UP_AFTER in a
+  // row the automatic refresh stops and the operator is told.
+  const backupRunning = backupStatus?.running === true;
+  useEffect(() => {
+    if (!backupRunning || demoMode || pollGaveUp) return;
+    let cancelled = false;
+    let timer: number | undefined;
+    const schedule = () => {
+      timer = window.setTimeout(async () => {
+        if (cancelled) return;
+        if (!document.hidden) await loadBackups({ quiet: true, poll: true });
+        if (cancelled) return;
+        if (failuresRef.current >= POLL_GIVE_UP_AFTER) {
+          setPollGaveUp(true);
+          return;
+        }
+        schedule();
+      }, pollDelayMs(failuresRef.current));
+    };
+    const onVisible = () => {
+      if (document.hidden || cancelled) return;
+      window.clearTimeout(timer);
+      void loadBackups({ quiet: true, poll: true }).then(() => {
+        if (!cancelled) schedule();
+      });
+    };
+    schedule();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [backupRunning, demoMode, pollGaveUp]);
+
+  const handleBackupNow = async () => {
+    if (backupDownloading || demoMode) return;
+    setBackupDownloadError(null);
+    setBackupDownloadNotice(null);
+    const ctl = new AbortController();
+    backupAbortRef.current = ctl;
+    setBackupDownloading(true);
+    let saved = false;
+    try {
+      const result = await triggerBackupNow(backupFileNameFor(new Date()), ctl.signal);
+      if (!mountedRef.current) return;
+      if (result.kind === 'cancelled') {
+        setBackupDownloadNotice('The backup was not saved to this computer.');
+      } else {
+        saved = true;
+        setBackupDownloadNotice(`Backup saved as ${result.name} in your browser's downloads folder.${result.note ? ` ${result.note}` : ''}`);
+      }
+    } catch (err) {
+      if (!mountedRef.current) return;
+      if (isAbortError(err)) setBackupDownloadNotice('Cancelled. The backup was not saved to this computer.');
+      else setBackupDownloadError(errorText(err, 'The backup failed.'));
+    } finally {
+      if (backupAbortRef.current === ctl) backupAbortRef.current = null;
+      if (mountedRef.current) {
+        setBackupDownloading(false);
+        // The run changed the status (success, refusal or failure): refresh it
+        // through the guarded loader so the card shows what actually happened.
+        const applied = await loadBackups({ quiet: true });
+        if (mountedRef.current) {
+          setNotSavedAttempt(!saved && applied ? (lastStatusRef.current?.manual?.attempt_at ?? '') : null);
+        }
+      }
+    }
+  };
+
   const selectedBackup = backupList.find(b => b.name === selectedBackupName) || null;
+
+  const [storedDownloading, setStoredDownloading] = useState(false);
+  const [storedDownloadError, setStoredDownloadError] = useState<string | null>(null);
+  const [storedDownloadNotice, setStoredDownloadNotice] = useState<string | null>(null);
+
+  const handleStoredDownload = async () => {
+    if (!selectedBackup || storedDownloading || uploadingBackup || demoMode) return;
+    setStoredDownloadError(null);
+    setStoredDownloadNotice(null);
+    const ctl = new AbortController();
+    storedAbortRef.current = ctl;
+    setStoredDownloading(true);
+    try {
+      const result = await downloadStoredBackup(selectedBackup.name, ctl.signal);
+      if (!mountedRef.current) return;
+      if (result.kind === 'cancelled') setStoredDownloadNotice('Save cancelled.');
+      else setStoredDownloadNotice(`Saved ${result.name}.${result.note ? ` ${result.note}` : ''}`);
+    } catch (err) {
+      if (!mountedRef.current) return;
+      if (isAbortError(err)) setStoredDownloadNotice('Download cancelled. Nothing was saved.');
+      else setStoredDownloadError(errorText(err, 'The download failed.'));
+    } finally {
+      if (storedAbortRef.current === ctl) storedAbortRef.current = null;
+      if (mountedRef.current) setStoredDownloading(false);
+    }
+  };
 
   const [uploadingBackup, setUploadingBackup] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadNotice, setUploadNotice] = useState<string | null>(null);
+  const [ackingRestore, setAckingRestore] = useState(false);
+  const [ackError, setAckError] = useState<string | null>(null);
+
+  // Forget the remembered restore result once the operator has read it.
+  const handleAckRestore = async () => {
+    setAckError(null);
+    setAckingRestore(true);
+    try {
+      await acknowledgeRestoreResult(backupStatus?.last_restore?.ref);
+      if (mountedRef.current) {
+        const applied = await loadBackups({ quiet: true });
+        if (mountedRef.current && !applied) {
+          setAckError('The result was cleared, but the status could not be refreshed. Use Try again to reload it.');
+        }
+      }
+    } catch (err) {
+      if (mountedRef.current) {
+        setAckError(errorText(err, 'Could not clear the restore result.'));
+        // A different result may have replaced the one that was shown.
+        void loadBackups({ quiet: true });
+      }
+    } finally {
+      if (mountedRef.current) setAckingRestore(false);
+    }
+  };
+  const uploadInputRef = useRef<HTMLInputElement>(null);
 
   const handleBackupFileChosen = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = ''; // allow re-selecting the same file later
-    if (!file) return;
-    setUploadingBackup(true);
+    if (!file || demoMode || storedDownloading) return;
     setUploadError(null);
     setUploadNotice(null);
-    const requestId = ++backupListRequestId.current;
+    const ctl = new AbortController();
+    uploadAbortRef.current = ctl;
+    setUploadingBackup(true);
     try {
-      const { filename, duplicate } = await uploadBackup(file);
-      const list = await fetchBackupList();
-      if (requestId === backupListRequestId.current) {
-        setBackupList(list);
-        setSelectedBackupName(list.some(b => b.name === filename) ? filename : (list[0]?.name || ''));
-        if (duplicate) {
-          setUploadNotice(`This is the same backup as ${filename}, already in the list - selected it instead of adding a duplicate.`);
-        }
+      // uploadBackup vets the extension and size before sending anything.
+      const { filename, duplicate, warning } = await uploadBackup(file, ctl.signal);
+      // Select the stored file only when the refetch still applies; a refetch
+      // that fails is shown by the list's own stale line.
+      const applied = await loadBackups({ quiet: true, select: filename });
+      const parts: string[] = [];
+      if (applied && duplicate) parts.push(`This is the same backup as ${filename}, already in the list - selected it instead of adding a duplicate.`);
+      if (warning) parts.push(warning);
+      if (mountedRef.current && parts.length > 0) setUploadNotice(parts.join(' '));
+    } catch (err) {
+      if (!mountedRef.current) return;
+      if (isAbortError(err)) {
+        setUploadNotice('Upload cancelled. If the file had already finished arriving it is in the list.');
+        void loadBackups({ quiet: true });
+      } else {
+        setUploadError(errorText(err, 'The upload failed.'));
       }
-    } catch (err: any) {
-      setUploadError(err.message || 'Upload failed');
     } finally {
-      setUploadingBackup(false);
+      if (uploadAbortRef.current === ctl) uploadAbortRef.current = null;
+      if (mountedRef.current) setUploadingBackup(false);
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget || demoMode) return;
+    setDeleteError(null);
+    setDeleting(true);
+    try {
+      await deleteBackup(deleteTarget.name);
+      if (!mountedRef.current) return;
+      setDeleteTarget(null);
+      void loadBackups({ quiet: true });
+    } catch (err) {
+      if (mountedRef.current) {
+        setDeleteError(errorText(err, 'Could not delete the backup.'));
+        void loadBackups({ quiet: true });
+      }
+    } finally {
+      if (mountedRef.current) setDeleting(false);
     }
   };
 
   const handleRestoreConfirm = async () => {
-    if (!restoreTarget) return;
-    setRestoring(true);
+    if (!restoreTarget || demoMode) return;
     setRestoreError(null);
+    setRestoring(true);
     try {
-      await restoreBackup(restoreTarget.name);
-      setRestoreInitiated(true);
+      // The process identifier is read first so a restart can be told from the
+      // old process still shutting down.
+      const before = await readProcessStart();
+      const { outcome, ref } = await restoreBackup(restoreTarget.name);
+      // The watcher outlives this page, so it starts even if the page is gone.
+      startRestoreWatch(before, ref, outcome === 'accepted' ? 'restarting' : 'checking');
+      if (!mountedRef.current) return;
       setRestoreTarget(null);
-    } catch (err: any) {
-      setRestoreError(err.message || 'Restore failed');
+    } catch (err) {
+      if (mountedRef.current) setRestoreError(errorText(err, 'The restore failed.'));
     } finally {
-      setRestoring(false);
+      if (mountedRef.current) setRestoring(false);
     }
   };
 
-  const formatBackupSize = (bytes: number): string => {
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  const closeRestoreDialog = () => {
+    if (restoring) return;
+    setRestoreTarget(null);
+    setRestoreError(null);
   };
 
   useEffect(() => {
@@ -1556,33 +1819,115 @@ export function SettingsPage() {
           </div>
           <div className="space-y-4">
             <div>
-              <button
-                onClick={handleBackupNow}
-                disabled={backupDownloading}
-                className="flex items-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground text-sm font-medium rounded-lg transition-colors"
-              >
-                <Download className="w-4 h-4" />
-                {backupDownloading ? 'Preparing download...' : 'Download Backup Now'}
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => { void handleBackupNow(); }}
+                  disabled={backupDownloading || demoMode}
+                  title={demoMode ? DEMO_BACKUP_TITLE : undefined}
+                  className="flex items-center gap-1.5 px-3 py-2 min-h-[44px] sm:min-h-0 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground text-sm font-medium rounded-lg transition-colors"
+                >
+                  <Download className="w-4 h-4" />
+                  {backupDownloading ? 'Preparing download...' : 'Download Backup Now'}
+                </button>
+                {backupDownloading && (
+                  <button
+                    type="button"
+                    onClick={() => backupAbortRef.current?.abort()}
+                    className="px-3 py-2 min-h-[44px] sm:min-h-0 text-sm font-medium text-muted-foreground hover:text-foreground border border-border rounded-lg transition-colors"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+              {demoMode && (
+                <p className="text-xs text-muted-foreground mt-1.5">{DEMO_BACKUP_TITLE}</p>
+              )}
               {backupDownloadError && (
-                <p className="text-[10px] text-red-600 dark:text-red-400 mt-1.5">{backupDownloadError}</p>
+                <p role="alert" className="text-xs text-red-600 dark:text-red-400 mt-1.5 break-words">{backupDownloadError}</p>
+              )}
+              {backupDownloadNotice && (
+                <p role="status" className="text-xs text-emerald-700 dark:text-emerald-400 mt-1.5 break-words">{backupDownloadNotice}</p>
               )}
               <p className="text-[10px] text-muted-foreground mt-1.5">
-                Downloads a consistent point-in-time copy of marbor.db to your browser, taken while marbor keeps running.
+                Saves a gzip-compressed, consistent point-in-time copy of marbor.db to your browser's downloads folder, taken while marbor keeps running. The backup is collected in memory first, so it is limited to {formatBackupSize(MAX_MEMORY_DOWNLOAD_BYTES)}. For a larger database run "marbor backup now" in a terminal on a machine that can reach marbor, or download one of the stored backups from the list below.
               </p>
-              {settings.backupLastAt && (
-                <p className="text-xs text-muted-foreground mt-1.5">
-                  Last scheduled backup: {formatDateTimeInZone(settings.backupLastAt, tz)}
-                </p>
+              <div aria-live="polite">
+                {backupRunning && !backupStale && !backupListError && !pollGaveUp && pollFailures === 0 && (
+                  <p className="text-xs text-muted-foreground mt-1.5">
+                    A backup is running now{backupStatus?.running_since ? ` (since ${formatDateTimeInZone(backupStatus.running_since, tz)})` : ''}. This updates by itself.
+                  </p>
+                )}
+              </div>
+              {(backupListError || backupStale || pollGaveUp) && (
+                <div className="mt-1.5 text-xs text-red-600 dark:text-red-400 break-words">
+                  <p role={retryClicked ? 'alert' : undefined}>
+                    {backupListError
+                      ? `Could not load the backup status: ${backupListError}`
+                      : backupStale
+                        ? `Showing the last known state - the latest refresh failed: ${backupStale}`
+                        : 'Showing the last known state.'}
+                    {pollGaveUp ? ' Automatic refresh stopped after repeated failures.' : ''}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRetryClicked(true);
+                      failuresRef.current = 0;
+                      setPollGaveUp(false);
+                      void loadBackups({ quiet: backupLoadedRef.current });
+                    }}
+                    className="mt-1 min-h-[44px] sm:min-h-0 px-1 underline text-red-700 dark:text-red-300 hover:no-underline"
+                  >
+                    Try again
+                  </button>
+                </div>
               )}
-              {settings.backupLastError && (
-                <p className="text-xs text-red-600 dark:text-red-400 mt-1.5">Last scheduled backup failed: {settings.backupLastError}</p>
+              {backupStatus ? (
+                backupStatusLines(backupStatus, backupSkipped, (iso) => formatDateTimeInZone(iso, tz), {
+                  manualNotSaved: notSavedAttempt !== null && (backupStatus.manual?.attempt_at ?? '') === notSavedAttempt,
+                }).map((line) => (
+                  <p
+                    key={line.key}
+                    className={`text-xs mt-1.5 break-words ${
+                      line.tone === 'error' ? 'text-red-600 dark:text-red-400'
+                        : line.tone === 'warn' ? 'text-amber-700 dark:text-amber-400'
+                        : 'text-muted-foreground'
+                    }`}
+                  >
+                    {line.text}
+                    {line.key === 'restore' && backupStatus.last_restore?.result && (
+                      <button
+                        type="button"
+                        onClick={() => { void handleAckRestore(); }}
+                        disabled={ackingRestore || demoMode}
+                        title="Clears this restore result for every operator and for the command line, not only on this page"
+                        className="ml-2 inline-flex items-center min-h-[44px] sm:min-h-0 px-1 underline text-muted-foreground hover:no-underline disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {ackingRestore ? 'Clearing...' : 'Dismiss for everyone'}
+                      </button>
+                    )}
+                  </p>
+                ))
+              ) : (
+                <>
+                  {settings.backupLastAt && (
+                    <p className="text-xs text-muted-foreground mt-1.5">
+                      Last scheduled backup: {formatDateTimeInZone(settings.backupLastAt, tz)}
+                    </p>
+                  )}
+                  {settings.backupLastError && (
+                    <p className="text-xs text-red-600 dark:text-red-400 mt-1.5 break-words">
+                      Last scheduled backup failed: {settings.backupLastError}
+                    </p>
+                  )}
+                </>
               )}
+              {ackError && <p role="alert" className="text-xs text-red-600 dark:text-red-400 mt-1.5 break-words">{ackError}</p>}
             </div>
             <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30">
               <div>
                 <p className="text-sm font-medium text-foreground">Scheduled backup</p>
-                <p className="text-xs text-muted-foreground">Automatic VACUUM INTO backups on a recurring interval</p>
+                <p className="text-xs text-muted-foreground">Automatic gzip-compressed backups on a recurring interval</p>
               </div>
               <Toggle label="Scheduled backup" on={settings.backupEnabled} onToggle={() => setSettings({ ...settings, backupEnabled: !settings.backupEnabled })} />
             </div>
@@ -1609,6 +1954,9 @@ export function SettingsPage() {
                     onChange={(e) => setSettings({ ...settings, backupRetentionCount: Math.max(1, parseInt(e.target.value, 10) || 7) })}
                     className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50"
                   />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Files you upload are kept in a separate pool with the same limit, so up to twice this many files can be on disk.
+                  </p>
                 </div>
               </div>
             )}
@@ -1636,67 +1984,152 @@ export function SettingsPage() {
               on exit (systemd, Docker's <code>restart</code> policy, or Kubernetes) - otherwise start it manually
               afterward. This cannot be undone.
             </p>
-            {restoreInitiated && (
-              <p className="text-xs text-emerald-600 dark:text-emerald-400 mb-3">
-                Restore initiated - marbor is restarting now. This page will reconnect once it's back up.
-              </p>
-            )}
-            {restoreError && (
-              <p className="text-xs text-red-600 dark:text-red-400 mb-3">{restoreError}</p>
+            {restoreWatch && (
+              <div className="mb-3">
+                <p
+                  role="status"
+                  className={`text-xs break-words ${
+                    restoreWatch.phase === 'failed' ? 'text-red-600 dark:text-red-400'
+                      : ['still-running', 'timeout', 'unknown', 'signin'].includes(restoreWatch.phase)
+                        ? 'text-amber-700 dark:text-amber-400'
+                        : 'text-emerald-700 dark:text-emerald-400'
+                  }`}
+                >
+                  {RESTORE_FOLLOW_TEXT[restoreWatch.phase]}
+                  {restoreWatch.detail ? ` ${restoreWatch.detail}` : ''}
+                </p>
+                {['failed', 'still-running', 'timeout', 'unknown'].includes(restoreWatch.phase) && (
+                  <button
+                    type="button"
+                    onClick={dismissRestoreWatch}
+                    className="min-h-[44px] sm:min-h-0 px-1 text-xs underline text-muted-foreground hover:no-underline"
+                  >
+                    Hide this message
+                  </button>
+                )}
+              </div>
             )}
             {uploadError && (
-              <p className="text-xs text-red-600 dark:text-red-400 mb-3">{uploadError}</p>
+              <p role="alert" className="text-xs text-red-600 dark:text-red-400 mb-3 break-words">{uploadError}</p>
             )}
             {uploadNotice && (
-              <p className="text-xs text-amber-600 dark:text-amber-400 mb-3">{uploadNotice}</p>
+              <p role="status" className="text-xs text-amber-700 dark:text-amber-400 mb-3 break-words">{uploadNotice}</p>
+            )}
+            {storedDownloadError && (
+              <p role="alert" className="text-xs text-red-600 dark:text-red-400 mb-3 break-words">{storedDownloadError}</p>
+            )}
+            {storedDownloadNotice && (
+              <p role="status" className="text-xs text-emerald-700 dark:text-emerald-400 mb-3 break-words">{storedDownloadNotice}</p>
             )}
             {backupListLoading ? (
               <p className="text-xs text-muted-foreground">Loading backups...</p>
             ) : (
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                   {backupList.length === 0 ? (
                     <p className="flex-1 min-w-0 text-xs text-muted-foreground">
-                      No backups found yet in the target directory.
+                      {backupListError
+                        ? 'The backup list could not be loaded (see above).'
+                        : 'No backups found yet in the target directory.'}
                     </p>
                   ) : (
                     <CustomSelect
-                      className="flex-1"
+                      className="flex-1 min-w-0"
+                      touchTarget
                       value={selectedBackupName}
                       onChange={setSelectedBackupName}
                       options={backupList.map((b) => ({ value: b.name, label: b.name }))}
                     />
                   )}
-                  <label
-                    title="Attach a .db file from your computer as a backup"
-                    className={`shrink-0 w-9 h-9 flex items-center justify-center bg-secondary/50 border border-border rounded-lg text-foreground transition-colors ${uploadingBackup ? 'opacity-50 cursor-not-allowed' : 'hover:bg-secondary cursor-pointer'}`}
-                  >
-                    {uploadingBackup ? (
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Plus className="w-4 h-4" />
-                    )}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => uploadInputRef.current?.click()}
+                      disabled={uploadingBackup || storedDownloading || demoMode}
+                      title={'Attach a .db or .db.gz file from your computer as a backup'}
+                      aria-label="Attach a local .db or .db.gz file as a backup"
+                      className="w-11 h-11 sm:w-9 sm:h-9 flex items-center justify-center bg-secondary/50 border border-border rounded-lg text-foreground transition-colors hover:bg-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {uploadingBackup ? (
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Plus className="w-4 h-4" />
+                      )}
+                    </button>
                     <input
+                      ref={uploadInputRef}
                       type="file"
-                      accept=".db"
-                      aria-label="Attach a local .db file as a backup"
+                      accept=".db,.gz"
+                      tabIndex={-1}
+                      aria-hidden="true"
                       className="hidden"
                       disabled={uploadingBackup}
                       onChange={handleBackupFileChosen}
                     />
-                  </label>
-                  <button
-                    onClick={() => selectedBackup && setRestoreTarget(selectedBackup)}
-                    disabled={!selectedBackup}
-                    className="shrink-0 px-3 py-2 bg-red-600 hover:bg-red-600/90 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
-                  >
-                    Restore
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => { void handleStoredDownload(); }}
+                      disabled={!selectedBackup || storedDownloading || uploadingBackup || demoMode}
+                      title="Download this backup file"
+                      aria-label="Download the selected backup"
+                      className="w-11 h-11 sm:w-9 sm:h-9 flex items-center justify-center bg-secondary/50 border border-border rounded-lg text-foreground hover:bg-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {storedDownloading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => selectedBackup && setRestoreTarget(selectedBackup)}
+                      disabled={!selectedBackup || demoMode || (restoreWatch !== null && ['restarting', 'checking', 'restarted', 'succeeded'].includes(restoreWatch.phase))}
+                      className="h-11 sm:h-9 px-4 sm:px-3 bg-red-600 hover:bg-red-600/90 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Restore
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setDeleteError(null); if (selectedBackup) setDeleteTarget(selectedBackup); }}
+                      disabled={!selectedBackup || demoMode}
+                      title="Delete this backup file from the server"
+                      aria-label="Delete the selected backup"
+                      className="w-11 h-11 sm:w-9 sm:h-9 flex items-center justify-center bg-secondary/50 border border-border rounded-lg text-red-600 dark:text-red-400 hover:bg-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
+                {(uploadingBackup || storedDownloading) && (
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <span>
+                      {uploadingBackup
+                        ? 'Uploading... (no progress is shown; large files take a while). Downloading a stored backup waits until the upload finishes.'
+                        : 'Downloading... Uploading a file waits until the download finishes.'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => (uploadingBackup ? uploadAbortRef : storedAbortRef).current?.abort()}
+                      className="min-h-[44px] sm:min-h-0 px-2 underline hover:no-underline text-foreground"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
                 {selectedBackup && (
-                  <p className="text-[10px] text-muted-foreground mt-1.5">
-                    {formatDateTimeInZone(selectedBackup.modified_at, tz)} - {formatBackupSize(selectedBackup.size_bytes)}
-                  </p>
+                  <div className="mt-1.5 space-y-1">
+                    <p className="text-[10px] text-muted-foreground break-words">
+                      {formatDateTimeInZone(selectedBackup.modified_at, tz)} - {formatBackupSize(selectedBackup.size_bytes)}
+                      {selectedBackup.compressed ? ' - compressed' : ''}
+                      {selectedBackup.uploaded ? ' - uploaded' : ''}
+                    </p>
+                    {selectedBackup.integrity === 'invalid' && (
+                      <p className="text-xs text-red-600 dark:text-red-400 break-words">
+                        This file failed the server's check. Restoring it will most likely be refused.
+                      </p>
+                    )}
+                    {selectedBackup.integrity === 'unverified' && (
+                      <p className="text-[10px] text-muted-foreground break-words">
+                        This file has not been read in full yet; a restore checks it first and leaves the live database alone if it is damaged.
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
             )}
@@ -1709,33 +2142,73 @@ export function SettingsPage() {
 
     <Modal
       isOpen={restoreTarget !== null}
-      onClose={() => { if (!restoring) setRestoreTarget(null); }}
+      onClose={closeRestoreDialog}
       title="Restore from backup"
       maxWidth="sm"
     >
       <div className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          This will stop the marbor, replace the live database with <span className="font-medium text-foreground">{restoreTarget?.name}</span>,
+          This will stop the marbor, replace the live database with <span className="font-medium text-foreground break-all">{restoreTarget?.name}</span>,
           and restart. Everything written since that backup was taken - new nodes, keys, settings, routing history - will be lost.
         </p>
+        {restoreTarget?.compressed && (
+          <p className="text-xs text-muted-foreground">
+            This backup is compressed. marbor decompresses and checks it first, and needs free disk space for the
+            full-size database next to the live one. It cannot tell exactly how much until it has read the file, so if
+            there is not enough room it stops and tells you the amount; the live database is left untouched.
+          </p>
+        )}
         <p className="text-sm text-destructive font-medium">This cannot be undone.</p>
         {restoreError && (
-          <p className="text-sm text-destructive">{restoreError}</p>
+          <p role="alert" className="text-sm text-destructive break-words">{restoreError}</p>
         )}
         <div className="flex justify-end gap-3 pt-4 border-t border-border">
           <button
-            onClick={() => setRestoreTarget(null)}
+            onClick={closeRestoreDialog}
             disabled={restoring}
-            className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+            className="px-4 py-2 min-h-[44px] sm:min-h-0 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             onClick={handleRestoreConfirm}
             disabled={restoring}
-            className="px-4 py-2 bg-red-600 hover:bg-red-600/90 text-white font-medium rounded-lg text-sm transition-colors shadow-sm disabled:opacity-50"
+            className="px-4 py-2 min-h-[44px] sm:min-h-0 bg-red-600 hover:bg-red-600/90 text-white font-medium rounded-lg text-sm transition-colors shadow-sm disabled:opacity-50"
           >
             {restoring ? 'Restoring...' : 'Restore & Restart'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+
+    <Modal
+      isOpen={deleteTarget !== null}
+      onClose={() => { if (!deleting) { setDeleteTarget(null); setDeleteError(null); } }}
+      title="Delete backup"
+      maxWidth="sm"
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-muted-foreground">
+          Delete <span className="font-medium text-foreground break-all">{deleteTarget?.name}</span> from the server?
+        </p>
+        <p className="text-sm text-destructive font-medium">This cannot be undone.</p>
+        {deleteError && (
+          <p role="alert" className="text-sm text-destructive break-words">{deleteError}</p>
+        )}
+        <div className="flex justify-end gap-3 pt-4 border-t border-border">
+          <button
+            onClick={() => { setDeleteTarget(null); setDeleteError(null); }}
+            disabled={deleting}
+            className="px-4 py-2 min-h-[44px] sm:min-h-0 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => { void handleDeleteConfirm(); }}
+            disabled={deleting}
+            className="px-4 py-2 min-h-[44px] sm:min-h-0 bg-red-600 hover:bg-red-600/90 text-white font-medium rounded-lg text-sm transition-colors shadow-sm disabled:opacity-50"
+          >
+            {deleting ? 'Deleting...' : 'Delete'}
           </button>
         </div>
       </div>

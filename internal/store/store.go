@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"errors"
 	"time"
 )
@@ -273,9 +274,22 @@ type Store interface {
 
 	// BackupTo writes a consistent point-in-time copy of the live database to
 	// path via SQLite's VACUUM INTO, safe to run alongside concurrent readers
-	// and writers. path must not already exist (VACUUM INTO refuses to
-	// overwrite a file) - callers pass a fresh path per call.
-	BackupTo(path string) error
+	// and writers. path must not exist or must be an empty file (VACUUM INTO
+	// refuses to overwrite real content) - callers pass a fresh path per call,
+	// or pre-create an empty file to control its permissions. After the
+	// snapshot it asks SQLite to truncate the write-ahead log, which the
+	// snapshot's read transaction would otherwise have kept from shrinking.
+	// Cancelling ctx interrupts a snapshot that is running.
+	BackupTo(ctx context.Context, path string) error
+
+	// Footprint reports the on-disk size of the database file and its write-
+	// ahead log, so a backup can check free space before it starts. Both are
+	// zero for an in-memory store.
+	Footprint() (dbBytes, walBytes int64, err error)
+
+	// DBPath is the database file path, or "" for an in-memory store. Backup
+	// and restore use it to find the volume the live database sits on.
+	DBPath() string
 
 	Close() error
 }
@@ -915,7 +929,9 @@ func (NopStore) DeleteModelConfig(_, _ string) error               { return nil 
 func (NopStore) AllModelConfigs() ([]ModelConfig, error)           { return nil, nil }
 func (NopStore) InsertBenchmarkRun(_ BenchmarkRun) error           { return nil }
 func (NopStore) ListBenchmarkRuns(_ int) ([]BenchmarkRun, error)   { return nil, nil }
-func (NopStore) BackupTo(_ string) error {
+func (NopStore) BackupTo(_ context.Context, _ string) error {
 	return errors.New("store: persistence disabled (db_path=\"-\"), there is no database to back up")
 }
-func (NopStore) Close() error { return nil }
+func (NopStore) Footprint() (int64, int64, error) { return 0, 0, nil }
+func (NopStore) DBPath() string                   { return "" }
+func (NopStore) Close() error                     { return nil }

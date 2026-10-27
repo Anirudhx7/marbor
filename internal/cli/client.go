@@ -10,21 +10,23 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"mime/multipart"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 )
 
-// Exit codes: 0 ok, 1 user error, 2 server error, 4 auth error.
-// 3 (partial success) doesn't apply until batch operations exist.
+// Exit codes: 0 ok, 1 user error, 2 server error, 3 the command worked but found
+// something that needs attention (only `marbor backup list --check` today),
+// 4 auth error.
 const (
 	ExitOK          = 0
 	ExitUserError   = 1
 	ExitServerError = 2
+	ExitAttention   = 3
 	ExitAuthError   = 4
 )
 
@@ -54,6 +56,10 @@ type Client struct {
 	BaseURL    string
 	Token      string
 	HTTPClient *http.Client
+
+	// Warn receives non-fatal warnings (a temporary file that could not be
+	// removed, a directory that could not be flushed); nil means standard error.
+	Warn io.Writer
 
 	// Username, Role, and ExpiresAt are populated by Login from the
 	// /admin/v1/login response body - empty when the client was instead
@@ -190,6 +196,19 @@ func (c *Client) doRequest(method, path string, authed bool) (*http.Response, er
 // accept) goes through this - the CLI is always exactly one Admin API
 // request, never a direct Marbor Agent call.
 func (c *Client) doRequestBody(method, path string, body interface{}) (*http.Response, error) {
+	return c.doRequestBodyWith(c.HTTPClient, method, path, body)
+}
+
+// streamingClient is c.HTTPClient without the overall request timeout, for
+// transfers (backup download and upload) whose duration scales with database
+// size. Dial and header timeouts still come from the shared transport.
+func (c *Client) streamingClient() *http.Client {
+	cp := *c.HTTPClient
+	cp.Timeout = 0
+	return &cp
+}
+
+func (c *Client) doRequestBodyWith(hc *http.Client, method, path string, body interface{}) (*http.Response, error) {
 	if c.Token == "" {
 		return nil, userErrorf("authentication required: run 'marbor login', or pass --username/--password (or set MARBOR_USERNAME+MARBOR_PASSWORD)")
 	}
@@ -210,7 +229,7 @@ func (c *Client) doRequestBody(method, path string, body interface{}) (*http.Res
 	}
 	req.Header.Set("Authorization", "Bearer "+c.Token)
 
-	resp, err := c.HTTPClient.Do(req)
+	resp, err := hc.Do(req)
 	if err != nil {
 		return nil, serverErrorf("could not reach %s: %v", c.BaseURL, err)
 	}
@@ -693,7 +712,9 @@ type HealthResp struct {
 	Version       string `json:"version"`
 	ProxyPort     int    `json:"proxy_port"`
 	UptimeSeconds int    `json:"uptime_seconds"`
-	Nodes         struct {
+	// StartedAt identifies this run of the process; it changes on every restart.
+	StartedAt string `json:"started_at,omitempty"`
+	Nodes     struct {
 		Total   int `json:"total"`
 		Healthy int `json:"healthy"`
 	} `json:"nodes"`
@@ -2314,104 +2335,6 @@ func (c *Client) ModelRepo(opts ModelRepoOpts) (json.RawMessage, error) {
 	return io.ReadAll(resp.Body)
 }
 
-// BackupFileInfo mirrors admin.go's backupFileInfo.
-type BackupFileInfo struct {
-	Name       string    `json:"name"`
-	SizeBytes  int64     `json:"size_bytes"`
-	ModifiedAt time.Time `json:"modified_at"`
-}
-
-// ListBackups calls GET /admin/backup/list.
-func (c *Client) ListBackups() ([]BackupFileInfo, error) {
-	resp, err := c.doRequest(http.MethodGet, "/admin/backup/list", true)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	var out struct {
-		Backups []BackupFileInfo `json:"backups"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, serverErrorf("could not parse backup list response: %v", err)
-	}
-	return out.Backups, nil
-}
-
-// RestoreBackup calls POST /admin/backup/restore - restarts marbor onto the
-// named backup file (destructive; the caller is responsible for
-// confirming with the operator first).
-func (c *Client) RestoreBackup(filename string) error {
-	resp, err := c.doRequestBody(http.MethodPost, "/admin/backup/restore", map[string]string{"filename": filename})
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	return nil
-}
-
-// backupContentDispositionRE extracts the filename from a
-// `Content-Disposition: attachment; filename="..."` response header.
-var backupContentDispositionRE = regexp.MustCompile(`filename="([^"]+)"`)
-
-// BackupNow calls POST /admin/backup - an on-demand backup streamed back as
-// a binary .db download. Returns the server-suggested filename (parsed from
-// Content-Disposition, falling back to a timestamped name if absent/
-// unparsable) and the raw file bytes; the caller writes it to disk.
-func (c *Client) BackupNow() (filename string, data []byte, err error) {
-	resp, err := c.doRequestBody(http.MethodPost, "/admin/backup", nil)
-	if err != nil {
-		return "", nil, err
-	}
-	defer resp.Body.Close()
-	data, err = io.ReadAll(resp.Body)
-	if err != nil {
-		return "", nil, serverErrorf("could not read backup response: %v", err)
-	}
-	filename = "marbor-backup.db"
-	if m := backupContentDispositionRE.FindStringSubmatch(resp.Header.Get("Content-Disposition")); len(m) == 2 {
-		filename = m[1]
-	}
-	return filename, data, nil
-}
-
-// UploadBackup calls POST /admin/backup/upload with r's content as a
-// multipart/form-data "file" field, mirroring the UI's Settings.tsx upload
-// picker. filename is only used for the multipart part's own filename field
-// (informational to the server, which renames the staged file to its own
-// timestamped shape regardless - see handleUploadBackup).
-func (c *Client) UploadBackup(filename string, r io.Reader) error {
-	if c.Token == "" {
-		return userErrorf("authentication required: run 'marbor login', or pass --username/--password (or set MARBOR_USERNAME+MARBOR_PASSWORD)")
-	}
-	var buf bytes.Buffer
-	mw := multipart.NewWriter(&buf)
-	part, err := mw.CreateFormFile("file", filename)
-	if err != nil {
-		return userErrorf("building upload request: %v", err)
-	}
-	if _, err := io.Copy(part, r); err != nil {
-		return userErrorf("reading local file: %v", err)
-	}
-	if err := mw.Close(); err != nil {
-		return userErrorf("building upload request: %v", err)
-	}
-	req, err := http.NewRequest(http.MethodPost, c.BaseURL+"/admin/backup/upload", &buf)
-	if err != nil {
-		return userErrorf("building request: %v", err)
-	}
-	req.Header.Set("Content-Type", mw.FormDataContentType())
-	req.Header.Set("Authorization", "Bearer "+c.Token)
-	resp, err := c.HTTPClient.Do(req)
-	if err != nil {
-		return serverErrorf("could not reach %s: %v", c.BaseURL, err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		return userErrorf("%s", readErrorMessage(resp.Body))
-	}
-	return nil
-}
-
 // AnalyticsSummary calls GET /admin/analytics, returning the raw JSON body
 // (hourly analytics + per-model stats - a large, purely-informational
 // dashboard aggregate; see ModelCatalog's doc comment for why this stays
@@ -2446,11 +2369,15 @@ func (c *Client) AnalyticsExport(exportType, format string) (filename string, da
 	if format == "csv" {
 		filename = "analytics-export.csv"
 	}
-	if m := backupContentDispositionRE.FindStringSubmatch(resp.Header.Get("Content-Disposition")); len(m) == 2 {
-		filename = m[1]
+	if m := contentDispositionNameRE.FindStringSubmatch(resp.Header.Get("Content-Disposition")); len(m) == 2 {
+		filename = filepath.Base(m[1])
 	}
 	return filename, data, nil
 }
+
+// contentDispositionNameRE extracts the filename from a
+// `Content-Disposition: attachment; filename="..."` response header.
+var contentDispositionNameRE = regexp.MustCompile(`filename="([^"]+)"`)
 
 // CloudSavings mirrors GET /admin/metrics/savings' response shape.
 // CloudSpentUSD and SavedUSD are nullable pointers because the server sends

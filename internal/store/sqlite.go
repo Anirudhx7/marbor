@@ -1,10 +1,12 @@
 package store
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/url"
@@ -40,6 +42,7 @@ const CurrentSchemaVersion = 1
 // sqliteStore is the SQLite-backed Store implementation.
 type sqliteStore struct {
 	db        *sql.DB
+	path      string // database file path; empty for :memory:
 	secretKey []byte // AES-256 key for at-rest secret encryption, see secretbox.go
 
 	// prefixLocalityWrites counts AppendPrefixLocality calls so the trim
@@ -98,7 +101,11 @@ func Open(path string) (Store, error) {
 		return nil, fmt.Errorf("store: %w", err)
 	}
 
-	s := &sqliteStore{db: db, secretKey: secretKey}
+	filePath := path
+	if memoryDB {
+		filePath = ""
+	}
+	s := &sqliteStore{db: db, path: filePath, secretKey: secretKey}
 	if err := s.migrate(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("store: migrate: %w", err)
@@ -124,12 +131,54 @@ func Open(path string) (Store, error) {
 // SQLite's VACUUM INTO. This runs against the same live *sql.DB handle Open
 // configured with WAL + busy_timeout, so it is safe alongside concurrent
 // readers and writers - no separate lock or file copy is needed. path must
-// not already exist; VACUUM INTO errors if it does.
-func (s *sqliteStore) BackupTo(path string) error {
-	if _, err := s.db.Exec(`VACUUM INTO ?`, path); err != nil {
+// not exist or must be an empty file; VACUUM INTO errors on a non-empty
+// target, and accepting an empty one lets a caller create it with 0600 first.
+//
+// VACUUM INTO reads the whole database inside one read transaction. In WAL
+// mode a checkpoint cannot move past the oldest active reader, so for the
+// duration of the snapshot the write-ahead log can only grow (by the write
+// rate times the run time). Once the snapshot is done the reader is gone, and
+// the best-effort TRUNCATE checkpoint below reclaims that growth right away
+// instead of waiting for the next automatic checkpoint.
+//
+// ctx cancels a snapshot that is running: SQLite is asked to interrupt the
+// statement, so a shutdown or a restore does not have to wait for the whole
+// database to be copied. A cancelled snapshot leaves a partial file at path for
+// the caller to remove.
+func (s *sqliteStore) BackupTo(ctx context.Context, path string) error {
+	if _, err := s.db.ExecContext(ctx, `VACUUM INTO ?`, path); err != nil {
 		return fmt.Errorf("store: backup to %s: %w", path, err)
 	}
+	if s.path != "" {
+		if _, err := s.db.ExecContext(context.WithoutCancel(ctx), `PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
+			log.Printf("store: post-backup WAL checkpoint failed (non-fatal): %v", err)
+		}
+	}
 	return nil
+}
+
+// Footprint returns the sizes of the database file and its WAL sidecar. Open
+// appends its own pragma query string to the path it is given, so a path is
+// always a plain file path (never a file: URI) and the file Stat sees here is
+// the file SQLite has open. A missing WAL is normal (zero); any other WAL stat
+// failure is returned rather than guessed at.
+func (s *sqliteStore) Footprint() (dbBytes, walBytes int64, err error) {
+	if s.path == "" {
+		return 0, 0, nil
+	}
+	st, err := os.Stat(s.path)
+	if err != nil {
+		return 0, 0, err
+	}
+	dbBytes = st.Size()
+	w, werr := os.Stat(s.path + "-wal")
+	switch {
+	case werr == nil:
+		walBytes = w.Size()
+	case !errors.Is(werr, os.ErrNotExist):
+		return 0, 0, werr
+	}
+	return dbBytes, walBytes, nil
 }
 
 // ValidateBackupFile opens path as its own independent SQLite connection,
@@ -149,32 +198,52 @@ func (s *sqliteStore) BackupTo(path string) error {
 // marbor.db - a bad or incompatible file has to fail loudly here, before any
 // swap happens.
 func ValidateBackupFile(path string) error {
+	return ValidateBackupFileContext(context.Background(), path)
+}
+
+// ValidateBackupFileContext is ValidateBackupFile that stops when ctx is done
+// (a client that gave up, a shutdown). Every error it returns is a
+// *BackupInvalidError whose Reason is a fixed sentence without a path, so a
+// caller can show Reason to the operator and log Err; a cancelled context
+// returns the context's error instead.
+func ValidateBackupFileContext(ctx context.Context, path string) error {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
-		return fmt.Errorf("open %s: %w", path, err)
+		return invalidBackup("could not open the file as a database", err)
 	}
 	defer db.Close()
+	// quick_check runs on a single connection; the pool is pointless here.
+	db.SetMaxOpenConns(1)
 	var result string
-	if err := db.QueryRow(`PRAGMA quick_check`).Scan(&result); err != nil {
-		return fmt.Errorf("quick_check on %s: %w", path, err)
+	if err := db.QueryRowContext(ctx, `PRAGMA quick_check`).Scan(&result); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+		return invalidBackup("not a readable SQLite database", err)
 	}
 	if result != "ok" {
-		return fmt.Errorf("quick_check on %s reported: %s", path, result)
+		return invalidBackup("database integrity check failed", errors.New(result))
 	}
 
 	var raw string
-	if err := db.QueryRow(`SELECT value FROM settings WHERE key = 'schema_version'`).Scan(&raw); err != nil {
-		return fmt.Errorf("%s has no schema_version - not a marbor.db backup (a foreign or pre-schema-tracking SQLite file)", path)
+	if err := db.QueryRowContext(ctx, `SELECT value FROM settings WHERE key = 'schema_version'`).Scan(&raw); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+		return invalidBackup("not a marbor.db backup (no schema version; a foreign or pre-schema-tracking SQLite file)", err)
 	}
 	version, convErr := strconv.Atoi(raw)
 	if convErr != nil {
-		return fmt.Errorf("%s has a malformed schema_version %q - not a valid marbor.db backup", path, raw)
+		return invalidBackup("not a valid marbor.db backup (malformed schema version)", convErr)
 	}
 	if version > CurrentSchemaVersion {
-		return fmt.Errorf("marbor.db schema_version %d is newer than this binary supports (%d) - refusing to start; upgrade the binary or restore an older marbor.db backup", version, CurrentSchemaVersion)
+		return invalidBackup(fmt.Sprintf("marbor.db schema_version %d is newer than this binary supports (%d) - refusing to start; upgrade the binary or restore an older marbor.db backup", version, CurrentSchemaVersion), nil)
 	}
 	return nil
 }
+
+// DBPath returns the database file path ("" for an in-memory store).
+func (s *sqliteStore) DBPath() string { return s.path }
 
 func (s *sqliteStore) migrate() error {
 	// Settings table must exist before the version gate can read it, even on
