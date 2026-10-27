@@ -178,11 +178,12 @@ export function Activity() {
     return f;
   }, [fromPicker, toPicker, kindFilter, actionFilter, userFilter, debouncedTarget, debouncedSourceIp, tz]);
 
-  // full: a new list (first load, filter change, manual Refresh). refresh: the
-  // background poll, merged into what is on screen. append: Load more, which
-  // must say which list it was requested from.
+  // full: a new list (first load or filter change). refresh: the background
+  // poll or the Refresh button, merged into what is on screen. append: Load
+  // more, which must say which list it was requested from.
   type LoadOpts =
-    | { mode?: 'full' | 'refresh'; active?: boolean }
+    | { mode?: 'full'; active?: boolean }
+    | { mode: 'refresh'; active?: boolean; manual?: boolean }
     | { mode: 'append'; before: string; beforeId?: number; epoch: number; active?: boolean };
 
   const loadActivity = useCallback(async (opts: LoadOpts = {}) => {
@@ -214,6 +215,9 @@ export function Activity() {
     } else {
       epoch = epochRef.current;
     }
+    // The Refresh button keeps the rows on screen and counts as the operator
+    // acknowledging a restart note.
+    if (opts.mode === 'refresh' && opts.manual) setListRestarted(false);
     if (!silent && active) setLoading(true);
     if (active) {
       inFlightRef.current += 1;
@@ -229,8 +233,8 @@ export function Activity() {
       if (!active || !mountedRef.current) return;
       const curPath = currentAppPath();
       if (!(curPath === '/activity' || curPath.startsWith('/activity') || curPath === '/system-audit')) return;
-      // The list changed while this was in flight (new filters, manual
-      // Refresh, restart): the result belongs to a list that is gone.
+      // The list changed while this was in flight (new filters or a
+      // restart): the result belongs to a list that is gone.
       if (mode === 'full' ? isStaleEpoch(fullSeq, fullSeqRef.current) : isStaleEpoch(epoch, epochRef.current)) return;
       if (opts.mode === 'append') {
         const next = applyOlderPage(feedRef.current, audit, PAGE_LIMIT);
@@ -398,7 +402,7 @@ export function Activity() {
             </span>
           )}
           <button
-            onClick={() => loadActivity({})}
+            onClick={() => loadActivity({ mode: 'refresh', manual: true })}
             disabled={loading}
             className="flex items-center gap-2 px-3 py-2 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer disabled:opacity-50"
           >

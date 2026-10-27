@@ -44,7 +44,7 @@ export const EMPTY_FEED: ActivityFeed = { entries: [], hasMore: false };
 // - Empty fresh page: returns current as is. With rows loaded it intentionally
 //   never wipes what is on screen, since an empty page could be transient. A
 //   log the server really emptied clears on the next full load (filter change
-//   or manual Refresh).
+//   or a filter change).
 export function applyRefresh(
   current: ActivityFeed,
   fresh: readonly SystemAuditEntry[],
@@ -105,7 +105,7 @@ export function isStaleEpoch(captured: number, latest: number): boolean {
   return captured !== latest;
 }
 
-// A full load (filter change, manual Refresh) starts a new list: it moves the
+// A full load (first load or filter change) starts a new list: it moves the
 // epoch on (a restart does too) and its own sequence, which only another full
 // load changes, so a restart can never make a full load look superseded; so any Load more or background refresh still in flight is
 // discarded, and it empties the feed so a failed load can never leave the

@@ -125,7 +125,7 @@ test('a refresh that restarts the list invalidates a Load more in flight', () =>
   assert.equal(isStaleEpoch(captured, epoch), true);
 });
 
-test('a full load (manual Refresh or filter change) invalidates a Load more or older load in flight', () => {
+test('a full load (filter change) invalidates a Load more or older load in flight', () => {
   const loadMoreEpoch = 5;
   const first = startFullLoad(5, 0);
   assert.equal(isStaleEpoch(loadMoreEpoch, first.epoch), true);
@@ -171,4 +171,23 @@ test('rowKeys separator cannot collide with a key that already ends in a counter
   const b = { ...noId(1), details: 'x' };
   const keys = rowKeys([b, b, a]);
   assert.equal(new Set(keys).size, 3);
+});
+
+test('a manual Refresh goes through applyRefresh: loaded pages stay and a Load more in flight still applies', () => {
+  // Load more starts against epoch 4, then the Refresh button folds in new rows.
+  const epoch = 4;
+  const refreshed = applyRefresh(feed(range(300, 101)), range(305, 206), LIMIT);
+  assert.equal(refreshed.restarted, false);
+  assert.deepEqual(ids(refreshed.feed.entries), ids(range(305, 101)));
+  // No epoch move without a restart, so the late older page is applied and deduped.
+  assert.equal(isStaleEpoch(epoch, epoch), false);
+  const late = applyOlderPage(refreshed.feed, range(100, 1), LIMIT);
+  assert.deepEqual(ids(late.entries), ids(range(305, 1)));
+});
+
+test('a manual Refresh that restarts the list drops the Load more in flight', () => {
+  const epoch = 4;
+  const refreshed = applyRefresh(feed(range(300, 201)), range(900, 801), LIMIT);
+  assert.equal(refreshed.restarted, true);
+  assert.equal(isStaleEpoch(epoch, epoch + 1), true);
 });
