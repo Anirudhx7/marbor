@@ -418,6 +418,9 @@ func (g *growingHold) ensure(total int64) error {
 	l := &g.s.backupSpace
 	l.mu.Lock()
 	held := g.hold.bytes
+	// Every call is a sign the write is alive: keep the hold from expiring under
+	// a long transfer that already has all the room it needs.
+	g.hold.expires = time.Now().Add(holdTTL)
 	l.mu.Unlock()
 	if need <= held {
 		return nil

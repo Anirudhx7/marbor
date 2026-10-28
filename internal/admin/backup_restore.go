@@ -83,10 +83,10 @@ func (g *rateGuard) Read(p []byte) (int, error) {
 	start := g.now()
 	n, err := g.r.Read(p)
 	spent := g.now().Sub(start)
+	g.total += spent
 	if err != nil {
 		return n, err
 	}
-	g.total += spent
 	if g.total > g.limit {
 		return n, errUploadTooSlow
 	}
@@ -162,6 +162,7 @@ func respondBackupFileError(w http.ResponseWriter, r *http.Request, prefix strin
 	case r.Context().Err() != nil:
 		log.Printf("admin: backup request abandoned: the requester disconnected")
 	case errors.Is(err, errBackupDeferred):
+		w.Header().Set("Retry-After", "30")
 		w.Header().Set("Retry-After", "30")
 		writeJSONError(w, http.StatusConflict, "another backup, upload or restore check is using the disk - try again when it finishes")
 	case errors.As(err, &refused):
@@ -344,6 +345,7 @@ func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
 	dc.clearRead()
 	dc.clearWrite()
 	if !s.tryHeavy() {
+		w.Header().Set("Retry-After", "30")
 		writeJSONError(w, http.StatusConflict, "another backup upload or restore check is already running - try again when it finishes")
 		return
 	}
@@ -532,8 +534,10 @@ func (s *Server) handleUploadBackup(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	dc := s.newDeadlineControl(w)
+	dc.clearRead()
 	dc.clearWrite()
 	if !s.tryHeavy() {
+		w.Header().Set("Retry-After", "30")
 		writeJSONError(w, http.StatusConflict, "another backup upload or restore check is already running - try again when it finishes")
 		return
 	}

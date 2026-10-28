@@ -39,7 +39,7 @@ const (
 	verifiedCacheMax = 256
 	verifiedMaxAge   = 24 * time.Hour
 
-	reasonNoTail   = "the fingerprint record at the end of the file is missing or does not match its content"
+	reasonNoTail   = "the fingerprint record at the end of the file does not match its content"
 	reasonNotFile  = "not a regular file"
 	reasonNotBackp = "not a SQLite database or a gzip of one"
 	reasonName     = "the file name says one format but the content is the other"
@@ -153,19 +153,16 @@ func (s *Server) noteVerified(path, fp string, raw int64) {
 
 // verifyLimit is how far a compressed file may expand while it is only being
 // read (nothing is written, so free space does not apply).
-// It fails closed: when the live database size cannot be read, or the limit
-// cannot be worked out, the file is not read at all (an error, shown as "could
-// not be verified") rather than read against a guessed bound.
+// It fails closed: when the limit cannot be worked out, the file is not read at
+// all (an error, shown as "could not be verified") rather than read against a
+// guessed bound.
 func (s *Server) verifyLimit(compressedSize int64) (int64, error) {
-	liveDB, _, err := s.st.Footprint()
-	if err != nil {
-		log.Printf("admin: could not read the database size to bound a backup verification: %v", err)
-		return 0, fmt.Errorf("could not work out how far the backup may expand: %w", err)
-	}
+	// No live-database floor here: that floor exists so a restore of a highly
+	// compressible database is not refused, and verification must apply the plain
+	// expansion bound instead so it cannot read further than a bomb check allows.
 	limit, derr := store.DecompressLimit(store.DecompressPlan{
 		FreeBytes:       1 << 62,
 		CompressedBytes: compressedSize,
-		LiveDBBytes:     liveDB,
 		HardCap:         maxDecompressedBackupBytes,
 	})
 	if derr != nil {
@@ -231,7 +228,10 @@ func (s *Server) verifyBackupFileOpts(ctx context.Context, path string, useCache
 		}
 		fp, raw, gerr := store.FingerprintGzipFile(ctx, f, limit)
 		switch {
-		case gerr == nil && (tail == "" || tail != fp):
+		case gerr == nil && tail != "" && tail != fp:
+			// A tail that does not match the content is wrong. A missing tail is
+			// not: a restore decompresses by content and never reads it, so an
+			// intact stream without one (made by the gzip tool) is a good backup.
 			e = verifiedEntry{reason: reasonNoTail}
 		case gerr == nil:
 			e = verifiedEntry{fp: fp, raw: raw}
@@ -247,6 +247,16 @@ func (s *Server) verifyBackupFileOpts(ctx context.Context, path string, useCache
 				break
 			}
 			return verifiedEntry{}, herr
+		}
+		// The header says little about the pages: run the same integrity and schema
+		// check a restore runs, so a file with a good header and damaged content is
+		// not counted as a kept backup.
+		if verr := store.ValidateBackupFileContext(ctx, path); verr != nil {
+			if errors.As(verr, &bi) {
+				e = verifiedEntry{reason: bi.Reason}
+				break
+			}
+			return verifiedEntry{}, verr
 		}
 		fp, ferr := store.FileFingerprintFile(ctx, f)
 		if ferr != nil {
@@ -271,8 +281,8 @@ func (s *Server) verifyBackupFileOpts(ctx context.Context, path string, useCache
 
 // integrityOf is the cheap integrity label for the list: a cached full
 // verification when there is one, otherwise structural checks only. A
-// compressed file without a fingerprint record at its end was not written by
-// marbor (or is damaged) and is labelled invalid at once.
+// compressed file without a fingerprint record is not judged here: the full
+// verification decides by content.
 func (s *Server) integrityOf(path, name string) string {
 	f, fi, err := openBackupFile(path) // the safe opener: no symlink, regular files only
 	if err != nil {
@@ -295,9 +305,6 @@ func (s *Server) integrityOf(path, name string) string {
 	}
 	switch {
 	case strings.HasSuffix(name, ".gz") && kind == store.BackupKindGzip:
-		if tail == "" {
-			return integrityInvalid
-		}
 		return integrityUnverified
 	case !strings.HasSuffix(name, ".gz") && kind == store.BackupKindPlain:
 		if store.CheckPlainBackupHeaderFile(f) != nil {

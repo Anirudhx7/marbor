@@ -68,16 +68,17 @@ func newServerWithDir(t *testing.T) (*Server, string) {
 
 // ---- verification ------------------------------------------------------------------
 
-func TestVerifyLimit_FailsClosedWhenTheDatabaseSizeIsUnknown(t *testing.T) {
+func TestVerifyLimit_UsesThePlainExpansionBoundWithoutTheLiveDatabaseFloor(t *testing.T) {
 	base, _ := newBackupTestServer(t)
+	// The live database size is not consulted: a store that cannot report it
+	// still gets the plain ratio bound.
 	s := NewServer(base.router, nil, config.Config{}, footprintFailStore{base.st})
-	if _, err := s.verifyLimit(1 << 20); err == nil {
-		t.Fatal("verifyLimit returned a bound without knowing the database size")
+	got, err := s.verifyLimit(1 << 20)
+	if err != nil {
+		t.Fatal(err)
 	}
-	dir := t.TempDir()
-	path := writeGz(t, dir, backupFilename(time.Now()), validSQLiteBytes(t))
-	if _, err := s.verifyBackupFile(context.Background(), path); err == nil {
-		t.Fatal("a compressed backup was read without a bound")
+	if want := int64(1<<20) * store.MaxBackupExpansionRatio; got != want {
+		t.Fatalf("verifyLimit = %d, want %d", got, want)
 	}
 }
 
@@ -860,7 +861,7 @@ func TestHandOffRestore_ClosedSlotLeavesNoMarkerAndIdentityIsTracked(t *testing.
 		t.Fatal("a refused hand-off left a pending marker")
 	}
 
-	// A normal hand-off records the identity of what was validated.
+	// A normal hand-off passes the staged path to main.
 	s2, dbPath2 := newBackupTestServer(t)
 	ch2 := make(chan string, 1)
 	s2.SetRestoreChannel(ch2)
@@ -876,18 +877,6 @@ func TestHandOffRestore_ClosedSlotLeavesNoMarkerAndIdentityIsTracked(t *testing.
 	}
 	if got := <-ch2; got != staged2 {
 		t.Fatalf("handed off %q", got)
-	}
-	if !s2.StagedRestoreUnchanged(staged2) {
-		t.Fatal("an untouched staged file was not recognised")
-	}
-	if s2.StagedRestoreUnchanged(staged2 + "x") {
-		t.Fatal("another path was recognised")
-	}
-	if err := os.WriteFile(staged2, append(validSQLiteBytes(t), 0), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if s2.StagedRestoreUnchanged(staged2) {
-		t.Fatal("a staged file that changed size was recognised as unchanged")
 	}
 }
 

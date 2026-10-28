@@ -47,7 +47,7 @@ func TestSwapStagedRestore_ReplacesLiveAndRemovesSidecars(t *testing.T) {
 	if err := os.WriteFile(staged, raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := swapStagedRestore(dbPath, staged, false); err != nil {
+	if _, err := swapStagedRestore(dbPath, staged); err != nil {
 		t.Fatalf("swapStagedRestore = %v", err)
 	}
 	if got, _ := os.ReadFile(dbPath); !bytes.Equal(got, raw) {
@@ -76,7 +76,7 @@ func TestSwapStagedRestore_RefusesDamagedStageAndKeepsLive(t *testing.T) {
 	if err := os.WriteFile(staged, []byte("this is not a sqlite database at all"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := swapStagedRestore(dbPath, staged, false); err == nil {
+	if _, err := swapStagedRestore(dbPath, staged); err == nil {
 		t.Fatal("a damaged staged file must not be swapped in")
 	}
 	if got, _ := os.ReadFile(dbPath); !bytes.Equal(got, live) {
@@ -108,7 +108,7 @@ func TestSwapStagedRestore_FullValidationAfterDrain(t *testing.T) {
 	if err := os.WriteFile(staged, bad, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := swapStagedRestore(dbPath, staged, false); err == nil {
+	if _, err := swapStagedRestore(dbPath, staged); err == nil {
 		t.Fatal("a staged file with corrupt pages must not be swapped in")
 	}
 	if got, _ := os.ReadFile(dbPath); string(got) != "live" {
@@ -134,7 +134,7 @@ func TestSwapStagedRestore_RefusesNonEmptyOldWAL(t *testing.T) {
 	if err := os.WriteFile(staged, newSnapshotBytes(t), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, err := swapStagedRestore(dbPath, staged, false)
+	_, err := swapStagedRestore(dbPath, staged)
 	if err == nil || !strings.Contains(err.Error(), "write-ahead") {
 		t.Fatalf("want a write-ahead refusal, got %v", err)
 	}
@@ -156,7 +156,7 @@ func TestSwapStagedRestore_MissingStageFails(t *testing.T) {
 	if err := os.WriteFile(dbPath, []byte("live"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := swapStagedRestore(dbPath, dbPath+".restoring-eeee", false); err == nil {
+	if _, err := swapStagedRestore(dbPath, dbPath+".restoring-eeee"); err == nil {
 		t.Fatal("missing staged file must fail")
 	}
 	if got, _ := os.ReadFile(dbPath); string(got) != "live" {
@@ -164,11 +164,10 @@ func TestSwapStagedRestore_MissingStageFails(t *testing.T) {
 	}
 }
 
-// When the caller can prove the staged file is the one that was validated, the
-// swap repeats only the header check: a header-valid file with damaged pages is
-// moved into place, which saves re-reading a large file in full. A file without
-// a SQLite header is refused either way.
-func TestSwapStagedRestore_UnchangedStageChecksOnlyTheHeader(t *testing.T) {
+// The swap always validates the staged file in full: a file with a valid header
+// but damaged pages is refused and the live database is left alone, as is a file
+// without a SQLite header.
+func TestSwapStagedRestore_RefusesDamagedStage(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "marbor.db")
 	staged := dbPath + ".restoring-ffff"
@@ -182,24 +181,51 @@ func TestSwapStagedRestore_UnchangedStageChecksOnlyTheHeader(t *testing.T) {
 	if err := os.WriteFile(staged, damaged, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := swapStagedRestore(dbPath, staged, true); err != nil {
-		t.Fatalf("an unchanged staged file was refused: %v", err)
+	if _, err := swapStagedRestore(dbPath, staged); err == nil {
+		t.Fatal("a staged file with damaged pages was swapped in")
 	}
-	if got, _ := os.ReadFile(dbPath); !bytes.Equal(got, damaged) {
-		t.Error("the staged file was not moved into place")
+	if got, _ := os.ReadFile(dbPath); string(got) != "live" {
+		t.Error("live database changed by a refused swap")
+	}
+	if _, err := os.Stat(staged); !os.IsNotExist(err) {
+		t.Error("the refused staged file was not removed")
 	}
 
 	staged2 := dbPath + ".restoring-gggg"
-	if err := os.WriteFile(dbPath, []byte("live"), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	if err := os.WriteFile(staged2, []byte("not a database at all, just text"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := swapStagedRestore(dbPath, staged2, true); err == nil {
+	if _, err := swapStagedRestore(dbPath, staged2); err == nil {
 		t.Fatal("a staged file without a SQLite header was accepted")
 	}
 	if got, _ := os.ReadFile(dbPath); string(got) != "live" {
 		t.Error("live database changed by a refused swap")
+	}
+}
+
+// A symbolic link put in place of the staged file is refused: the rename would
+// otherwise make the link, not a validated file, the database.
+func TestSwapStagedRestore_RefusesSymlinkStage(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "marbor.db")
+	staged := dbPath + ".restoring-hhhh"
+	target := filepath.Join(dir, "elsewhere.db")
+	if err := os.WriteFile(target, newSnapshotBytes(t), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dbPath, []byte("live"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, staged); err != nil {
+		t.Skipf("cannot create a symbolic link here: %v", err)
+	}
+	if _, err := swapStagedRestore(dbPath, staged); err == nil {
+		t.Fatal("a symbolic link was accepted as the staged file")
+	}
+	if got, _ := os.ReadFile(dbPath); string(got) != "live" {
+		t.Error("live database changed by a refused swap")
+	}
+	if _, err := os.Stat(target); err != nil {
+		t.Errorf("the link target must not be removed: %v", err)
 	}
 }

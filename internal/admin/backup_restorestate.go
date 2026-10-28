@@ -212,10 +212,6 @@ func (s *Server) handOffRestore(staged, ref, file string) error {
 		return errRestoreClosed
 	}
 	dbPath := s.st.DBPath()
-	info, statErr := os.Lstat(staged) // what was validated, for the final identity check
-	if statErr != nil {
-		return newBackupFailure("could not read the staged restore file", statErr)
-	}
 	data, err := json.Marshal(restorePending{Ref: ref, File: cleanMarkerText(file), Staged: filepath.Base(staged), At: time.Now()})
 	if err != nil {
 		return newBackupFailure("could not record the pending restore", err)
@@ -241,29 +237,7 @@ func (s *Server) handOffRestore(staged, ref, file string) error {
 	}
 	s.restoreState = restoreHandedOff
 	s.restoreStaged = staged
-	s.restoreStagedInfo = info
 	return nil
-}
-
-// StagedRestoreUnchanged reports whether the file at path is still the one that
-// was validated when the restore was accepted: same file, size and modification
-// time. main uses it to skip a second full validation after the servers have
-// drained (the file sits next to the live database, in a directory only marbor
-// writes to; a full re-read of a multi-gigabyte file would hold the swap while
-// nothing is serving). When identity cannot be proven, main validates in full.
-func (s *Server) StagedRestoreUnchanged(path string) bool {
-	s.restoreMu.Lock()
-	want := s.restoreStagedInfo
-	staged := s.restoreStaged
-	s.restoreMu.Unlock()
-	if want == nil || staged != path {
-		return false
-	}
-	cur, err := os.Lstat(path)
-	if err != nil {
-		return false
-	}
-	return os.SameFile(want, cur) && cur.Size() == want.Size() && cur.ModTime().Equal(want.ModTime())
 }
 
 // MarkRestoreNotCarriedOut records in the pending marker that the restore was

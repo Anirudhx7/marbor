@@ -251,6 +251,7 @@ func (s *Server) handleBackupNow(w http.ResponseWriter, r *http.Request) {
 	}
 	defer s.releaseManualSlot()
 	if !s.tryRun() {
+		w.Header().Set("Retry-After", "30")
 		writeJSONError(w, http.StatusConflict, "a backup is already running - try again when it finishes")
 		return
 	}
@@ -346,6 +347,7 @@ func (s *Server) handleDeleteBackup(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, os.ErrNotExist), errors.Is(err, errNotRegularBackup):
 		writeJSONError(w, http.StatusNotFound, "backup file not found")
 	case errors.Is(err, errBackupInUse):
+		w.Header().Set("Retry-After", "30")
 		writeJSONError(w, http.StatusConflict, "this backup is being downloaded or restored right now - try again when that finishes")
 	default:
 		writeCorrelatedError(w, r, http.StatusInternalServerError, "could not delete the backup file", err)
@@ -359,6 +361,7 @@ func respondBackupBuildError(w http.ResponseWriter, r *http.Request, err error) 
 	var failure *backupFailure
 	switch {
 	case errors.Is(err, errBackupDeferred):
+		w.Header().Set("Retry-After", "30")
 		w.Header().Set("Retry-After", "30")
 		writeJSONError(w, http.StatusConflict, "another backup, upload or restore check is using the disk - try again when it finishes")
 	case r.Context().Err() != nil:

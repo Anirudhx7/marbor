@@ -1014,10 +1014,9 @@ func main() {
 			// st.Close() (deferred near store.Open above) never fires on this
 			// path, so close what still needs closing explicitly before calling it.
 			auditLog.Close()
-			// Whether the staged file is still the one that was validated is decided
-			// now, after the drain: only a file whose identity cannot be proven is read
-			// in full again (see swapStagedRestore).
-			performRestore(dbPath, pendingRestorePath, st, adminSrv.StagedRestoreUnchanged(pendingRestorePath))
+			// The staged file is validated in full again inside the swap, after the
+			// drain (see swapStagedRestore).
+			performRestore(dbPath, pendingRestorePath, st)
 			// performRestore always calls os.Exit itself; never returns.
 		}
 
@@ -1053,7 +1052,7 @@ func adminChain(h http.Handler) http.Handler {
 // because the servers are already shut down and the store is closed -
 // restarting is the only way back to a serving process, and a bare-metal run
 // with no supervisor stays down until started by hand.
-func performRestore(dbPath, stagedPath string, st store.Store, unchanged bool) {
+func performRestore(dbPath, stagedPath string, st store.Store) {
 	var swapErr error
 	note := ""
 	if err := st.Close(); err != nil {
@@ -1066,7 +1065,7 @@ func performRestore(dbPath, stagedPath string, st store.Store, unchanged bool) {
 			log.Printf("WARNING: could not remove the staged restore file: %v", rmErr)
 		}
 	} else {
-		note, swapErr = swapStagedRestore(dbPath, stagedPath, unchanged)
+		note, swapErr = swapStagedRestore(dbPath, stagedPath)
 	}
 	if swapErr != nil {
 		// The staged file is gone; say so in the pending marker, so that if the
@@ -1093,14 +1092,12 @@ func performRestore(dbPath, stagedPath string, st store.Store, unchanged bool) {
 }
 
 // swapStagedRestore replaces dbPath with stagedPath by an atomic rename. The
-// staged file was validated in full (SQLite integrity and schema) before the
-// restore was accepted and sat next to the database, in a directory only marbor
-// writes to, while marbor drained. When the caller can prove it is still that
-// same file (unchanged: same file, size and modification time), only a header
-// check is repeated here: re-reading a multi-gigabyte file in full would hold
-// the swap while nothing is serving, for a risk the identity check already
-// covers. When identity cannot be proven the full validation runs again, so a
-// file that rotted or was replaced in that window never becomes the database.
+// staged file is validated in full (SQLite integrity and schema) again here,
+// after the servers have drained, so a file that rotted or was replaced between
+// the hand-off and the swap never becomes the database. This costs a few
+// seconds of downtime on a large database and is accepted. A staged path that
+// is not a regular file (for example a symbolic link put in its place) is
+// refused before anything is read.
 // The old write-ahead log must be empty - a clean
 // close leaves none - otherwise the swap is refused: a log left over from the
 // old database would be replayed against the new file. The sidecars are removed
@@ -1111,10 +1108,10 @@ func performRestore(dbPath, stagedPath string, st store.Store, unchanged bool) {
 // note is non-empty when the swap succeeded but needs a caveat: the directory
 // could not be flushed afterwards, so a power loss before the next checkpoint
 // could bring the old database back.
-func swapStagedRestore(dbPath, stagedPath string, unchanged bool) (note string, err error) {
+func swapStagedRestore(dbPath, stagedPath string) (note string, err error) {
 	began := time.Now()
 	defer func() {
-		log.Printf("restore swap took %s (full re-validation: %v)", time.Since(began).Round(time.Millisecond), !unchanged)
+		log.Printf("restore swap took %s", time.Since(began).Round(time.Millisecond))
 	}()
 	defer func() {
 		if err != nil {
@@ -1125,11 +1122,12 @@ func swapStagedRestore(dbPath, stagedPath string, unchanged bool) (note string, 
 			}
 		}
 	}()
-	if unchanged {
-		if herr := checkStagedHeader(stagedPath); herr != nil {
-			return "", fmt.Errorf("the staged restore file is no longer a valid database: %w", herr)
-		}
-	} else if verr := store.ValidateBackupFileContext(context.Background(), stagedPath); verr != nil {
+	if fi, lerr := os.Lstat(stagedPath); lerr != nil {
+		return "", fmt.Errorf("the staged restore file is not available: %w", lerr)
+	} else if !fi.Mode().IsRegular() {
+		return "", errors.New("the staged restore file is not a regular file")
+	}
+	if verr := store.ValidateBackupFileContext(context.Background(), stagedPath); verr != nil {
 		return "", fmt.Errorf("the staged restore file is no longer a valid database: %w", verr)
 	}
 	for _, side := range []string{dbPath + "-wal", dbPath + "-shm"} {
@@ -1156,17 +1154,6 @@ func swapStagedRestore(dbPath, stagedPath string, unchanged bool) (note string, 
 		note = "the database was replaced, but the directory could not be flushed to disk; if the machine loses power before the next checkpoint the old database may come back"
 	}
 	return note, nil
-}
-
-// checkStagedHeader is the cheap check made when the staged file's identity is
-// proven: it still starts with a sane SQLite header.
-func checkStagedHeader(path string) error {
-	f, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	return store.CheckPlainBackupHeaderFile(f)
 }
 
 // syncDirOf fsyncs the directory holding path. Windows cannot open a directory

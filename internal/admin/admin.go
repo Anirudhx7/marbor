@@ -20,7 +20,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"regexp"
 	"runtime"
 	"sort"
@@ -230,7 +229,6 @@ type Server struct {
 	scratchLeftovers   atomic.Int64                               // scratch files this process could not remove; swept at the next start
 	deadlineObs        atomic.Pointer[func(op string, err error)] // test seam: sees every connection deadline change a transfer makes
 	prunePending       [2]pruneRequest                            // a retention pass asked for while one was running; guarded by backupMu
-	restoreStagedInfo  os.FileInfo                                // what the handed-off staged file looked like when it was validated; guarded by restoreMu
 	restoreMu          sync.Mutex                                 // guards restoreState and restoreStaged
 	restoreState       restoreState                               // idle, staging, handed off or closed (see backup_restorestate.go)
 	restoreStaged      string                                     // staged file of the restore handed off to main
