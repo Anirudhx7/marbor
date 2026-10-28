@@ -27,6 +27,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -210,13 +211,38 @@ func backupDirState(dir string) (exists bool, warning string) {
 	case !fi.IsDir():
 		return false, "the configured backup location is not a directory"
 	}
-	if runtime.GOOS == "windows" {
-		return true, ""
+	var warnings []string
+	if w := dirOwnerWarning(fi); w != "" {
+		warnings = append(warnings, w)
 	}
-	if perm := fi.Mode().Perm(); perm&0o077 != 0 {
-		return true, fmt.Sprintf("the backup directory has mode %04o; backups contain API keys and session data, so restrict it to the service user (chmod 700)", perm)
+	if runtime.GOOS != "windows" {
+		if perm := fi.Mode().Perm(); perm&0o077 != 0 {
+			warnings = append(warnings, fmt.Sprintf("the backup directory has mode %04o; backups contain API keys and session data, so restrict it to the service user (chmod 700)", perm))
+		}
 	}
-	return true, ""
+	return true, strings.Join(warnings, "; ")
+}
+
+// dirOwnerWarning reports a backup directory owned by someone other than the
+// service user.
+func dirOwnerWarning(fi os.FileInfo) string {
+	owner, ok := dirOwnerUID(fi)
+	if !ok {
+		return ""
+	}
+	return foreignOwnerWarning(owner, processUID())
+}
+
+// foreignOwnerWarning is the decision behind dirOwnerWarning. A directory owned
+// by another user lets that user replace it with a symlink or swap backup files
+// inside it, redirecting where marbor writes and deleting its own backup names.
+// A root-owned directory is not reported, since only root can change it. The
+// text carries no path (the dashboard already shows the configured directory).
+func foreignOwnerWarning(owner, proc uint32) string {
+	if owner == proc || owner == 0 {
+		return ""
+	}
+	return fmt.Sprintf("the backup directory is owned by another user (uid %d), who could replace it or the backup files in it; use a directory owned by the service account", owner)
 }
 
 // syncDir flushes a directory's entries to disk so a rename or removal inside

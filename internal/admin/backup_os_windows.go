@@ -4,6 +4,7 @@ package admin
 
 import (
 	"errors"
+	"os"
 	"syscall"
 )
 
@@ -21,3 +22,9 @@ const (
 func isDiskFull(err error) bool {
 	return errors.Is(err, errorDiskFull) || errors.Is(err, errorHandleDiskFull)
 }
+
+// dirOwnerUID reports no owner on Windows: access there is governed by the
+// folder's ACL, which marbor does not read.
+func dirOwnerUID(os.FileInfo) (uint32, bool) { return 0, false }
+
+func processUID() uint32 { return 0 }

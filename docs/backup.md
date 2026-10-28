@@ -76,6 +76,10 @@ Settings > Backup & Restore card.
    drive letter, characters Windows forbids, and a path element ending in a dot or a space. Inside it marbor only creates and removes files with its own backup names, never replaces
    an existing backup, and refuses a symlink where it expects a file. The directory itself may be
    a symlink or a mount; point it only at a location the service account should write to.
+   On Linux and macOS marbor also warns, on the Settings card and in `marbor backup list`, when the
+   directory is owned by a user other than the one marbor runs as (root-owned directories are not
+   reported): that owner could replace the directory with a symlink or swap files inside it, so
+   keep it owned by the service account and out of world-writable places such as `/tmp`.
 
 The only compression format is gzip (`.db.gz`), chosen because every machine can open it with
 `gunzip` and marbor stays a single binary with no extra libraries. Plain `.db` backups from earlier
