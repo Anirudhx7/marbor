@@ -910,15 +910,15 @@ export function GPUNodes() {
     setNewNode((prev) => ({ ...prev, ...patch }));
     addModal.edit();
   };
+  // Typed values survive Cancel, close, Escape and backdrop; only the error
+  // and in-flight state reset. A successful add clears the form.
   const openAddModal = () => {
     setActionError(null);
     addModal.reset();
-    setNewNode(EMPTY_NEW_NODE);
     setIsAddModalOpen(true);
   };
   const closeAddModal = () => {
     addModal.reset();
-    setNewNode(EMPTY_NEW_NODE);
     setIsAddModalOpen(false);
   };
   const [nodeToDelete, setNodeToDelete] = useState<string | null>(null);
@@ -1778,6 +1778,7 @@ export function GPUNodes() {
         signals: [],
       });
       setNodes(prev => [...prev, added]);
+      setNewNode(EMPTY_NEW_NODE);
       closeAddModal();
       return;
     }
@@ -1800,13 +1801,14 @@ export function GPUNodes() {
       await addNode(nodeData);
     } catch (err: unknown) {
       // A late failure for a modal the operator already closed is dropped on
-      // purpose: nothing was added and the form it would describe is gone.
+      // purpose: nothing was added and its error would describe a form the operator left.
       if (addModal.finish(token)) addModal.fail([errorMessage(err, 'Failed to add node')]);
       return;
     }
     // The node exists now. Refreshing the list is separate: loadNodes reports
     // its own failure in the page-level banner, so it is never mislabelled as
     // "Failed to add node". A late result for a closed modal must not touch it.
+    setNewNode(EMPTY_NEW_NODE);
     if (addModal.finish(token)) closeAddModal();
     try { await loadNodes(); } catch { /* reported by loadNodes */ }
   };

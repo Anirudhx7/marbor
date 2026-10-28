@@ -186,15 +186,19 @@ export function APIKeys() {
     setNewKeyForm((prev) => ({ ...prev, ...patch }));
     keyModal.edit();
   };
+  // Typed values survive Cancel, close, Escape and backdrop; only the error
+  // and in-flight state reset. A successful create clears the form.
   const openCreateModal = () => {
     keyModal.reset();
-    setNewKeyForm(EMPTY_KEY_FORM);
     setIsCreateModalOpen(true);
   };
   const closeCreateModal = () => {
     keyModal.reset();
-    setNewKeyForm(EMPTY_KEY_FORM);
     setIsCreateModalOpen(false);
+  };
+  const finishCreate = () => {
+    setNewKeyForm(EMPTY_KEY_FORM);
+    closeCreateModal();
   };
 
   const loadKeys = async (active: boolean = true) => {
@@ -321,7 +325,7 @@ export function APIKeys() {
         expiresAt: newKeyForm.expiresAt || null,
       };
       setKeys([demoKey, ...keys]);
-      closeCreateModal();
+      finishCreate();
       return;
     }
 
@@ -339,12 +343,14 @@ export function APIKeys() {
       result = await createKey(newKeyData);
     } catch (e: unknown) {
       // A late failure for a modal the operator already closed is dropped on
-      // purpose: nothing was created and the form it would describe is gone.
+      // purpose: nothing was created and its error would describe a form the operator left.
       if (keyModal.finish(token)) keyModal.fail([errorMessage(e, 'Failed to create key on server')]);
       return;
     }
     // The key exists now and its secret is shown only once, so surface it even
-    // when the modal was closed while the request ran.
+    // when the modal was closed while the request ran. The key exists, so the
+    // typed values are cleared either way.
+    setNewKeyForm(EMPTY_KEY_FORM);
     if (keyModal.finish(token)) closeCreateModal();
     setNewlyCreatedKey(result.key);
     const timer = setTimeout(() => setNewlyCreatedKey(null), 30000);
