@@ -219,6 +219,9 @@ type Server struct {
 	// cloudTokensFlushed is the cloudTokens value last written to the store
 	// (atomic), so a flush can skip the write when nothing changed.
 	cloudTokensFlushed atomic.Int64
+	// flushMu serializes flushCounters so the read-compare-write of the
+	// cloud token marker is safe regardless of how many callers there are.
+	flushMu sync.Mutex
 	// replicaSuggestMu serializes the read-modify-write of the dismissed
 	// replica suggestion list stored in settings.
 	replicaSuggestMu sync.Mutex
@@ -327,12 +330,18 @@ func (s *Server) LoadFromStore() error {
 	// The cloud token count lives in a settings key rather than the counters
 	// table. A database written before it was persisted has no key, which
 	// leaves the count at 0 and the spend figure at "-" instead of guessed.
+	// The store below is unconditional, so this must run before any traffic
+	// and before StartCounterFlush starts.
 	if v, err := s.st.GetSetting(cloudTokensSettingKey); err != nil {
 		if !errors.Is(err, store.ErrNotFound) {
 			log.Printf("store: could not load cloud token count: %v", err)
 		}
 	} else if n, perr := strconv.ParseInt(v, 10, 64); perr != nil || n < 0 {
 		log.Printf("store: ignoring invalid saved cloud token count %q", v)
+		// Best effort: overwrite the bad row so it does not log on every boot.
+		if werr := s.st.SetSetting(cloudTokensSettingKey, "0"); werr != nil {
+			log.Printf("store: could not reset invalid cloud token count: %v", werr)
+		}
 	} else {
 		atomic.StoreInt64(&s.cloudTokens, n)
 		s.cloudTokensFlushed.Store(n)
@@ -449,6 +458,14 @@ func (s *Server) StartCounterFlush(ctx context.Context) {
 const cloudTokensSettingKey = "counters_cloud_tokens"
 
 func (s *Server) flushCounters() {
+	s.flushMu.Lock()
+	defer s.flushMu.Unlock()
+	// Loaded first, before the counters row is written. The persisted token
+	// count is therefore never newer than the counters row it accompanies:
+	// tokens added during this flush are picked up by the next one, and a
+	// crash between the two writes leaves the count behind, so the spend
+	// shows "-" or a slightly low token figure, never an unmeasured number.
+	tok := atomic.LoadInt64(&s.cloudTokens)
 	local := atomic.LoadInt64(&s.localCount)
 	cloud := atomic.LoadInt64(&s.cloudCount)
 	localTok := atomic.LoadInt64(&s.localTokens)
@@ -463,11 +480,7 @@ func (s *Server) flushCounters() {
 	}); err != nil {
 		log.Printf("store: could not persist counters: %v", err)
 	}
-	// The token count is written after the counters row on purpose: a crash
-	// between the two leaves the count behind, so the spend shows "-" or a
-	// slightly low token figure, never a number that was not measured. It is
-	// skipped when nothing changed since the last successful write.
-	tok := atomic.LoadInt64(&s.cloudTokens)
+	// Skipped when nothing changed since the last successful write.
 	if tok == s.cloudTokensFlushed.Load() {
 		return
 	}

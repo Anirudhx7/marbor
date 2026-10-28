@@ -2,6 +2,7 @@ package admin
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -182,5 +183,57 @@ func TestSinceIsUTCOnAnalyticsAndSavings(t *testing.T) {
 			t.Fatalf("%s: status %d", name, w.Code)
 		}
 		assertSinceUTC(t, name, w.Body.Bytes(), s.startTime)
+	}
+}
+
+// failingStore fails the next SetSetting call once, then behaves normally.
+type failingStore struct {
+	store.Store
+	failSetting atomic.Bool
+}
+
+func (f *failingStore) SetSetting(key, value string) error {
+	if f.failSetting.CompareAndSwap(true, false) {
+		return errors.New("injected write failure")
+	}
+	return f.Store.SetSetting(key, value)
+}
+
+// A failed token write must not advance the flush marker, and the value must
+// be retried on the next flush.
+func TestCloudTokensFlushRetriedAfterWriteFailure(t *testing.T) {
+	fs := &failingStore{Store: openCloudTokensStore(t)}
+	s := newTestServer()
+	s.SetStore(fs)
+	s.TrackCloudCostModel("k", "openai", "gpt-x", 0.01, 100)
+
+	fs.failSetting.Store(true)
+	s.flushCounters()
+	if got := s.cloudTokensFlushed.Load(); got != 0 {
+		t.Fatalf("marker advanced to %d after a failed write", got)
+	}
+	if _, err := fs.GetSetting(cloudTokensSettingKey); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("key written despite failure, err = %v", err)
+	}
+
+	s.flushCounters()
+	if got := s.cloudTokensFlushed.Load(); got != 100 {
+		t.Fatalf("marker = %d after retry, want 100", got)
+	}
+	if v, _ := fs.GetSetting(cloudTokensSettingKey); v != "100" {
+		t.Fatalf("stored = %q after retry, want 100", v)
+	}
+}
+
+// An invalid saved count is replaced by a clean "0" so it does not log again
+// on every boot.
+func TestCloudTokensInvalidSavedValueIsReset(t *testing.T) {
+	st := openCloudTokensStore(t)
+	if err := st.SetSetting(cloudTokensSettingKey, "garbage"); err != nil {
+		t.Fatalf("SetSetting: %v", err)
+	}
+	restartedServer(t, st)
+	if v, _ := st.GetSetting(cloudTokensSettingKey); v != "0" {
+		t.Fatalf("stored = %q, want 0", v)
 	}
 }
