@@ -340,10 +340,26 @@ func (s *Server) writeStatusFile(dir string, data []byte) string {
 		}
 		return ""
 	}
-	if dbDir := s.dirOfDB(); dbDir != "" && dbDir != target {
+	if dbDir := s.dirOfDB(); dbDir != "" && !sameDirectory(dbDir, target) {
 		removeQuiet(filepath.Join(dbDir, backupStatusFileName))
 	}
 	return ""
+}
+
+// sameDirectory reports whether a and b are one directory on disk, however they
+// are spelled (a symlink, a different case on Windows, a trailing dot). Two
+// paths that cannot both be inspected are treated as the same directory, so the
+// caller never deletes on a guess.
+func sameDirectory(a, b string) bool {
+	if a == b {
+		return true
+	}
+	ai, aerr := os.Stat(a)
+	bi, berr := os.Stat(b)
+	if aerr != nil || berr != nil {
+		return true
+	}
+	return os.SameFile(ai, bi)
 }
 
 // recordBackupOutcome stores the result of one attempt of the given source in

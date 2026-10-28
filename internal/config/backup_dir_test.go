@@ -34,8 +34,16 @@ func TestValidateBackupTargetDir(t *testing.T) {
 		bad["drive root"] = `C:\`
 		bad["drive relative"] = `C:backups`
 		bad["rooted without drive"] = `\backups`
-		bad["device namespace"] = `\.\C:\backups`
-		bad["extended prefix"] = `\?\C:\backups`
+		bad["device namespace"] = `\\.\C:\backups`
+		bad["extended prefix"] = `\\?\C:\backups`
+		bad["unc device"] = `\\.\UNC\srv\share`
+		bad["reserved device name"] = `C:\backups\CON`
+		bad["reserved name with extension"] = `C:\backups\nul.txt`
+		bad["serial device"] = `C:\backups\com1`
+		bad["stream syntax"] = `C:\backups:stream`
+		bad["trailing dot"] = `C:\backups.`
+		bad["trailing space element"] = `C:\backups \x`
+		bad["wildcard"] = `C:\back*ups`
 	}
 	for name, dir := range bad {
 		if err := ValidateBackupTargetDir(dir); err == nil {

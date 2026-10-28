@@ -71,8 +71,9 @@ Settings > Backup & Restore card.
    is not shown there either; restrict the backup directory with NTFS permissions instead, since a
    backup contains API keys and session data.
 5. The backup directory must be an absolute path. Settings refuses a relative path, a `..`
-   element, control characters, a filesystem root and, on Windows, a device or extended-length
-   path. Inside it marbor only creates and removes files with its own backup names, never replaces
+   element, control characters and a filesystem root. On Windows it also refuses a device or
+   extended-length path, a reserved device name (CON, NUL, COM1 and so on), a colon outside the
+   drive letter, characters Windows forbids, and a path element ending in a dot or a space. Inside it marbor only creates and removes files with its own backup names, never replaces
    an existing backup, and refuses a symlink where it expects a file. The directory itself may be
    a symlink or a mount; point it only at a location the service account should write to.
 

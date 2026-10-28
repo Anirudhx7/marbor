@@ -124,8 +124,21 @@ func stagedRestorePath(dbPath, ref string) string {
 
 // isStagedRestoreName reports whether name is a staged restore file or one of
 // its SQLite sidecars for the database whose base name is dbBase.
+//
+// The match is exact (base, ".restoring-", a 16-hex reference, optional sidecar
+// suffix), so a file an operator keeps next to the database under a similar name
+// is never removed by the start-up sweep.
 func isStagedRestoreName(name, dbBase string) bool {
-	return strings.HasPrefix(name, dbBase+".restoring")
+	rest, ok := strings.CutPrefix(name, dbBase+".restoring-")
+	if !ok {
+		return false
+	}
+	for _, suffix := range []string{"", "-journal", "-wal", "-shm"} {
+		if ref, found := strings.CutSuffix(rest, suffix); found && validRestoreRef(ref) {
+			return true
+		}
+	}
+	return false
 }
 
 // writeFileAtomic replaces path with data: a uniquely named temporary file in
