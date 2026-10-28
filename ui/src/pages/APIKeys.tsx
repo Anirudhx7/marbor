@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Plus, Copy, Trash2, Key, Pencil } from 'lucide-react';
 import { Badge } from '../components/Badge';
@@ -60,8 +60,10 @@ export function APIKeys() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [revokeError, setRevokeError] = useState<string | null>(null);
-  const [newlyCreatedKey, setNewlyCreatedKey] = useState<string | null>(null);
-  const [newKeyDismissTimer, setNewKeyDismissTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
+  // One-time secrets waiting to be shown, oldest first. A queue, so a second
+  // create never overwrites a secret the operator has not copied yet.
+  const [createdKeys, setCreatedKeys] = useState<string[]>([]);
+  const newlyCreatedKey = createdKeys[0] ?? null;
 
   const [editKey, setEditKey] = useState<APIKey | null>(null);
   // dailyUsdCapDisplay/monthlyUsdCapDisplay hold exactly what the admin typed,
@@ -180,6 +182,7 @@ export function APIKeys() {
 
   const [newKeyForm, setNewKeyForm] = useState(EMPTY_KEY_FORM);
   const keyModal = useModalForm();
+  const keyActionRow = useRef<HTMLDivElement>(null);
 
   // Every edit to the create form also clears its error.
   const updateKeyForm = (patch: Partial<typeof EMPTY_KEY_FORM>) => {
@@ -249,11 +252,13 @@ export function APIKeys() {
     };
   }, [demoMode, location.pathname]);
 
+  // Each secret on screen gets its own 30 second timer; showing the next one
+  // (or unmounting) clears the previous timer.
   useEffect(() => {
-    return () => {
-      if (newKeyDismissTimer) clearTimeout(newKeyDismissTimer);
-    };
-  }, [newKeyDismissTimer]);
+    if (newlyCreatedKey === null) return;
+    const timer = setTimeout(() => setCreatedKeys((q) => q.slice(1)), 30000);
+    return () => clearTimeout(timer);
+  }, [newlyCreatedKey]);
 
   const filteredKeys = keys.filter(key =>
     key.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -295,8 +300,7 @@ export function APIKeys() {
   };
 
   const dismissNewKey = () => {
-    setNewlyCreatedKey(null);
-    if (newKeyDismissTimer) clearTimeout(newKeyDismissTimer);
+    setCreatedKeys((q) => q.slice(1));
   };
 
   const handleCreateKey = async () => {
@@ -307,6 +311,9 @@ export function APIKeys() {
     }
     const keyName = values.name;
     const parsedRateLimit = values.rateLimit;
+
+    const token = keyModal.begin();
+    if (token === null) return; // a submit is already in flight
 
     if (demoMode) {
       // Demo mode: fabricate a key locally for UI preview only
@@ -325,7 +332,7 @@ export function APIKeys() {
         expiresAt: newKeyForm.expiresAt || null,
       };
       setKeys([demoKey, ...keys]);
-      finishCreate();
+      if (keyModal.finish(token)) finishCreate();
       return;
     }
 
@@ -336,8 +343,6 @@ export function APIKeys() {
       expires_at: newKeyForm.expiresAt || "",
     };
 
-    const token = keyModal.begin();
-    if (token === null) return; // a submit is already in flight
     let result: Awaited<ReturnType<typeof createKey>>;
     try {
       result = await createKey(newKeyData);
@@ -348,13 +353,15 @@ export function APIKeys() {
       return;
     }
     // The key exists now and its secret is shown only once, so surface it even
-    // when the modal was closed while the request ran. The key exists, so the
-    // typed values are cleared either way.
-    setNewKeyForm(EMPTY_KEY_FORM);
-    if (keyModal.finish(token)) closeCreateModal();
-    setNewlyCreatedKey(result.key);
-    const timer = setTimeout(() => setNewlyCreatedKey(null), 30000);
-    setNewKeyDismissTimer(timer);
+    // when the modal was closed while the request ran. The form is cleared
+    // only when it is still the one that fired this request; a form reopened
+    // meanwhile keeps whatever the operator typed into it.
+    const current = keyModal.finish(token);
+    if (current) {
+      setNewKeyForm(EMPTY_KEY_FORM);
+      closeCreateModal();
+    }
+    setCreatedKeys((q) => [...q, result.key]);
     // Refreshing the list is separate from creating the key: loadKeys reports
     // its own failure in the page-level banner, so it is never mislabelled as
     // "Failed to create key".
@@ -425,7 +432,7 @@ export function APIKeys() {
         <div className="p-4 bg-success/10 border border-success/30 rounded-xl">
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-success mb-2">Key created - copy now, it won't be shown again</p>
+              <p className="text-sm font-semibold text-success mb-2">Key created - copy now, it won't be shown again{createdKeys.length > 1 ? ` (${createdKeys.length - 1} more to show)` : ''}</p>
               <code className="block font-mono text-sm bg-background border border-border rounded-lg px-3 py-2 break-all text-foreground select-all">
                 {newlyCreatedKey}
               </code>
@@ -686,11 +693,12 @@ export function APIKeys() {
           
           <div>
             <label htmlFor="create-key-rate-limit" className="block text-sm font-medium text-muted-foreground mb-1.5">
-              Rate Limit (requests/hour)
+              Rate Limit (requests/hour) <span aria-hidden="true" className="text-destructive">*</span>
             </label>
             <input
               id="create-key-rate-limit"
               type="number"
+              aria-required="true"
               aria-invalid={keyModal.state.invalid.includes('rateLimit') || undefined}
               aria-describedby={keyModal.state.invalid.includes('rateLimit') ? 'create-key-error' : undefined}
               value={newKeyForm.rateLimit}
@@ -748,15 +756,20 @@ export function APIKeys() {
             errors={keyModal.state.errors}
             attempt={keyModal.state.attempt}
             focusFieldId={CREATE_KEY_FIELD_IDS[keyModal.state.invalid[0] ?? '']}
+            actionRowRef={keyActionRow}
           />
-          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+          <div ref={keyActionRow} className="flex justify-end gap-3 pt-4 border-t border-border">
             <button
               onClick={closeCreateModal}
               className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
             >
               Cancel
             </button>
-            <Button onClick={handleCreateKey}>
+            <Button
+              onClick={handleCreateKey}
+              aria-disabled={keyModal.state.busy || undefined}
+              className="aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
+            >
               {keyModal.state.busy ? 'Creating...' : 'Create Key'}
             </Button>
           </div>

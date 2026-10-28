@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 import { isFocusIdle, nextFocusState } from '../lib/formState';
 
 // The one place a create modal shows validation and server errors: directly
@@ -13,9 +13,12 @@ interface FormErrorProps {
   attempt: number;
   id?: string;
   focusFieldId?: string;
+  // The row holding Cancel and submit. Focus on a button inside it counts as
+  // idle, so a late server error may take focus from the button just clicked.
+  actionRowRef?: RefObject<HTMLElement | null>;
 }
 
-export function FormError({ errors, attempt, id = 'form-error', focusFieldId }: FormErrorProps) {
+export function FormError({ errors, attempt, id = 'form-error', focusFieldId, actionRowRef }: FormErrorProps) {
   const ref = useRef<HTMLDivElement>(null);
   const lastFocusedAttempt = useRef(0);
   const hasErrors = errors.length > 0;
@@ -25,9 +28,8 @@ export function FormError({ errors, attempt, id = 'form-error', focusFieldId }: 
     // focus. An error with no field (a server failure) may arrive late, so it
     // only takes focus while focus is idle.
     const field = focusFieldId ? document.getElementById(focusFieldId) : null;
-    // The action row (Cancel and submit) is the element right after the alert.
     const active = document.activeElement;
-    const inActionRow = !!active && !!ref.current?.nextElementSibling?.contains(active);
+    const inActionRow = !!active && !!actionRowRef?.current?.contains(active);
     const mayFocus = field !== null || isFocusIdle(active?.tagName, inActionRow);
     const next = nextFocusState(lastFocusedAttempt.current, attempt, hasErrors, mayFocus);
     lastFocusedAttempt.current = next.last;

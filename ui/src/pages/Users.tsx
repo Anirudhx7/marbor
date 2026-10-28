@@ -268,6 +268,7 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<'user' | 'admin'>('user');
   const form = useModalForm();
+  const actionRow = useRef<HTMLDivElement>(null);
   const mounted = useRef(false);
   useEffect(() => {
     mounted.current = true;
@@ -275,17 +276,16 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
   }, []);
 
   async function handleCreate() {
-    const { errors, invalid, values } = parseUserForm(username);
+    const { errors, invalid, values } = parseUserForm(username, email);
     if (errors.length > 0) { form.fail(errors, invalid); return; }
     const token = form.begin();
     if (token === null) return; // a submit is already in flight
     let res: Awaited<ReturnType<typeof createUser>>;
     try {
-      res = await createUser({ username: values.username, email, role });
+      res = await createUser({ username: values.username, email: values.email, role });
     } catch (err: unknown) {
       // If the form was closed meanwhile it is unmounted and this is a no-op.
-      form.finish(token);
-      form.fail([errorMessage(err, 'Failed to create user')]);
+      if (form.finish(token)) form.fail([errorMessage(err, 'Failed to create user')]);
       return;
     }
     // Outside the try above, so a failing callback can never be reported as a
@@ -330,14 +330,16 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
           errors={form.state.errors}
           attempt={form.state.attempt}
           focusFieldId={form.state.invalid.length > 0 ? 'create-user-username' : undefined /* the only required field */}
+          actionRowRef={actionRow}
         />
 
-        <div className="flex gap-2 pt-4 border-t border-border">
+        <div ref={actionRow} className="flex gap-2 pt-4 border-t border-border">
           <button onClick={onClose} className="flex-1 py-2 border border-border text-sm font-medium rounded-lg text-muted-foreground hover:bg-secondary transition-colors">
             Cancel
           </button>
           <button onClick={handleCreate}
-            className="flex-1 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors shadow-sm">
+            aria-disabled={form.state.busy || undefined}
+            className="flex-1 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors shadow-sm aria-disabled:opacity-50 aria-disabled:cursor-not-allowed">
             {form.state.busy ? 'Creating...' : 'Create'}
           </button>
         </div>

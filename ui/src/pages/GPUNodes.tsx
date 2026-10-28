@@ -846,7 +846,7 @@ function NodeCard({ node, pinnedModels, replicaWorkers, onRemove, onDrain, onUnd
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 
 // Which input to focus for the first invalid field after a failed submit.
-const ADD_NODE_FIELD_IDS: Record<string, string> = { name: 'add-node-name', host: 'add-node-host' };
+const ADD_NODE_FIELD_IDS: Record<string, string> = { name: 'add-node-name', host: 'add-node-host', port: 'add-node-port' };
 
 const EMPTY_NEW_NODE = {
   name: '',
@@ -906,6 +906,7 @@ export function GPUNodes() {
   // Validation and server errors for the Add node modal only; actionError
   // stays the page-level slot for the other node actions.
   const addModal = useModalForm();
+  const addActionRow = useRef<HTMLDivElement>(null);
   const updateNewNode = (patch: Partial<typeof newNode>) => {
     setNewNode((prev) => ({ ...prev, ...patch }));
     addModal.edit();
@@ -1750,8 +1751,11 @@ export function GPUNodes() {
   }, [filteredNodes, activeSignalIds]);
 
   const handleAddNode = async () => {
-    const { errors, invalid, values } = parseNodeForm(newNode.name, newNode.host);
+    const { errors, invalid, values } = parseNodeForm(newNode.name, newNode.host, newNode.port);
     if (errors.length > 0) { addModal.fail(errors, invalid); return; }
+
+    const token = addModal.begin();
+    if (token === null) return; // a submit is already in flight
 
     if (demoMode) {
       const added: GPUNode = withDemoSignals({
@@ -1760,7 +1764,7 @@ export function GPUNodes() {
         host: values.host,
         scheme: newNode.useHttps ? 'https' : 'http',
         gpuModel: newNode.gpuModel || 'Unknown GPU',
-        port: parseInt(newNode.port, 10) || 11434,
+        port: values.port,
         vramTotalMB: 24576,
         vramUsedMB: 0,
         vramSource: 'declared',
@@ -1778,25 +1782,25 @@ export function GPUNodes() {
         signals: [],
       });
       setNodes(prev => [...prev, added]);
-      setNewNode(EMPTY_NEW_NODE);
-      closeAddModal();
+      if (addModal.finish(token)) {
+        setNewNode(EMPTY_NEW_NODE);
+        closeAddModal();
+      }
       return;
     }
 
     if (!isLive) {
-      addModal.fail(['Backend disconnected - the node was not added.']);
+      if (addModal.finish(token)) addModal.fail(['Backend disconnected - the node was not added.']);
       return;
     }
 
     const nodeData = {
       name: values.name,
-      url: `${newNode.useHttps ? 'https' : 'http'}://${values.host}:${newNode.port}`,
+      url: `${newNode.useHttps ? 'https' : 'http'}://${values.host}:${values.port}`,
       gpu_model: newNode.gpuModel,
       runtime: newNode.runtime,
     };
 
-    const token = addModal.begin();
-    if (token === null) return; // a submit is already in flight
     try {
       await addNode(nodeData);
     } catch (err: unknown) {
@@ -1807,9 +1811,14 @@ export function GPUNodes() {
     }
     // The node exists now. Refreshing the list is separate: loadNodes reports
     // its own failure in the page-level banner, so it is never mislabelled as
-    // "Failed to add node". A late result for a closed modal must not touch it.
-    setNewNode(EMPTY_NEW_NODE);
-    if (addModal.finish(token)) closeAddModal();
+    // "Failed to add node". The form is cleared and closed only when it is
+    // still the one that fired this request; a form reopened meanwhile keeps
+    // whatever the operator typed into it.
+    const current = addModal.finish(token);
+    if (current) {
+      setNewNode(EMPTY_NEW_NODE);
+      closeAddModal();
+    }
     try { await loadNodes(); } catch { /* reported by loadNodes */ }
   };
 
@@ -2638,6 +2647,9 @@ export function GPUNodes() {
               <input
                 id="add-node-port"
                 type="text"
+                inputMode="numeric"
+                aria-invalid={addModal.state.invalid.includes('port') || undefined}
+                aria-describedby={addModal.state.invalid.includes('port') ? 'add-node-error' : undefined}
                 value={newNode.port}
                 onChange={(e) => updateNewNode({ port: e.target.value })}
                 className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
@@ -2684,8 +2696,9 @@ export function GPUNodes() {
             errors={addModal.state.errors}
             attempt={addModal.state.attempt}
             focusFieldId={ADD_NODE_FIELD_IDS[addModal.state.invalid[0] ?? '']}
+            actionRowRef={addActionRow}
           />
-          <div className="flex justify-end gap-3 pt-4 border-t border-border">
+          <div ref={addActionRow} className="flex justify-end gap-3 pt-4 border-t border-border">
             <button
               onClick={closeAddModal}
               className="shrink-0 whitespace-nowrap px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
@@ -2694,7 +2707,8 @@ export function GPUNodes() {
             </button>
             <Button
               onClick={handleAddNode}
-              className="shrink-0 whitespace-nowrap"
+              aria-disabled={addModal.state.busy || undefined}
+              className="shrink-0 whitespace-nowrap aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
             >
               {addModal.state.busy ? 'Adding...' : 'Add Node'}
             </Button>

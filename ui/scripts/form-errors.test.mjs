@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
 import { parseKeyForm, parseNodeForm, parseUserForm } from '../src/lib/formValidation.ts';
 import { formReducer, initialFormState, createSubmitGuard, nextFocusState, isFocusIdle } from '../src/lib/formState.ts';
@@ -9,18 +12,31 @@ const require = createRequire(import.meta.url);
 const src = (p) => new URL(`../src/${p}`, import.meta.url);
 
 // FormError is TSX, which node cannot import directly, so it (and the helper
-// it imports) is compiled with vite's public transformWithOxc into a scratch
-// folder under node_modules and rendered on the server.
+// it imports) is compiled with vite's public transformWithOxc into a
+// fresh temp folder and rendered on the server. The compiled files import
+// react from the ui's node_modules by absolute URL, and the folder is removed
+// when the test file finishes.
+const scratch = [];
+test.after(() => { for (const d of scratch) rmSync(d, { recursive: true, force: true }); });
+
 async function loadFormError() {
   const { transformWithOxc } = await import('vite');
-  const dir = new URL('../node_modules/.cache/form-errors-test/', import.meta.url);
-  mkdirSync(dir, { recursive: true });
+  const root = mkdtempSync(join(tmpdir(), 'form-errors-test-'));
+  scratch.push(root);
+  const dir = pathToFileURL(root + '/');
   const state = await transformWithOxc(readFileSync(src('lib/formState.ts'), 'utf8'), 'formState.ts');
   writeFileSync(new URL('formState.mjs', dir), state.code);
   const view = await transformWithOxc(readFileSync(src('components/FormError.tsx'), 'utf8'), 'FormError.tsx', {
     jsx: { runtime: 'automatic' },
   });
-  writeFileSync(new URL('FormError.mjs', dir), view.code.replace('../lib/formState', './formState.mjs'));
+  const reactDir = new URL('../node_modules/', import.meta.url).href;
+  writeFileSync(
+    new URL('FormError.mjs', dir),
+    view.code
+      .replace('../lib/formState', './formState.mjs')
+      .replace(/from ['"]react\/jsx-runtime['"]/, `from '${reactDir}react/jsx-runtime.js'`)
+      .replace(/from ['"]react['"]/, `from '${reactDir}react/index.js'`),
+  );
   return (await import(new URL('FormError.mjs', dir).href)).FormError;
 }
 
@@ -46,13 +62,30 @@ test('parseKeyForm rejects anything that is not a whole non-negative number', ()
 });
 
 test('parseNodeForm trims and names each missing field separately', () => {
-  assert.deepEqual(parseNodeForm(' gpu-1 ', ' 10.0.0.1 '), { errors: [], invalid: [], values: { name: 'gpu-1', host: '10.0.0.1' } });
+  assert.deepEqual(parseNodeForm(' gpu-1 ', ' 10.0.0.1 ', ' 8000 '), { errors: [], invalid: [], values: { name: 'gpu-1', host: '10.0.0.1', port: 8000 } });
   assert.deepEqual(parseNodeForm('', '').errors, ['Node name is required', 'Host is required']);
   assert.deepEqual(parseNodeForm('n', '  ').invalid, ['host']);
 });
 
+test('parseNodeForm accepts ports 1 to 65535 only', () => {
+  for (const ok of ['1', '80', '11434', '65535']) assert.deepEqual(parseNodeForm('n', 'h', ok).invalid, [], ok);
+  for (const bad of ['0', '65536', '99999', '-1', '1.5', '80a', '', ' ', '123456']) {
+    assert.deepEqual(parseNodeForm('n', 'h', bad).invalid, ['port'], `"${bad}" should be rejected`);
+  }
+});
+
+test('parseNodeForm rejects a host with a scheme, port or path', () => {
+  for (const ok of ['10.0.0.1', 'gpu-1.local', 'localhost', '[::1]', '[fe80::1]']) {
+    assert.deepEqual(parseNodeForm('n', ok).invalid, [], ok);
+  }
+  for (const bad of ['http://10.0.0.1', 'https://gpu', '10.0.0.1:11434', 'host/path', 'a b', 'user@host', '::1', '[]', 'host?x=1']) {
+    assert.deepEqual(parseNodeForm('n', bad).invalid, ['host'], `"${bad}" should be rejected`);
+  }
+});
+
 test('parseUserForm trims and requires a username', () => {
-  assert.deepEqual(parseUserForm('  ann ').values, { username: 'ann' });
+  assert.deepEqual(parseUserForm('  ann ').values, { username: 'ann', email: '' });
+  assert.equal(parseUserForm('ann', '  a@b.co ').values.email, 'a@b.co');
   assert.deepEqual(parseUserForm(' ').errors, ['Username is required']);
   assert.deepEqual(parseUserForm(' ').invalid, ['username']);
 });
@@ -153,7 +186,53 @@ test('the three create modals keep their submit buttons enabled and use FormErro
     const block = text.match(region)?.[0];
     assert.ok(block, `${file}: modal region found`);
     assert.match(block, /<FormError/, file);
-    assert.doesNotMatch(block, /disabled=/, `${file}: submit must stay enabled`);
+    assert.doesNotMatch(block, /(?<!aria-)disabled=/, `${file}: submit must stay enabled`);
     assert.doesNotMatch(block, /-hint/, `${file}: no separate hint pattern`);
+  }
+});
+
+test('a late create result only clears and closes the form that fired it', () => {
+  const cases = [
+    ['pages/APIKeys.tsx', 'keyModal', 'setNewKeyForm(EMPTY_KEY_FORM);'],
+    ['pages/GPUNodes.tsx', 'addModal', 'setNewNode(EMPTY_NEW_NODE);'],
+  ];
+  for (const [file, modal, clear] of cases) {
+    const text = readFileSync(src(file), 'utf8').replace(/\r\n/g, '\n');
+    const at = text.indexOf(`const current = ${modal}.finish(token);`);
+    assert.ok(at > 0, `${file}: finish result is kept`);
+    const block = text.slice(at, at + 200);
+    assert.match(block, /if \(current\) \{/, file);
+    assert.ok(block.includes(clear), `${file}: cleared inside the current check`);
+  }
+});
+
+test('the create key page queues one-time secrets instead of overwriting them', () => {
+  const text = readFileSync(src('pages/APIKeys.tsx'), 'utf8');
+  assert.match(text, /useState<string\[\]>\(\[\]\)/, 'a list of waiting secrets');
+  assert.match(text, /setCreatedKeys\(\(q\) => \[\.\.\.q, result\.key\]\)/, 'a new secret joins the end');
+  assert.match(text, /setCreatedKeys\(\(q\) => q\.slice\(1\)\)/, 'dismiss shows the next one');
+  assert.doesNotMatch(text, /setNewlyCreatedKey|setNewKeyDismissTimer/, 'no single-slot state or shared timer');
+  // The timer belongs to the secret on screen and is cleared when it changes.
+  assert.match(text, /setTimeout\(\(\) => setCreatedKeys[\s\S]*?return \(\) => clearTimeout\(timer\);\s*\}, \[newlyCreatedKey\]\)/);
+});
+
+test('create user reports a failure only for a form that is still current', () => {
+  const text = readFileSync(src('pages/Users.tsx'), 'utf8');
+  assert.match(text, /if \(form\.finish\(token\)\) form\.fail\(/);
+  assert.doesNotMatch(text, /form\.finish\(token\);\s*form\.fail\(/);
+});
+
+test('submit buttons are aria-disabled while busy and begin() runs before the demo branch', () => {
+  for (const [file, modal] of [['pages/APIKeys.tsx', 'keyModal'], ['pages/Users.tsx', 'form'], ['pages/GPUNodes.tsx', 'addModal']]) {
+    const text = readFileSync(src(file), 'utf8');
+    assert.ok(text.includes(`aria-disabled={${modal}.state.busy || undefined}`), `${file}: aria-disabled while busy`);
+  }
+  for (const [file, begin, demo] of [
+    ['pages/APIKeys.tsx', 'keyModal.begin()', 'if (demoMode) {\n      // Demo mode: fabricate'],
+    ['pages/GPUNodes.tsx', 'addModal.begin()', 'if (demoMode) {\n      const added'],
+  ]) {
+    const text = readFileSync(src(file), 'utf8').replace(/\r\n/g, '\n');
+    const b = text.indexOf(begin);
+    assert.ok(b > 0 && b < text.indexOf(demo), `${file}: begin before demo branch`);
   }
 });
