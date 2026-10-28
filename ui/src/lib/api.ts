@@ -815,7 +815,7 @@ export async function patchKey(name: string, data: { rate_limit?: number; daily_
 
 export async function getSpillCounters(): Promise<SpillCounterRow[]> {
   const res = await apiFetch(`${BASE}/spill`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch spill counters');
+  if (!res.ok) throw new Error(`Failed to fetch spill counters (HTTP ${res.status})`);
   return res.json();
 }
 
@@ -1149,7 +1149,7 @@ export const updateSettings = withSettingsReset(async function updateSettings(da
 
 export async function fetchAnalytics(): Promise<Analytics> {
   const res = await apiFetch(`${BASE}/analytics`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch analytics');
+  if (!res.ok) throw new Error(`Failed to fetch analytics (HTTP ${res.status})`);
   return res.json();
 }
 

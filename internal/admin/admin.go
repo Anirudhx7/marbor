@@ -246,6 +246,12 @@ type Server struct {
 	// node-list lock already protects individual reads/writes; this mutex
 	// only prevents two full PATCH transactions from interleaving).
 	nodePatchMu sync.Mutex
+	// cloudTokensFlushed is the cloudTokens value last written to the store
+	// (atomic), so a flush can skip the write when nothing changed.
+	cloudTokensFlushed atomic.Int64
+	// flushMu serializes flushCounters so the read-compare-write of the
+	// cloud token marker is safe regardless of how many callers there are.
+	flushMu sync.Mutex
 	// replicaSuggestMu serializes the read-modify-write of the dismissed
 	// replica suggestion list stored in settings.
 	replicaSuggestMu sync.Mutex
@@ -351,6 +357,25 @@ func (s *Server) LoadFromStore() error {
 	} else {
 		log.Printf("store: could not load counters: %v", err)
 	}
+	// The cloud token count lives in a settings key rather than the counters
+	// table. A database written before it was persisted has no key, which
+	// leaves the count at 0 and the spend figure at "-" instead of guessed.
+	// The store below is unconditional, so this must run before any traffic
+	// and before StartCounterFlush starts.
+	if v, err := s.st.GetSetting(cloudTokensSettingKey); err != nil {
+		if !errors.Is(err, store.ErrNotFound) {
+			log.Printf("store: could not load cloud token count: %v", err)
+		}
+	} else if n, perr := strconv.ParseInt(v, 10, 64); perr != nil || n < 0 {
+		log.Printf("store: ignoring invalid saved cloud token count %q", v)
+		// Best effort: overwrite the bad row so it does not log on every boot.
+		if werr := s.st.SetSetting(cloudTokensSettingKey, "0"); werr != nil {
+			log.Printf("store: could not reset invalid cloud token count: %v", werr)
+		}
+	} else {
+		atomic.StoreInt64(&s.cloudTokens, n)
+		s.cloudTokensFlushed.Store(n)
+	}
 	// Restore last 50 request log entries.
 	if recs, err := s.st.LastRequests(50); err == nil {
 		logs := make([]RequestLog, 0, len(recs))
@@ -449,19 +474,42 @@ func (s *Server) StartCounterFlush(ctx context.Context) {
 	}()
 }
 
+// cloudTokensSettingKey stores the lifetime cloud token count beside the
+// counters row so restoring it needs no schema change.
+const cloudTokensSettingKey = "counters_cloud_tokens"
+
 func (s *Server) flushCounters() {
+	s.flushMu.Lock()
+	defer s.flushMu.Unlock()
+	// Loaded first, before the counters row is written. The persisted token
+	// count is therefore never newer than the counters row it accompanies:
+	// tokens added during this flush are picked up by the next one, and a
+	// crash between the two writes leaves the count behind, so the spend
+	// shows "-" or a slightly low token figure, never an unmeasured number.
+	tok := atomic.LoadInt64(&s.cloudTokens)
 	local := atomic.LoadInt64(&s.localCount)
 	cloud := atomic.LoadInt64(&s.cloudCount)
 	localTok := atomic.LoadInt64(&s.localTokens)
 	s.mu.RLock()
 	spent := s.cloudSpentUSD
 	s.mu.RUnlock()
-	_ = s.st.SetCounters(store.Counters{
+	if err := s.st.SetCounters(store.Counters{
 		LocalRequests: local,
 		CloudRequests: cloud,
 		TotalTokens:   localTok,
 		CloudSpentUSD: spent,
-	})
+	}); err != nil {
+		log.Printf("store: could not persist counters: %v", err)
+	}
+	// Skipped when nothing changed since the last successful write.
+	if tok == s.cloudTokensFlushed.Load() {
+		return
+	}
+	if err := s.st.SetSetting(cloudTokensSettingKey, strconv.FormatInt(tok, 10)); err != nil {
+		log.Printf("store: could not persist cloud token count: %v", err)
+		return
+	}
+	s.cloudTokensFlushed.Store(tok)
 }
 
 type RequestLog struct {
@@ -6485,7 +6533,7 @@ func (s *Server) handleAnalytics(w http.ResponseWriter, r *http.Request) {
 		"total_spent_usd": cloudSpent,
 		"local_requests":  local,
 		"cloud_requests":  cloud,
-		"since":           s.startTime.Format(time.RFC3339),
+		"since":           s.startTime.UTC().Format(time.RFC3339),
 	})
 }
 
@@ -6526,7 +6574,7 @@ func (s *Server) handleSavings(w http.ResponseWriter, r *http.Request) {
 		"cloud_spent_usd": cloudSpent,
 		"saved_usd":       savedUSD,
 		"total_requests":  local + cloud,
-		"since":           s.startTime.Format(time.RFC3339),
+		"since":           s.startTime.UTC().Format(time.RFC3339),
 	})
 }
 

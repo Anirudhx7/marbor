@@ -101,7 +101,13 @@ export interface SelectOption {
   label: string;
 }
 
-interface CustomSelectProps {
+// id lets a <label htmlFor> reach the trigger button. A native label would
+// replace the button's own text as its name and hide the current value, so
+// with labelId the name is the label followed by the button's own text. That
+// needs the button's id, so labelId is only allowed together with id.
+type SelectLabelling = { id?: undefined; labelId?: undefined } | { id: string; labelId?: string };
+
+type CustomSelectProps = {
   value: string;
   onChange: (value: string) => void;
   options: SelectOption[];
@@ -112,9 +118,11 @@ interface CustomSelectProps {
   // Makes the trigger at least 44px tall on a phone, for pages where the
   // control sits next to other tap targets of that size.
   touchTarget?: boolean;
-}
+} & SelectLabelling;
 
 export function CustomSelect({
+  id,
+  labelId,
   value,
   onChange,
   options,
@@ -154,6 +162,8 @@ export function CustomSelect({
   return (
     <div ref={containerRef} className={`relative min-w-0 w-full ${className}`}>
       <button
+        id={id}
+        aria-labelledby={id && labelId ? `${labelId} ${id}` : undefined}
         type="button"
         disabled={disabled}
         onClick={() => setIsOpen(!isOpen)}
