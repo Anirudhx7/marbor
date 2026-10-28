@@ -1,10 +1,13 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Users as UsersIcon, Plus, Check, Ban, Trash2, UserCheck, Key, RotateCcw, Pencil } from 'lucide-react';
 import { listUsers, createUser, approveUser, suspendUser, deleteUser, resetUserPassword, patchUser, fetchKeys, fetchModels, loadSession } from '../lib/api';
 import type { UserRecord, APIKey, ModelCatalog } from '../types';
 import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
+import { FormError } from '../components/FormError';
+import { parseUserForm } from '../lib/formValidation';
+import { useModalForm, errorMessage } from '../lib/useModalForm';
 import { EmptyState } from '../components/EmptyState';
 import { CustomSelect } from '../components/Select';
 import { currentAppPath } from '../hooks/useDemoMode';
@@ -246,48 +249,49 @@ function ResetPasswordModal({ user, onClose }: ResetPasswordModalProps) {
 
 // ── Create user Modal ─────────────────────────────────────────────────────────
 
-interface CreateUserModalProps {
-  onClose: () => void;
-  onDone: () => void;
+interface CreatedCredentials {
+  username: string;
+  initial_password: string;
 }
 
-function CreateUserModal({ onClose, onDone }: CreateUserModalProps) {
+interface CreateUserModalProps {
+  onClose: () => void;
+  // Called with the one-time password. It lives in the parent, so it is shown
+  // even when the operator closed this form while the request was running.
+  // formStillOpen is false when the form that fired it was closed (and maybe a
+  // new one opened) meanwhile, so the parent must not close the current form.
+  onCreated: (created: CreatedCredentials, formStillOpen: boolean) => void;
+}
+
+function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<'user' | 'admin'>('user');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [created, setCreated] = useState<{ username: string; initial_password: string } | null>(null);
+  const form = useModalForm();
+  const actionRow = useRef<HTMLDivElement>(null);
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
 
   async function handleCreate() {
-    if (!username) { setError('Username is required'); return; }
-    setSaving(true);
-    setError(null);
+    const { errors, invalid, values } = parseUserForm(username, email);
+    if (errors.length > 0) { form.fail(errors, invalid); return; }
+    const token = form.begin();
+    if (token === null) return; // a submit is already in flight
+    let res: Awaited<ReturnType<typeof createUser>>;
     try {
-      const res = await createUser({ username, email, role });
-      setCreated({ username: res.username, initial_password: res.initial_password });
-    } catch (err: any) {
-      setError(err.message || 'Failed to create user');
-    } finally {
-      setSaving(false);
+      res = await createUser({ username: values.username, email: values.email, role });
+    } catch (err: unknown) {
+      // If the form was closed meanwhile it is unmounted and this is a no-op.
+      if (form.finish(token)) form.fail([errorMessage(err, 'Failed to create user')]);
+      return;
     }
-  }
-
-  if (created) {
-    return (
-      <Modal isOpen={true} onClose={onDone} title="User created" maxWidth="sm">
-        <div className="space-y-4">
-          <p className="text-xs text-muted-foreground">Initial password for <strong>{created.username}</strong>:</p>
-          <code className="block w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-xs font-mono text-primary break-all select-all">
-            {created.initial_password}
-          </code>
-          <p className="text-xs text-amber-600 dark:text-amber-400">Share with the user. They will be prompted to change it on first login.</p>
-          <button onClick={onDone} className="w-full py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors shadow-sm">
-            Done
-          </button>
-        </div>
-      </Modal>
-    );
+    // Outside the try above, so a failing callback can never be reported as a
+    // failed create for a user that now exists.
+    form.finish(token);
+    onCreated({ username: res.username, initial_password: res.initial_password }, mounted.current);
   }
 
   return (
@@ -296,19 +300,23 @@ function CreateUserModal({ onClose, onDone }: CreateUserModalProps) {
         <div className="space-y-3">
           <div>
             <label htmlFor="create-user-username" className="block text-xs font-medium text-muted-foreground mb-1.5">Username <span aria-hidden="true" className="text-destructive">*</span></label>
-            <input id="create-user-username" type="text" value={username} onChange={e => setUsername(e.target.value)} autoFocus aria-required="true"
+            <input id="create-user-username" type="text" value={username} onChange={e => { setUsername(e.target.value); form.edit(); }} autoFocus aria-required="true"
+              aria-invalid={form.state.invalid.includes('username') || undefined}
+              aria-describedby={form.state.invalid.includes('username') ? 'create-user-error' : undefined}
               className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1.5">Email <span className="text-muted-foreground/60">(optional)</span></label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+            <label htmlFor="create-user-email" className="block text-xs font-medium text-muted-foreground mb-1.5">Email <span className="text-muted-foreground/60">(optional)</span></label>
+            <input id="create-user-email" type="email" value={email} onChange={e => { setEmail(e.target.value); form.edit(); }}
               className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1.5">Role</label>
+            <label id="create-user-role-label" htmlFor="create-user-role" className="block text-xs font-medium text-muted-foreground mb-1.5">Role</label>
             <CustomSelect
+              id="create-user-role"
+              labelId="create-user-role-label"
               value={role}
-              onChange={val => setRole(val as any)}
+              onChange={val => { setRole(val === 'admin' ? 'admin' : 'user'); form.edit(); }}
               options={[
                 { value: 'user', label: 'User' },
                 { value: 'admin', label: 'Admin' },
@@ -317,17 +325,41 @@ function CreateUserModal({ onClose, onDone }: CreateUserModalProps) {
           </div>
         </div>
 
-        {error && <p className="text-xs text-destructive bg-destructive/10 px-3 py-2 rounded-lg">{error}</p>}
+        <FormError
+          id="create-user-error"
+          errors={form.state.errors}
+          attempt={form.state.attempt}
+          focusFieldId={form.state.invalid.length > 0 ? 'create-user-username' : undefined /* the only required field */}
+          actionRowRef={actionRow}
+        />
 
-        <div className="flex gap-2 pt-4 border-t border-border">
+        <div ref={actionRow} className="flex gap-2 pt-4 border-t border-border">
           <button onClick={onClose} className="flex-1 py-2 border border-border text-sm font-medium rounded-lg text-muted-foreground hover:bg-secondary transition-colors">
             Cancel
           </button>
-          <button onClick={handleCreate} disabled={saving}
-            className="flex-1 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 shadow-sm">
-            {saving ? 'Creating...' : 'Create'}
+          <button onClick={handleCreate}
+            aria-disabled={form.state.busy || undefined}
+            className="flex-1 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors shadow-sm aria-disabled:opacity-50 aria-disabled:cursor-not-allowed">
+            {form.state.busy ? 'Creating...' : 'Create'}
           </button>
         </div>
+      </div>
+    </Modal>
+  );
+}
+
+function UserCreatedModal({ created, remaining, onDone }: { created: CreatedCredentials; remaining: number; onDone: () => void }) {
+  return (
+    <Modal isOpen={true} onClose={onDone} title={remaining > 0 ? `User created (${remaining} more to show)` : 'User created'} maxWidth="sm">
+      <div className="space-y-4">
+        <p className="text-xs text-muted-foreground">Initial password for <strong>{created.username}</strong>:</p>
+        <code className="block w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-xs font-mono text-primary break-all select-all">
+          {created.initial_password}
+        </code>
+        <p className="text-xs text-amber-600 dark:text-amber-400">Share with the user. They will be prompted to change it on first login.</p>
+        <button onClick={onDone} className="w-full py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors shadow-sm">
+          Done
+        </button>
       </div>
     </Modal>
   );
@@ -422,6 +454,9 @@ export function Users() {
   const [deleteTarget, setDeleteTarget] = useState<UserRecord | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  // One-time passwords waiting to be shown, oldest first. A queue, so a second
+  // create finishing late never overwrites a password the operator has not seen.
+  const [createdUsers, setCreatedUsers] = useState<CreatedCredentials[]>([]);
 
   const load = useCallback(async (active = true) => {
     if (currentAppPath() !== '/users') return;
@@ -691,7 +726,12 @@ export function Users() {
       {showCreate && (
         <CreateUserModal
           onClose={() => setShowCreate(false)}
-          onDone={() => { setShowCreate(false); load(); }}
+          onCreated={(c, formStillOpen) => {
+            // Only close the form that fired this; a late result must not close a reopened one.
+            if (formStillOpen) setShowCreate(false);
+            setCreatedUsers((q) => [...q, c]);
+            load();
+          }}
         />
       )}
 
@@ -802,6 +842,19 @@ export function Users() {
           </div>
         </div>
       </Modal>
+
+      {/* Last in the page so the one-time password appears on top of any other
+          modal the operator opened while the create request ran. Closing those
+          would discard their input, and hiding the password would lose it. */}
+      {/* A create form that fired late can mount beside a reopened one; the
+          credentials win because they are rendered last and cannot be recovered. */}
+      {createdUsers.length > 0 && (
+        <UserCreatedModal
+          created={createdUsers[0]}
+          remaining={createdUsers.length - 1}
+          onDone={() => setCreatedUsers((q) => q.slice(1))}
+        />
+      )}
     </div>
   );
 }
