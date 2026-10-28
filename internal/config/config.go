@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -885,6 +886,12 @@ func (c *Config) Validate() error {
 	}
 	if c.Backup.RetentionCount < 0 {
 		return fmt.Errorf("backup.retention_count must be >= 0")
+	}
+	if err := ValidateBackupTargetDir(c.Backup.TargetDir); err != nil {
+		return fmt.Errorf("backup.target_dir %v", err)
+	}
+	if c.Backup.TargetDir != "" {
+		c.Backup.TargetDir = filepath.Clean(c.Backup.TargetDir)
 	}
 
 	if c.Savings.ReferenceCostPer1K <= 0 {

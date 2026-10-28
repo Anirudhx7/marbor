@@ -70,6 +70,11 @@ Settings > Backup & Restore card.
    does not change it. On Windows these permission bits have no effect, so the directory warning
    is not shown there either; restrict the backup directory with NTFS permissions instead, since a
    backup contains API keys and session data.
+5. The backup directory must be an absolute path. Settings refuses a relative path, a `..`
+   element, control characters, a filesystem root and, on Windows, a device or extended-length
+   path. Inside it marbor only creates and removes files with its own backup names, never replaces
+   an existing backup, and refuses a symlink where it expects a file. The directory itself may be
+   a symlink or a mount; point it only at a location the service account should write to.
 
 The only compression format is gzip (`.db.gz`), chosen because every machine can open it with
 `gunzip` and marbor stays a single binary with no extra libraries. Plain `.db` backups from earlier

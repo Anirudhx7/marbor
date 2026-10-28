@@ -278,7 +278,7 @@ func applyPersistedSettings(cfg *config.Config, st store.Store) {
 	cfg.Backup.Enabled = store.GetBoolSetting(st, "backup_enabled", cfg.Backup.Enabled)
 	cfg.Backup.IntervalHours = store.GetIntSetting(st, "backup_interval_hours", cfg.Backup.IntervalHours)
 	cfg.Backup.RetentionCount = store.GetIntSetting(st, "backup_retention_count", cfg.Backup.RetentionCount)
-	cfg.Backup.TargetDir = store.GetStringSetting(st, "backup_target_dir", cfg.Backup.TargetDir)
+	cfg.Backup.TargetDir = storedBackupDir(store.GetStringSetting(st, "backup_target_dir", cfg.Backup.TargetDir), cfg.Backup.TargetDir)
 
 	store.GetJSONSetting(st, "context_windows", &cfg.ContextWindows)
 }
@@ -478,7 +478,7 @@ func main() {
 	}
 
 	cfg := &config.Config{}
-	cfg.Backup.TargetDir = backupDir
+	cfg.Backup.TargetDir = absBackupDir(backupDir)
 	if err := cfg.Validate(); err != nil {
 		winexit.Fatalf("invalid default config: %v", err)
 	}

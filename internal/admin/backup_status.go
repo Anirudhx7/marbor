@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -151,11 +152,34 @@ type statusRead struct {
 	note string
 }
 
+// maxStatusFileBytes bounds what is read as a status file; a real one is a few
+// hundred bytes.
+const maxStatusFileBytes = 1 << 20
+
+var errStatusTooLarge = errors.New("status file is too large")
+
+// readStatusBytes reads path only if it is a regular file (a symlink or device
+// is refused, see openBackupFile) of at most maxStatusFileBytes.
+func readStatusBytes(path string) ([]byte, error) {
+	f, fi, err := openBackupFile(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	if fi.Size() > maxStatusFileBytes {
+		return nil, errStatusTooLarge
+	}
+	return io.ReadAll(io.LimitReader(f, maxStatusFileBytes+1))
+}
+
 // readStatusFile loads one status file; ok is false when there is none. It
 // touches no shared state.
 func readStatusFile(dir string) (r statusRead) {
-	data, err := os.ReadFile(filepath.Join(dir, backupStatusFileName))
+	data, err := readStatusBytes(filepath.Join(dir, backupStatusFileName))
 	switch {
+	case errors.Is(err, errNotRegularBackup) || errors.Is(err, errStatusTooLarge):
+		log.Printf("admin: ignoring the backup status file: %v", err)
+		r.note = "the saved backup status was not a plain file of the expected size and was ignored"
 	case err == nil:
 		if jerr := json.Unmarshal(data, &r.st); jerr != nil {
 			log.Printf("admin: ignoring unreadable backup status file: %v", jerr)
