@@ -9,7 +9,7 @@ import { CustomSelect } from '../components/Select';
 import { CustomDateTimePicker } from '../components/DateTimePicker';
 import { ClearableInput, FilterField, FilterBar, FilterBarGrid, FilterBarClear } from '../components/FilterField';
 import { currentAppPath } from '../hooks/useDemoMode';
-import { applyRefresh, applyOlderPage, isStaleEpoch, startFullLoad, rowKeys, type ActivityFeed } from '../lib/activityRefresh';
+import { applyRefresh, applyOlderPage, isStaleEpoch, isSupersededRefresh, startFullLoad, rowKeys, type ActivityFeed } from '../lib/activityRefresh';
 import {
   toActivityKind,
   getActivityKindLabel,
@@ -91,6 +91,8 @@ export function Activity() {
   // Full loads are superseded only by another full load, never by a restart
   // bump of epochRef, so the loading flag cannot stick.
   const fullSeqRef = useRef(0);
+  // Sequence of background/manual refreshes; only the newest one may apply.
+  const refreshSeqRef = useRef(0);
   const inFlightRef = useRef(0);
   const mountedRef = useRef(true);
   const spinTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -215,9 +217,9 @@ export function Activity() {
     } else {
       epoch = epochRef.current;
     }
-    // The Refresh button keeps the rows on screen and counts as the operator
-    // acknowledging a restart note.
-    if (opts.mode === 'refresh' && opts.manual) setListRestarted(false);
+    // Overlapping refreshes (a slow one still running when the next tick
+    // fires) must not apply out of order: only the newest may land.
+    const refreshSeq = mode === 'refresh' ? ++refreshSeqRef.current : 0;
     if (!silent && active) setLoading(true);
     if (active) {
       inFlightRef.current += 1;
@@ -236,10 +238,13 @@ export function Activity() {
       // The list changed while this was in flight (new filters or a
       // restart): the result belongs to a list that is gone.
       if (mode === 'full' ? isStaleEpoch(fullSeq, fullSeqRef.current) : isStaleEpoch(epoch, epochRef.current)) return;
+      if (mode === 'refresh' && isSupersededRefresh(refreshSeq, refreshSeqRef.current)) return;
       if (opts.mode === 'append') {
         const next = applyOlderPage(feedRef.current, audit, PAGE_LIMIT);
         feedRef.current = next;
         setFeed(next);
+        // A successful Load more counts as the operator acknowledging a restart note.
+        setListRestarted(false);
       } else if (mode === 'refresh') {
         // Background refresh: fold new events into the head and keep every
         // older page the operator already paged in.
@@ -249,8 +254,10 @@ export function Activity() {
           setFeed(result.feed);
         }
         if (result.restarted) epochRef.current += 1;
-        // The note stays until the operator acts (Load more, Refresh, a filter change).
+        // The note stays until a later successful Load more, manual Refresh or
+        // filter change; a failed attempt never clears it.
         if (result.restarted) setListRestarted(true);
+        else if (opts.mode === 'refresh' && opts.manual) setListRestarted(false);
       } else {
         const next: ActivityFeed = { entries: audit, hasMore: audit.length === PAGE_LIMIT };
         feedRef.current = next;
@@ -262,6 +269,7 @@ export function Activity() {
     } catch (err: any) {
       if (!active || !mountedRef.current) return;
       if (mode === 'full' ? isStaleEpoch(fullSeq, fullSeqRef.current) : isStaleEpoch(epoch, epochRef.current)) return;
+      if (mode === 'refresh' && isSupersededRefresh(refreshSeq, refreshSeqRef.current)) return;
       const curPath = currentAppPath();
       if (!(curPath === '/activity' || curPath.startsWith('/activity') || curPath === '/system-audit')) return;
       setError(err.message || 'Failed to load activity feed');
@@ -366,7 +374,6 @@ export function Activity() {
     const oldest = entries[entries.length - 1];
     if (!oldest) return;
     setLoadingMore(true);
-    setListRestarted(false);
     loadActivity({ mode: 'append', before: oldest.time, beforeId: oldest.id, epoch: epochRef.current });
   };
 

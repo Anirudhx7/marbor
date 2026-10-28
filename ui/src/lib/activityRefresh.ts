@@ -92,9 +92,12 @@ export function applyOlderPage(
   pageLimit: number,
 ): ActivityFeed {
   const seen = new Set(current.entries.map(entryKey));
+  const fresh = older.filter((e) => !seen.has(entryKey(e)));
   return {
-    entries: [...current.entries, ...older.filter((e) => !seen.has(entryKey(e)))],
-    hasMore: older.length === pageLimit,
+    entries: [...current.entries, ...fresh],
+    // A full page that added nothing new would be fetched again unchanged, so
+    // stop offering Load more instead of looping on it.
+    hasMore: older.length === pageLimit && fresh.length > 0,
   };
 }
 
@@ -102,6 +105,13 @@ export function applyOlderPage(
 // restarts or the filters change (the epoch moves on) the result would land on
 // the wrong head, so it is discarded.
 export function isStaleEpoch(captured: number, latest: number): boolean {
+  return captured !== latest;
+}
+
+// Refreshes can overlap (a slow request still running when the next tick
+// fires). A refresh that is no longer the newest started must discard its
+// result, or an older snapshot finishing last would overwrite newer rows.
+export function isSupersededRefresh(captured: number, latest: number): boolean {
   return captured !== latest;
 }
 

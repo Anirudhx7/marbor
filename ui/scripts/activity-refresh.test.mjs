@@ -6,6 +6,7 @@ import {
   applyRefresh,
   applyOlderPage,
   isStaleEpoch,
+  isSupersededRefresh,
   startFullLoad,
   rowKeys,
   entryKey,
@@ -190,4 +191,34 @@ test('a manual Refresh that restarts the list drops the Load more in flight', ()
   const refreshed = applyRefresh(feed(range(300, 201)), range(900, 801), LIMIT);
   assert.equal(refreshed.restarted, true);
   assert.equal(isStaleEpoch(epoch, epoch + 1), true);
+});
+
+test('a refresh that is no longer the newest started is superseded', () => {
+  assert.equal(isSupersededRefresh(3, 3), false);
+  assert.equal(isSupersededRefresh(2, 3), true);
+});
+
+test('out-of-order refreshes: the older snapshot finishing last must not drop newer rows', () => {
+  let seq = 0;
+  const a = ++seq; // slow refresh, snapshot ends at 305
+  const b = ++seq; // newer refresh, snapshot ends at 310
+  let current = feed(range(300, 101));
+  const land = (captured, fresh) => {
+    if (isSupersededRefresh(captured, seq)) return;
+    current = applyRefresh(current, fresh, LIMIT).feed;
+  };
+  land(b, range(310, 211));
+  land(a, range(305, 206));
+  assert.deepEqual(ids(current.entries), ids(range(310, 101)));
+});
+
+test('an older page with no new rows ends paging even when it is a full page', () => {
+  const current = feed(range(300, 101));
+  const out = applyOlderPage(current, range(200, 101), LIMIT);
+  assert.equal(out.hasMore, false);
+  assert.deepEqual(ids(out.entries), ids(current.entries));
+  const idless = [noId(1), noId(2)];
+  const loaded = applyOlderPage(feed([]), idless, 2);
+  assert.equal(loaded.hasMore, true);
+  assert.equal(applyOlderPage(loaded, idless, 2).hasMore, false);
 });
