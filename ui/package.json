@@ -9,7 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "demo:crawl": "node scripts/demo-crawl.mjs",
-    "test": "node --experimental-strip-types --test scripts/download-only.test.mjs scripts/replica-groups.test.mjs scripts/tokens-per-sec.test.mjs scripts/node-signals.test.mjs scripts/button.test.mjs scripts/status-tokens.test.mjs scripts/sole-replica.test.mjs scripts/demo-consistency.test.mjs scripts/activity-kind.test.mjs scripts/audit-paging.test.mjs scripts/theme-init.test.mjs scripts/ui-polish.test.mjs scripts/advisor-copy.test.mjs scripts/advisor-wiring.test.mjs scripts/requests-paging.test.mjs scripts/poll-notice.test.mjs scripts/activity-refresh.test.mjs"
+    "test": "node --experimental-strip-types --test scripts/download-only.test.mjs scripts/replica-groups.test.mjs scripts/tokens-per-sec.test.mjs scripts/node-signals.test.mjs scripts/button.test.mjs scripts/status-tokens.test.mjs scripts/sole-replica.test.mjs scripts/demo-consistency.test.mjs scripts/activity-kind.test.mjs scripts/audit-paging.test.mjs scripts/theme-init.test.mjs scripts/ui-polish.test.mjs scripts/advisor-copy.test.mjs scripts/advisor-wiring.test.mjs scripts/requests-paging.test.mjs scripts/poll-notice.test.mjs scripts/activity-refresh.test.mjs scripts/form-errors.test.mjs"
   },
   "overrides": {
     "typescript-eslint": {

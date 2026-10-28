@@ -11,6 +11,9 @@ import { SignalFilter } from '../components/SignalFilter';
 import { EmptyState } from '../components/EmptyState';
 import { Modal } from '../components/Modal';
 import { Button } from '../components/Button';
+import { FormError } from '../components/FormError';
+import { parseNodeForm } from '../lib/formValidation';
+import { useModalForm, errorMessage } from '../lib/useModalForm';
 import { buttonClasses } from '../lib/buttonClasses';
 import { ReplicaGroupsTab } from '../components/ReplicaGroupsTab';
 import { ModelConfigModal } from '../components/ModelConfigModal';
@@ -842,6 +845,20 @@ function NodeCard({ node, pinnedModels, replicaWorkers, onRemove, onDrain, onUnd
 
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 
+// Which input to focus for the first invalid field after a failed submit.
+const ADD_NODE_FIELD_IDS: Record<string, string> = { name: 'add-node-name', host: 'add-node-host', port: 'add-node-port' };
+
+const EMPTY_NEW_NODE = {
+  name: '',
+  host: '',
+  port: '11434',
+  gpuModel: '',
+  runtime: 'auto',
+  // TLS pinning is opt-in per node, defaults off - matches every existing
+  // node's plaintext behavior unchanged.
+  useHttps: false,
+};
+
 export function GPUNodes() {
   const { demoMode } = useDemoMode();
   const location = useLocation();
@@ -880,21 +897,31 @@ export function GPUNodes() {
   const [highlightSource, setHighlightSource] = useState<string | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [newNode, setNewNode] = useState({
-    name: '',
-    host: '',
-    port: '11434',
-    gpuModel: '',
-    runtime: 'auto',
-    // TLS pinning is opt-in per node, defaults off - matches every existing
-    // node's plaintext behavior unchanged.
-    useHttps: false,
-  });
+  const [newNode, setNewNode] = useState(EMPTY_NEW_NODE);
   const [modelFit, setModelFit] = useState<ModelFitResponse | null>(null);
   const [modelFitError, setModelFitError] = useState<string | null>(null);
   const [modelFitLoading, setModelFitLoading] = useState(false);
   const [pinnedByNode, setPinnedByNode] = useState<Record<string, string[]>>({});
   const [actionError, setActionError] = useState<string | null>(null);
+  // Validation and server errors for the Add node modal only; actionError
+  // stays the page-level slot for the other node actions.
+  const addModal = useModalForm();
+  const addActionRow = useRef<HTMLDivElement>(null);
+  const updateNewNode = (patch: Partial<typeof newNode>) => {
+    setNewNode((prev) => ({ ...prev, ...patch }));
+    addModal.edit();
+  };
+  // Typed values survive Cancel, close, Escape and backdrop; only the error
+  // and in-flight state reset. A successful add clears the form.
+  const openAddModal = () => {
+    setActionError(null);
+    addModal.reset();
+    setIsAddModalOpen(true);
+  };
+  const closeAddModal = () => {
+    addModal.reset();
+    setIsAddModalOpen(false);
+  };
   const [nodeToDelete, setNodeToDelete] = useState<string | null>(null);
   const [nodeToDrain, setNodeToDrain] = useState<string | null>(null);
   // Replica impact copy for the node being drained, captured when the Drain
@@ -1724,16 +1751,20 @@ export function GPUNodes() {
   }, [filteredNodes, activeSignalIds]);
 
   const handleAddNode = async () => {
-    if (!newNode.name || !newNode.host) return;
+    const { errors, invalid, values } = parseNodeForm(newNode.name, newNode.host, newNode.port);
+    if (errors.length > 0) { addModal.fail(errors, invalid); return; }
+
+    const token = addModal.begin();
+    if (token === null) return; // a submit is already in flight
 
     if (demoMode) {
       const added: GPUNode = withDemoSignals({
         id: `gpu-node-${Math.random().toString(36).substring(2, 9)}`,
-        name: newNode.name,
-        host: newNode.host,
+        name: values.name,
+        host: values.host,
         scheme: newNode.useHttps ? 'https' : 'http',
         gpuModel: newNode.gpuModel || 'Unknown GPU',
-        port: parseInt(newNode.port, 10) || 11434,
+        port: values.port,
         vramTotalMB: 24576,
         vramUsedMB: 0,
         vramSource: 'declared',
@@ -1751,30 +1782,44 @@ export function GPUNodes() {
         signals: [],
       });
       setNodes(prev => [...prev, added]);
-      setActionError(null);
-      setIsAddModalOpen(false);
-      setNewNode({ name: '', host: '', port: '11434', gpuModel: '', runtime: 'auto', useHttps: false });
+      if (addModal.finish(token)) {
+        setNewNode(EMPTY_NEW_NODE);
+        closeAddModal();
+      }
       return;
     }
 
-    if (!isLive) return;
+    if (!isLive) {
+      if (addModal.finish(token)) addModal.fail(['Backend disconnected - the node was not added.']);
+      return;
+    }
 
     const nodeData = {
-      name: newNode.name,
-      url: `${newNode.useHttps ? 'https' : 'http'}://${newNode.host}:${newNode.port}`,
+      name: values.name,
+      url: `${newNode.useHttps ? 'https' : 'http'}://${values.host}:${values.port}`,
       gpu_model: newNode.gpuModel,
       runtime: newNode.runtime,
     };
 
     try {
       await addNode(nodeData);
-      await loadNodes();
-      setActionError(null);
-      setIsAddModalOpen(false);
-      setNewNode({ name: '', host: '', port: '11434', gpuModel: '', runtime: 'auto', useHttps: false });
-    } catch (err: any) {
-      setActionError(err?.message || 'Failed to add node');
+    } catch (err: unknown) {
+      // A late failure for a modal the operator already closed is dropped on
+      // purpose: nothing was added and its error would describe a form the operator left.
+      if (addModal.finish(token)) addModal.fail([errorMessage(err, 'Failed to add node')]);
+      return;
     }
+    // The node exists now. Refreshing the list is separate: loadNodes reports
+    // its own failure in the page-level banner, so it is never mislabelled as
+    // "Failed to add node". The form is cleared and closed only when it is
+    // still the one that fired this request; a form reopened meanwhile keeps
+    // whatever the operator typed into it.
+    const current = addModal.finish(token);
+    if (current) {
+      setNewNode(EMPTY_NEW_NODE);
+      closeAddModal();
+    }
+    try { await loadNodes(); } catch { /* reported by loadNodes */ }
   };
 
   const handleRemoveNode = async (name: string): Promise<boolean> => {
@@ -2327,7 +2372,7 @@ export function GPUNodes() {
             </span>
           </div>
           <button
-            onClick={() => { setActionError(null); setIsAddModalOpen(true); }}
+            onClick={openAddModal}
             disabled={!isLive && !demoMode}
             title={!isLive && !demoMode ? 'Backend disconnected' : undefined}
             className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground font-medium rounded-lg transition-colors shadow-sm"
@@ -2445,7 +2490,7 @@ export function GPUNodes() {
             copy="Add your first GPU node to put Marbor in front of real hardware."
             action={
               <button
-                onClick={() => { setActionError(null); setIsAddModalOpen(true); }}
+                onClick={openAddModal}
                 disabled={!isLive && !demoMode}
                 className="inline-flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground font-medium rounded-lg transition-colors shadow-sm"
               >
@@ -2549,7 +2594,7 @@ export function GPUNodes() {
       {/* Add Node Modal */}
       <Modal
         isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
+        onClose={closeAddModal}
         title="Add GPU node"
       >
         <div className="space-y-4">
@@ -2561,8 +2606,10 @@ export function GPUNodes() {
               id="add-node-name"
               type="text"
               aria-required="true"
+              aria-invalid={addModal.state.invalid.includes('name') || undefined}
+              aria-describedby={addModal.state.invalid.includes('name') ? 'add-node-error' : undefined}
               value={newNode.name}
-              onChange={(e) => setNewNode({ ...newNode, name: e.target.value })}
+              onChange={(e) => updateNewNode({ name: e.target.value })}
               placeholder="e.g., gpu-node-05"
               className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
             />
@@ -2575,8 +2622,10 @@ export function GPUNodes() {
               id="add-node-host"
               type="text"
               aria-required="true"
+              aria-invalid={addModal.state.invalid.includes('host') || undefined}
+              aria-describedby={addModal.state.invalid.includes('host') ? 'add-node-error' : undefined}
               value={newNode.host}
-              onChange={(e) => setNewNode({ ...newNode, host: e.target.value })}
+              onChange={(e) => updateNewNode({ host: e.target.value })}
               placeholder="e.g., 10.0.1.15"
               className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
             />
@@ -2584,7 +2633,7 @@ export function GPUNodes() {
               <input
                 type="checkbox"
                 checked={newNode.useHttps}
-                onChange={(e) => setNewNode({ ...newNode, useHttps: e.target.checked })}
+                onChange={(e) => updateNewNode({ useHttps: e.target.checked })}
                 className="rounded border-border bg-background text-primary focus:ring-primary/20"
               />
               <span className="text-xs text-muted-foreground">Use HTTPS for this node's inference runtime endpoint (only if the runtime itself - Ollama, vLLM, etc. - serves TLS on this port; most don't by default). This is separate from the marbor agent's own HTTPS setting, which is configured after adding the node.</span>
@@ -2592,36 +2641,43 @@ export function GPUNodes() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+              <label htmlFor="add-node-port" className="block text-sm font-medium text-muted-foreground mb-1.5">
                 Port
               </label>
               <input
+                id="add-node-port"
                 type="text"
+                inputMode="numeric"
+                aria-invalid={addModal.state.invalid.includes('port') || undefined}
+                aria-describedby={addModal.state.invalid.includes('port') ? 'add-node-error' : undefined}
                 value={newNode.port}
-                onChange={(e) => setNewNode({ ...newNode, port: e.target.value })}
+                onChange={(e) => updateNewNode({ port: e.target.value })}
                 className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+              <label htmlFor="add-node-gpu-model" className="block text-sm font-medium text-muted-foreground mb-1.5">
                 GPU Model
               </label>
               <input
+                id="add-node-gpu-model"
                 type="text"
                 value={newNode.gpuModel}
-                onChange={(e) => setNewNode({ ...newNode, gpuModel: e.target.value })}
+                onChange={(e) => updateNewNode({ gpuModel: e.target.value })}
                 placeholder="e.g., NVIDIA A100"
                 className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
               />
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-muted-foreground mb-1.5">
+            <label id="add-node-runtime-label" htmlFor="add-node-runtime" className="block text-sm font-medium text-muted-foreground mb-1.5">
               Runtime
             </label>
             <CustomSelect
+              id="add-node-runtime"
+              labelId="add-node-runtime-label"
               value={newNode.runtime || 'auto'}
-              onChange={(val) => setNewNode({ ...newNode, runtime: val })}
+              onChange={(val) => updateNewNode({ runtime: val })}
               options={[
                 { value: 'auto', label: 'Auto-detect' },
                 { value: 'ollama', label: 'Ollama' },
@@ -2635,26 +2691,26 @@ export function GPUNodes() {
               Auto-detect probes the node on first health check. Pick a runtime directly if you know it.
             </p>
           </div>
-          {actionError && (
-            <p className="text-sm text-destructive">{actionError}</p>
-          )}
-          <div className="flex justify-end gap-3 pt-4 border-t border-border">
-            {(!newNode.name || !newNode.host) && (
-              <p id="add-node-hint" className="flex-1 min-w-0 self-center text-xs text-muted-foreground">Enter a node name and host to add the node.</p>
-            )}
+          <FormError
+            id="add-node-error"
+            errors={addModal.state.errors}
+            attempt={addModal.state.attempt}
+            focusFieldId={ADD_NODE_FIELD_IDS[addModal.state.invalid[0] ?? '']}
+            actionRowRef={addActionRow}
+          />
+          <div ref={addActionRow} className="flex justify-end gap-3 pt-4 border-t border-border">
             <button
-              onClick={() => setIsAddModalOpen(false)}
+              onClick={closeAddModal}
               className="shrink-0 whitespace-nowrap px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
             >
               Cancel
             </button>
             <Button
               onClick={handleAddNode}
-              disabled={!newNode.name || !newNode.host}
-              aria-describedby={!newNode.name || !newNode.host ? 'add-node-hint' : undefined}
-              className="shrink-0 whitespace-nowrap"
+              aria-disabled={addModal.state.busy || undefined}
+              className="shrink-0 whitespace-nowrap aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
             >
-              Add Node
+              {addModal.state.busy ? 'Adding...' : 'Add Node'}
             </Button>
           </div>
         </div>
