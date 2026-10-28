@@ -1083,18 +1083,43 @@ func buildRoot() *Command {
 				Sub: []*Command{
 					{
 						Name:      "now",
-						Short:     "trigger an on-demand backup and download it",
+						Short:     "trigger an on-demand backup and download it (gzip, .db.gz)",
 						NeedsAuth: true,
 						Flags: []FlagSpec{
 							{Name: "output", Kind: FlagString, DefString: "", Usage: "local file path to save to (default: server-suggested filename)"},
+							{Name: "force", Kind: FlagBool, Usage: "replace the output file if it already exists (default: refuse)"},
 						},
-						Run: func(ctx *RunCtx) int { return runBackupNow(ctx.Flags, ctx.String("output"), ctx.Stdout, ctx.Stderr) },
+						Run: func(ctx *RunCtx) int {
+							return runBackupNow(ctx.Flags, ctx.String("output"), ctx.Bool("force"), ctx.Stdout, ctx.Stderr)
+						},
 					},
 					{
 						Name:      "list",
-						Short:     "list backup files on the server",
+						Short:     "list backup files on the server, with the last backup result",
 						NeedsAuth: true,
-						Run:       func(ctx *RunCtx) int { return runBackupList(ctx.Flags, ctx.Stdout, ctx.Stderr) },
+						Flags: []FlagSpec{
+							{Name: "check", Kind: FlagBool, Usage: "exit 3, with the reasons on stderr, when something needs attention: no backups or no directory, a scheduled backup that never succeeded or is overdue, a failed, refused or cancelled backup, a damaged or unverified file, a note or notice, entries that could not be listed, a backup running over an hour, a retention problem, leftover files, or a restore that failed or finished with a note (for cron and monitoring)"},
+						},
+						Run: func(ctx *RunCtx) int { return runBackupList(ctx.Flags, ctx.Bool("check"), ctx.Stdout, ctx.Stderr) },
+					},
+					{
+						Name:      "ack-restore",
+						Short:     "clear the remembered result of the last restore",
+						NeedsAuth: true,
+						Run:       func(ctx *RunCtx) int { return runBackupAck(ctx.Flags, ctx.Stdout, ctx.Stderr) },
+					},
+					{
+						Name:      "download",
+						Short:     "download a stored backup file from the server",
+						NeedsAuth: true,
+						Args:      []ArgSpec{{Name: "name"}},
+						Flags: []FlagSpec{
+							{Name: "output", Kind: FlagString, DefString: "", Usage: "local file path to save to (default: the backup's own name)"},
+							{Name: "force", Kind: FlagBool, Usage: "replace the output file if it already exists (default: refuse)"},
+						},
+						Run: func(ctx *RunCtx) int {
+							return runBackupDownload(ctx.Flags, ctx.Args[0], ctx.String("output"), ctx.Bool("force"), ctx.Stdout, ctx.Stderr)
+						},
 					},
 					{
 						Name:      "restore",
@@ -1103,17 +1128,30 @@ func buildRoot() *Command {
 						Args:      []ArgSpec{{Name: "filename"}},
 						Flags: []FlagSpec{
 							{Name: "yes", Kind: FlagBool, Usage: "confirm restore without prompting"},
+							{Name: "wait", Kind: FlagBool, Usage: "wait for marbor to restart (up to 5 minutes) and exit nonzero unless the restore is reported as done"},
 						},
 						Run: func(ctx *RunCtx) int {
-							return runBackupRestore(ctx.Flags, ctx.Args[0], ctx.Bool("yes"), ctx.Stdout, ctx.Stderr)
+							return runBackupRestore(ctx.Flags, ctx.Args[0], ctx.Bool("yes"), ctx.Bool("wait"), ctx.Stdout, ctx.Stderr)
+						},
+					},
+					{
+						Name:      "delete",
+						Short:     "delete a stored backup file from the server (cannot be undone)",
+						NeedsAuth: true,
+						Args:      []ArgSpec{{Name: "name"}},
+						Flags: []FlagSpec{
+							{Name: "yes", Kind: FlagBool, Usage: "confirm deletion without prompting"},
+						},
+						Run: func(ctx *RunCtx) int {
+							return runBackupDelete(ctx.Flags, ctx.Args[0], ctx.Bool("yes"), ctx.Stdout, ctx.Stderr)
 						},
 					},
 					{
 						Name:      "upload",
-						Short:     "upload a local .db file as a restorable backup",
+						Short:     "upload a local .db or .db.gz file as a restorable backup",
 						NeedsAuth: true,
 						Flags: []FlagSpec{
-							{Name: "file", Kind: FlagString, Usage: "local .db file path (required)", Required: true, RequiredMsg: "error: --file is required"},
+							{Name: "file", Kind: FlagString, Usage: "local .db or .db.gz file path (required)", Required: true, RequiredMsg: "error: --file is required"},
 						},
 						Run: func(ctx *RunCtx) int { return runBackupUpload(ctx.Flags, ctx.String("file"), ctx.Stdout, ctx.Stderr) },
 					},

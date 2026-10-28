@@ -1,8 +1,10 @@
-import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, CloudProviderInput, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, QuantRecommendation, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry, ModelConfig, LocalModel, BenchmarkRun, BackupFileInfo, SpillCounterRow, RoutingDecision, ModelAlias } from '../types';
+import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, CloudProviderInput, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, QuantRecommendation, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry, ModelConfig, LocalModel, BenchmarkRun, BackupFileInfo, BackupListResponse, SpillCounterRow, RoutingDecision, ModelAlias } from '../types';
 import { readSoleReplicaImpact, runtimeActionFailureInfo, runtimeActionQuery } from './soleReplica';
 import { auditAddNodeDetails, auditRuntimeUnitDetails, mockAPIKeys, mockCloudProviders, mockGPUNodes, mockSavings, mockReplicaSuggestions, mockSoleReplicaImpact } from './mockData';
 import { sameDeclared } from './replicaGroups';
 import { dedupeInflight } from './inflight';
+import { checkBackupFile, describeBackupError, filenameFromDisposition, isAbortError, isNetworkFailure, isNewProcess, isValidRestoreRef, looksLikeBackup, tooBigForBrowser, MAX_MEMORY_DOWNLOAD_BYTES } from './backupUi';
+import { mockBackupResponse } from './backupMock';
 
 const BASE = '/admin';
 
@@ -1155,85 +1157,456 @@ export function analyticsExportUrl(type: 'hourly' | 'models'): string {
   return `${BASE}/analytics/export?format=csv&type=${type}`;
 }
 
-// triggerBackupNow requests an on-demand marbor.db backup (POST, unlike the GET
-// analyticsExportUrl above - server-side handleBackupNow needs a verb that
-// isn't cacheable/prefetchable) and pushes the streamed file into the
-// browser's normal download flow via a throwaway object URL + <a download>.
-export async function triggerBackupNow(): Promise<void> {
-  if (DEMO) throw new Error('Backup download is not available in demo mode.');
-  const res = await apiFetch(`${BASE}/backup`, { method: 'POST', headers: authHeaders() });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Backup failed'); }
-  const blob = await res.blob();
-  const disposition = res.headers.get('Content-Disposition') || '';
-  const match = /filename="?([^"]+)"?/.exec(disposition);
-  const filename = match ? match[1] : 'marbor-backup.db';
-  const url = URL.createObjectURL(blob);
+// --- Backups ---
+//
+// Both downloads (an on-demand backup and a stored file) go through fetch, never
+// a bare <a download> link: a link that hits an error (expired session, missing
+// file, a refused backup) would save the error page as the "backup", or fail
+// with no explanation. Reading the response here lets every failure be shown.
+//
+// A stored file is saved through the browser's save dialog where there is one:
+// the request goes first and the dialog opens only once the server has answered
+// with a backup, so a refused or failed download never leaves an empty file
+// behind. The browser only opens the dialog while the click that started the
+// action is still recent; when it is not, the file is collected in memory and
+// saved through a temporary link instead, and the caller is told so.
+//
+// An on-demand backup never uses the dialog: it is prepared by the server first,
+// which takes longer than the click stays valid, so the dialog would nearly
+// always be refused after the work was done. It is always collected in memory
+// and saved to the downloads folder. The in-memory path is capped at
+// MAX_MEMORY_DOWNLOAD_BYTES (backupUi.ts), checked from Content-Length before
+// anything is read whenever the dialog will not be used, and counted while the
+// bytes stream, so an oversized backup is cut off early, never held in full.
+
+export type BackupSaveResult =
+  | { kind: 'saved'; name: string; note?: string }
+  | { kind: 'cancelled' };
+
+interface SaveHandle {
+  createWritable(): Promise<WritableStream<Uint8Array>>;
+  remove?: () => Promise<void>;
+}
+
+type SaveFilePicker = (options: {
+  suggestedName: string;
+  types: { description: string; accept: Record<string, string[]> }[];
+}) => Promise<SaveHandle>;
+
+// Chunks are folded into a browser-managed Blob in pieces of this size, so the
+// page's own memory stays small however large the file is.
+const BLOB_PIECE_BYTES = 8 * 1024 * 1024;
+
+// concatChunks joins the first few chunks of a body into one array.
+function concatChunks(chunks: Uint8Array[]): Uint8Array {
+  const total = chunks.reduce((n, c) => n + c.byteLength, 0);
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const c of chunks) {
+    out.set(c, at);
+    at += c.byteLength;
+  }
+  return out;
+}
+
+// readBackupError turns a failed backup response into one sentence.
+async function readBackupError(res: Response, action: string): Promise<string> {
+  let message = '';
+  try {
+    const body = await res.json();
+    if (body && typeof body.error === 'string') message = body.error;
+  } catch {
+    // not JSON: the status code alone is reported
+  }
+  return describeBackupError(res.status, message, action);
+}
+
+// openSavePicker asks for a save location. Returns null where the browser has no
+// dialog, the handle, 'cancelled' when the operator closed the dialog, or a
+// sentence saying why the dialog could not be used (the caller then saves
+// through the downloads folder and tells the operator).
+function savePickerFn(): SaveFilePicker | null {
+  const picker = (window as unknown as { showSaveFilePicker?: SaveFilePicker }).showSaveFilePicker;
+  return typeof picker === 'function' ? picker : null;
+}
+
+// savePickerUsable says whether the save dialog can be opened right now: the
+// browser has one and the click that started the action is still recent.
+function savePickerUsable(): boolean {
+  if (!savePickerFn()) return false;
+  return !(navigator.userActivation && !navigator.userActivation.isActive);
+}
+
+async function openSavePicker(suggestedName: string): Promise<SaveHandle | 'cancelled' | { unavailable: string } | null> {
+  const picker = savePickerFn();
+  if (!picker) return null;
+  if (navigator.userActivation && !navigator.userActivation.isActive) {
+    return { unavailable: 'Your browser only opens the save dialog right after a click, and the backup took longer than that to prepare, so it was saved to your downloads folder instead.' };
+  }
+  const gz = suggestedName.toLowerCase().endsWith('.gz');
+  try {
+    return await picker.call(window, {
+      suggestedName,
+      types: [gz
+        ? { description: 'marbor backup (gzip)', accept: { 'application/gzip': ['.gz'] } }
+        : { description: 'marbor backup', accept: { 'application/vnd.sqlite3': ['.db'] } }],
+    });
+  } catch (err) {
+    if (isAbortError(err)) return 'cancelled';
+    const why = err instanceof Error && err.message ? ` (${err.message})` : '';
+    return { unavailable: `The save dialog could not be opened${why}, so the backup was saved to your downloads folder instead.` };
+  }
+}
+
+// discardHandle removes the empty file the picker created, best effort. Returns
+// whether it is certainly gone.
+async function discardHandle(handle: SaveHandle): Promise<boolean> {
+  if (typeof handle.remove !== 'function') return false;
+  try {
+    await handle.remove();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const EMPTY_FILE_NOTE = ' An empty file may remain at the location you chose; you can delete it.';
+
+// saveBackupResponse writes a successful backup response to disk. Throws with a
+// sentence the operator can act on; throws an AbortError when signal fired.
+// allowPicker is false for an on-demand backup (see the notes above).
+async function saveBackupResponse(res: Response, suggestedName: string, signal: AbortSignal, allowPicker: boolean): Promise<BackupSaveResult> {
+  const name = filenameFromDisposition(res.headers.get('Content-Disposition'), suggestedName);
+  const ctype = (res.headers.get('Content-Type') ?? '').toLowerCase();
+  const reader = res.body ? res.body.getReader() : null;
+  const cancelBody = async () => { try { await reader?.cancel(); } catch { /* already closed */ } };
+  if (/^(text\/|application\/(json|xml)|image\/)/.test(ctype)) {
+    await cancelBody();
+    throw new Error(`The server answered with something that is not a backup file (type ${ctype.split(';')[0]}). A proxy or login page may have answered instead.`);
+  }
+  const declaredHeader = res.headers.get('Content-Length');
+  const declared = declaredHeader !== null && declaredHeader !== '' && Number.isFinite(Number(declaredHeader)) ? Number(declaredHeader) : null;
+  // A response that has a content encoding is not the length on the wire.
+  const encoded = (res.headers.get('Content-Encoding') ?? '') !== '';
+  // Refuse an oversized file before reading any of it whenever it would have to
+  // be collected in memory: no dialog is allowed, or none can be opened now.
+  if (declared !== null && declared > MAX_MEMORY_DOWNLOAD_BYTES && !(allowPicker && savePickerUsable())) {
+    await cancelBody();
+    throw new Error(tooBigForBrowser(declared));
+  }
+
+  // Read the start of the body before choosing where to save: it proves the
+  // answer really is a backup. At least two bytes are needed to judge, and a
+  // body can arrive in chunks of one.
+  let first: Uint8Array | null = null;
+  if (reader) {
+    const head: Uint8Array[] = [];
+    let have = 0;
+    while (have < 2) {
+      const r = await reader.read();
+      if (r.done) break;
+      head.push(r.value);
+      have += r.value.byteLength;
+    }
+    first = have > 0 ? concatChunks(head) : null;
+  } else {
+    first = new Uint8Array(await res.arrayBuffer());
+  }
+  if (!first || first.byteLength === 0) {
+    await cancelBody();
+    throw new Error('The server sent an empty file, so nothing was saved.');
+  }
+  if (!looksLikeBackup(first)) {
+    await cancelBody();
+    throw new Error('The answer is not a backup file (it does not start like a gzip or SQLite file), so nothing was saved. A proxy or login page may have answered instead.');
+  }
+
+  let note: string | undefined;
+  let handle: SaveHandle | null = null;
+  let writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
+  const picked = allowPicker ? await openSavePicker(name) : null;
+  if (picked === 'cancelled') {
+    await cancelBody();
+    return { kind: 'cancelled' };
+  }
+  if (picked && 'unavailable' in picked) {
+    note = picked.unavailable;
+  } else if (picked) {
+    handle = picked;
+    try {
+      writer = (await handle.createWritable()).getWriter();
+    } catch (err) {
+      await cancelBody();
+      const removed = await discardHandle(handle);
+      throw new Error(`Could not open the chosen file for writing${err instanceof Error && err.message ? ` (${err.message})` : ''}. Nothing was saved.${removed ? '' : EMPTY_FILE_NOTE}`);
+    }
+  }
+
+  const parts: Blob[] = [];
+  let pending: Uint8Array[] = [];
+  let pendingBytes = 0;
+  let total = 0;
+  const take = async (chunk: Uint8Array) => {
+    total += chunk.byteLength;
+    if (writer) {
+      await writer.write(chunk);
+      return;
+    }
+    if (total > MAX_MEMORY_DOWNLOAD_BYTES) {
+      throw new Error(tooBigForBrowser(null));
+    }
+    pending.push(chunk);
+    pendingBytes += chunk.byteLength;
+    if (pendingBytes >= BLOB_PIECE_BYTES) {
+      parts.push(new Blob(pending as BlobPart[]));
+      pending = [];
+      pendingBytes = 0;
+    }
+  };
+  try {
+    await take(first);
+    if (reader) {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        await take(value);
+      }
+    }
+    if (declared !== null && !encoded && total !== declared) {
+      throw new Error(`The file arrived incomplete (${total} of ${declared} bytes), so it was not saved.`);
+    }
+    if (writer) {
+      await writer.close();
+    }
+  } catch (err) {
+    await cancelBody();
+    let removed = true;
+    if (writer && handle) {
+      try { await writer.abort(); } catch { /* already failed */ }
+      removed = await discardHandle(handle);
+    }
+    if (isAbortError(err) || signal.aborted) throw new DOMException('Cancelled', 'AbortError');
+    const why = err instanceof Error && err.message ? err.message : 'the transfer was interrupted';
+    throw new Error(writer ? `The backup was not saved: ${why}.${removed ? '' : EMPTY_FILE_NOTE}` : why);
+  }
+  if (writer) return { kind: 'saved', name, note };
+
+  if (signal.aborted) throw new DOMException('Cancelled', 'AbortError');
+  if (pending.length > 0) parts.push(new Blob(pending as BlobPart[]));
+  const url = URL.createObjectURL(new Blob(parts));
   const a = document.createElement('a');
   a.href = url;
-  a.download = filename;
+  a.download = name;
   document.body.appendChild(a);
   a.click();
   a.remove();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return { kind: 'saved', name, note };
 }
 
-// fetchBackupList lists scheduled backup files already sitting in the
-// configured target directory, so the restore picker doesn't require the
-// operator to know the naming scheme or type a path by hand.
-export async function fetchBackupList(): Promise<BackupFileInfo[]> {
-  if (DEMO) {
-    const now = Date.now();
-    return demoDelay([
-      { name: 'marbor-backup-20260730-030000.db', size_bytes: 4_812_288, modified_at: new Date(now - 9 * 60 * 60 * 1000).toISOString() },
-      { name: 'marbor-backup-20260729-030000.db', size_bytes: 4_795_904, modified_at: new Date(now - 33 * 60 * 60 * 1000).toISOString() },
-      { name: 'marbor-backup-20260728-030000.db', size_bytes: 4_780_032, modified_at: new Date(now - 57 * 60 * 60 * 1000).toISOString() },
-    ]);
+// triggerBackupNow requests an on-demand marbor.db backup (POST, unlike the GET
+// analyticsExportUrl above - the handler needs a verb that isn't
+// cacheable/prefetchable) and saves the streamed gzip file to the downloads
+// folder (never through the save dialog, see the notes above). Aborting signal
+// cancels the request and any save in progress.
+export async function triggerBackupNow(suggestedName: string, signal: AbortSignal): Promise<BackupSaveResult> {
+  if (DEMO) throw new Error('Backup download is not available in demo mode.');
+  const res = await apiFetch(`${BASE}/backup`, { method: 'POST', headers: authHeaders(), signal });
+  if (!res.ok) throw new Error(await readBackupError(res, 'The backup'));
+  return saveBackupResponse(res, suggestedName, signal, false);
+}
+
+// downloadStoredBackup saves one backup already stored on the server.
+export async function downloadStoredBackup(name: string, signal: AbortSignal): Promise<BackupSaveResult> {
+  if (DEMO) throw new Error('Backup download is not available in demo mode.');
+  const res = await apiFetch(backupDownloadUrl(name), { headers: authHeaders(), signal });
+  if (!res.ok) throw new Error(await readBackupError(res, 'The download'));
+  return saveBackupResponse(res, name, signal, true);
+}
+
+// fetchBackupList lists backup files already sitting in the configured target
+// directory, so the restore picker doesn't require the operator to know the
+// naming scheme or type a path by hand. status is null when the server sent
+// none, so the caller can fall back to the plain settings read.
+const BACKUP_LIST_TIMEOUT_MS = 30_000;
+
+export async function fetchBackupList(): Promise<BackupListResponse> {
+  if (DEMO) return demoDelay(mockBackupResponse());
+  // The whole read (headers and body) is bounded, so a server that stops
+  // answering ends the request instead of leaving the page waiting for ever.
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), BACKUP_LIST_TIMEOUT_MS);
+  try {
+    const res = await apiFetch(`${BASE}/backup/list`, { headers: authHeaders(), signal: ctl.signal });
+    if (!res.ok) throw new Error(await readBackupError(res, 'Loading the backup list'));
+    let data: { backups?: BackupFileInfo[]; status?: BackupListResponse['status']; skipped?: number };
+    try {
+      data = await res.json();
+    } catch (err) {
+      if (ctl.signal.aborted) throw err;
+      throw new Error('The server sent a backup list marbor could not read.');
+    }
+    return {
+      backups: Array.isArray(data.backups) ? data.backups : [],
+      status: data.status ?? null,
+      skipped: Number(data.skipped) || 0,
+    };
+  } catch (err) {
+    if (ctl.signal.aborted) throw new Error(`marbor did not answer the backup list request within ${BACKUP_LIST_TIMEOUT_MS / 1000} seconds.`);
+    throw err;
+  } finally {
+    clearTimeout(timer);
   }
-  const res = await apiFetch(`${BASE}/backup/list`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to list backups');
-  const data = await res.json();
-  return data.backups ?? [];
+}
+
+// backupDownloadUrl is the Admin API route that serves one stored backup,
+// authenticated by the session cookie. Fetched by downloadStoredBackup above.
+export function backupDownloadUrl(name: string): string {
+  return `${BASE}/backup/download?name=${encodeURIComponent(name)}`;
 }
 
 // restoreBackup triggers a one-click restore from an already-existing
-// scheduled backup file: marbor validates it, swaps marbor.db for it, and
-// exits so the process supervisor (systemd/Docker/Kubernetes) restarts it
-// with the restored database - see docs/backup.md for the supervisor
-// requirement. The connection may drop before a response arrives since the
-// marbor shuts down shortly after responding; callers should treat a network
-// error here as "restore likely proceeding" rather than a hard failure.
-export const restoreBackup = withSettingsReset(async function restoreBackup(filename: string): Promise<void> {
+// stored backup file: marbor validates it, swaps marbor.db for it, and exits so
+// the process supervisor (systemd/Docker/Kubernetes) restarts it with the
+// restored database - see docs/backup.md for the supervisor requirement.
+// Resolves 'accepted' when the server answered 202. The connection can also
+// drop before any answer arrives; that is reported as 'connection-lost' (the
+// restore may or may not have started) and the caller follows up with
+// waitForRestart. Any other failure throws with the server's reason.
+export const restoreBackup = withSettingsReset(async function restoreBackup(filename: string): Promise<{ outcome: 'accepted' | 'connection-lost'; ref: string | null }> {
   if (DEMO) throw new Error('Restore is not available in demo mode.');
-  const res = await apiFetch(`${BASE}/backup/restore`, {
-    method: 'POST',
-    headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ filename }),
-  });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Restore failed'); }
+  let res: Response;
+  try {
+    res = await apiFetch(`${BASE}/backup/restore`, {
+      method: 'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename }),
+    });
+  } catch (err) {
+    if (isNetworkFailure(err)) return { outcome: 'connection-lost', ref: null };
+    throw err;
+  }
+  if (!res.ok) throw new Error(await readBackupError(res, 'The restore'));
+  let ref: string | null = null;
+  try {
+    const body = await res.json();
+    if (body && isValidRestoreRef(body.ref)) ref = body.ref;
+  } catch {
+    // an answer without a readable reference still means the restore was accepted
+  }
+  return { outcome: 'accepted', ref };
 });
 
-// uploadBackup sends an arbitrary local .db file (picked via a plain
-// <input type="file"> - works the same in Chrome/Firefox/Safari/Edge on
-// Linux, Windows, and macOS, no OS-specific code needed) to the server,
-// which validates it's a genuine SQLite database and saves it into the same
-// target directory scheduled/manual backups use, under a fresh
-// marbor-backup-<timestamp>.db name. On success it returns that name so the
-// caller can select it in the restore picker without a second list fetch.
-// If the upload is byte-for-byte identical to a backup already in the pool,
-// the server reuses that existing file instead of adding a duplicate -
-// `duplicate` tells the caller which happened so it can message it clearly.
-export async function uploadBackup(file: File): Promise<{ filename: string; duplicate: boolean }> {
+// fetchStartedAt reads the identifier of the running marbor process from /health
+// (null when it cannot be read, or an older marbor sends none). A 503 (degraded)
+// answer still carries it.
+export async function fetchStartedAt(signal?: AbortSignal): Promise<string | null> {
+  if (DEMO) return null;
+  try {
+    const res = await fetch('/health', { cache: 'no-store', signal });
+    if (!res.ok && res.status !== 503) return null;
+    const body = await res.json();
+    return body && typeof body.started_at === 'string' ? body.started_at : null;
+  } catch {
+    return null;
+  }
+}
+
+// waitForRestart polls /health after a restore was requested and says what it
+// saw: 'restarted' (a new marbor process is answering), 'still-running' (the old
+// one never went away within 15 s, so the restore most likely did not start) or
+// 'timeout' (it went away and did not come back within 90 s). `before` is the
+// process identifier read before the restore was requested; a different one
+// means a restart. A 503 answer is a running marbor (degraded), not a down one.
+export async function waitForRestart(signal: AbortSignal, before: string | null): Promise<'restarted' | 'still-running' | 'timeout' | 'cancelled'> {
+  if (DEMO) throw new Error('Restore is not available in demo mode.');
+  const started = Date.now();
+  let sawDown = false;
+  while (!signal.aborted) {
+    let up = false;
+    let startedAt: string | null = null;
+    try {
+      const res = await fetch('/health', { cache: 'no-store', signal });
+      up = res.ok || res.status === 503;
+      if (up) {
+        try {
+          const body = await res.json();
+          if (body && typeof body.started_at === 'string') startedAt = body.started_at;
+        } catch {
+          // no readable identifier: the down-then-up rule decides
+        }
+      }
+    } catch {
+      up = false;
+    }
+    if (signal.aborted) break;
+    const elapsed = Date.now() - started;
+    if (up && isNewProcess(before, startedAt, sawDown)) return 'restarted';
+    if (!up) sawDown = true;
+    if (up && elapsed > 15_000) return 'still-running';
+    if (elapsed > 90_000) return 'timeout';
+    await new Promise<void>((resolve) => {
+      const t = window.setTimeout(resolve, 1500);
+      signal.addEventListener('abort', () => { window.clearTimeout(t); resolve(); }, { once: true });
+    });
+  }
+  return 'cancelled';
+}
+
+// acknowledgeRestoreResult clears the remembered outcome of the last restore
+// once the operator has read it, so it stops showing on the Backups card. ref is
+// the reference of the result that was shown (undefined for one without a
+// reference): the server leaves a different, newer result alone. The clearing is
+// shared by every operator and the command line.
+export const acknowledgeRestoreResult = withSettingsReset(async function acknowledgeRestoreResult(ref?: string): Promise<void> {
+  if (DEMO) return demoDelay(undefined);
+  const sent = isValidRestoreRef(ref) ? ref : '-';
+  const res = await apiFetch(`${BASE}/backup/restore-result?ref=${encodeURIComponent(sent)}`, { method: 'DELETE', headers: authHeaders() });
+  if (!res.ok) throw new Error(await readBackupError(res, 'Clearing the restore result'));
+});
+
+// uploadBackup sends a local backup file (a .db or a gzip-compressed .db.gz,
+// picked via a plain <input type="file"> - works the same in Chrome/Firefox/
+// Safari/Edge on Linux, Windows, and macOS, no OS-specific code needed) to the
+// server, which reads it in full, checks it's a genuine SQLite database and
+// saves it into the same target directory scheduled/manual backups use, under
+// a fresh marbor-backup-<timestamp>-upload.db(.gz) name. The extension and size
+// are checked here first, so a wrong or oversized file is turned away before it
+// is sent. fetch reports no upload progress, so the caller shows an indeterminate
+// state with a cancel button (signal). On success it returns the stored name so
+// the caller can select it in the restore picker. If the upload is byte-for-byte
+// identical to a backup already in the pool, the server reuses that existing
+// file instead of adding a duplicate - `duplicate` tells the caller which
+// happened so it can message it clearly.
+export async function uploadBackup(file: File, signal: AbortSignal): Promise<{ filename: string; duplicate: boolean; warning: string }> {
   if (DEMO) throw new Error('Uploading a backup is not available in demo mode.');
+  const problem = checkBackupFile(file);
+  if (problem) throw new Error(problem);
   const form = new FormData();
   form.append('file', file);
   const res = await apiFetch(`${BASE}/backup/upload`, {
     method: 'POST',
     headers: authHeaders(),
     body: form,
+    signal,
   });
-  if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error((j as any).error || 'Upload failed'); }
-  const data = await res.json();
-  return { filename: data.filename, duplicate: !!data.duplicate };
+  if (!res.ok) throw new Error(await readBackupError(res, 'The upload'));
+  let data: { filename?: string; duplicate?: boolean; warning?: string };
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error('The upload finished but the server sent an answer marbor could not read. Reload the list to see whether the file arrived.');
+  }
+  if (!data.filename) throw new Error('The upload finished but the server did not name the stored file. Reload the list to see whether it arrived.');
+  return { filename: data.filename, duplicate: !!data.duplicate, warning: typeof data.warning === 'string' ? data.warning : '' };
+}
+
+// deleteBackup removes one stored backup file from the server. Destructive: the
+// caller confirms first.
+export async function deleteBackup(name: string): Promise<void> {
+  if (DEMO) throw new Error('Deleting a backup is not available in demo mode.');
+  const res = await apiFetch(`${BASE}/backup?name=${encodeURIComponent(name)}`, { method: 'DELETE', headers: authHeaders() });
+  if (!res.ok) throw new Error(await readBackupError(res, 'Deleting the backup'));
 }
 
 // normalizePullTag catches the most common way a pull request is malformed

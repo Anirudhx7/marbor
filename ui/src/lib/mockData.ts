@@ -1,4 +1,4 @@
-import { NodeSignalId, GPUNode, APIKey, Settings, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelCatalogResponse, ModelConfig, BenchmarkRun, SpillCounterRow, RoutingDecision, ModelAlias, QuantRecommendation } from '../types';
+import { BackupFileInfo, BackupListResponse, NodeSignalId, GPUNode, APIKey, Settings, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelCatalogResponse, ModelConfig, BenchmarkRun, SpillCounterRow, RoutingDecision, ModelAlias, QuantRecommendation } from '../types';
 import type { SystemInfo, ReplicaSuggestionsResponse, SoleReplicaImpact, AuditPage, AuditPageEntry } from './api';
 
 const GB = 1024;
@@ -844,6 +844,7 @@ export const defaultSettings: Settings = {
   backupIntervalHours: 24,
   backupRetentionCount: 7,
   backupTargetDir: '/backups',
+  // Matches the newest file in mockBackupResponse (backupMock.ts): three hours old.
   backupLastAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
   backupLastError: '',
 };

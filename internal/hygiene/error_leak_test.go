@@ -27,11 +27,28 @@ import (
 // calling through them never trips this guard.
 var errorLeakSinkPattern = regexp.MustCompile(`writeJSONError\(|http\.Error\(|Encode\(map\[string\]string\{"error"`)
 
-// rawErrRefPattern matches a bare `err` identifier reference (word
-// boundary) - this project's conventional error variable name. A sink line
-// that also references `err` is passing the real error (via err.Error(),
-// %v/%s formatting, or similar) to the client instead of a safe message.
-var rawErrRefPattern = regexp.MustCompile(`\berr\b`)
+// rawErrRefPattern matches an error-typed identifier reference: the bare `err`
+// and any identifier ending in err or Err (verr, rmErr, serr, copyErr). A
+// sink line that also references one is passing the real error (via
+// .Error(), %v/%s formatting, or similar) to the client instead of a safe
+// message. Matching on the suffix rather than the exact name closes the gap
+// where a differently named error variable slipped past a bare-`err` check.
+var rawErrRefPattern = regexp.MustCompile(`\b\w*[eE]rr\b`)
+
+// errorMethodPattern matches a call of an Error() method on any value. An error
+// held in a variable whose name does not end in err (noRoom, invalid, failure)
+// is just as raw once .Error() is taken, and %v or %s of such a value in a
+// formatted message is the same leak in another spelling; the guard cannot see
+// types, so it flags the method call and leaves the formatting case to the
+// suffix rule above and to review. Use the value's fixed fields instead.
+var errorMethodPattern = regexp.MustCompile(`\.Error\(\)`)
+
+// leaksError reports whether code (a statement or one argument of it, string
+// literals included) passes an error to the client.
+func leaksError(code string) bool {
+	code = stripStrings(code)
+	return rawErrRefPattern.MatchString(code) || errorMethodPattern.MatchString(code)
+}
 
 // errorLeakExceptions lists known raw-error-to-client leaks that are exempted
 // from this guard with a documented reason. Each key is
@@ -93,28 +110,31 @@ var rawErrRefPattern = regexp.MustCompile(`\berr\b`)
 //     outside any function (a package-level function literal) is attributed
 //     to "<pkg-level>". The receiver type is not part of the key, so methods
 //     with the same name on different receivers share one budget.
-//   - The check is line-textual. A sink call split across several lines, an
-//     error held in a variable not named err, an intermediate string variable,
-//     or a sink other than writeJSONError/http.Error/Encode is not seen.
+//   - A sink call split across several lines is joined (by balancing its
+//     parentheses, up to maxStatementLines lines) and judged as one statement.
+//   - writeCorrelatedError is also a sink: its public message (4th argument)
+//     must not reference an error, because that text goes to the client; its
+//     last argument is the error to log, which is fine.
+//   - An error held in a variable not named err, an intermediate string
+//     variable, or a sink other than the ones above is not seen.
 //   - Comment lines that mention both a sink and err are matched (false
 //     positive); such a line needs an exception entry or rewording.
 //   - Renaming an exempted handler legitimately requires editing its key.
 var errorLeakExceptions = map[string]int{
-	"internal/admin/admin.go|handleNodeRuntimeAction|writeJSONError(w, http.StatusBadGateway, err.Error())":                                          1,
-	"internal/admin/admin.go|handleNodeRuntimeLogs|writeJSONError(w, http.StatusBadGateway, err.Error())":                                            1,
-	"internal/admin/admin.go|handleUnloadModel|writeJSONError(w, http.StatusBadGateway, err.Error())":                                                1,
-	"internal/admin/admin.go|handleUnloadModel|writeJSONError(w, http.StatusConflict, err.Error())":                                                  1,
-	"internal/admin/admin.go|handleUnloadModel|writeJSONError(w, http.StatusUnprocessableEntity, err.Error())":                                       1,
-	"internal/admin/admin.go|handleNodeModels|writeJSONError(w, http.StatusBadGateway, err.Error())":                                                 1,
-	"internal/admin/admin.go|deleteSingleNodeModel|writeJSONError(w, http.StatusBadGateway, err.Error())":                                            1,
-	"internal/admin/admin.go|handleNodeHealthCheck|writeJSONError(w, http.StatusBadGateway, err.Error())":                                            1,
-	"internal/admin/admin.go|handlePatchNode|writeJSONError(w, status, err.Error())":                                                                 2,
-	"internal/admin/admin.go|handleAddKey|writeJSONError(w, http.StatusBadRequest, err.Error())":                                                     1,
-	"internal/admin/admin.go|handlePatchKey|writeJSONError(w, http.StatusBadRequest, err.Error())":                                                   1,
-	"internal/admin/admin.go|handleSetRoutingStrategy|writeJSONError(w, http.StatusBadRequest, err.Error())":                                         1,
-	"internal/admin/admin.go|handleUpdateSettings|writeJSONError(w, http.StatusBadRequest, \"validation failed: \"+err.Error())":                     1,
-	"internal/admin/admin.go|handleRestoreBackup|writeJSONError(w, http.StatusUnprocessableEntity, \"backup file failed validation: \"+err.Error())": 1,
-	"internal/admin/admin.go|handleUploadBackup|writeJSONError(w, http.StatusUnprocessableEntity, \"not a valid marbor.db backup: \"+err.Error())":   1,
+	"internal/admin/admin.go|handleNodeRuntimeAction|writeJSONError(w, http.StatusBadGateway, err.Error())":                                1,
+	"internal/admin/admin.go|handleNodeRuntimeLogs|writeJSONError(w, http.StatusBadGateway, err.Error())":                                  1,
+	"internal/admin/admin.go|handleUnloadModel|writeJSONError(w, http.StatusBadGateway, err.Error())":                                      1,
+	"internal/admin/admin.go|handleUnloadModel|writeJSONError(w, http.StatusConflict, err.Error())":                                        1,
+	"internal/admin/admin.go|handleUnloadModel|writeJSONError(w, http.StatusUnprocessableEntity, err.Error())":                             1,
+	"internal/admin/admin.go|handleUnloadModel|_ = json.NewEncoder(w).Encode(map[string]string{\"error\": router.ErrModelPinned.Error()})": 1,
+	"internal/admin/admin.go|handleNodeModels|writeJSONError(w, http.StatusBadGateway, err.Error())":                                       1,
+	"internal/admin/admin.go|deleteSingleNodeModel|writeJSONError(w, http.StatusBadGateway, err.Error())":                                  1,
+	"internal/admin/admin.go|handleNodeHealthCheck|writeJSONError(w, http.StatusBadGateway, err.Error())":                                  1,
+	"internal/admin/admin.go|handlePatchNode|writeJSONError(w, status, err.Error())":                                                       2,
+	"internal/admin/admin.go|handleAddKey|writeJSONError(w, http.StatusBadRequest, err.Error())":                                           1,
+	"internal/admin/admin.go|handlePatchKey|writeJSONError(w, http.StatusBadRequest, err.Error())":                                         1,
+	"internal/admin/admin.go|handleSetRoutingStrategy|writeJSONError(w, http.StatusBadRequest, err.Error())":                               1,
+	"internal/admin/admin.go|handleUpdateSettings|writeJSONError(w, http.StatusBadRequest, \"validation failed: \"+err.Error())":           1,
 }
 
 // exitStderr returns the captured stderr of a failed command as a
@@ -243,11 +263,18 @@ func scanErrorLeaks(rel string, src []byte, allowed map[string]int) (violations 
 		return nil, nil, err
 	}
 	observed = map[string]int{}
-	for i, line := range strings.Split(string(src), "\n") {
-		if !errorLeakSinkPattern.MatchString(line) || !rawErrRefPattern.MatchString(line) {
+	lines := strings.Split(string(src), "\n")
+	for i, line := range lines {
+		legacy := errorLeakSinkPattern.MatchString(line)
+		correlated := correlatedSinkPattern.MatchString(line)
+		if !legacy && !correlated {
 			continue
 		}
-		text := strings.TrimSpace(line)
+		stmt, text := statementAt(lines, i)
+		leaks := (legacy && leaksError(stmt)) || (correlated && correlatedMessageLeaks(stmt))
+		if !leaks {
+			continue
+		}
 		fn := enclosingFunc(spans, i+1)
 		key := rel + "|" + fn + "|" + text
 		observed[key]++
@@ -257,6 +284,99 @@ func scanErrorLeaks(rel string, src []byte, allowed map[string]int) (violations 
 		violations = append(violations, fmt.Sprintf("%s:%d (%s): raw error leaked to client: %q - route through writeServerError/writeCorrelatedError instead", rel, i+1, fn, text))
 	}
 	return violations, observed, nil
+}
+
+// correlatedSinkPattern matches a call to writeCorrelatedError, whose 4th
+// argument is sent to the client verbatim.
+var correlatedSinkPattern = regexp.MustCompile(`writeCorrelatedError\(`)
+
+// maxStatementLines bounds how far a call is followed across lines.
+const maxStatementLines = 12
+
+var stringLiteralPattern = regexp.MustCompile("\"(?:\\\\.|[^\"\\\\])*\"|`[^`]*`")
+
+// stripStrings blanks out string literals so words inside them and parentheses
+// in them are not mistaken for code.
+func stripStrings(s string) string { return stringLiteralPattern.ReplaceAllString(s, `""`) }
+
+func parenDelta(line string) int {
+	code := stripStrings(line)
+	return strings.Count(code, "(") - strings.Count(code, ")")
+}
+
+// statementAt returns the source of the call that starts on lines[i], joined
+// across lines until its parentheses balance, plus the same text with each
+// line trimmed and joined by a single space (the key text). A comment line is
+// never joined with what follows.
+func statementAt(lines []string, i int) (stmt, text string) {
+	if strings.HasPrefix(strings.TrimSpace(lines[i]), "//") {
+		return lines[i], strings.TrimSpace(lines[i])
+	}
+	parts := []string{lines[i]}
+	depth := parenDelta(lines[i])
+	for j := i + 1; depth > 0 && j < len(lines) && j <= i+maxStatementLines; j++ {
+		parts = append(parts, lines[j])
+		depth += parenDelta(lines[j])
+	}
+	if len(parts) == 1 {
+		return lines[i], strings.TrimSpace(lines[i])
+	}
+	trimmed := make([]string, len(parts))
+	for k, part := range parts {
+		trimmed[k] = strings.TrimSpace(part)
+	}
+	joined := strings.Join(trimmed, " ")
+	return joined, joined
+}
+
+// splitTopLevelArgs splits the argument list of the first call in s that
+// follows open (the index of its "(") on top-level commas.
+func splitTopLevelArgs(s string, open int) []string {
+	var args []string
+	depth, start := 0, open+1
+	inStr := byte(0)
+	for k := open; k < len(s); k++ {
+		c := s[k]
+		if inStr != 0 {
+			if c == '\\' && inStr == '"' {
+				k++
+			} else if c == inStr {
+				inStr = 0
+			}
+			continue
+		}
+		switch c {
+		case '"', '`':
+			inStr = c
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			depth--
+			if depth == 0 {
+				return append(args, s[start:k])
+			}
+		case ',':
+			if depth == 1 {
+				args = append(args, s[start:k])
+				start = k + 1
+			}
+		}
+	}
+	return append(args, s[start:])
+}
+
+// correlatedMessageLeaks reports whether the public-message argument of a
+// writeCorrelatedError call in stmt references an error value.
+func correlatedMessageLeaks(stmt string) bool {
+	loc := correlatedSinkPattern.FindStringIndex(stmt)
+	if loc == nil {
+		return false
+	}
+	args := splitTopLevelArgs(stmt, loc[1]-1)
+	if len(args) < 5 {
+		return false
+	}
+	return leaksError(args[3])
 }
 
 // staleExceptions reports every allowed entry whose budget exceeds what the
@@ -844,7 +964,9 @@ func TestScanErrorLeaks_SinkDetection(t *testing.T) {
 	const httpErrLine = "http.Error(w, err.Error(), 500)"
 	const commentLine = "// writeJSONError(w, 400, err.Error())"
 	const encodeNoErr = `json.NewEncoder(w).Encode(map[string]string{"error": "bad"})`
-	const wordBoundaryLine = `writeJSONError(w, 400, errs.Message+myerr+Err)`
+	const wordBoundaryLine = `writeJSONError(w, 400, errs.Message+errorText+Errno)`
+	const verrLine = `writeJSONError(w, 422, "backup failed: "+verr.Error())`
+	const sprintfLine = `writeJSONError(w, 500, fmt.Sprintf("failed: %v", rmErr))`
 	const twoSinkLine = "writeJSONError(w, 400, err.Error()); http.Error(w, err.Error(), 500)"
 	cases := []struct {
 		name string
@@ -857,12 +979,25 @@ func TestScanErrorLeaks_SinkDetection(t *testing.T) {
 		{"Encode error field without err", []string{encodeNoErr}, map[string]int{}},
 		{"http.Error without err", []string{`http.Error(w, "bad", 500)`}, map[string]int{}},
 		{"err only as part of longer identifiers", []string{wordBoundaryLine}, map[string]int{}},
+		{"error variable not named err", []string{verrLine}, map[string]int{leakKey("p.go", "h", verrLine): 1}},
+		{"Sprintf of an error with a suffix name", []string{sprintfLine}, map[string]int{leakKey("p.go", "h", sprintfLine): 1}},
 		{"two sinks on one line count once", []string{twoSinkLine}, map[string]int{leakKey("p.go", "h", twoSinkLine): 1}},
 		{"http.Error", []string{httpErrLine}, map[string]int{leakKey("p.go", "h", httpErrLine): 1}},
 		{"inline Encode error field", []string{encodeLine}, map[string]int{leakKey("p.go", "h", encodeLine): 1}},
 		// Known limits, pinned so a change in behavior is a conscious decision.
-		{"multi-line sink is not seen", []string{"writeJSONError(w,", "400, err.Error())"}, map[string]int{}},
-		{"non-err variable is not seen", []string{"writeJSONError(w, 400, e.Error())"}, map[string]int{}},
+		{"multi-line sink is joined and seen", []string{"writeJSONError(w,", "400, err.Error())"}, map[string]int{leakKey("p.go", "h", "writeJSONError(w, 400, err.Error())"): 1}},
+		{"multi-line sink without err stays clean", []string{"writeJSONError(w,", `400, "bad request")`}, map[string]int{}},
+		{"correlated: err.Error() in the public message", []string{`writeCorrelatedError(w, r, 500, "failed: "+err.Error(), err)`}, map[string]int{leakKey("p.go", "h", `writeCorrelatedError(w, r, 500, "failed: "+err.Error(), err)`): 1}},
+		{"correlated: Sprintf of an error in the public message", []string{`writeCorrelatedError(w, r, 500, fmt.Sprintf("failed: %v", verr), err)`}, map[string]int{leakKey("p.go", "h", `writeCorrelatedError(w, r, 500, fmt.Sprintf("failed: %v", verr), err)`): 1}},
+		{"correlated: the error is only the last argument", []string{`writeCorrelatedError(w, r, 500, "failed", err)`}, map[string]int{}},
+		{"correlated: the word err inside the message text", []string{`writeCorrelatedError(w, r, 500, "an err happened", err)`}, map[string]int{}},
+		{"correlated: multi-line call with a leaking message", []string{"writeCorrelatedError(w, r,", "500,", `"failed: "+err.Error(),`, "err)"}, map[string]int{leakKey("p.go", "h", `writeCorrelatedError(w, r, 500, "failed: "+err.Error(), err)`): 1}},
+		{"correlated: multi-line call that is clean", []string{"writeCorrelatedError(w, r,", "500,", `"failed",`, "err)"}, map[string]int{}},
+		{"an error held in a variable not named err, through Error()", []string{"writeJSONError(w, 400, noRoom.Error())"}, map[string]int{leakKey("p.go", "h", "writeJSONError(w, 400, noRoom.Error())"): 1}},
+		{"correlated: Error() on a value not named err", []string{`writeCorrelatedError(w, r, 507, noRoom.Error(), err)`}, map[string]int{leakKey("p.go", "h", `writeCorrelatedError(w, r, 507, noRoom.Error(), err)`): 1}},
+		{"correlated: Error() concatenated into the message", []string{`writeCorrelatedError(w, r, 422, "invalid: "+invalid.Error(), err)`}, map[string]int{leakKey("p.go", "h", `writeCorrelatedError(w, r, 422, "invalid: "+invalid.Error(), err)`): 1}},
+		{"correlated: a fixed field of the error value is fine", []string{`writeCorrelatedError(w, r, 422, prefix+": "+invalid.Reason, err)`}, map[string]int{}},
+		{"the text .Error() inside a string literal is not a call", []string{`writeJSONError(w, 400, "do not call x.Error() here")`}, map[string]int{}},
 		{"comment line is matched (false positive)", []string{commentLine}, map[string]int{leakKey("p.go", "h", commentLine): 1}},
 	}
 	for _, tc := range cases {

@@ -4,9 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"crypto/tls"
-	"database/sql"
 	"embed"
 	"encoding/base64"
 	"encoding/csv"
@@ -22,8 +20,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"regexp"
 	"runtime"
 	"sort"
@@ -167,44 +163,78 @@ type TokenEvent struct {
 }
 
 type Server struct {
-	router         *router.Router
-	soleReplica    soleReplicaState // serializes the sole-replica check with drain/restart
-	auth           *auth.Middleware
-	cfg            config.Config
-	version        string
-	mu             sync.RWMutex
-	requests       []RequestLog
-	localCount     int64   // atomic - requests served by local nodes
-	cloudCount     int64   // atomic - requests forwarded to cloud
-	localTokens    int64   // atomic - real token counts parsed from local node responses
-	cloudTokens    int64   // atomic - real token counts parsed from cloud responses
-	cloudSpentUSD  float64 // protected by mu
-	refCostPer1K   float64 // reference cloud rate used to value local tokens (immutable after construction)
-	startTime      time.Time
-	analytics      *analyticsStore
-	auditLog       *audit.Logger
-	st             store.Store // never nil; NopStore when persistence disabled
-	demoMode       bool        // when true, login accepts admin/admin without DB
-	loginLimiter   *loginRateLimiter
-	resetPwLimiter *loginRateLimiter // 3/hour per IP on admin-triggered password resets
-	logChan        chan store.RequestRecord
-	logDone        chan struct{} // closed by Shutdown to signal drain-and-stop
-	logWg          sync.WaitGroup
-	statsChan      chan statsJob             // hourly bucket + model stat upserts, same async-drain pattern as logChan
-	pullsMu        sync.Mutex                // guards pullJobs
-	pullJobs       map[string]*pullJob       // "node|model" -> job state; ephemeral, never persisted
-	coldStarts     int64                     // atomic - total cold start events
-	warmHits       int64                     // atomic - total warm hit events
-	tokenEvents    []TokenEvent              // protected by mu
-	mgmtEndpoints  managementEndpointsSetter // nil until wired via SetProxyHandler
-	benchMu        sync.Mutex                // guards benchJobs
-	benchJobs      map[string]*benchmarkJob  // job id -> job state; ephemeral, never persisted (results land in benchmark_runs)
-	backupMu       sync.Mutex                // guards lastBackupAt/lastBackupErr
-	lastBackupAt   time.Time                 // zero = never (or not yet loaded from store)
-	lastBackupErr  string                    // empty = last attempt (if any) succeeded
-	restoreCh      chan<- string             // nil until SetRestoreChannel is called (main.go only, in a real run)
-	enrollMu       sync.Mutex                // guards enrollCodes
-	enrollCodes    map[string]enrollmentCode // one-time code -> record; ephemeral, never persisted
+	router             *router.Router
+	soleReplica        soleReplicaState // serializes the sole-replica check with drain/restart
+	auth               *auth.Middleware
+	cfg                config.Config
+	version            string
+	mu                 sync.RWMutex
+	requests           []RequestLog
+	localCount         int64   // atomic - requests served by local nodes
+	cloudCount         int64   // atomic - requests forwarded to cloud
+	localTokens        int64   // atomic - real token counts parsed from local node responses
+	cloudTokens        int64   // atomic - real token counts parsed from cloud responses
+	cloudSpentUSD      float64 // protected by mu
+	refCostPer1K       float64 // reference cloud rate used to value local tokens (immutable after construction)
+	startTime          time.Time
+	analytics          *analyticsStore
+	auditLog           *audit.Logger
+	st                 store.Store // never nil; NopStore when persistence disabled
+	demoMode           bool        // when true, login accepts admin/admin without DB
+	loginLimiter       *loginRateLimiter
+	resetPwLimiter     *loginRateLimiter // 3/hour per IP on admin-triggered password resets
+	logChan            chan store.RequestRecord
+	logDone            chan struct{} // closed by Shutdown to signal drain-and-stop
+	logWg              sync.WaitGroup
+	statsChan          chan statsJob                              // hourly bucket + model stat upserts, same async-drain pattern as logChan
+	pullsMu            sync.Mutex                                 // guards pullJobs
+	pullJobs           map[string]*pullJob                        // "node|model" -> job state; ephemeral, never persisted
+	coldStarts         int64                                      // atomic - total cold start events
+	warmHits           int64                                      // atomic - total warm hit events
+	tokenEvents        []TokenEvent                               // protected by mu
+	mgmtEndpoints      managementEndpointsSetter                  // nil until wired via SetProxyHandler
+	benchMu            sync.Mutex                                 // guards benchJobs
+	benchJobs          map[string]*benchmarkJob                   // job id -> job state; ephemeral, never persisted (results land in benchmark_runs)
+	backupMu           sync.Mutex                                 // guards backupState and the fields next to it
+	backupState        backupStatusFile                           // last scheduled, manual and restore outcomes (see backup_status.go)
+	backupStatusDir    string                                     // directory backupState was loaded from / is saved to
+	backupStatusLoaded bool                                       // backupState has been loaded from backupStatusDir
+	backupPersistNote  string                                     // non-empty when the status could not be saved
+	backupSkipLoggedAt time.Time                                  // when a skipped scheduled run was last logged
+	backupPins         map[string]int                             // backup files in use (restore, download); pruning leaves them alone. Guarded by backupMu
+	backupRunMu        sync.Mutex                                 // held while a backup is taken (scheduled or manual); TryLock only
+	backupDirMu        sync.Mutex                                 // held while a file is committed or pruned in the backup directory
+	backupHeavyMu      sync.Mutex                                 // held by an upload or restore check; TryLock only (one at a time)
+	pruneRunning       [2]bool                                    // a retention pass is running for the pool (scheduled, uploads); guarded by backupMu
+	schedCtx           context.Context                            // cancelled by StopBackups; guarded by mu
+	schedRunActive     atomic.Bool                                // a scheduled backup is being taken
+	bgMu               sync.Mutex                                 // orders adding to schedWG against StopBackups
+	backupWriteMu      sync.Mutex                                 // orders status file writes; never held with backupMu
+	backupStateGen     uint64                                     // snapshot counter, guarded by backupMu
+	backupWrittenGen   uint64                                     // newest snapshot written, guarded by backupWriteMu
+	backupNotice       string                                     // shown until the next successful backup (the directory changed); guarded by backupMu
+	lastRestore        *restoreOutcome                            // result of the last restore until acknowledged; guarded by backupMu
+	backupVerified     verifiedBackups                            // full-verification results, so unchanged files are not re-read
+	backupSpace        spaceLedger                                // bytes promised to running backups, uploads and restores
+	manualSlots        chan struct{}                              // limits on-demand backups in flight (build and download); nil until first use
+	manualSlotsOnce    sync.Once                                  // creates manualSlots
+	schedWG            sync.WaitGroup                             // the scheduler goroutine, the directory sweeps and their runs; Shutdown waits for it
+	schedStarted       atomic.Bool                                // StartBackupScheduler has run (it is idempotent)
+	schedCancel        context.CancelFunc                         // stops the scheduler and every sweep; set by StartBackupScheduler
+	backupsStopping    atomic.Bool                                // marbor is shutting down or a restore is being carried out: backups are being cancelled
+	housekeeping       atomic.Bool                                // the backup directory is being swept; backup, upload and restore requests are refused meanwhile
+	backupRunSince     atomic.Int64                               // unix seconds the running backup started; 0 when none
+	backupRunning      atomic.Bool                                // a backup is being taken (scheduled or manual); what the status shows, never a lock probe
+	heavyRunning       atomic.Bool                                // an upload or a restore check is running
+	scratchLeftovers   atomic.Int64                               // scratch files this process could not remove; swept at the next start
+	deadlineObs        atomic.Pointer[func(op string, err error)] // test seam: sees every connection deadline change a transfer makes
+	prunePending       [2]pruneRequest                            // a retention pass asked for while one was running; guarded by backupMu
+	restoreMu          sync.Mutex                                 // guards restoreState and restoreStaged
+	restoreState       restoreState                               // idle, staging, handed off or closed (see backup_restorestate.go)
+	restoreStaged      string                                     // staged file of the restore handed off to main
+	restoreCh          chan<- string                              // nil until SetRestoreChannel is called (main.go only, in a real run)
+	enrollMu           sync.Mutex                                 // guards enrollCodes
+	enrollCodes        map[string]enrollmentCode                  // one-time code -> record; ephemeral, never persisted
 	// nodePatchMu serializes handlePatchNode's entire validate-then-mutate
 	// transaction (validateTLSPatch through the final PatchNode/
 	// UpdateNodeURL call). Without it, two concurrent PATCH requests to
@@ -420,16 +450,7 @@ func (s *Server) LoadFromStore() error {
 	// Restore the last scheduled-backup outcome so a restart doesn't lose
 	// track of it (and doesn't immediately re-run a backup that already
 	// happened before the restart - see StartBackupScheduler).
-	s.backupMu.Lock()
-	if v, err := s.st.GetSetting("backup_last_at"); err == nil && v != "" {
-		if t, perr := time.Parse(time.RFC3339, v); perr == nil {
-			s.lastBackupAt = t
-		}
-	}
-	if v, err := s.st.GetSetting("backup_last_error"); err == nil {
-		s.lastBackupErr = v
-	}
-	s.backupMu.Unlock()
+	s.seedLegacyBackupStatus()
 
 	return nil
 }
@@ -902,6 +923,10 @@ func (s *Server) startAsyncLogger() {
 // and before closing the store, or the logger can still be writing
 // through s.st after it's been closed.
 func (s *Server) Shutdown() {
+	// A scheduled backup that is running was told to stop when the server context
+	// was cancelled; wait (bounded) for it to record that it was interrupted
+	// before the store goes away.
+	s.StopBackups()
 	close(s.logDone)
 	s.logWg.Wait()
 }
@@ -938,279 +963,6 @@ func (s *Server) StartPeriodicCleanup(ctx context.Context) {
 			}
 		}
 	}()
-}
-
-// backupCheckInterval is how often StartBackupScheduler wakes up to check
-// whether a scheduled backup is due. It is intentionally much shorter than
-// the configurable IntervalHours (which can be changed live via Settings
-// without a restart) - each wake checks elapsed time since the last
-// successful backup against the *current* cfg.Backup.IntervalHours, rather
-// than fixing the ticker period at whatever interval was configured at boot.
-const backupCheckInterval = 15 * time.Minute
-
-// StartBackupScheduler launches a background goroutine that runs a scheduled
-// marbor.db backup (VACUUM INTO cfg.Backup.TargetDir) whenever it is enabled
-// and due, then prunes old backup files beyond cfg.Backup.RetentionCount.
-// Call once after construction; ctx cancellation stops the ticker.
-func (s *Server) StartBackupScheduler(ctx context.Context) {
-	check := func() {
-		s.mu.RLock()
-		cfg := s.cfg.Backup
-		s.mu.RUnlock()
-		if !cfg.Enabled {
-			return
-		}
-		intervalHours := cfg.IntervalHours
-		if intervalHours <= 0 {
-			intervalHours = 24
-		}
-		s.backupMu.Lock()
-		due := time.Since(s.lastBackupAt) >= time.Duration(intervalHours)*time.Hour
-		s.backupMu.Unlock()
-		if !due {
-			return
-		}
-		if err := s.runScheduledBackup(cfg); err != nil {
-			log.Printf("admin: scheduled backup failed: %v", err)
-		}
-	}
-	go func() {
-		check() // in case a backup came due while marbor was stopped
-		ticker := time.NewTicker(backupCheckInterval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				check()
-			}
-		}
-	}()
-}
-
-// runScheduledBackup performs one scheduled backup run: VACUUM INTO a
-// timestamped file under cfg.TargetDir, record the outcome (surfaced by
-// handleSettings), then prune old backups beyond cfg.RetentionCount.
-func (s *Server) runScheduledBackup(cfg config.BackupConfig) error {
-	if cfg.TargetDir == "" {
-		err := fmt.Errorf("no backup target directory configured")
-		s.recordBackupResult(err)
-		return err
-	}
-	if err := os.MkdirAll(cfg.TargetDir, 0o755); err != nil {
-		err = fmt.Errorf("create backup target directory %s: %w", cfg.TargetDir, err)
-		s.recordBackupResult(err)
-		return err
-	}
-	// Staged under a .tmp suffix first (doesn't match backupFilenameRE, so
-	// pruneOldBackups/findDuplicateBackup/handleListBackups all ignore it)
-	// so a backup identical to one already on disk - e.g. marbor.db hasn't
-	// changed since the last scheduled run - can be discarded instead of
-	// cluttering the restore list with a byte-for-byte duplicate.
-	tmpPath := filepath.Join(cfg.TargetDir, backupFilename(time.Now())+".tmp")
-	if err := s.st.BackupTo(tmpPath); err != nil {
-		s.recordBackupResult(err)
-		return err
-	}
-	hash, err := hashBackupFile(tmpPath)
-	if err != nil {
-		os.Remove(tmpPath)
-		s.recordBackupResult(err)
-		return err
-	}
-	if dup, err := findDuplicateBackup(cfg.TargetDir, hash); err == nil && dup != "" {
-		os.Remove(tmpPath)
-		s.recordBackupResult(nil) // still a successful run - don't retry every tick
-		return nil
-	}
-	finalPath := strings.TrimSuffix(tmpPath, ".tmp")
-	if err := os.Rename(tmpPath, finalPath); err != nil {
-		os.Remove(tmpPath)
-		s.recordBackupResult(err)
-		return err
-	}
-	s.recordBackupResult(nil)
-	s.pruneOldBackups(cfg.TargetDir, cfg.RetentionCount)
-	return nil
-}
-
-// backupFilename returns the marbor-backup-<UTC timestamp>.db name used by both
-// the manual download endpoint and the scheduled job, so pruneOldBackups can
-// recognize either kind of file left in TargetDir.
-func backupFilename(t time.Time) string {
-	return fmt.Sprintf("marbor-backup-%s.db", t.UTC().Format("20060102-150405"))
-}
-
-// recordBackupResult updates the in-memory last-backup status and persists it
-// so it survives a restart. A successful run (err == nil) advances
-// lastBackupAt and clears the error; a failed run leaves lastBackupAt
-// unchanged (so the next scheduler tick retries) but records the error for
-// the Settings page - real state, never a fabricated "backed up" status.
-func (s *Server) recordBackupResult(err error) {
-	s.backupMu.Lock()
-	if err == nil {
-		s.lastBackupAt = time.Now()
-		s.lastBackupErr = ""
-	} else {
-		s.lastBackupErr = err.Error()
-	}
-	at, errStr := s.lastBackupAt, s.lastBackupErr
-	s.backupMu.Unlock()
-
-	if !at.IsZero() {
-		if perr := s.st.SetSetting("backup_last_at", at.UTC().Format(time.RFC3339)); perr != nil {
-			log.Printf("admin: failed to persist backup_last_at setting: %v", perr)
-		}
-	}
-	if perr := s.st.SetSetting("backup_last_error", errStr); perr != nil {
-		log.Printf("admin: failed to persist backup_last_error setting: %v", perr)
-	}
-}
-
-// pruneOldBackups deletes the oldest marbor-backup-*.db files in dir beyond
-// retentionCount. Filenames are UTC-timestamp-named (backupFilename), so a
-// lexical sort is also a chronological sort. retentionCount <= 0 disables
-// pruning entirely (keep every backup ever made).
-func (s *Server) pruneOldBackups(dir string, retentionCount int) {
-	if retentionCount <= 0 {
-		return
-	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		log.Printf("admin: could not list backup directory %s for pruning: %v", dir, err)
-		return
-	}
-	var names []string
-	for _, e := range entries {
-		if !e.IsDir() && strings.HasPrefix(e.Name(), "marbor-backup-") && strings.HasSuffix(e.Name(), ".db") {
-			names = append(names, e.Name())
-		}
-	}
-	sort.Strings(names)
-	if len(names) <= retentionCount {
-		return
-	}
-	for _, name := range names[:len(names)-retentionCount] {
-		if err := os.Remove(filepath.Join(dir, name)); err != nil {
-			log.Printf("admin: failed to prune old backup %s: %v", name, err)
-		}
-	}
-}
-
-// backupDedupIgnoredSettingsKeys are settings rows excluded from the dedup
-// hash (hashBackupFile) because runScheduledBackup writes them into the live
-// store itself right after every successful run, scheduled or skipped. Left
-// in, that write would poison every future backup's snapshot with the
-// previous run's own completion timestamp, so two backups of an otherwise
-// byte-for-byte-unchanged marbor.db would never hash-equal past the first.
-var backupDedupIgnoredSettingsKeys = []string{"backup_last_at", "backup_last_error"}
-
-// hashBackupFile returns the SHA-256 hex digest of the file at path, used to
-// detect a backup that is byte-for-byte identical to one already on disk.
-// It hashes a scratch copy with backupDedupIgnoredSettingsKeys stripped out
-// first, never the file at path itself - path may be an existing kept backup
-// (or, for the upload endpoint, an operator's file) that must not be mutated.
-func hashBackupFile(path string) (string, error) {
-	scratch, err := os.CreateTemp(filepath.Dir(path), "backup-dedup-*.db")
-	if err != nil {
-		return "", err
-	}
-	scratchPath := scratch.Name()
-	defer os.Remove(scratchPath)
-
-	src, err := os.Open(path)
-	if err != nil {
-		scratch.Close()
-		return "", err
-	}
-	_, copyErr := io.Copy(scratch, src)
-	src.Close()
-	closeErr := scratch.Close()
-	if copyErr != nil {
-		return "", copyErr
-	}
-	if closeErr != nil {
-		return "", closeErr
-	}
-
-	db, err := sql.Open("sqlite", scratchPath)
-	if err != nil {
-		return "", err
-	}
-	for _, key := range backupDedupIgnoredSettingsKeys {
-		if _, err := db.Exec(`DELETE FROM settings WHERE key = ?`, key); err != nil {
-			db.Close()
-			return "", err
-		}
-	}
-	// VACUUM recompacts into a canonical page layout - without it, two files
-	// with identical post-delete logical content can still differ byte-for-
-	// byte because their b-tree layout carries the imprint of a different
-	// insert/delete history (e.g. one file's row was deleted just now, the
-	// other's key was simply never present).
-	if _, err := db.Exec(`VACUUM`); err != nil {
-		db.Close()
-		return "", err
-	}
-	if err := db.Close(); err != nil {
-		return "", err
-	}
-
-	// Zero the SQLite header's file change counter (offsets 24-27) and its
-	// mirror, the version-valid-for number (offsets 92-95, SQLite file
-	// format spec). Both are incremented on every committed write
-	// transaction, including a DELETE that touches zero rows - so a scratch
-	// copy where backupDedupIgnoredSettingsKeys' DELETEs were no-ops (the
-	// key was never present) ends up with a different counter value than a
-	// copy where they actually removed rows, even once VACUUM has made
-	// every other byte identical. Left unzeroed, that counter drift alone
-	// causes a false hash mismatch on otherwise byte-for-byte-identical
-	// content.
-	scratchBytes, err := os.ReadFile(scratchPath)
-	if err != nil {
-		return "", err
-	}
-	for _, off := range [2]int{24, 92} {
-		if off+4 <= len(scratchBytes) {
-			for i := 0; i < 4; i++ {
-				scratchBytes[off+i] = 0
-			}
-		}
-	}
-
-	h := sha256.New()
-	h.Write(scratchBytes)
-	return hex.EncodeToString(h.Sum(nil)), nil
-}
-
-// findDuplicateBackup hashes every existing marbor-backup-*.db file in dir and
-// returns the name of one whose content matches hash, or "" if none match.
-// Used by both the scheduled backup job and the upload endpoint so a
-// byte-for-byte duplicate (marbor.db unchanged since the last backup, or an
-// operator re-uploading a file they already downloaded) never gets added to
-// the restorable pool a second time.
-func findDuplicateBackup(dir, hash string) (string, error) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return "", nil
-		}
-		return "", err
-	}
-	for _, e := range entries {
-		if e.IsDir() || !backupFilenameRE.MatchString(e.Name()) {
-			continue
-		}
-		existingHash, err := hashBackupFile(filepath.Join(dir, e.Name()))
-		if err != nil {
-			continue // unreadable/corrupt existing file - not this upload's problem
-		}
-		if existingHash == hash {
-			return e.Name(), nil
-		}
-	}
-	return "", nil
 }
 
 func (s *Server) Handler() http.Handler {
@@ -1271,9 +1023,12 @@ func (s *Server) Handler() http.Handler {
 	reg("GET /admin/settings", s.cors(s.adminAuth(s.handleSettings)))
 	reg("PUT /admin/settings", s.cors(s.adminAuth(s.handleUpdateSettings)))
 	reg("POST /admin/backup", s.cors(s.adminAuth(s.handleBackupNow)))
-	reg("GET /admin/backup/list", s.cors(s.adminAuth(s.handleListBackups)))
-	reg("POST /admin/backup/restore", s.cors(s.adminAuth(s.handleRestoreBackup)))
-	reg("POST /admin/backup/upload", s.cors(s.adminAuth(s.handleUploadBackup)))
+	reg("DELETE /admin/backup", s.cors(s.adminAuth(noStore(s.handleDeleteBackup))))
+	reg("GET /admin/backup/list", s.cors(s.adminAuth(noStore(s.handleListBackups))))
+	reg("GET /admin/backup/download", s.cors(s.adminAuth(s.handleDownloadBackup)))
+	reg("POST /admin/backup/restore", s.cors(s.adminAuth(noStore(s.handleRestoreBackup))))
+	reg("DELETE /admin/backup/restore-result", s.cors(s.adminAuth(noStore(s.handleAcknowledgeRestore))))
+	reg("POST /admin/backup/upload", s.cors(s.adminAuth(noStore(s.handleUploadBackup))))
 
 	reg("GET /admin/requests", s.cors(s.adminAuth(s.handleRequests)))
 	reg("GET /admin/requests/live", s.cors(s.adminAuth(s.handleLiveRequests)))
@@ -6077,12 +5832,7 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	// on cfg itself - overlay the live in-memory state (seeded from the
 	// backup_last_at/backup_last_error settings on LoadFromStore, updated by
 	// every backup attempt via recordBackupResult).
-	s.backupMu.Lock()
-	if !s.lastBackupAt.IsZero() {
-		cfg.Backup.LastBackupAt = s.lastBackupAt.UTC().Format(time.RFC3339)
-	}
-	cfg.Backup.LastBackupError = s.lastBackupErr
-	s.backupMu.Unlock()
+	s.overlayBackupSettings(&cfg.Backup)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(cfg)
@@ -6176,8 +5926,15 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	incoming.CloudProviders = s.cfg.CloudProviders
 	incoming.Nodes = s.cfg.Nodes
 	incoming.Routing.ModelAliases = s.cfg.Routing.ModelAliases
+	oldBackupDir := s.cfg.Backup.TargetDir
 	s.cfg = incoming
 	s.mu.Unlock()
+
+	// A newly chosen backup directory may hold files a run that died left behind.
+	// They are cleared in the background once no backup or upload is writing.
+	if incoming.Backup.TargetDir != oldBackupDir {
+		s.SweepBackupDir(incoming.Backup.TargetDir)
+	}
 
 	if s.mgmtEndpoints != nil {
 		s.mgmtEndpoints.SetAllowManagementEndpoints(incoming.Routing.AllowManagementEndpoints)
@@ -8942,272 +8699,6 @@ func (s *Server) handleSystemAudit(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(entries)
 }
 
-// backupFilenameRE matches exactly the marbor-backup-<UTC timestamp>.db shape
-// produced by backupFilename - used both to list scheduled backups and to
-// validate a client-supplied filename before restore ever touches disk.
-var backupFilenameRE = regexp.MustCompile(`^marbor-backup-\d{8}-\d{6}\.db$`)
-
-// backupFileInfo is one entry in GET /admin/backup/list's response.
-type backupFileInfo struct {
-	Name       string    `json:"name"`
-	SizeBytes  int64     `json:"size_bytes"`
-	ModifiedAt time.Time `json:"modified_at"`
-}
-
-// handleListBackups lists scheduled backup files already sitting in
-// cfg.Backup.TargetDir, newest first, so the Settings restore picker doesn't
-// require the operator to know the naming scheme or type a path by hand.
-func (s *Server) handleListBackups(w http.ResponseWriter, r *http.Request) {
-	s.mu.RLock()
-	targetDir := s.cfg.Backup.TargetDir
-	s.mu.RUnlock()
-
-	w.Header().Set("Content-Type", "application/json")
-	if targetDir == "" {
-		json.NewEncoder(w).Encode(map[string]any{"backups": []backupFileInfo{}})
-		return
-	}
-	entries, err := os.ReadDir(targetDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			// No backup has ever run yet - a normal, not-yet-configured
-			// state, not an error.
-			json.NewEncoder(w).Encode(map[string]any{"backups": []backupFileInfo{}})
-			return
-		}
-		writeServerError(w, r, err)
-		return
-	}
-	var files []backupFileInfo
-	for _, e := range entries {
-		if e.IsDir() || !backupFilenameRE.MatchString(e.Name()) {
-			continue
-		}
-		info, err := e.Info()
-		if err != nil {
-			continue
-		}
-		files = append(files, backupFileInfo{Name: e.Name(), SizeBytes: info.Size(), ModifiedAt: info.ModTime().UTC()})
-	}
-	sort.Slice(files, func(i, j int) bool { return files[i].Name > files[j].Name }) // timestamp-named, so lexical desc = newest first
-	json.NewEncoder(w).Encode(map[string]any{"backups": files})
-}
-
-// handleRestoreBackup validates a one-click restore request and, if valid,
-// hands the full path off to main.go via restoreCh - it never touches the
-// live database or exits the process itself (see SetRestoreChannel).
-func (s *Server) handleRestoreBackup(w http.ResponseWriter, r *http.Request) {
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
-	if s.restoreCh == nil {
-		writeJSONError(w, http.StatusNotImplemented, "restore is not available in this run mode")
-		return
-	}
-	var req struct {
-		Filename string `json:"filename"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-	// filepath.Base + the strict backupFilenameRE together rule out path
-	// traversal (../, absolute paths, subdirectories): only a bare
-	// marbor-backup-<timestamp>.db name already sitting directly in TargetDir
-	// is ever accepted - never an arbitrary path the client supplies.
-	name := filepath.Base(req.Filename)
-	if name != req.Filename || !backupFilenameRE.MatchString(name) {
-		writeJSONError(w, http.StatusBadRequest, "invalid backup filename")
-		return
-	}
-	s.mu.RLock()
-	targetDir := s.cfg.Backup.TargetDir
-	s.mu.RUnlock()
-	if targetDir == "" {
-		writeJSONError(w, http.StatusBadRequest, "no backup target directory configured")
-		return
-	}
-	fullPath := filepath.Join(targetDir, name)
-	if _, err := os.Stat(fullPath); err != nil {
-		writeJSONError(w, http.StatusNotFound, "backup file not found")
-		return
-	}
-	if err := store.ValidateBackupFile(fullPath); err != nil {
-		writeJSONError(w, http.StatusUnprocessableEntity, "backup file failed validation: "+err.Error())
-		return
-	}
-
-	select {
-	case s.restoreCh <- fullPath:
-	default:
-		writeJSONError(w, http.StatusConflict, "a restore is already in progress")
-		return
-	}
-
-	s.logSystemChange(r, "restore_backup", "global", fmt.Sprintf("Restore requested from %s - marbor restarting", name))
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusAccepted)
-	json.NewEncoder(w).Encode(map[string]any{"restarting": true, "file": name})
-}
-
-// handleBackupNow performs an on-demand backup (VACUUM INTO a temp file) and
-// streams it back as a download - the manual counterpart to the scheduled
-// job in StartBackupScheduler. Mirrors handleAnalyticsExport's
-// Content-Disposition streaming pattern.
-func (s *Server) handleBackupNow(w http.ResponseWriter, r *http.Request) {
-	tmp, err := os.CreateTemp("", "marbor-backup-download-*.db")
-	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "failed to create temp file for backup")
-		return
-	}
-	tmpPath := tmp.Name()
-	tmp.Close()
-	// VACUUM INTO refuses to write to a path that already exists.
-	if err := os.Remove(tmpPath); err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "failed to prepare temp file for backup")
-		return
-	}
-	defer os.Remove(tmpPath)
-
-	if err := s.st.BackupTo(tmpPath); err != nil {
-		writeServerError(w, r, err)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, backupFilename(time.Now())))
-	http.ServeFile(w, r, tmpPath)
-	s.logSystemChange(r, "manual_backup", "global", "Downloaded an on-demand marbor.db backup")
-}
-
-// maxUploadedBackupSize caps a browser-uploaded backup file to 2 GiB -
-// generous for a marbor.db (typically low tens of MB) while still bounding
-// disk/memory use against an abusive or mistaken upload.
-const maxUploadedBackupSize = 2 << 30 // 2 GiB
-
-// handleUploadBackup lets an operator attach an arbitrary local .db file
-// (the "+" control next to the restore picker in Settings) and adds it to
-// the same pool of restorable backups as scheduled/manual ones. The upload
-// is staged to a temp file inside TargetDir first and validated with the
-// same store.ValidateBackupFile (PRAGMA quick_check) used everywhere else in
-// this feature, so a non-database file is rejected before it ever becomes a
-// restore candidate. The staged file is then renamed to the standard
-// marbor-backup-<timestamp>.db shape (backupFilename) so it passes
-// backupFilenameRE and shows up in handleListBackups like any other backup -
-// no separate "uploaded" code path for handleRestoreBackup to special-case.
-func (s *Server) handleUploadBackup(w http.ResponseWriter, r *http.Request) {
-	s.mu.RLock()
-	targetDir := s.cfg.Backup.TargetDir
-	s.mu.RUnlock()
-	if targetDir == "" {
-		writeJSONError(w, http.StatusBadRequest, "no backup target directory configured")
-		return
-	}
-	if err := os.MkdirAll(targetDir, 0o755); err != nil {
-		writeServerError(w, r, err)
-		return
-	}
-
-	r.Body = http.MaxBytesReader(w, r.Body, maxUploadedBackupSize)
-	if err := r.ParseMultipartForm(32 << 20); err != nil {
-		writeJSONError(w, http.StatusBadRequest, "invalid upload (file too large or malformed request)")
-		return
-	}
-	// ParseMultipartForm spills any part over the 32MB threshold to its own
-	// temp file under os.TempDir() - a marbor.db upload always does, since it's
-	// well above 32MB. That spill file is separate from tmpPath below (which
-	// this handler stages and cleans up itself) and net/http never removes
-	// it on the success path, so without this it leaks a full-size temp file
-	// on every single upload.
-	defer r.MultipartForm.RemoveAll()
-	file, _, err := r.FormFile("file")
-	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, "missing file field")
-		return
-	}
-	defer file.Close()
-
-	// Staged inside targetDir (not os.TempDir) so the final rename below is
-	// an atomic same-filesystem move, not a cross-filesystem copy.
-	tmp, err := os.CreateTemp(targetDir, "marbor-backup-upload-*.tmp")
-	if err != nil {
-		writeJSONError(w, http.StatusInternalServerError, "failed to stage upload")
-		return
-	}
-	tmpPath := tmp.Name()
-	if _, err := io.Copy(tmp, file); err != nil {
-		tmp.Close()
-		os.Remove(tmpPath)
-		writeJSONError(w, http.StatusBadRequest, "failed to read upload (too large or connection interrupted)")
-		return
-	}
-	tmp.Close()
-
-	if err := store.ValidateBackupFile(tmpPath); err != nil {
-		os.Remove(tmpPath)
-		writeJSONError(w, http.StatusUnprocessableEntity, "not a valid marbor.db backup: "+err.Error())
-		return
-	}
-
-	// If this upload is byte-for-byte identical to a backup already in the
-	// pool (e.g. the operator re-uploading a file they just downloaded),
-	// reuse the existing entry instead of adding a duplicate - report it as
-	// a normal success so the caller selects the existing file, exactly as
-	// it would a freshly uploaded one.
-	hash, err := hashBackupFile(tmpPath)
-	if err != nil {
-		os.Remove(tmpPath)
-		writeJSONError(w, http.StatusInternalServerError, "failed to check uploaded backup for duplicates")
-		return
-	}
-	if dup, err := findDuplicateBackup(targetDir, hash); err == nil && dup != "" {
-		os.Remove(tmpPath)
-		s.logSystemChange(r, "upload_backup", "global", fmt.Sprintf("Uploaded backup matched existing %s - reused it instead of adding a duplicate", dup))
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{"filename": dup, "duplicate": true})
-		return
-	}
-
-	// backupFilename is second-resolution; retry on the rare collision with
-	// another upload or a scheduled backup landing in the same second rather
-	// than ever overwriting an existing backup.
-	var finalName, finalPath string
-	var renameErr error
-	saved := false
-	for attempt := 0; attempt < 5; attempt++ {
-		finalName = backupFilename(time.Now())
-		finalPath = filepath.Join(targetDir, finalName)
-		if _, err := os.Stat(finalPath); os.IsNotExist(err) {
-			renameErr = os.Rename(tmpPath, finalPath)
-			saved = renameErr == nil
-			break
-		}
-		time.Sleep(time.Second)
-	}
-	if !saved {
-		os.Remove(tmpPath)
-		if renameErr != nil {
-			// A rename failure here (permissions, disk full, cross-device)
-			// is a fundamentally different problem than a name collision -
-			// report the real cause rather than a misleading 409.
-			writeJSONError(w, http.StatusInternalServerError, fmt.Sprintf("failed to save uploaded backup: %v", renameErr))
-			return
-		}
-		writeJSONError(w, http.StatusConflict, "a backup with this timestamp already exists - please retry")
-		return
-	}
-
-	// An uploaded file is added to the same pool scheduled backups prune from
-	// - without this, repeated uploads could fill the disk with no cap even
-	// while scheduled backups (with their own RetentionCount) stay bounded.
-	s.mu.RLock()
-	retentionCount := s.cfg.Backup.RetentionCount
-	s.mu.RUnlock()
-	s.pruneOldBackups(targetDir, retentionCount)
-
-	s.logSystemChange(r, "upload_backup", "global", fmt.Sprintf("Uploaded a custom backup file as %s", finalName))
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"filename": finalName})
-}
-
 // handleAnalyticsExport serves analytics data as CSV or JSON.
 // Query params: format=csv|json (default json), type=hourly|models (default hourly).
 func (s *Server) handleAnalyticsExport(w http.ResponseWriter, r *http.Request) {
@@ -9504,6 +8995,10 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"version":        s.version,
 		"proxy_port":     proxyPort,
 		"uptime_seconds": uptimeSecs,
+		// started_at identifies this run of the process: it changes on every
+		// restart, which is how a client tells a restarted marbor from the old
+		// one that is still shutting down.
+		"started_at": s.startTime.UTC().Format(time.RFC3339Nano),
 		"nodes": map[string]int{
 			"total":   total,
 			"healthy": healthy,

@@ -601,10 +601,13 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | `marbor catalog` | show the fleet-aware HF/local model catalog with per-node fit (requires auth) |
 | `marbor fit [owner/name]` | show which models fit each node and which quantization to pull (requires auth) |
 | `marbor backup` | manage marbor.db backups (requires auth) |
-| `marbor backup now` | trigger an on-demand backup and download it (requires auth) |
-| `marbor backup list` | list backup files on the server (requires auth) |
+| `marbor backup now` | trigger an on-demand backup and download it (gzip, .db.gz) (requires auth) |
+| `marbor backup list` | list backup files on the server, with the last backup result (requires auth) |
+| `marbor backup ack-restore` | clear the remembered result of the last restore (requires auth) |
+| `marbor backup download <name>` | download a stored backup file from the server (requires auth) |
 | `marbor backup restore <filename>` | restore marbor.db from a backup file (marbor restarts) (requires auth) |
-| `marbor backup upload` | upload a local .db file as a restorable backup (requires auth) |
+| `marbor backup delete <name>` | delete a stored backup file from the server (cannot be undone) (requires auth) |
+| `marbor backup upload` | upload a local .db or .db.gz file as a restorable backup (requires auth) |
 | `marbor analytics` | hourly analytics + per-model stats (requires auth) |
 | `marbor analytics show` | show analytics (raw JSON) (requires auth) |
 | `marbor analytics export` | export analytics to a local file (requires auth) |

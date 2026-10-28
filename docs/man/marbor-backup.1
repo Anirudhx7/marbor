@@ -9,15 +9,37 @@ manage marbor.db backups
 .SH COMMANDS
 .TP
 .B now
-trigger an on\-demand backup and download it
+trigger an on\-demand backup and download it (gzip, .db.gz)
 .RS
 .TP
 .B \-\-output string
 local file path to save to (default: server\-suggested filename)
+.TP
+.B \-\-force
+replace the output file if it already exists (default: refuse)
 .RE
 .TP
 .B list
-list backup files on the server
+list backup files on the server, with the last backup result
+.RS
+.TP
+.B \-\-check
+exit 3, with the reasons on stderr, when something needs attention: no backups or no directory, a scheduled backup that never succeeded or is overdue, a failed, refused or cancelled backup, a damaged or unverified file, a note or notice, entries that could not be listed, a backup running over an hour, a retention problem, leftover files, or a restore that failed or finished with a note (for cron and monitoring)
+.RE
+.TP
+.B ack\-restore
+clear the remembered result of the last restore
+.TP
+.B download <name>
+download a stored backup file from the server
+.RS
+.TP
+.B \-\-output string
+local file path to save to (default: the backup's own name)
+.TP
+.B \-\-force
+replace the output file if it already exists (default: refuse)
+.RE
 .TP
 .B restore <filename>
 restore marbor.db from a backup file (marbor restarts)
@@ -25,14 +47,25 @@ restore marbor.db from a backup file (marbor restarts)
 .TP
 .B \-\-yes
 confirm restore without prompting
+.TP
+.B \-\-wait
+wait for marbor to restart (up to 5 minutes) and exit nonzero unless the restore is reported as done
+.RE
+.TP
+.B delete <name>
+delete a stored backup file from the server (cannot be undone)
+.RS
+.TP
+.B \-\-yes
+confirm deletion without prompting
 .RE
 .TP
 .B upload
-upload a local .db file as a restorable backup
+upload a local .db or .db.gz file as a restorable backup
 .RS
 .TP
 .B \-\-file string
-local .db file path (required) (required)
+local .db or .db.gz file path (required) (required)
 .RE
 .SH FLAGS
 .TP
