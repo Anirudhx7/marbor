@@ -9,6 +9,7 @@ import { CustomSelect } from '../components/Select';
 import { CustomDateTimePicker } from '../components/DateTimePicker';
 import { ClearableInput, FilterField, FilterBar, FilterBarGrid, FilterBarClear } from '../components/FilterField';
 import { currentAppPath } from '../hooks/useDemoMode';
+import { applyRefresh, applyOlderPage, isStaleEpoch, isSupersededRefresh, startFullLoad, rowKeys, type ActivityFeed } from '../lib/activityRefresh';
 import {
   toActivityKind,
   getActivityKindLabel,
@@ -81,12 +82,25 @@ export function Activity() {
   const tz = useTimezone();
   const location = useLocation();
 
-  const [entries, setEntries] = useState<SystemAuditEntry[]>([]);
+  const [feed, setFeed] = useState<ActivityFeed>({ entries: [], hasMore: false });
+  const { entries, hasMore } = feed;
+  // Latest feed for async completions to merge against, and the epoch that
+  // ties a Load more request to the list it was made from.
+  const feedRef = useRef<ActivityFeed>(feed);
+  const epochRef = useRef(0);
+  // Full loads are superseded only by another full load, never by a restart
+  // bump of epochRef, so the loading flag cannot stick.
+  const fullSeqRef = useRef(0);
+  // Sequence of background/manual refreshes; only the newest one may apply.
+  const refreshSeqRef = useRef(0);
+  const inFlightRef = useRef(0);
+  const mountedRef = useRef(true);
+  const spinTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [listRestarted, setListRestarted] = useState(false);
   const [decisions, setDecisions] = useState<PredictiveDecision[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [kindFilter, setKindFilter] = useState<ActivityKind | 'all'>('all');
   const [actionFilter, setActionFilter] = useState('all');
@@ -102,6 +116,14 @@ export function Activity() {
   const [refreshSpin, setRefreshSpin] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (spinTimerRef.current) clearTimeout(spinTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedTarget(targetInput), 250);
@@ -158,41 +180,110 @@ export function Activity() {
     return f;
   }, [fromPicker, toPicker, kindFilter, actionFilter, userFilter, debouncedTarget, debouncedSourceIp, tz]);
 
-  const loadActivity = useCallback(async (opts: { silent?: boolean; append?: boolean; before?: string; beforeId?: number; active?: boolean } = {}) => {
-    const { silent = false, append = false, before, beforeId, active = true } = opts;
+  // full: a new list (first load or filter change). refresh: the background
+  // poll or the Refresh button, merged into what is on screen. append: Load
+  // more, which must say which list it was requested from.
+  type LoadOpts =
+    | { mode?: 'full'; active?: boolean }
+    | { mode: 'refresh'; active?: boolean; manual?: boolean }
+    | { mode: 'append'; before: string; beforeId?: number; epoch: number; active?: boolean };
+
+  const loadActivity = useCallback(async (opts: LoadOpts = {}) => {
+    const mode = opts.mode ?? 'full';
+    const active = opts.active ?? true;
+    const append = opts.mode === 'append';
+    const silent = mode !== 'full';
     const path = currentAppPath();
     const isActivityPath = path === '/activity' || path.startsWith('/activity') || path === '/system-audit';
-    if (!isActivityPath) return;
-    if (!silent && active && !append) setLoading(true);
-    if (active) setRefreshSpin(true);
+    if (!isActivityPath) {
+      // handleLoadMore already raised the flag; do not leave it stuck.
+      if (opts.mode === 'append' && mountedRef.current) setLoadingMore(false);
+      return;
+    }
+    let epoch: number;
+    let fullSeq = fullSeqRef.current;
+    if (opts.mode === 'append') {
+      epoch = opts.epoch;
+    } else if (mode === 'full') {
+      // A new list: invalidate in-flight work and drop the previous rows.
+      const start = startFullLoad(epochRef.current, fullSeqRef.current);
+      epochRef.current = start.epoch;
+      fullSeqRef.current = start.fullSeq;
+      fullSeq = start.fullSeq;
+      feedRef.current = start.feed;
+      setFeed(start.feed);
+      setListRestarted(false);
+      epoch = start.epoch;
+    } else {
+      epoch = epochRef.current;
+    }
+    // Overlapping refreshes (a slow one still running when the next tick
+    // fires) must not apply out of order: only the newest may land.
+    const refreshSeq = mode === 'refresh' ? ++refreshSeqRef.current : 0;
+    if (!silent && active) setLoading(true);
+    if (active) {
+      inFlightRef.current += 1;
+      if (spinTimerRef.current) clearTimeout(spinTimerRef.current);
+      setRefreshSpin(true);
+    }
     try {
-      const filter = buildFilter(before, beforeId);
+      const filter = opts.mode === 'append' ? buildFilter(opts.before, opts.beforeId) : buildFilter();
       const [audit, preds] = await Promise.all([
         fetchSystemAuditFiltered(filter),
         fetchPredictiveDecisions().catch(() => [] as PredictiveDecision[]),
       ]);
-      if (!active) return;
+      if (!active || !mountedRef.current) return;
       const curPath = currentAppPath();
       if (!(curPath === '/activity' || curPath.startsWith('/activity') || curPath === '/system-audit')) return;
-      if (append) {
-        setEntries((prev) => [...prev, ...audit]);
+      // The list changed while this was in flight (new filters or a
+      // restart): the result belongs to a list that is gone.
+      if (mode === 'full' ? isStaleEpoch(fullSeq, fullSeqRef.current) : isStaleEpoch(epoch, epochRef.current)) return;
+      if (mode === 'refresh' && isSupersededRefresh(refreshSeq, refreshSeqRef.current)) return;
+      if (opts.mode === 'append') {
+        const next = applyOlderPage(feedRef.current, audit, PAGE_LIMIT);
+        feedRef.current = next;
+        setFeed(next);
+        // A successful Load more counts as the operator acknowledging a restart note.
+        setListRestarted(false);
+      } else if (mode === 'refresh') {
+        // Background refresh: fold new events into the head and keep every
+        // older page the operator already paged in.
+        const result = applyRefresh(feedRef.current, audit, PAGE_LIMIT);
+        if (result.feed !== feedRef.current) {
+          feedRef.current = result.feed;
+          setFeed(result.feed);
+        }
+        if (result.restarted) epochRef.current += 1;
+        // The note stays until a later successful Load more, manual Refresh or
+        // filter change; a failed attempt never clears it.
+        if (result.restarted) setListRestarted(true);
+        else if (opts.mode === 'refresh' && opts.manual) setListRestarted(false);
       } else {
-        setEntries(audit);
+        const next: ActivityFeed = { entries: audit, hasMore: audit.length === PAGE_LIMIT };
+        feedRef.current = next;
+        setFeed(next);
       }
       setDecisions(preds);
-      setHasMore(audit.length === PAGE_LIMIT);
       setError(null);
       setLastRefreshed(new Date());
     } catch (err: any) {
-      if (!active) return;
+      if (!active || !mountedRef.current) return;
+      if (mode === 'full' ? isStaleEpoch(fullSeq, fullSeqRef.current) : isStaleEpoch(epoch, epochRef.current)) return;
+      if (mode === 'refresh' && isSupersededRefresh(refreshSeq, refreshSeqRef.current)) return;
       const curPath = currentAppPath();
       if (!(curPath === '/activity' || curPath.startsWith('/activity') || curPath === '/system-audit')) return;
       setError(err.message || 'Failed to load activity feed');
     } finally {
-      if (active) {
-        if (!silent && !append) setLoading(false);
-        setLoadingMore(false);
-        setTimeout(() => setRefreshSpin(false), 500);
+      if (active) inFlightRef.current -= 1;
+      if (active && mountedRef.current) {
+        // A superseded full load must not hide the spinner of the one that replaced it.
+        if (!silent && !isStaleEpoch(fullSeq, fullSeqRef.current)) setLoading(false);
+        if (append) setLoadingMore(false);
+        // The refresh icon stops only when no load is left in flight.
+        if (inFlightRef.current === 0) {
+          if (spinTimerRef.current) clearTimeout(spinTimerRef.current);
+          spinTimerRef.current = setTimeout(() => setRefreshSpin(false), 500);
+        }
       }
     }
   }, [buildFilter]);
@@ -202,12 +293,12 @@ export function Activity() {
     const isActivityPath = path === '/activity' || path.startsWith('/activity') || path === '/system-audit';
     if (!isActivityPath) return;
     let active = true;
-    loadActivity({ silent: false, active });
+    loadActivity({ mode: 'full', active });
     intervalRef.current = setInterval(() => {
       const cur = currentAppPath();
       const isCurActivity = cur === '/activity' || cur.startsWith('/activity') || cur === '/system-audit';
       if (active && isCurActivity) {
-        loadActivity({ silent: true, active });
+        loadActivity({ mode: 'refresh', active });
       }
     }, AUTO_REFRESH_INTERVAL_MS);
     return () => {
@@ -225,7 +316,8 @@ export function Activity() {
     return () => window.removeEventListener('keydown', onKey);
   }, [selectedEntry]);
 
-  const uniqueActions = ['all', ...Array.from(new Set(entries.map((e) => e.action ?? '').filter((a) => a !== ''))).sort()];
+  // The selected action stays an option while rows are loading or failed, so the select never renders blank.
+  const uniqueActions = ['all', ...Array.from(new Set([actionFilter === 'all' ? '' : actionFilter, ...entries.map((e) => e.action ?? '')].filter((a) => a !== ''))).sort()];
   // The server's user filter ignores case, so the same person typed as Admin
   // and admin is one entry here, shown with the first-seen casing.
   // The selected operator is always an option, even when no loaded row has it,
@@ -266,6 +358,7 @@ export function Activity() {
 
   const hasActiveFilters = searchQuery.trim() !== '' || kindFilter !== 'all' || actionFilter !== 'all' || userFilter !== 'all' || debouncedTarget.trim() !== '' || debouncedSourceIp.trim() !== '' || fromPicker !== '' || toPicker !== '' || preset !== 'all';
 
+  const keys = rowKeys(filteredEntries);
   const totalFetched = entries.length;
   // Failed sign-ins carry whatever name was typed, so they are not operators.
   const uniqueOperators = distinctOperators(filteredEntries.filter((e) => !isFailedLogin(e.action)).map((e) => e.username)).length;
@@ -281,7 +374,7 @@ export function Activity() {
     const oldest = entries[entries.length - 1];
     if (!oldest) return;
     setLoadingMore(true);
-    loadActivity({ silent: true, append: true, before: oldest.time, beforeId: (oldest as any).id, active: true });
+    loadActivity({ mode: 'append', before: oldest.time, beforeId: oldest.id, epoch: epochRef.current });
   };
 
   const clearAllFilters = () => {
@@ -316,7 +409,7 @@ export function Activity() {
             </span>
           )}
           <button
-            onClick={() => loadActivity({})}
+            onClick={() => loadActivity({ mode: 'refresh', manual: true })}
             disabled={loading}
             className="flex items-center gap-2 px-3 py-2 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer disabled:opacity-50"
           >
@@ -539,12 +632,19 @@ export function Activity() {
 
       {/* Main Timeline Table - parity: same header/row/border as Requests */}
       <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
+        {error && entries.length > 0 && (
+          // A failed refresh keeps the rows already loaded and says so above them.
+          <div role="alert" className="flex items-center gap-2 px-5 py-2 bg-destructive/10 border-b border-destructive/20 text-destructive text-xs font-medium">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            {error} - showing the events loaded so far.
+          </div>
+        )}
         {loading ? (
           <div className="p-12 text-center text-muted-foreground text-sm flex flex-col items-center justify-center gap-2">
             <RefreshCw className="w-6 h-6 animate-spin text-primary" />
             Loading fleet activity...
           </div>
-        ) : error ? (
+        ) : error && entries.length === 0 ? (
           <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-sm font-medium flex flex-col items-center justify-center gap-2">
             <AlertCircle className="w-6 h-6 text-rose-600 dark:text-rose-400" />
             {error}
@@ -597,7 +697,7 @@ export function Activity() {
                   const kind = toActivityKind(e.action);
                   return (
                   <tr
-                    key={`${e.time}-${e.action}-${e.username}-${index}`}
+                    key={keys[index]}
                     className="hover:bg-secondary/30 transition-colors group cursor-pointer"
                     onClick={() => setSelectedEntry(e)}
                   >
@@ -652,13 +752,13 @@ export function Activity() {
           </div>
           </div>
         )}
-        {!loading && !error && filteredEntries.length > 0 && (
+        {!loading && !(error && entries.length === 0) && filteredEntries.length > 0 && (
           <div className="md:hidden space-y-3 p-3">
             {filteredEntries.map((e, index) => {
               const kind = toActivityKind(e.action);
               return (
               <div
-                key={`${e.time}-${e.action}-${e.username}-${index}-card`}
+                key={`${keys[index]}-card`}
                 onClick={() => setSelectedEntry(e)}
                 className="bg-card border border-border rounded-xl p-4 cursor-pointer hover:bg-secondary/30 transition-colors duration-150"
               >
@@ -709,7 +809,7 @@ export function Activity() {
           </div>
         )}
         {/* Pagination */}
-        {!loading && !error && (
+        {!loading && !(error && entries.length === 0) && (
           <div className="flex items-center justify-between px-5 py-3 border-t border-border bg-secondary/20 text-xs text-muted-foreground">
             <span>
               <span role={filteredEntries.length > 0 ? 'status' : undefined}>
@@ -723,6 +823,10 @@ export function Activity() {
                   Clear filters
                 </button>
               )}
+              {/* Always rendered so the note is announced even with no rows shown. */}
+              <span role="status" className={listRestarted ? 'ml-2' : undefined}>
+                {listRestarted && 'List restarted from the newest events after a burst of new activity.'}
+              </span>
             </span>
             {hasMore && !(filteredEntries.length === 0 && olderMayMatch) && (
               <button
