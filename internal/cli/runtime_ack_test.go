@@ -115,6 +115,10 @@ func TestAck_QuerySizeLimit(t *testing.T) {
 	if len(q)-1 > maxSoleQueryBytes {
 		t.Fatalf("query is %d bytes", len(q)-1)
 	}
+	oneOver := []string{strings.Repeat("a", maxSoleQueryBytes-len("force=true&acknowledge_sole=")+1)}
+	if _, err := soleActionQuery(false, true, oneOver); err == nil {
+		t.Fatal("one byte over the limit must be refused")
+	}
 	over := []string{strings.Repeat("a", maxSoleQueryBytes)}
 	if _, err := soleActionQuery(false, true, over); err == nil || !strings.Contains(err.Error(), "--force") {
 		t.Fatalf("over the limit must be refused with a pointer to --force, got %v", err)
@@ -132,6 +136,9 @@ func TestAck_OversizedListRefusedBeforeAnyPost(t *testing.T) {
 	code, _, stderr := runSafetyCLI(t, s, "runtime", "drain", "gpu-0")
 	if code != ExitUserError || !strings.Contains(stderr, "too large") {
 		t.Fatalf("exit %d: %s", code, stderr)
+	}
+	if strings.Contains(stderr, "Proceed?") {
+		t.Errorf("the operator must not be asked to confirm a list that cannot be sent: %s", stderr)
 	}
 	if len(s.posts()) != 0 {
 		t.Errorf("posts: %v", s.posts())
@@ -164,6 +171,9 @@ func TestAck_StaleAckPrintsFreshListAndNeverRetries(t *testing.T) {
 			t.Fatalf("%s: exit %d", action, code)
 		}
 		out := stderr.String()
+		if !strings.Contains(out, "The models with no other server are now:") || !strings.Contains(out, "  org/new (vllm)\n") {
+			t.Errorf("%s: the fresh list is missing: %q", action, out)
+		}
 		if !strings.Contains(out, "changed since you reviewed them") || !strings.Contains(out, "org/new") || !strings.Contains(out, "Run the command again") {
 			t.Errorf("%s: stderr = %q", action, out)
 		}

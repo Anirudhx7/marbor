@@ -22,7 +22,7 @@ import { RuntimeBadge } from '../components/RuntimeBadge';
 import { mockGPUNodes, mockRuntimeLogLines, withDemoSignals } from '../lib/mockData';
 import { SoleReplicaImpactNotice } from '../components/SoleReplicaImpactNotice';
 import { useSoleReplicaImpact } from '../lib/useSoleReplicaImpact';
-import { impactVisible, isChecking, confirmLabel, soleActionArgs } from '../lib/soleReplica';
+import { impactVisible, isChecking, confirmLabel, soleActionArgs, runtimeActionQuery, withoutHover, SOLE_REPLICA_CODE } from '../lib/soleReplica';
 import { readLastNodeCount, writeLastNodeCount } from '../lib/nodeCount';
 import { isReplicaMember, replicaImpactCopy } from '../lib/replicaImpact';
 import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, probeNodeTLS, fetchModelFit, unloadModel, getPinned, getMarborAgent, enableMarborAgent, regenerateMarborAgentToken, disableMarborAgent, checkNodeHealth, fetchReplicaSuggestions, applyDemoConfirmedGroups, getNodeControl, acceptNodeControl, clearNodeControl, startNodeRuntime, stopNodeRuntime, restartNodeRuntime, getNodeRuntimeLogs, RuntimeActionError } from '../lib/api';
@@ -309,7 +309,7 @@ function DrainConfirmModal({ nodeName, title, question, explanation, actionError
             onClick={() => { if (!busy && !confirmDisabled) void onConfirm(); }}
             aria-disabled={busy || confirmDisabled || undefined}
             aria-describedby={confirmDescribedBy}
-            className={`${confirmClassName} aria-disabled:opacity-50 aria-disabled:cursor-not-allowed`}
+            className={`${busy || confirmDisabled ? withoutHover(confirmClassName) : confirmClassName} aria-disabled:opacity-50 aria-disabled:cursor-not-allowed`}
           >
             {confirmText}
           </button>
@@ -1181,6 +1181,21 @@ export function GPUNodes() {
   // a no-op so a demo click never hits a real endpoint.
   const runRuntimeAction = async (action: 'start' | 'stop' | 'restart') => {
     if (!agentNode || !controlStatus?.configured) return;
+    // force is sent only when this dialog listed models that only this node
+    // can serve, together with exactly the names it listed; a failed or
+    // unknown check never sends it (the server checks again and refuses if
+    // needed, including when the list changed since the dialog opened).
+    const { force, acknowledgedSole } = soleActionArgs(action, restartImpact.state);
+    if (!demoMode) {
+      // A list too long to send is refused while the dialog is still open, so
+      // the message shows inside it.
+      try {
+        runtimeActionQuery({ force, acknowledgedSole });
+      } catch (e: any) {
+        setRuntimeActionError(e?.message || `Failed to ${action} runtime`);
+        return;
+      }
+    }
     setRuntimeActionConfirm(null);
     setRuntimeActionNotice(null);
     setRuntimeActionBusy(action);
@@ -1198,11 +1213,6 @@ export function GPUNodes() {
       // replica_member): the error below asks the operator to reopen the
       // dialog and review the impact instead of acknowledging unseen.
       const ackReplica = isReplicaMember(agentNode);
-      // force is sent only when this dialog listed models that only this node
-      // can serve, together with exactly the names it listed; a failed or
-      // unknown check never sends it (the server checks again and refuses if
-      // needed, including when the list changed since the dialog opened).
-      const { force, acknowledgedSole } = soleActionArgs(action, restartImpact.state);
       if (action === 'start') await startNodeRuntime(agentNode.name);
       else if (action === 'stop') await stopNodeRuntime(agentNode.name, ackReplica);
       else await restartNodeRuntime(agentNode.name, ackReplica, force, acknowledgedSole);
@@ -1220,7 +1230,7 @@ export function GPUNodes() {
       // replica_member (a stop or restart that now needs the replica
       // acknowledgement) is deliberate: it shows the replica notice before the
       // operator confirms again.
-      if (e instanceof RuntimeActionError && (e.code === 'replica_member' || e.code === 'sole_replica')) {
+      if (e instanceof RuntimeActionError && (e.code === 'replica_member' || e.code === SOLE_REPLICA_CODE)) {
         if (e.code === 'replica_member') await loadNodes();
         setRuntimeActionConfirm(action);
       }
@@ -1857,7 +1867,7 @@ export function GPUNodes() {
       setActionError(err?.message || `Failed to drain node ${name}`);
       // The models only this node serves changed since the dialog opened:
       // refetch so the operator reviews the new list before confirming again.
-      if (err instanceof RuntimeActionError && err.code === 'sole_replica') drainImpact.reload();
+      if (err instanceof RuntimeActionError && err.code === SOLE_REPLICA_CODE) drainImpact.reload();
       return false;
     }
   };

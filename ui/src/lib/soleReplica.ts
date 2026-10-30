@@ -91,10 +91,24 @@ export function shouldForce(action: SoleAction, s: SoleImpactState): boolean {
   return (action === 'drain' || action === 'restart') && hasSoleModels(s);
 }
 
+// The machine-readable code on the 409 for the sole-replica check.
+export const SOLE_REPLICA_CODE = 'sole_replica';
+
 // The largest encoded query string a drain or restart is sent with. Reverse
 // proxies often reject request lines past a few KB, so a longer list of models
-// is refused here with a message instead of failing opaquely.
+// is refused here with a message instead of failing opaquely. The query is
+// percent-encoded, so it is pure ASCII and its string length equals its byte
+// length.
 export const MAX_SOLE_QUERY_BYTES = 6000;
+
+// withoutHover drops the hover variants from a class string, so a button held
+// with aria-disabled does not look interactive whatever class the caller gave it.
+export function withoutHover(className: string): string {
+  return className
+    .split(/\s+/)
+    .filter(c => c !== '' && !c.split(':').slice(0, -1).includes('hover'))
+    .join(' ');
+}
 
 export interface SoleActionArgs { force: boolean; acknowledgedSole?: string[] }
 
@@ -105,7 +119,9 @@ export interface SoleActionArgs { force: boolean; acknowledgedSole?: string[] }
 // force is set, and the key is sent even if it were.
 export function soleActionArgs(action: SoleAction, s: SoleImpactState): SoleActionArgs {
   if (!shouldForce(action, s) || s.status !== 'ready') return { force: false };
-  return { force: true, acknowledgedSole: s.impact.models.map(m => m.model) };
+  // One entry per model name: the same model under two runtimes is listed twice
+  // but acknowledged once.
+  return { force: true, acknowledgedSole: [...new Set(s.impact.models.map(m => m.model))] };
 }
 
 // runtimeActionQuery builds the query string for a drain/stop/restart request:
@@ -129,7 +145,7 @@ export function runtimeActionQuery(opts: { acknowledgeReplica?: boolean; force?:
 
 // Shown in the reopened dialog when the server refused because the models that
 // only this node can serve changed after the dialog listed them.
-export const STALE_LIST_MESSAGE = 'The list changed since you opened this. Review it and confirm again.';
+export const STALE_LIST_MESSAGE = 'The models only this node serves changed since you opened this. Review the current state below and confirm again.';
 
 export interface RuntimeActionFailureInfo { message: string; code?: string }
 
@@ -148,10 +164,10 @@ export function runtimeActionFailureInfo(
   if (body.code === 'replica_member') {
     return { message: 'This node is now part of a multi-host replica. Review the impact below and confirm again.', code: body.code };
   }
-  if (body.code === 'sole_replica' && Array.isArray(body.unacknowledged) && body.unacknowledged.length > 0) {
+  if (body.code === SOLE_REPLICA_CODE && Array.isArray(body.unacknowledged) && body.unacknowledged.length > 0) {
     return { message: STALE_LIST_MESSAGE, code: body.code };
   }
-  if (body.code === 'sole_replica') {
+  if (body.code === SOLE_REPLICA_CODE) {
     return { message: 'This node is now the only server of one or more models. Review the list below and confirm again.', code: body.code };
   }
   return { message: body.error || `${fallback} (HTTP ${status})`, code: body.code };

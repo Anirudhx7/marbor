@@ -7,7 +7,7 @@ import {
   coldLoadSummary, unknownLine, COLD_COLLAPSE_AFTER,
   impactSummary, impactVisible, shouldForce, runtimeActionQuery, runtimeActionFailureInfo, soleCheckErrorMessage,
   endSentence, readSoleReplicaImpact, createImpactChecker,
-  soleActionArgs, MAX_SOLE_QUERY_BYTES, STALE_LIST_MESSAGE,
+  soleActionArgs, MAX_SOLE_QUERY_BYTES, STALE_LIST_MESSAGE, SOLE_REPLICA_CODE, withoutHover,
 } from '../src/lib/soleReplica.ts';
 import { readFileSync } from 'node:fs';
 
@@ -232,10 +232,77 @@ test('both dialogs take force and the ack from soleActionArgs and never retry on
   const src = readFileSync(new URL('../src/pages/GPUNodes.tsx', import.meta.url), 'utf8');
   assert.equal(src.match(/soleActionArgs\(/g).length, 2);
   assert.doesNotMatch(src, /shouldForce\(/);
-  const drainCatch = src.slice(src.indexOf('const handleDrainNode'), src.indexOf('const handleUndrainNode'));
+  const drainStart = src.indexOf('const handleDrainNode');
+  const drainEnd = src.indexOf('const handleUndrainNode');
+  assert.ok(drainStart >= 0 && drainEnd > drainStart, 'drain handler markers must exist');
+  const drainCatch = src.slice(drainStart, drainEnd);
   assert.equal(drainCatch.match(/drainNode\(/g).length, 1, 'handleDrainNode calls the API once and never retries');
   assert.match(drainCatch, /drainImpact\.reload\(\)/);
-  const restartBlock = src.slice(src.indexOf('const runRuntimeAction'), src.indexOf('const viewRuntimeLogs'));
+  const restartStart = src.indexOf('const runRuntimeAction');
+  const restartEnd = src.indexOf('const viewRuntimeLogs');
+  assert.ok(restartStart >= 0 && restartEnd > restartStart, 'restart handler markers must exist');
+  const restartBlock = src.slice(restartStart, restartEnd);
   assert.equal(restartBlock.match(/restartNodeRuntime\(/g).length, 1);
   assert.match(restartBlock, /setRuntimeActionConfirm\(action\)/);
+});
+
+test('the same model under two runtimes is acknowledged once', () => {
+  const dup = { models: [{ model: 'm1', runtime: 'ollama' }, { model: 'm1', runtime: 'vllm' }, { model: 'm2', runtime: 'vllm' }], cold_load_only: [], unknown: [] };
+  assert.deepEqual(soleActionArgs('drain', { status: 'ready', impact: dup }), { force: true, acknowledgedSole: ['m1', 'm2'] });
+});
+
+test('force by action and state, spelled out', () => {
+  const ready = { status: 'ready', impact: sole };
+  const expected = { drain: true, restart: true, start: false, stop: false };
+  for (const [action, want] of Object.entries(expected)) {
+    assert.equal(soleActionArgs(action, ready).force, want, action);
+    assert.equal(soleActionArgs(action, { status: 'ready', impact: empty }).force, false, action);
+  }
+});
+
+test('the sole_replica code is one shared constant and the stale banner is accurate for any list', () => {
+  assert.equal(SOLE_REPLICA_CODE, 'sole_replica');
+  assert.doesNotMatch(STALE_LIST_MESSAGE, /the list changed/i);
+  assert.match(STALE_LIST_MESSAGE, /Review the current state below/);
+  const page = readFileSync(new URL('../src/pages/GPUNodes.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(page, /'sole_replica'/, 'GPUNodes uses SOLE_REPLICA_CODE');
+});
+
+test('an encoded query is ASCII, so its length is its byte length', () => {
+  const q = runtimeActionQuery({ force: true, acknowledgedSole: ['café-中文', 'x y'] });
+  assert.ok(/^[ -~]*$/.test(q));
+  assert.equal(new TextEncoder().encode(q).length, q.length);
+});
+
+test('withoutHover removes hover variants only', () => {
+  assert.equal(
+    withoutHover('px-4 bg-amber-600 hover:bg-amber-600/90 sm:hover:shadow-lg group-hover:opacity-100 transition-colors'),
+    'px-4 bg-amber-600 group-hover:opacity-100 transition-colors',
+  );
+  assert.equal(withoutHover(''), '');
+});
+
+test('the drain dialog drops hover while the confirm button is held, and the restart size check runs before the dialog closes', () => {
+  const src = readFileSync(new URL('../src/pages/GPUNodes.tsx', import.meta.url), 'utf8');
+  assert.ok(src.includes('busy || confirmDisabled ? withoutHover(confirmClassName)'));
+  const start = src.indexOf('const runRuntimeAction');
+  assert.ok(start >= 0);
+  const block = src.slice(start, src.indexOf('const viewRuntimeLogs'));
+  const check = block.indexOf('runtimeActionQuery({ force, acknowledgedSole })');
+  const close = block.indexOf('setRuntimeActionConfirm(null)');
+  assert.ok(check >= 0 && close > check, 'the size check comes before the dialog closes');
+  assert.match(src, /aria-disabled:hover:bg-destructive/);
+});
+
+test('api.ts sends the acknowledgement for both actions and keeps the unacknowledged list for the failure mapping', () => {
+  const api = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8');
+  assert.ok(api.includes('/drain${runtimeActionQuery({ force, acknowledgedSole })}'));
+  assert.ok(api.includes('/runtime/restart${runtimeActionQuery({ acknowledgeReplica, force, acknowledgedSole })}'));
+  assert.ok(api.includes('unacknowledged?: string[] };'));
+  assert.ok(api.includes('runtimeActionFailureInfo(res.status, j, fallback)'));
+  const drainStart = api.indexOf('export async function drainNode');
+  const drainEnd = api.indexOf('export async function undrainNode');
+  assert.ok(drainStart >= 0 && drainEnd > drainStart);
+  assert.ok(api.slice(drainStart, drainEnd).includes('throw await runtimeActionFailure(res'));
+  assert.equal(runtimeActionFailureInfo(409, { error: 'x', code: 'sole_replica', unacknowledged: ['m'] }, 'Failed to drain node').message, STALE_LIST_MESSAGE);
 });

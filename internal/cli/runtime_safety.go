@@ -8,12 +8,38 @@ import (
 	"io"
 	"net/url"
 	"strings"
+	"unicode"
 )
 
 // maxSoleQueryBytes caps the encoded query string a drain or restart sends.
 // Reverse proxies often reject request lines past a few KB; a list of
 // acknowledged models that big is better sent from a script with a bare force.
 const maxSoleQueryBytes = 6000
+
+// maxConflictBodyBytes caps how much of a 409 body the client keeps.
+const maxConflictBodyBytes = 1 << 20
+
+// stripControl removes control characters (escape sequences, newlines, bells)
+// from a name before it is printed to a terminal, so a model or runtime name
+// from a node cannot rewrite the screen. Display only: the names sent back in
+// acknowledge_sole stay as they were.
+func stripControl(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, s)
+}
+
+// displayNames strips control characters from each name for printing.
+func displayNames(names []string) []string {
+	out := make([]string, len(names))
+	for i, n := range names {
+		out[i] = stripControl(n)
+	}
+	return out
+}
 
 // soleActionQuery builds the query string for a drain or runtime action: ""
 // when nothing is set, otherwise "?" plus the encoded pairs. acknowledge_sole is
@@ -135,12 +161,12 @@ func reportSoleActionError(err error, stderr io.Writer) int {
 		Unacknowledged []string          `json:"unacknowledged"`
 		SoleReplica    SoleReplicaImpact `json:"sole_replica"`
 	}
-	if json.NewDecoder(bytes.NewReader(cliErr.Raw)).Decode(&body) != nil || len(body.Unacknowledged) == 0 {
+	if json.NewDecoder(bytes.NewReader(cliErr.Raw)).Decode(&body) != nil || body.Code != "sole_replica" || len(body.Unacknowledged) == 0 {
 		return code
 	}
 	fmt.Fprintln(stderr, "The models with no other server are now:")
 	for _, m := range body.SoleReplica.Models {
-		fmt.Fprintf(stderr, "  %s (%s)\n", m.Model, m.Runtime)
+		fmt.Fprintf(stderr, "  %s (%s)\n", stripControl(m.Model), stripControl(m.Runtime))
 	}
 	fmt.Fprintln(stderr, "Nothing was changed. Run the command again to review the new list.")
 	return code
@@ -151,11 +177,16 @@ func reportSoleActionError(err error, stderr io.Writer) int {
 func confirmSoleReplica(action soleAction, node string, impact *SoleReplicaImpact, stderr io.Writer) error {
 	names := soleModelNames(impact.Models)
 	if !stdinIsTTY() {
-		return userErrorf("refusing to %s %q without --force: it is the only node that can serve %s (no TTY to confirm)", action, node, strings.Join(names, ", "))
+		return userErrorf("refusing to %s %q without --force: it is the only node that can serve %s (no TTY to confirm)", action, node, strings.Join(displayNames(names), ", "))
+	}
+	// Check the size now, so the operator is not asked to confirm a list that
+	// then cannot be sent.
+	if _, err := soleActionQuery(false, true, names); err != nil {
+		return err
 	}
 	fmt.Fprintf(stderr, "Node %q is the only node that can serve:\n", node)
 	for _, m := range impact.Models {
-		fmt.Fprintf(stderr, "  %s (%s)\n", m.Model, m.Runtime)
+		fmt.Fprintf(stderr, "  %s (%s)\n", stripControl(m.Model), stripControl(m.Runtime))
 	}
 	return promptProceed(stderr, soleReplicaConsequence(action, node))
 }

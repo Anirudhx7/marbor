@@ -69,6 +69,12 @@ func TestAck_ForceWithMatchingAckProceeds(t *testing.T) {
 			if !strings.Contains(d, "Forced: true") || !strings.Contains(d, "Reviewed: true") {
 				t.Errorf("audit details %q", d)
 			}
+			if action == "drain" && !isDraining(s, "a") {
+				t.Error("the drain was not applied")
+			}
+			if action == "restart" && (restartingCount(s) != 1 || hits.Load() != 1) {
+				t.Errorf("restart marker %d, agent hits %d", restartingCount(s), hits.Load())
+			}
 		})
 	}
 }
@@ -236,11 +242,13 @@ func TestAck_HostileModelNamesRoundTrip(t *testing.T) {
 	}
 }
 
-func TestAck_MatchIsByModelNameAcrossRuntimes(t *testing.T) {
+// A node reporting the same model twice holds one model: one ack covers it.
+// (A node has a single runtime, so cross-runtime matching by name is covered by
+// TestAck_UnacknowledgedMatchesByNameAndDedupes.)
+func TestAck_DuplicateLoadedEntriesAreOneModel(t *testing.T) {
 	var hits atomic.Int32
 	s, cleanup := newSoleReplicaServer(t, okHandler(&hits))
 	defer cleanup()
-	// The same model is loaded on a under two runtimes entries: one ack covers it.
 	n := readyNode(t, s, "a", "", soleModel)
 	n.Lock()
 	n.LoadedModels = append(n.LoadedModels, n.LoadedModels[0])
@@ -256,6 +264,7 @@ func TestAck_RuntimeFixtures(t *testing.T) {
 		{"ollama", "vllm"},
 		{"vllm", ""},
 		{"llamacpp", ""},
+		{"mlx", ""},
 	}
 	for _, c := range cases {
 		for _, action := range []string{"drain", "restart"} {

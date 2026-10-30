@@ -254,8 +254,13 @@ func (c *Client) doRequestBodyWith(hc *http.Client, method, path string, body in
 		// server fault. The body is kept for callers that read more than the
 		// message.
 		defer resp.Body.Close()
-		raw, _ := io.ReadAll(resp.Body)
-		return nil, &CLIError{Code: ExitUserError, Msg: readErrorMessage(bytes.NewReader(raw)), Raw: raw}
+		raw, readErr := io.ReadAll(io.LimitReader(resp.Body, maxConflictBodyBytes))
+		conflict := &CLIError{Code: ExitUserError, Msg: readErrorMessage(bytes.NewReader(raw))}
+		if readErr == nil {
+			// A body that could not be read in full is not trusted for its lists.
+			conflict.Raw = raw
+		}
+		return nil, conflict
 	case resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusNotImplemented:
 		defer resp.Body.Close()
 		return nil, userErrorf("%s", readErrorMessage(resp.Body))

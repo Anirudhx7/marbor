@@ -124,9 +124,6 @@ func TestRouterDrain_IsNotGuarded(t *testing.T) {
 	}
 }
 
-// A drain is held inside its commit step while a drain of the mutual peer is
-// sent: the second must wait for the lock and then see the first drain, so it
-// is refused. Without the lock it would finish while the first is still held.
 // recvCode waits a bounded time for a status code, so a request that wrongly
 // blocks fails the test instead of hanging it.
 func recvCode(t *testing.T, ch <-chan int, what string) int {
@@ -140,6 +137,9 @@ func recvCode(t *testing.T, ch <-chan int, what string) int {
 	}
 }
 
+// A drain is held inside its commit step while a drain of the mutual peer is
+// sent: the second must wait for the lock and then see the first drain, so it
+// is refused. Without the lock it would finish while the first is still held.
 func TestDrain_SecondMutualPeerWaitsForCommitAndIsRefused(t *testing.T) {
 	var hits atomic.Int32
 	s, cleanup := newSoleReplicaServer(t, okHandler(&hits))

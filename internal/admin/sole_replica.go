@@ -356,12 +356,17 @@ func restartOutcomeUnclearError(err error) error {
 	return fmt.Errorf("%w; restart outcome unclear: the runtime may be restarting, check the node before retrying (the restart record clears on its own after the next poll, or after %s)", err, restartMarkerTTL)
 }
 
+// soleSubject names the action and node for the 409 texts.
+func soleSubject(name string, action soleAction) string {
+	if action == soleActionRestart {
+		return fmt.Sprintf("restarting the runtime on node %q", name)
+	}
+	return fmt.Sprintf("draining node %q", name)
+}
+
 // soleReplicaMessage is the human text of the 409.
 func soleReplicaMessage(name string, action soleAction, models []router.SoleReplicaModel) string {
-	subject := fmt.Sprintf("draining node %q", name)
-	if action == soleActionRestart {
-		subject = fmt.Sprintf("restarting the runtime on node %q", name)
-	}
+	subject := soleSubject(name, action)
 	names := make([]string, 0, len(models))
 	for _, m := range models {
 		names = append(names, m.Model)
@@ -388,21 +393,12 @@ func quotedList(names []string) string {
 // staleAckMessage is the 409 text when the acknowledged list no longer covers
 // every model with no other server.
 func staleAckMessage(name string, action soleAction, unacknowledged []string, ackEmpty bool) string {
-	subject := fmt.Sprintf("draining node %q", name)
-	if action == soleActionRestart {
-		subject = fmt.Sprintf("restarting the runtime on node %q", name)
-	}
+	subject := soleSubject(name, action)
 	msg := fmt.Sprintf("%s was not done: the models with no other server changed since you reviewed them: %s; review and retry.", subject, quotedList(unacknowledged))
 	if ackEmpty {
 		msg += " acknowledge_sole was sent with no model name, which counts as an empty acknowledged list."
 	}
 	return msg
-}
-
-// refused reports that nothing was changed because of the check: a plain block,
-// a stale acknowledgement or an unparseable query.
-func (c soleCheck) refused() bool {
-	return c.outcome == soleBlocked || c.outcome == soleStaleAck || c.outcome == soleBadQuery
 }
 
 // writeSoleRefusal writes the response for a check that changed nothing: 409
@@ -415,7 +411,7 @@ func writeSoleRefusal(w http.ResponseWriter, name string, action soleAction, sol
 	case soleStaleAck:
 		writeStaleAckConflict(w, name, action, sole)
 	case soleBadQuery:
-		writeJSONError(w, http.StatusBadRequest, "malformed query string: the sole-replica check cannot read force or acknowledge_sole, so nothing was changed")
+		writeJSONError(w, http.StatusBadRequest, "malformed query string: the sole-replica check cannot read force or acknowledge_sole, so nothing was changed; other parameters were not read")
 	default:
 		return false
 	}

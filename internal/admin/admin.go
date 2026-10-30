@@ -2670,6 +2670,9 @@ func (s *Server) runtimeActionViaAgent(ctx context.Context, nodeURL string, agen
 		OK    bool   `json:"ok"`
 		Error string `json:"error"`
 	}
+	// The agent never answers 2xx with ok:false. A 3xx lands below as not
+	// refused, since the client does not follow redirects and the action may
+	// have run.
 	decodeErr := json.NewDecoder(resp.Body).Decode(&out)
 	if decodeErr == nil && out.OK && resp.StatusCode < http.StatusMultipleChoices {
 		return nil
