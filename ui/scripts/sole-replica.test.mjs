@@ -7,7 +7,9 @@ import {
   coldLoadSummary, unknownLine, COLD_COLLAPSE_AFTER,
   impactSummary, impactVisible, shouldForce, runtimeActionQuery, runtimeActionFailureInfo, soleCheckErrorMessage,
   endSentence, readSoleReplicaImpact, createImpactChecker,
+  soleActionArgs, MAX_SOLE_QUERY_BYTES, STALE_LIST_MESSAGE,
 } from '../src/lib/soleReplica.ts';
+import { readFileSync } from 'node:fs';
 
 const empty = { models: [], cold_load_only: [], unknown: [] };
 const sole = { models: [{ model: 'm1', runtime: 'vllm' }], cold_load_only: [], unknown: [] };
@@ -169,4 +171,71 @@ test('cancel aborts the request and drops its result', async () => {
   await p;
   assert.equal(signalSeen.aborted, true);
   assert.deepEqual(seen.map(s => s.status), ['loading']);
+});
+
+// --- acknowledge_sole ---
+
+test('the ack sent equals the displayed list, and only with force', () => {
+  const two = { models: [{ model: 'm1', runtime: 'vllm' }, { model: 'org/m 2', runtime: 'ollama' }], cold_load_only: [], unknown: [] };
+  const ready = { status: 'ready', impact: two };
+  assert.deepEqual(soleActionArgs('drain', ready), { force: true, acknowledgedSole: ['m1', 'org/m 2'] });
+  assert.deepEqual(soleActionArgs('restart', ready), { force: true, acknowledgedSole: ['m1', 'org/m 2'] });
+  assert.deepEqual(soleActionArgs('stop', ready), { force: false });
+  for (const s of [{ status: 'loading' }, { status: 'error' }, { status: 'idle' },
+    { status: 'ready', impact: empty }, { status: 'ready', impact: cold }, { status: 'ready', impact: unk }]) {
+    assert.deepEqual(soleActionArgs('drain', s), { force: false });
+  }
+});
+
+test('force is only ever decided by shouldForce', () => {
+  const ready = { status: 'ready', impact: sole };
+  for (const action of ['drain', 'start', 'stop', 'restart']) {
+    assert.equal(soleActionArgs(action, ready).force, shouldForce(action, ready));
+  }
+});
+
+test('query carries one encoded acknowledge_sole per model after force', () => {
+  assert.equal(runtimeActionQuery({ force: true, acknowledgedSole: ['m1', 'm2'] }), '?force=true&acknowledge_sole=m1&acknowledge_sole=m2');
+  assert.equal(
+    runtimeActionQuery({ acknowledgeReplica: true, force: true, acknowledgedSole: ['a+b&c=d#e;f%41/g:h', 'café'] }),
+    `?acknowledge_replica=true&force=true&acknowledge_sole=${encodeURIComponent('a+b&c=d#e;f%41/g:h')}&acknowledge_sole=${encodeURIComponent('café')}`,
+  );
+  const q = runtimeActionQuery({ force: true, acknowledgedSole: ['a+b&c=d#e;f%41/g:h'] });
+  assert.equal(new URLSearchParams(q.slice(1)).get('acknowledge_sole'), 'a+b&c=d#e;f%41/g:h');
+});
+
+test('an empty reviewed list still sends the key; no force sends no ack', () => {
+  assert.equal(runtimeActionQuery({ force: true, acknowledgedSole: [] }), '?force=true&acknowledge_sole=');
+  assert.equal(runtimeActionQuery({ force: true }), '?force=true');
+  assert.equal(runtimeActionQuery({ force: false, acknowledgedSole: ['m1'] }), '');
+});
+
+test('the query size limit: just under passes, just over is refused', () => {
+  const base = 'force=true&acknowledge_sole='.length;
+  const under = 'a'.repeat(MAX_SOLE_QUERY_BYTES - base);
+  assert.equal(runtimeActionQuery({ force: true, acknowledgedSole: [under] }).length - 1, MAX_SOLE_QUERY_BYTES);
+  assert.throws(() => runtimeActionQuery({ force: true, acknowledgedSole: [under + 'a'] }), /Too many models/);
+  assert.equal(MAX_SOLE_QUERY_BYTES, 6000);
+});
+
+test('a stale-ack refusal maps to the reopen banner; a plain sole_replica refusal keeps its wording', () => {
+  const stale = runtimeActionFailureInfo(409, { error: 'server text', code: 'sole_replica', unacknowledged: ['m9'] }, 'Failed');
+  assert.equal(stale.code, 'sole_replica');
+  assert.equal(stale.message, STALE_LIST_MESSAGE);
+  const plain = runtimeActionFailureInfo(409, { error: 'x', code: 'sole_replica' }, 'Failed');
+  assert.notEqual(plain.message, STALE_LIST_MESSAGE);
+  const emptyList = runtimeActionFailureInfo(409, { error: 'x', code: 'sole_replica', unacknowledged: [] }, 'Failed');
+  assert.notEqual(emptyList.message, STALE_LIST_MESSAGE);
+});
+
+test('both dialogs take force and the ack from soleActionArgs and never retry on a refusal', () => {
+  const src = readFileSync(new URL('../src/pages/GPUNodes.tsx', import.meta.url), 'utf8');
+  assert.equal(src.match(/soleActionArgs\(/g).length, 2);
+  assert.doesNotMatch(src, /shouldForce\(/);
+  const drainCatch = src.slice(src.indexOf('const handleDrainNode'), src.indexOf('const handleUndrainNode'));
+  assert.equal(drainCatch.match(/drainNode\(/g).length, 1, 'handleDrainNode calls the API once and never retries');
+  assert.match(drainCatch, /drainImpact\.reload\(\)/);
+  const restartBlock = src.slice(src.indexOf('const runRuntimeAction'), src.indexOf('const viewRuntimeLogs'));
+  assert.equal(restartBlock.match(/restartNodeRuntime\(/g).length, 1);
+  assert.match(restartBlock, /setRuntimeActionConfirm\(action\)/);
 });

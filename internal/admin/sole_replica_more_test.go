@@ -127,6 +127,19 @@ func TestRouterDrain_IsNotGuarded(t *testing.T) {
 // A drain is held inside its commit step while a drain of the mutual peer is
 // sent: the second must wait for the lock and then see the first drain, so it
 // is refused. Without the lock it would finish while the first is still held.
+// recvCode waits a bounded time for a status code, so a request that wrongly
+// blocks fails the test instead of hanging it.
+func recvCode(t *testing.T, ch <-chan int, what string) int {
+	t.Helper()
+	select {
+	case code := <-ch:
+		return code
+	case <-time.After(10 * time.Second):
+		t.Fatalf("%s did not finish", what)
+		return 0
+	}
+}
+
 func TestDrain_SecondMutualPeerWaitsForCommitAndIsRefused(t *testing.T) {
 	var hits atomic.Int32
 	s, cleanup := newSoleReplicaServer(t, okHandler(&hits))
@@ -147,7 +160,11 @@ func TestDrain_SecondMutualPeerWaitsForCommitAndIsRefused(t *testing.T) {
 
 	firstDone := make(chan int, 1)
 	go func() { firstDone <- drainQ(t, s, "a", "").Code }()
-	<-entered
+	select {
+	case <-entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("first drain never reached its commit step")
+	}
 
 	secondDone := make(chan int, 1)
 	go func() { secondDone <- drainQ(t, s, "b", "").Code }()
@@ -158,10 +175,10 @@ func TestDrain_SecondMutualPeerWaitsForCommitAndIsRefused(t *testing.T) {
 	case <-time.After(300 * time.Millisecond):
 	}
 	close(release)
-	if code := <-firstDone; code != http.StatusOK {
+	if code := recvCode(t, firstDone, "first drain"); code != http.StatusOK {
 		t.Fatalf("first drain: %d, want 200", code)
 	}
-	if code := <-secondDone; code != http.StatusConflict {
+	if code := recvCode(t, secondDone, "second drain"); code != http.StatusConflict {
 		t.Fatalf("second drain: %d, want 409", code)
 	}
 	if isDraining(s, "b") {
@@ -190,7 +207,7 @@ func TestRestart_FailedAgentCallLeavesNoMarker(t *testing.T) {
 	fail.Store(true)
 	s, cleanup := newSoleReplicaServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if fail.Load() {
-			http.Error(w, "agent exploded", http.StatusInternalServerError)
+			http.Error(w, "agent rejected the request", http.StatusUnprocessableEntity)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")

@@ -34,12 +34,12 @@ func runRuntimeAction(flags *globalFlags, action, node string, acknowledgeReplic
 		}
 	}
 
-	out, err := client.RuntimeAction(node, action, acknowledgeReplica, gate.sendForce)
+	out, err := client.RuntimeAction(node, action, acknowledgeReplica, gate.sendForce, gate.ack)
 	if errors.Is(err, ErrReplicaDetailUnavailable) {
 		// The action ran; only the replica detail could not be read.
 		fmt.Fprintf(stderr, "note: %s\n", err)
 	} else if err != nil {
-		return reportError(err, stderr)
+		return reportSoleActionError(err, stderr)
 	}
 	if out == nil {
 		out = &RuntimeActionResult{}
@@ -122,9 +122,9 @@ func runRuntimeDrain(flags *globalFlags, node, reason string, gracePeriod int, f
 		return gate.code
 	}
 
-	result, err := client.DrainNode(node, reason, gracePeriod, gate.sendForce)
+	result, err := client.DrainNode(node, reason, gracePeriod, gate.sendForce, gate.ack)
 	if err != nil {
-		return reportError(err, stderr)
+		return reportSoleActionError(err, stderr)
 	}
 
 	printReplicaWarning(stderr, result.Replica)

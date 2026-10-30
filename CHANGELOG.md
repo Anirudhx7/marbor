@@ -6,6 +6,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **Drain and runtime restart can now be confirmed against the exact list of models you reviewed.** Add one `acknowledge_sole=<model>` per model to `force=true` on `POST /admin/nodes/{name}/drain` or `POST /admin/nodes/{name}/runtime/restart`. If any model the node is now the only server of is missing from that list, marbor changes nothing and answers 409 (`code: sole_replica`) with the current lists, an `unacknowledged` array and a message saying the list changed since you reviewed it. The dashboard confirm and the interactive CLI confirm send the list they showed (an empty `acknowledge_sole=` when it was empty). The CLI prints the new list to stderr, exits 1 and does not retry.
+- **`force=true` on its own is unchanged.** It still overrides without checking the list, and an explicit `--force` stays that way. Script recipe: `GET /admin/nodes/{name}/sole-replica`, then POST with `force=true` and one `acknowledge_sole` per model, and on a 409 review the new list and repeat.
+- **How the list is matched.** Models match by exact name, so one entry covers that model on every runtime; names that are only cold-loadable or unverifiable never need an entry. The comparison and the change happen under one lock, so it is atomic against marbor's own changes only, not against changes made elsewhere on the fleet.
+- **Query-string limits.** The list is sent in the URL: the dashboard and CLI refuse above 6000 encoded bytes and point to `--force` or a script. A query string that does not parse is ignored when no model would be left without a server, and answered 400 (nothing changed) when one would, including with a bare `force=true`. An audit entry for a forced drain or restart that was sent with a list ends with `Reviewed: true`; the model names in the request are never written to it.
+
+### Fixed
+- **A runtime restart whose agent reply is a 5xx or unclear no longer clears the restart record.** Only a 4xx answer (other than 408 and 499, which a proxy can send after passing the request on, a known gap) counts as the agent refusing before it ran the restart. The error then says the outcome is unclear and that the restart record clears on its own after the next poll or after 15 minutes, so a drain of a peer is still checked against a node that may be restarting.
+- **Disabled confirm buttons in the drain and runtime dialogs show the not-allowed cursor again.**
+
 ## [0.25.2] - 2026-10-28
 
 ### Added

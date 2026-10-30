@@ -1,17 +1,56 @@
 package cli
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"strings"
 )
+
+// maxSoleQueryBytes caps the encoded query string a drain or restart sends.
+// Reverse proxies often reject request lines past a few KB; a list of
+// acknowledged models that big is better sent from a script with a bare force.
+const maxSoleQueryBytes = 6000
+
+// soleActionQuery builds the query string for a drain or runtime action: ""
+// when nothing is set, otherwise "?" plus the encoded pairs. acknowledge_sole is
+// sent only with force. A nil ackSole sends no key; a non-nil one always sends
+// the key, with one empty value when the list is empty, so an empty reviewed
+// list is never mistaken for a bare force.
+func soleActionQuery(acknowledgeReplica, force bool, ackSole []string) (string, error) {
+	v := url.Values{}
+	if acknowledgeReplica {
+		v.Set("acknowledge_replica", "true")
+	}
+	if force {
+		v.Set("force", "true")
+		switch {
+		case ackSole == nil:
+		case len(ackSole) == 0:
+			v.Set("acknowledge_sole", "")
+		default:
+			v["acknowledge_sole"] = ackSole
+		}
+	}
+	q := v.Encode()
+	if len(q) > maxSoleQueryBytes {
+		return "", userErrorf("the list of models to acknowledge is too large to send in a URL (%d bytes, limit %d): pass --force to override without the list, or call the Admin API from a script", len(q), maxSoleQueryBytes)
+	}
+	if q == "" {
+		return "", nil
+	}
+	return "?" + q, nil
+}
 
 // forceFlag lets "runtime drain" and "runtime restart" proceed when the node
 // is the only server of a model it holds.
 var forceFlag = FlagSpec{
 	Name:  "force",
 	Kind:  FlagBool,
-	Usage: "proceed without asking when the node is the only server of a model it holds",
+	Usage: "proceed without asking when the node is the only server of a model it holds; does not check the list of models",
 }
 
 // dryRunFlag makes "runtime drain" and "runtime restart" report what the
@@ -44,6 +83,7 @@ type soleRequest struct {
 type soleGate struct {
 	impact    *SoleReplicaImpact // nil when the check could not be run
 	sendForce bool               // the action must be sent with force=true
+	ack       []string           // models the operator was shown; nil sends no acknowledge_sole (a bare force)
 	done      bool               // stop here and return code
 	code      int
 }
@@ -76,7 +116,34 @@ func gateSoleReplica(client *Client, flags *globalFlags, req soleRequest, stdout
 	if err := confirmSoleReplica(req.action, req.node, impact, stderr); err != nil {
 		return soleGate{impact: impact, done: true, code: reportError(err, stderr)}
 	}
-	return soleGate{impact: impact, sendForce: true}
+	// The operator saw exactly this list, so the server is told to check that
+	// nothing else lost its last server in the meantime.
+	return soleGate{impact: impact, sendForce: true, ack: soleModelNames(impact.Models)}
+}
+
+// reportSoleActionError prints an action error and returns its exit code. When
+// the server refused because the acknowledged list went stale, it also prints
+// the current list to stderr and says to re-run to review it; it never retries.
+func reportSoleActionError(err error, stderr io.Writer) int {
+	code := reportError(err, stderr)
+	var cliErr *CLIError
+	if !errors.As(err, &cliErr) || len(cliErr.Raw) == 0 {
+		return code
+	}
+	var body struct {
+		Code           string            `json:"code"`
+		Unacknowledged []string          `json:"unacknowledged"`
+		SoleReplica    SoleReplicaImpact `json:"sole_replica"`
+	}
+	if json.NewDecoder(bytes.NewReader(cliErr.Raw)).Decode(&body) != nil || len(body.Unacknowledged) == 0 {
+		return code
+	}
+	fmt.Fprintln(stderr, "The models with no other server are now:")
+	for _, m := range body.SoleReplica.Models {
+		fmt.Fprintf(stderr, "  %s (%s)\n", m.Model, m.Runtime)
+	}
+	fmt.Fprintln(stderr, "Nothing was changed. Run the command again to review the new list.")
+	return code
 }
 
 // confirmSoleReplica asks the operator to accept taking the sole models out of

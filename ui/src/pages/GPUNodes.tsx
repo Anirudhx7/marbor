@@ -22,7 +22,7 @@ import { RuntimeBadge } from '../components/RuntimeBadge';
 import { mockGPUNodes, mockRuntimeLogLines, withDemoSignals } from '../lib/mockData';
 import { SoleReplicaImpactNotice } from '../components/SoleReplicaImpactNotice';
 import { useSoleReplicaImpact } from '../lib/useSoleReplicaImpact';
-import { impactVisible, isChecking, confirmLabel, shouldForce } from '../lib/soleReplica';
+import { impactVisible, isChecking, confirmLabel, soleActionArgs } from '../lib/soleReplica';
 import { readLastNodeCount, writeLastNodeCount } from '../lib/nodeCount';
 import { isReplicaMember, replicaImpactCopy } from '../lib/replicaImpact';
 import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, probeNodeTLS, fetchModelFit, unloadModel, getPinned, getMarborAgent, enableMarborAgent, regenerateMarborAgentToken, disableMarborAgent, checkNodeHealth, fetchReplicaSuggestions, applyDemoConfirmedGroups, getNodeControl, acceptNodeControl, clearNodeControl, startNodeRuntime, stopNodeRuntime, restartNodeRuntime, getNodeRuntimeLogs, RuntimeActionError } from '../lib/api';
@@ -301,7 +301,7 @@ function DrainConfirmModal({ nodeName, title, question, explanation, actionError
           <button
             onClick={() => { if (!busy) onClose(); }}
             aria-disabled={busy || undefined}
-            className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors aria-disabled:opacity-50 aria-disabled:pointer-events-none"
+            className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors aria-disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:hover:text-muted-foreground"
           >
             Cancel
           </button>
@@ -309,7 +309,7 @@ function DrainConfirmModal({ nodeName, title, question, explanation, actionError
             onClick={() => { if (!busy && !confirmDisabled) void onConfirm(); }}
             aria-disabled={busy || confirmDisabled || undefined}
             aria-describedby={confirmDescribedBy}
-            className={`${confirmClassName} aria-disabled:opacity-50 aria-disabled:pointer-events-none`}
+            className={`${confirmClassName} aria-disabled:opacity-50 aria-disabled:cursor-not-allowed`}
           >
             {confirmText}
           </button>
@@ -1199,12 +1199,13 @@ export function GPUNodes() {
       // dialog and review the impact instead of acknowledging unseen.
       const ackReplica = isReplicaMember(agentNode);
       // force is sent only when this dialog listed models that only this node
-      // can serve; a failed or unknown check never sends it (the server checks
-      // again and refuses if needed).
-      const force = shouldForce(action, restartImpact.state);
+      // can serve, together with exactly the names it listed; a failed or
+      // unknown check never sends it (the server checks again and refuses if
+      // needed, including when the list changed since the dialog opened).
+      const { force, acknowledgedSole } = soleActionArgs(action, restartImpact.state);
       if (action === 'start') await startNodeRuntime(agentNode.name);
       else if (action === 'stop') await stopNodeRuntime(agentNode.name, ackReplica);
-      else await restartNodeRuntime(agentNode.name, ackReplica, force);
+      else await restartNodeRuntime(agentNode.name, ackReplica, force, acknowledgedSole);
       // Refresh immediately instead of waiting up to 10s for the next poll
       // tick - the modal's agentNode.runtimeStatus otherwise looks stale
       // right after a successful action even though the change already
@@ -1840,7 +1841,7 @@ export function GPUNodes() {
     }
   };
 
-  const handleDrainNode = async (name: string, graceSeconds?: number, force = false): Promise<boolean> => {
+  const handleDrainNode = async (name: string, graceSeconds?: number, force = false, acknowledgedSole?: string[]): Promise<boolean> => {
     if (demoMode) {
       setNodes(prev => prev.map(n => n.name === name ? withDemoSignals({ ...n, draining: true, drainedGraceSeconds: graceSeconds ?? 0 }) : n));
       setActionError(null);
@@ -1848,7 +1849,7 @@ export function GPUNodes() {
     }
     if (!isLive) return false;
     try {
-      await drainNode(name, graceSeconds, force);
+      await drainNode(name, graceSeconds, force, acknowledgedSole);
       await loadNodes();
       setActionError(null);
       return true;
@@ -3268,11 +3269,12 @@ export function GPUNodes() {
         onConfirm={async () => {
           if (!nodeToDrain) return;
           const grace = drainGraceSeconds.trim() === '' ? undefined : Number(drainGraceSeconds);
-          // force only when this dialog listed models that only this node can serve.
-          const force = shouldForce('drain', drainImpact.state);
+          // force only when this dialog listed models that only this node can
+          // serve, with exactly the names it listed.
+          const { force, acknowledgedSole } = soleActionArgs('drain', drainImpact.state);
           setDrainBusy(true);
           try {
-            const ok = await handleDrainNode(nodeToDrain, grace, force);
+            const ok = await handleDrainNode(nodeToDrain, grace, force, acknowledgedSole);
             if (ok) { setNodeToDrain(null); setDrainGraceSeconds(''); }
           } finally {
             setDrainBusy(false);
@@ -4105,7 +4107,7 @@ export function GPUNodes() {
             <button
               onClick={() => { if (runtimeActionBusy === null) setRuntimeActionConfirm(null); }}
               aria-disabled={runtimeActionBusy !== null || undefined}
-              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors aria-disabled:opacity-50 aria-disabled:pointer-events-none"
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors aria-disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:hover:text-muted-foreground"
             >
               Cancel
             </button>
@@ -4118,8 +4120,8 @@ export function GPUNodes() {
               aria-describedby={[runtimeReplicaNotice ? runtimeNoticeId : '', runtimeActionConfirm === 'restart' && impactVisible(restartImpact.state) ? restartImpactId : ''].filter(Boolean).join(' ') || undefined}
               className={
                 runtimeActionConfirm === 'start'
-                  ? "px-4 py-2 bg-success hover:bg-success/90 aria-disabled:opacity-50 aria-disabled:pointer-events-none text-success-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
-                  : "px-4 py-2 bg-destructive hover:bg-destructive/90 aria-disabled:opacity-50 aria-disabled:pointer-events-none text-destructive-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+                  ? "px-4 py-2 bg-success hover:bg-success/90 aria-disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:hover:bg-success text-success-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+                  : "px-4 py-2 bg-destructive hover:bg-destructive/90 aria-disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:hover:bg-destructive text-destructive-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
               }
             >
               {runtimeActionBusy !== null

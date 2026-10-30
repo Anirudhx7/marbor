@@ -2599,6 +2599,9 @@ func (s *Server) handleNodeRuntimeAction(w http.ResponseWriter, r *http.Request,
 	if err := s.runtimeActionViaAgent(ctx, nodeURL, agentCfg, action, ctrl); err != nil {
 		var refused *agentRefusedError
 		restartRefused = errors.As(err, &refused)
+		if action == "restart" && !restartRefused {
+			err = restartOutcomeUnclearError(err)
+		}
 		// The agent's own error text (a domain message like "systemd:
 		// restart ollama.service: Unit not found") is meant to surface to
 		// the client - see runtimeActionViaAgent's doc comment for why a
@@ -2611,7 +2614,7 @@ func (s *Server) handleNodeRuntimeAction(w http.ResponseWriter, r *http.Request,
 	}
 
 	detail := replicaAuditDetail(fmt.Sprintf("Driver: %s, Identifier: %s", ctrl.Driver, ctrl.Identifier), replica, acknowledged)
-	s.logSystemChange(r, "runtime_"+action, nodeName, soleReplicaAuditDetail(detail, sole.impact, sole.forced()))
+	s.logSystemChange(r, "runtime_"+action, nodeName, soleReplicaAuditDetail(detail, sole.impact, sole.forced(), sole.reviewed))
 
 	resp := map[string]interface{}{"ok": true}
 	if replica != nil {
@@ -2667,22 +2670,27 @@ func (s *Server) runtimeActionViaAgent(ctx context.Context, nodeURL string, agen
 		OK    bool   `json:"ok"`
 		Error string `json:"error"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		msg := fmt.Sprintf("agent runtime %s: could not decode response (status %d)", action, resp.StatusCode)
-		if resp.StatusCode >= http.StatusBadRequest {
-			// The agent answered with an error status: it refused.
-			return &agentRefusedError{msg: msg}
-		}
-		return errors.New(msg)
+	decodeErr := json.NewDecoder(resp.Body).Decode(&out)
+	if decodeErr == nil && out.OK && resp.StatusCode < http.StatusMultipleChoices {
+		return nil
 	}
-	if !out.OK {
-		msg := out.Error
-		if msg == "" {
-			msg = fmt.Sprintf("agent returned %d", resp.StatusCode)
-		}
+	msg := out.Error
+	if decodeErr != nil {
+		msg = fmt.Sprintf("agent runtime %s: could not decode response (status %d)", action, resp.StatusCode)
+	} else if msg == "" {
+		msg = fmt.Sprintf("agent returned %d", resp.StatusCode)
+	}
+	if agentStatusIsRefusal(resp.StatusCode) {
 		return &agentRefusedError{msg: msg}
 	}
-	return nil
+	return errors.New(msg)
+}
+
+// agentStatusIsRefusal reports whether an agent status means it turned the
+// action down before running it: any 4xx except 408 and 499, which a proxy can
+// emit after passing the request on. 5xx, 3xx and 2xx never count.
+func agentStatusIsRefusal(status int) bool {
+	return status >= 400 && status < 500 && status != http.StatusRequestTimeout && status != 499
 }
 
 // defaultNodeRuntimeLogLines/maxNodeRuntimeLogLines mirror the agent-side
@@ -3713,13 +3721,12 @@ func (s *Server) handleDrainNode(w http.ResponseWriter, r *http.Request) {
 	// The sole-replica check and the drain itself run under one lock, so two
 	// drains of mutual peers cannot both pass.
 	drained := false
-	sole := s.checkSoleReplica(name, forceRequested(r), func() {
+	sole := s.checkSoleReplica(name, soleConsentFrom(r), func() {
 		if drained = s.router.DrainNode(name, reason, grace); drained {
 			_ = s.st.SetNodeDrain(name, true, reason, grace)
 		}
 	})
-	if sole.blocked() {
-		writeSoleReplicaConflict(w, name, soleActionDrain, sole.impact)
+	if writeSoleRefusal(w, name, soleActionDrain, sole) {
 		return
 	}
 	if !sole.found() || !drained {
@@ -3731,7 +3738,7 @@ func (s *Server) handleDrainNode(w http.ResponseWriter, r *http.Request) {
 	// effect). Replica roles come from the declarations, which a drain does
 	// not change.
 	replica := s.replicaInfoFor(name, replicaActionDrain)
-	detail := soleReplicaAuditDetail(replicaAuditDetail(reason, replica, false), sole.impact, sole.forced())
+	detail := soleReplicaAuditDetail(replicaAuditDetail(reason, replica, false), sole.impact, sole.forced(), sole.reviewed)
 	s.logSystemChange(r, "drain_node", name, detail)
 	resp := map[string]any{"node": name, "draining": true, "reason": reason, "grace_period_seconds": grace}
 	if replica != nil {

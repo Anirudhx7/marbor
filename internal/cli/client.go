@@ -35,6 +35,10 @@ const (
 type CLIError struct {
 	Code int
 	Msg  string
+
+	// Raw is the response body of a 409, kept so a caller can read fields beyond
+	// the message (the sole-replica lists). Nil for every other error.
+	Raw []byte
 }
 
 func (e *CLIError) Error() string { return e.Msg }
@@ -244,10 +248,15 @@ func (c *Client) doRequestBodyWith(hc *http.Client, method, path string, body in
 		// just needs to configure something first.
 		defer resp.Body.Close()
 		return nil, userErrorf("%s", readErrorMessage(resp.Body))
-	case resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusNotImplemented || resp.StatusCode == http.StatusConflict:
+	case resp.StatusCode == http.StatusConflict:
 		// 409 is a rejection the operator can act on (for example a runtime
 		// stop on a replica member that needs --acknowledge-replica), not a
-		// server fault.
+		// server fault. The body is kept for callers that read more than the
+		// message.
+		defer resp.Body.Close()
+		raw, _ := io.ReadAll(resp.Body)
+		return nil, &CLIError{Code: ExitUserError, Msg: readErrorMessage(bytes.NewReader(raw)), Raw: raw}
+	case resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusNotImplemented:
 		defer resp.Body.Close()
 		return nil, userErrorf("%s", readErrorMessage(resp.Body))
 	case resp.StatusCode >= 400:
@@ -283,19 +292,18 @@ func (c *Client) Logout() error {
 // acknowledge_replica=true, which the server requires for a stop or restart
 // on a multi-host replica head, worker or unresolved member. force sends
 // force=true, which a restart needs when it would leave a model with no other
-// node able to serve it. The returned Replica is nil for a standalone node.
-func (c *Client) RuntimeAction(node, action string, acknowledgeReplica, force bool) (*RuntimeActionResult, error) {
+// node able to serve it. ackSole, sent only with force, is the list of models
+// the operator was shown: nil sends no acknowledge_sole key (a bare force),
+// while a non-nil list, even an empty one, sends the key so the server checks
+// that list is still the whole current list. The returned Replica is nil for a
+// standalone node.
+func (c *Client) RuntimeAction(node, action string, acknowledgeReplica, force bool, ackSole []string) (*RuntimeActionResult, error) {
 	path := "/admin/nodes/" + urlPathEscape(node) + "/runtime/" + action
-	var query []string
-	if acknowledgeReplica {
-		query = append(query, "acknowledge_replica=true")
+	query, err := soleActionQuery(acknowledgeReplica, force, ackSole)
+	if err != nil {
+		return nil, err
 	}
-	if force {
-		query = append(query, "force=true")
-	}
-	if len(query) > 0 {
-		path += "?" + strings.Join(query, "&")
-	}
+	path += query
 	resp, err := c.doRequestBody(http.MethodPost, path, nil)
 	if err != nil {
 		return nil, err
@@ -635,8 +643,9 @@ type DrainResult struct {
 // (marbor-internal routing state; never sent to the Marbor Agent), mirroring the
 // UI's GPUNodes.tsx "Drain" action. graceSeconds < 0 means "not set" (absent
 // from the request body - infinite drain, today's frozen default). force sends
-// force=true, which a drain needs when the node is the only server of a model.
-func (c *Client) DrainNode(node, reason string, graceSeconds int, force bool) (*DrainResult, error) {
+// force=true, which a drain needs when the node is the only server of a model;
+// ackSole works as for RuntimeAction.
+func (c *Client) DrainNode(node, reason string, graceSeconds int, force bool, ackSole []string) (*DrainResult, error) {
 	body := map[string]any{}
 	if reason != "" {
 		body["reason"] = reason
@@ -647,10 +656,11 @@ func (c *Client) DrainNode(node, reason string, graceSeconds int, force bool) (*
 	if len(body) == 0 {
 		body = nil
 	}
-	path := "/admin/nodes/" + urlPathEscape(node) + "/drain"
-	if force {
-		path += "?force=true"
+	query, err := soleActionQuery(false, force, ackSole)
+	if err != nil {
+		return nil, err
 	}
+	path := "/admin/nodes/" + urlPathEscape(node) + "/drain" + query
 	resp, err := c.doRequestBody(http.MethodPost, path, body)
 	if err != nil {
 		return nil, err
