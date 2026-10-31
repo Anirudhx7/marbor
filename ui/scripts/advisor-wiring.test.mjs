@@ -60,9 +60,7 @@ test('the banner node count is derived, not hardcoded', () => {
 
 test('every advisor demo node is on the GPU nodes page unless allowlisted', () => {
   // Advisor-only demo nodes, each with the reason it has no GPU nodes record.
-  const allowlist = {
-    'gpu-node-12': 'demo of a node added by URL with no VRAM declared and no agent, so fit cannot be computed',
-  };
+  const allowlist = {};
   const start = mock.indexOf('const mockModelCatalogBase');
   assert.ok(start > 0, 'mockModelCatalogBase not found');
   const nodesAt = mock.indexOf('\n  nodes: [', start);
@@ -81,4 +79,8 @@ test('every advisor demo node is on the GPU nodes page unless allowlisted', () =
     if (name in allowlist) continue;
     assert.ok(gpuNodes.has(name), `${name} is in the advisor catalog but not in mockGPUNodes`);
   }
+});
+
+test("the advisor lists exactly the fleet nodes", () => {
+  assert.ok(mock.includes("nodes: mockGPUNodes.map(rec =>"));
 });

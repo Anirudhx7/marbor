@@ -1,4 +1,4 @@
-import { BackupFileInfo, BackupListResponse, NodeSignalId, GPUNode, APIKey, Settings, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelCatalogResponse, ModelConfig, BenchmarkRun, SpillCounterRow, RoutingDecision, ModelAlias, QuantRecommendation } from '../types';
+import { BackupFileInfo, BackupListResponse, NodeSignalId, GPUNode, APIKey, Settings, Savings, CloudProvider, ModelCatalog, RequestEntry, Analytics, ModelCatalogResponse, CatalogNodeEntry, ModelConfig, BenchmarkRun, SpillCounterRow, RoutingDecision, ModelAlias, QuantRecommendation } from '../types';
 import type { SystemInfo, ReplicaSuggestionsResponse, SoleReplicaImpact, AuditPage, AuditPageEntry } from './api';
 
 const GB = 1024;
@@ -1541,22 +1541,6 @@ const mockModelCatalogBase: ModelCatalogResponse = {
       capabilities: ['status', 'models.pull', 'models.list', 'runtime.health_check'],
       models: [],
     },
-    {
-      // A node added by URL with no VRAM declared and no agent: fit cannot be
-      // computed, so the demo shows the "Curated models for" heading and the
-      // page note instead of a fit table.
-      name: 'gpu-node-12',
-      url: 'http://10.0.1.24:11434',
-      runtime: 'ollama',
-      vram_free_bytes: 0,
-      vram_total_bytes: 0,
-      vram_used_bytes: 0,
-      vram_source: 'unknown',
-      disk_free_gb: 0,
-      disk_total_gb: 0,
-      disk_known: false,
-      models: [],
-    },
   ],
 };
 
@@ -1643,24 +1627,35 @@ function mockNodeModels(base: ModelCatalogResponse, node: ModelCatalogResponse['
 
 export const mockModelCatalogResponse: ModelCatalogResponse = {
   ...mockModelCatalogBase,
-  // GPU model, runtime and VRAM figures come from the shared node record
-  // (mockGPUNodes) wherever one exists. gpu-node-12 is an advisor-only demo
-  // node with no GPU nodes page record; it is allowlisted in the
-  // advisor wiring test.
-  nodes: mockModelCatalogBase.nodes.map(base => {
-    const rec = mockGPUNodes.find(g => g.name === base.name);
-    const n = rec && rec.vramTotalMB > 0
-      ? {
-          ...base,
-          runtime: rec.runtime,
-          vram_total_bytes: rec.vramTotalMB * 1024 * 1024,
-          vram_used_bytes: rec.vramUsedMB * 1024 * 1024,
-          vram_free_bytes: Math.max(0, rec.vramTotalMB - rec.vramUsedMB) * 1024 * 1024,
-        }
-      : base;
+  // The advisor lists exactly the fleet: one entry per mockGPUNodes record, so
+  // the node count here always matches the GPU nodes page. Nodes with a
+  // hand-tuned entry above keep its URL, disk and capability fields; the rest
+  // get a plain entry. GPU model, runtime and VRAM figures always come from
+  // the shared node record.
+  nodes: mockGPUNodes.map(rec => {
+    const tuned = mockModelCatalogBase.nodes.find(b => b.name === rec.name);
+    const base: CatalogNodeEntry = tuned ?? {
+      name: rec.name,
+      url: `http://${rec.host}:11434`,
+      vram_free_bytes: 0,
+      vram_total_bytes: 0,
+      vram_source: rec.vramSource === "nvidia" ? "nvidia-smi" : rec.vramSource === "none" ? "unknown" : rec.vramSource,
+      disk_free_gb: 1000,
+      disk_total_gb: 2000,
+      disk_known: true,
+      models: [],
+    };
+    const n: CatalogNodeEntry = {
+      ...base,
+      runtime: rec.runtime,
+      vram_total_bytes: rec.vramTotalMB * 1024 * 1024,
+      vram_used_bytes: rec.vramUsedMB * 1024 * 1024,
+      vram_free_bytes: Math.max(0, rec.vramTotalMB - rec.vramUsedMB) * 1024 * 1024,
+    };
     return { ...n, models: mockNodeModels(mockModelCatalogBase, n) };
   }),
 };
+
 
 // What a vLLM, TGI or MLX node browses instead of GGUF repos: the same model
 // families as the GGUF list, as full-precision safetensors repos. Each repo is a
