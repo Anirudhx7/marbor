@@ -47,7 +47,7 @@
 --ease:cubic-bezier(.16,1,.3,1);
 --shadow:0 24px 60px -24px rgba(0,0,0,.55),0 2px 8px rgba(0,0,0,.35);
 }
-html.light{--bg:#f5f2e9;--bg-elevated:#faf7ee;--bg-surface:#e9e4d4;--bg-input:#e3ddcb;--border:#d9d2bd;--border-subtle:#d5cdb4;--text:#2b2924;--text-muted:#4a4740;--text-faint:#666158;--accent:#4c3a19;--accent-dim:#3a2f16;--accent-bg:rgba(76,58,25,.08);--accent-bg-hover:rgba(76,58,25,.14);--accent2:#1d4d1d;--accent3:#702626;--amber:#8a5f16;--on-accent:#f5f2e9;--brand-chip:#2e2413;--brand-mark:#f5f2e9;--shadow:0 24px 50px -28px rgba(60,50,20,.35),0 2px 8px rgba(60,50,20,.12)}
+html.light{--bg:#f5f2e9;--bg-elevated:#faf7ee;--bg-surface:#e9e4d4;--bg-input:#e3ddcb;--border:#d9d2bd;--border-subtle:#d5cdb4;--text:#2b2924;--text-muted:#4a4740;--text-faint:#615c54;--accent:#4c3a19;--accent-dim:#3a2f16;--accent-bg:rgba(76,58,25,.08);--accent-bg-hover:rgba(76,58,25,.14);--accent2:#1d4d1d;--accent3:#702626;--amber:#8a5f16;--on-accent:#f5f2e9;--brand-chip:#2e2413;--brand-mark:#f5f2e9;--shadow:0 24px 50px -28px rgba(60,50,20,.35),0 2px 8px rgba(60,50,20,.12)}
 html.light ::selection{background:var(--accent);color:var(--bg)}
 html.light .btn-gold{background:var(--accent);border-color:var(--accent);color:var(--on-accent);box-shadow:0 12px 26px -14px color-mix(in srgb,var(--accent) 60%,transparent)}
 html.light .btn-gold:hover{background:var(--accent-dim);border-color:var(--accent-dim);color:var(--on-accent)}
@@ -108,7 +108,7 @@ h1{font-family:var(--font-display);font-size:clamp(40px,5.8vw,64px);line-height:
 .cta-row{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:20px}
 /* min-height reserves the box so a late font swap cannot resize it and shift content below (CLS). 47px desktop = one code line-box + padding + border. Mobile keeps the same single-line scrollable code (wrapping would make the line count - and the height - depend on font metrics, which is what shifted): 130px covers the measured 127px stacked webfont height plus slack for fallback variance. Line-heights are fixed so both fallbacks and webfonts measure nearly the same. */
 .install{display:flex;align-items:center;background:var(--bg-elevated);border:1px solid var(--border);border-radius:12px;overflow:hidden;max-width:750px;box-shadow:var(--shadow);min-height:47px}
-.install .plabel{font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-faint);padding:0 4px 0 16px;flex:none}
+.install .plabel{font-family:var(--font-sans);font-size:12px;font-weight:550;letter-spacing:0;text-transform:none;color:var(--text-faint);padding:0 4px 0 16px;flex:none}
 .install code{flex:1;min-width:0;font-family:var(--font-mono);font-size:12.8px;line-height:1.6;color:var(--text);padding:12px 12px 12px 8px;white-space:nowrap;overflow-x:auto;text-overflow:ellipsis;scrollbar-width:thin}
 .install button{flex:none;align-self:stretch;border:0;border-left:1px solid var(--border);background:transparent;color:var(--accent);font-weight:700;font-size:13px;padding:0 18px;cursor:pointer}
 .install button:hover{background:var(--accent-bg)}
@@ -127,7 +127,7 @@ h1{font-family:var(--font-display);font-size:clamp(40px,5.8vw,64px);line-height:
 .req-card .k{flex:0 0 58px;color:var(--text-faint)}
 .req-card .v{color:var(--text)}
 .signals{padding:24px}
-.sig-label{font-size:12px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text-faint);margin:0 0 12px}
+.sig-label{font-family:var(--font-sans);font-size:12.5px;font-weight:600;letter-spacing:0;text-transform:none;color:var(--text-faint);margin:0 0 12px}
 .sig-grid{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px}
 .chip{font-family:var(--font-sans);font-size:13px;font-weight:600;padding:7px 12px;border-radius:99px;border:1px solid var(--border);background:var(--bg-surface);color:var(--text-muted);cursor:pointer;transition:color .18s var(--ease),border-color .18s var(--ease),background-color .18s var(--ease)}
 .chip:hover{border-color:var(--accent);color:var(--text)}
@@ -185,10 +185,10 @@ h2{font-family:var(--font-display);font-size:clamp(28px,3.6vw,40px);font-weight:
 .cmp{border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden;background:var(--bg-elevated)}
 .cmp table{width:100%;border-collapse:collapse;font-size:13.8px}
 .cmp th,.cmp td{padding:13px 18px;text-align:left;border-bottom:1px solid var(--border-subtle)}
-.cmp th{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-faint);font-weight:700}
+.cmp th{font-family:var(--font-sans);font-size:12.5px;letter-spacing:0;text-transform:none;color:var(--text-faint);font-weight:600}
 .cmp tr:last-child td{border-bottom:0}
 .cmp th:nth-child(2),.cmp td:nth-child(2){background:var(--accent-bg)}
-.cmp tr.grp td{background:transparent;font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);padding:14px 18px 6px}
+.cmp tr.grp td{background:transparent;font-family:var(--font-sans);font-size:12px;letter-spacing:0;text-transform:none;color:var(--accent);font-weight:600;padding:14px 18px 6px}
 .cmp-notes{margin:0;padding:14px 4px 0;list-style:none;font-family:var(--font-sans);font-size:12.5px;line-height:1.8;color:var(--text-muted)}
 .cmp-notes li{padding-left:18px;position:relative}
 .cmp-notes li::before{content:"*";position:absolute;left:4px;color:var(--accent)}
