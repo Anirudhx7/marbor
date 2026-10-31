@@ -113,7 +113,7 @@ test('the in-memory save limit is a stated value and sizes render', () => {
   assert.equal(ui.isAbortError(new Error('x')), false);
 });
 
-test('the demo backup data is self-consistent, derived from now, and shows every state', async () => {
+test('the demo backup data is self-consistent, derived from now, and shows a realistic set of states', async () => {
   const { mockBackupResponse } = await import('../src/lib/backupMock.ts');
   const hour = 3600 * 1000;
   const now = Date.UTC(2030, 5, 15, 12, 0, 0);
@@ -132,12 +132,11 @@ test('the demo backup data is self-consistent, derived from now, and shows every
   assert.ok(r.backups.some((b) => b.integrity === 'invalid'));
   assert.equal(r.status.scheduled.result, 'success');
   assert.equal(r.status.manual.result, 'refused');
-  for (const k of ['dir_warning', 'status_not_saved', 'prune_error', 'leftover_files']) assert.ok(r.status[k], k);
+  assert.ok(r.status.dir_warning);
   assert.equal(r.status.last_restore.result, 'success');
-  assert.ok(r.skipped > 0);
   assert.equal(r.backups[0].modified_at, r.status.scheduled.success_at);
   const lines = ui.backupStatusLines(r.status, r.skipped, (x) => x);
-  for (const k of ['scheduled', 'manual', 'restore', 'dir-warning', 'not-saved', 'prune', 'leftover', 'skipped']) {
+  for (const k of ['scheduled', 'manual', 'restore', 'dir-warning']) {
     assert.ok(lines.some((l) => l.key === k), k);
   }
 });

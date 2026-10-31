@@ -137,6 +137,8 @@ const getTimezoneLabel = (tz: string): string => {
   }
 };
 
+const BACKUP_NOTICES_SHOWN = 3;
+
 export function SettingsPage() {
   const tz = useTimezone();
   const { demoMode, setDemoMode } = useDemoMode();
@@ -1882,10 +1884,14 @@ export function SettingsPage() {
                   </button>
                 </div>
               )}
-              {backupStatus ? (
-                backupStatusLines(backupStatus, backupSkipped, (iso) => formatDateTimeInZone(iso, tz), {
+              {backupStatus ? (() => {
+                const rank: Record<string, number> = { error: 0, warn: 1 };
+                const lines = backupStatusLines(backupStatus, backupSkipped, (iso) => formatDateTimeInZone(iso, tz), {
                   manualNotSaved: notSavedAttempt !== null && (backupStatus.manual?.attempt_at ?? '') === notSavedAttempt,
-                }).map((line) => (
+                }).map((l, i) => ({ l, i }))
+                  .sort((x, y) => (rank[x.l.tone] ?? 2) - (rank[y.l.tone] ?? 2) || x.i - y.i)
+                  .map((x) => x.l);
+                const renderLine = (line: (typeof lines)[number]) => (
                   <p
                     key={line.key}
                     className={`text-xs mt-1.5 break-words ${
@@ -1907,8 +1913,23 @@ export function SettingsPage() {
                       </button>
                     )}
                   </p>
-                ))
-              ) : (
+                );
+                const visible = lines.slice(0, BACKUP_NOTICES_SHOWN);
+                const hidden = lines.slice(BACKUP_NOTICES_SHOWN);
+                return (
+                  <>
+                    {visible.map(renderLine)}
+                    {hidden.length > 0 && (
+                      <details className="mt-1.5">
+                        <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground min-h-[44px] sm:min-h-0 inline-flex items-center">
+                          {hidden.length} more notice{hidden.length === 1 ? "" : "s"}
+                        </summary>
+                        {hidden.map(renderLine)}
+                      </details>
+                    )}
+                  </>
+                );
+              })() : (
                 <>
                   {settings.backupLastAt && (
                     <p className="text-xs text-muted-foreground mt-1.5">
