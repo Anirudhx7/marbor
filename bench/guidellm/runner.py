@@ -46,7 +46,7 @@ def recorded_sum() -> str | None:
 
 
 def cmd_freeze(_: argparse.Namespace) -> int:
-    SLO_SUM.write_text(f"{sha256_of(SLO_FILE)}  slo.json\n")
+    SLO_SUM.write_bytes(f"{sha256_of(SLO_FILE)}  slo.json\n".encode())
     print(f"recorded {SLO_SUM.name}: {sha256_of(SLO_FILE)}")
     return 0
 
