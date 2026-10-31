@@ -148,6 +148,9 @@ h1{font-family:var(--font-display);font-size:clamp(40px,5.8vw,64px);line-height:
 .table-scroll::-webkit-scrollbar{height:8px;width:8px}
 .table-scroll::-webkit-scrollbar-track{background:transparent}
 .table-scroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:99px}
+figure.diagram-fig{margin:24px 0;padding:0}
+figure.diagram-fig .diagram-wrap{margin-bottom:0}
+figcaption.diagram-cap{margin-top:10px;font-family:var(--font-sans);font-size:12.5px;color:var(--text-faint);line-height:1.5}
 .table-scroll::-webkit-scrollbar-thumb:hover{background:var(--text-faint)}
 .doc-content table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:440px}
 .doc-content th,.doc-content td{padding:13px 18px;text-align:left;border-bottom:1px solid var(--border-subtle)}

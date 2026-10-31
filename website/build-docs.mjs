@@ -146,6 +146,16 @@ function renderMarkdown(md) {
     // hr
     if (/^---+$/.test(line.trim())) { html += "<hr/>\n"; i++; continue; }
 
+    // figure block
+    if (/^<figure/i.test(line)) {
+      const buf = [line];
+      i++;
+      while (i < lines.length && !/<\/figure>/i.test(lines[i])) { buf.push(lines[i]); i++; }
+      if (i < lines.length) { buf.push(lines[i]); i++; }
+      html += buf.join("\n") + "\n";
+      continue;
+    }
+
     // blank
     if (line.trim() === "") { i++; continue; }
 
@@ -153,7 +163,7 @@ function renderMarkdown(md) {
     const buf = [line];
     i++;
     while (i < lines.length && lines[i].trim() !== "" &&
-      !/^(#{1,6}\s|```|>|\s*([-*]|\d+\.)\s|\|.*\||---+$)/.test(lines[i])) {
+      !/^(#{1,6}\s|```|>|\s*([-*]|\d+\.)\s|\|.*\||---+|<figure)/i.test(lines[i])) {
       buf.push(lines[i]); i++;
     }
     html += `<p>${inline(buf.join(" "))}</p>\n`;

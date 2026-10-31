@@ -10,12 +10,13 @@ node-failure route-around, and self-healing recovery all verified live).
 
 ## Architecture
 
-```
-clients ──► marbor box (cheap CPU instance, e.g. t3.small)
+<figure class="diagram-fig">
+<div class="code-wrap diagram-wrap"><pre class="code diagram-pre"><code>clients ──► marbor box (cheap CPU instance, e.g. t3.small)
                  │  warm-first routing + auth + dashboard + metrics
                  ├──► GPU node 1  (g4dn/g5/g6, running Ollama)
-                 └──► GPU node 2  (g4dn/g5/g6, running Ollama)
-```
+                 └──► GPU node 2  (g4dn/g5/g6, running Ollama)</code></pre></div>
+<figcaption class="diagram-cap">Architecture: CPU-only marbor gateway delegating warm-first inference to EC2 GPU instances.</figcaption>
+</figure>
 
 The marbor box does **not** need a GPU - it only routes. Put it on a small,
 always-on instance; put Ollama on GPU instances you can scale or stop.

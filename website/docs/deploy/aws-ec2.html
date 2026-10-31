@@ -186,6 +186,9 @@ h1{font-family:var(--font-display);font-size:clamp(40px,5.8vw,64px);line-height:
 .table-scroll::-webkit-scrollbar{height:8px;width:8px}
 .table-scroll::-webkit-scrollbar-track{background:transparent}
 .table-scroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:99px}
+figure.diagram-fig{margin:24px 0;padding:0}
+figure.diagram-fig .diagram-wrap{margin-bottom:0}
+figcaption.diagram-cap{margin-top:10px;font-family:var(--font-sans);font-size:12.5px;color:var(--text-faint);line-height:1.5}
 .table-scroll::-webkit-scrollbar-thumb:hover{background:var(--text-faint)}
 .doc-content table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:440px}
 .doc-content th,.doc-content td{padding:13px 18px;text-align:left;border-bottom:1px solid var(--border-subtle)}
@@ -291,13 +294,13 @@ section,#install{scroll-margin-top:96px}
 <p>Run one marbor endpoint in front of one or more Ollama GPU boxes on EC2. marbor is a single static binary - no runtime, no dependencies, no config file - so an EC2 deploy is "download, start a service, configure from the dashboard."</p>
 <p>This guide was validated end-to-end on AWS (multi-node deploy, warm-first routing, node-failure route-around, and self-healing recovery all verified live).</p>
 <h2 id="architecture">Architecture<a class="anchor" href="#architecture" aria-label="Link to section">#</a></h2>
-<div class="code-wrap"><pre class="code"><code>clients ──► marbor box (cheap CPU instance, e.g. t3.small)
+<figure class="diagram-fig">
+<div class="code-wrap diagram-wrap"><pre class="code diagram-pre"><code>clients ──► marbor box (cheap CPU instance, e.g. t3.small)
                  │  warm-first routing + auth + dashboard + metrics
                  ├──► GPU node 1  (g4dn/g5/g6, running Ollama)
-                 └──► GPU node 2  (g4dn/g5/g6, running Ollama)</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="clients ──► marbor box (cheap CPU instance, e.g. t3.small)
-                 │  warm-first routing + auth + dashboard + metrics
-                 ├──► GPU node 1  (g4dn/g5/g6, running Ollama)
-                 └──► GPU node 2  (g4dn/g5/g6, running Ollama)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+                 └──► GPU node 2  (g4dn/g5/g6, running Ollama)</code></pre></div>
+<figcaption class="diagram-cap">Architecture: CPU-only marbor gateway delegating warm-first inference to EC2 GPU instances.</figcaption>
+</figure>
 <p>The marbor box does <strong>not</strong> need a GPU - it only routes. Put it on a small, always-on instance; put Ollama on GPU instances you can scale or stop.</p>
 <h2 id="1-gpu-instances-the-ollama-nodes">1. GPU instances (the Ollama nodes)<a class="anchor" href="#1-gpu-instances-the-ollama-nodes" aria-label="Link to section">#</a></h2>
 <p>Cheapest CUDA option is <code>g4dn.xlarge</code> (NVIDIA T4 16GB). <code>g5.xlarge</code> (A10G) and <code>g6.xlarge</code> (L4) are faster. Use a Deep Learning AMI or install the NVIDIA driver on Amazon Linux 2023, then install Ollama and bind it to the VPC:</p>
