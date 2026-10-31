@@ -91,7 +91,7 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-off
    so their rings are pure artifact while AT focus still lands. */
 .doc-content h2:focus,.doc-content h3:focus{outline:none!important;box-shadow:none!important}
 .doc-sidebar nav{display:block}
-@media print{:root{color-scheme:light}body{background:#fff!important;color:#000!important}body::before,.nav,.toc-card,.copy-btn{display:none!important}.doc-card,.toc-card{box-shadow:none!important}}
+@media print{:root{color-scheme:light}body{background:#fff!important;color:#000!important}body::before,.mobile-menu,#themeBtn,#hamb,.copy-btn{display:none!important}.nav{position:static!important;background:transparent!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;border-bottom:1px solid #ccc!important;padding:8px 0!important}.nav-inner{max-width:100%!important;padding:0!important;background:transparent!important;border:none!important;box-shadow:none!important}.nav-links{display:flex!important;gap:12px!important}.nav-links a{color:#000!important;text-decoration:none!important}.nav-cta{display:inline-flex!important;border:1px solid #333!important;color:#000!important;background:transparent!important}.doc-card,.toc-card{box-shadow:none!important;border:1px solid #ccc!important}[data-reveal]{opacity:1!important;transform:none!important;visibility:visible!important}}
 /* ---- mobile hardening (all viewports, no visual change on desktop) ---- */
 @supports (overflow:clip){html,body{overflow-x:clip}}
 @supports not (overflow:clip){body{overflow-x:hidden}}
