@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "description": "Per-request latency targets, frozen before any measured run. Attainment is the share of attempted requests meeting both targets for their token shape (errors count as misses).",
+  "shapes": {
+    "512x256": { "ttft_ms": 500, "itl_ms": 40 },
+    "2048x512": { "ttft_ms": 1500, "itl_ms": 40 }
+  },
+  "min_attainment": 0.95
+}
