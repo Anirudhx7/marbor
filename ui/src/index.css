@@ -221,6 +221,12 @@ html {
   animation: fade-in 0.3s ease-out forwards;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in {
+    animation: none;
+  }
+}
+
 /* Base Shadow styles to prevent 'flatness' in light mode - warm ink shadow */
 .glass-panel {
   @apply bg-card border border-border dark:shadow-none transition-all duration-200;
