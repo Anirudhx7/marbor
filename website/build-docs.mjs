@@ -80,7 +80,7 @@ function slugify(s) {
 
 function renderMarkdown(md) {
   usedIds.clear();
-  const lines = md.replace(/\r\n/g, "\n").split("\n");
+  const lines = md.replace(/\r\n/g, "\n").replace(/&rarr;/g, "→").split("\n");
   let html = "";
   const headings = [];
   let i = 0;
