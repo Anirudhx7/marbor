@@ -180,7 +180,7 @@ function excerpt(s, n) {
 const LINKEDIN_SVG = `<svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M0 1.146C0 .513.526 0 1.175 0h13.65C15.474 0 16 .513 16 1.146v13.708c0 .633-.526 1.146-1.175 1.146H1.175C.526 16 0 15.487 0 14.854V1.146zm4.943 12.248V6.169H2.542v7.225h2.401zm-1.2-8.212c.837 0 1.358-.554 1.358-1.248-.015-.709-.52-1.248-1.342-1.248-.822 0-1.359.54-1.359 1.248 0 .694.521 1.248 1.327 1.248h.016zm4.908 8.212V9.359c0-.216.016-.432.08-.586.173-.431.568-.878 1.232-.878.869 0 1.216.662 1.216 1.634v3.865h2.401V9.25c0-2.22-1.184-3.252-2.764-3.252-1.274 0-1.845.7-2.165 1.193v.025h-.016a5.54 5.54 0 01.016-.025V6.169h-2.4c.03.678 0 7.225 0 7.225h2.4z"/></svg>`;
 
 function siteFooter(r) {
-  return `<footer><div class="page foot-grid"><div>${BRAND_HTML(r)}<div style="margin-top:10px">© <span class="yr">2026</span> Marbor · Apache-2.0</div><div class="foot-social" style="margin-top:10px;display:flex;gap:12px"><a href="https://github.com/Anirudhx7/marbor" target="_blank" rel="noopener" aria-label="Marbor on GitHub">${GH_SVG}</a><a href="https://linkedin.com/in/anirudh-mehandru" target="_blank" rel="noopener" aria-label="Anirudh Mehandru on LinkedIn">${LINKEDIN_SVG}</a></div></div><div class="foot-links"><a href="${r}index.html#install">Install</a><a href="${r}index.html#features">Features</a><a href="${r}index.html#how">How</a><a href="${r}index.html#compare">Compare</a><a href="${r}docs/index.html">Docs</a><a href="https://marbor.in/demo/" target="_blank" rel="noopener">Demo</a><a href="https://github.com/Anirudhx7/marbor" target="_blank" rel="noopener">GitHub</a></div></div></footer>`;
+  return `<footer><div class="page foot-grid"><div>${BRAND_HTML(r)}<div style="margin-top:10px">© <span class="yr">2026</span> Marbor, Apache-2.0</div><div class="foot-social" style="margin-top:10px;display:flex;gap:12px"><a href="https://github.com/Anirudhx7/marbor" target="_blank" rel="noopener" aria-label="Marbor on GitHub">${GH_SVG}</a><a href="https://linkedin.com/in/anirudh-mehandru" target="_blank" rel="noopener" aria-label="Anirudh Mehandru on LinkedIn">${LINKEDIN_SVG}</a></div></div><div class="foot-links"><a href="${r}index.html#install">Install</a><a href="${r}index.html#features">Features</a><a href="${r}index.html#how">How</a><a href="${r}index.html#compare">Compare</a><a href="${r}docs/index.html">Docs</a><a href="https://marbor.in/demo/" target="_blank" rel="noopener">Demo</a><a href="https://github.com/Anirudhx7/marbor" target="_blank" rel="noopener">GitHub</a></div></div></footer>`;
 }
 
 // Per-page meta descriptions (70-160 chars, unique, written for search snippets -
@@ -299,10 +299,10 @@ function pagerHtml(slug) {
   if (i < 0) return "";
   const r = relRoot(slug);
   const card = (it, dir) => it
-    ? `<a class="page-card ${dir}" rel="${dir}" href="${r}docs/${it.slug}.html"><span class="dir">${dir === "prev" ? "← Previous" : "Next →"}</span><span class="lbl">${escapeHtml(it.label)}</span></a>`
+    ? `<a class="page-card ${dir}" rel="${dir}" href="${r}docs/${it.slug}.html"><span class="dir">${dir === "prev" ? "Previous" : "Next"}</span><span class="lbl">${escapeHtml(it.label)}</span></a>`
     : `<span class="page-card missing" aria-hidden="true"></span>`;
   return `<nav class="pager" aria-label="Documentation pages">${card(flat[i - 1], "prev")}${card(flat[i + 1], "next")}</nav>
-      <div class="edit-link"><a href="https://github.com/Anirudhx7/marbor/blob/main/docs/${slug}.md" target="_blank" rel="noopener">View on GitHub →</a></div>`;
+      <div class="edit-link"><a href="https://github.com/Anirudhx7/marbor/blob/main/docs/${slug}.md" target="_blank" rel="noopener">View on GitHub</a></div>`;
 }
 
 function breadcrumb(slug, title) {
@@ -429,14 +429,14 @@ ${articleJsonLd(slug, title, description) ? `<script type="application/ld+json">
 <a class="skip" href="#main">Skip to content</a>
 <header class="nav"><div class="nav-inner">
 ${BRAND_HTML(r)}
-<nav class="nav-links" aria-label="Primary"><a class="nl" href="${r}index.html#features">Features</a><a class="nl" href="${r}index.html#how">How it works</a><a class="nl" href="${r}index.html#compare">Compare</a><a class="nl on" href="${r}docs/index.html">Docs</a><a class="btn btn-gold btn-sm nav-cta" href="https://marbor.in/demo/" target="_blank" rel="noopener">Live demo →</a><button type="button" class="icon-btn" id="themeBtn" aria-label="Toggle theme" aria-pressed="false">◐</button><button type="button" class="icon-btn hamb" id="hamb" aria-label="Menu" aria-expanded="false" aria-controls="mmenu">☰</button></nav>
+<nav class="nav-links" aria-label="Primary"><a class="nl" href="${r}index.html#features">Features</a><a class="nl" href="${r}index.html#how">How it works</a><a class="nl" href="${r}index.html#compare">Compare</a><a class="nl on" href="${r}docs/index.html">Docs</a><a class="btn btn-gold btn-sm nav-cta" href="https://marbor.in/demo/" target="_blank" rel="noopener">Live demo</a><button type="button" class="icon-btn" id="themeBtn" aria-label="Toggle theme" aria-pressed="false">◐</button><button type="button" class="icon-btn hamb" id="hamb" aria-label="Menu" aria-expanded="false" aria-controls="mmenu">☰</button></nav>
 </div><nav class="mobile-menu" id="mmenu" aria-label="Mobile"><a href="${r}index.html#features">Features</a><a href="${r}index.html#how">How it works</a><a href="${r}index.html#compare">Compare</a><a href="${r}docs/index.html">Docs</a><a href="https://marbor.in/demo/" target="_blank" rel="noopener">Live demo</a><a href="https://github.com/Anirudhx7/marbor">GitHub</a></nav></header>
 
 <div class="doc-shell">
 <nav class="doc-sidebar" id="docSidebar" aria-label="Documentation navigation">
-<div class="doc-side-head">Docs · <b>index</b></div>
+<div class="doc-side-head">Docs, <b>index</b></div>
 <div class="doc-side-body">
-    <a class="doc-nav-link home" href="${r}docs/index.html">← Docs home</a>
+    <a class="doc-nav-link home" href="${r}docs/index.html">Docs home</a>
     ${docSidebar(slug)}
 </div>
 </nav>
@@ -513,7 +513,7 @@ function docsIndexPage() {
 <a class="skip" href="#main">Skip to content</a>
 <header class="nav"><div class="nav-inner">
 ${BRAND_HTML(r)}
-<nav class="nav-links" aria-label="Primary"><a class="nl" href="${r}index.html#features">Features</a><a class="nl" href="${r}index.html#how">How it works</a><a class="nl" href="${r}index.html#compare">Compare</a><a class="nl on" href="index.html">Docs</a><a class="btn btn-gold btn-sm nav-cta" href="https://marbor.in/demo/" target="_blank" rel="noopener">Live demo →</a><button type="button" class="icon-btn" id="themeBtn" aria-label="Toggle theme" aria-pressed="false">◐</button><button type="button" class="icon-btn hamb" id="hamb" aria-label="Menu" aria-expanded="false" aria-controls="mmenu">☰</button></nav>
+<nav class="nav-links" aria-label="Primary"><a class="nl" href="${r}index.html#features">Features</a><a class="nl" href="${r}index.html#how">How it works</a><a class="nl" href="${r}index.html#compare">Compare</a><a class="nl on" href="index.html">Docs</a><a class="btn btn-gold btn-sm nav-cta" href="https://marbor.in/demo/" target="_blank" rel="noopener">Live demo</a><button type="button" class="icon-btn" id="themeBtn" aria-label="Toggle theme" aria-pressed="false">◐</button><button type="button" class="icon-btn hamb" id="hamb" aria-label="Menu" aria-expanded="false" aria-controls="mmenu">☰</button></nav>
 </div><nav class="mobile-menu" id="mmenu" aria-label="Mobile"><a href="${r}index.html#install">Install</a><a href="${r}index.html#features">Features</a><a href="${r}index.html#how">How it works</a><a href="${r}index.html#compare">Compare</a><a href="index.html">Docs</a><a href="https://marbor.in/demo/" target="_blank" rel="noopener">Live demo</a><a href="https://github.com/Anirudhx7/marbor" target="_blank" rel="noopener">GitHub</a></nav></header>
 
 <main class="doc-index" id="main">
@@ -524,7 +524,7 @@ ${BRAND_HTML(r)}
 </div>
 <div class="doc-shell two-col">
 <nav class="doc-sidebar" aria-label="Documentation navigation" data-reveal>
-<div class="doc-side-head">Docs · <b>${total} pages</b></div>
+<div class="doc-side-head">Docs, <b>${total} pages</b></div>
 <div class="doc-side-body">
 ${DOC_GROUPS.map((g) => `
     <div class="nav-group"><p class="nav-group-title">${g.title}</p>${g.items.map((it) => `<a class="doc-nav-link" href="${it.slug}.html">${it.label}</a>`).join("")}</div>`).join("")}
@@ -533,16 +533,16 @@ ${DOC_GROUPS.map((g) => `
 <div class="doc-main">
   ${DOC_GROUPS.map((g) => `
     <section class="doc-card" data-reveal>
-      <div class="doc-card-head"><h2 class="t">${g.title} · <b>${g.items.length} page${g.items.length === 1 ? "" : "s"}</b></h2></div>
+      <div class="doc-card-head"><h2 class="t">${g.title}, <b>${g.items.length} page${g.items.length === 1 ? "" : "s"}</b></h2></div>
       <div class="doc-card-body"><div class="index-grid">
         ${g.items.map((it) => {
           const md = readFileSync(join(DOCS_SRC, it.slug + ".md"), "utf8");
           const firstPara = (md.split("\n").find((l) => l.trim() && !l.startsWith("#") && !l.startsWith(">")) || "").trim();
-        return `<a class="index-card" href="${it.slug}.html"><div class="index-card-top"><span class="index-card-count">${g.title}</span></div><h3>${it.label}</h3><p>${escapeHtml(excerpt(firstPara.replace(/[*\`\[\]()]/g, "").replace(/https?:\S+/g,""), 120))}</p><span class="arrow">Read →</span></a>`;
+        return `<a class="index-card" href="${it.slug}.html"><div class="index-card-top"><span class="index-card-count">${g.title}</span></div><h3>${it.label}</h3><p>${escapeHtml(excerpt(firstPara.replace(/[*\`\[\]()]/g, "").replace(/https?:\S+/g,""), 120))}</p><span class="arrow">Read</span></a>`;
       }).join("")}
       </div></div>
     </section>`).join("")}
-  <div class="cta-band" data-reveal><div><h3>Find out what your fleet is actually doing.</h3><p>Install in one command. Point your OpenAI client at Marbor. Watch the first placed request.</p></div><div class="cta-act"><a class="btn btn-gold" href="${r}index.html#install">↓ Install Marbor</a><a class="docs-link" href="${r}index.html#features">Explore features →</a></div></div>
+  <div class="cta-band" data-reveal><div><h3>Find out what your fleet is actually doing.</h3><p>Install in one command. Point your OpenAI client at Marbor. Watch the first placed request.</p></div><div class="cta-act"><a class="btn btn-gold" href="${r}index.html#install">↓ Install Marbor</a><a class="docs-link" href="${r}index.html#features">Explore features</a></div></div>
 </div>
 </div>
 </main>
