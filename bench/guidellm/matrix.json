@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "guidellm_version": "0.8.1",
+  "seed": 20261031,
+  "shapes": {
+    "512x256": { "prompt_tokens": 512, "output_tokens": 256 },
+    "2048x512": { "prompt_tokens": 2048, "output_tokens": 512 }
+  },
+  "warmup": { "profile": "constant", "rate": 2, "max_requests": 20 },
+  "profiles": [
+    { "name": "sweep", "profile": "sweep", "rate": 10, "max_requests": 200 },
+    { "name": "constant-r2", "profile": "constant", "rate": 2, "max_requests": 300 },
+    { "name": "constant-r4", "profile": "constant", "rate": 4, "max_requests": 300 },
+    { "name": "constant-r8", "profile": "constant", "rate": 8, "max_requests": 300 },
+    { "name": "poisson-r2", "profile": "poisson", "rate": 2, "max_requests": 300 },
+    { "name": "poisson-r4", "profile": "poisson", "rate": 4, "max_requests": 300 },
+    { "name": "poisson-r8", "profile": "poisson", "rate": 8, "max_requests": 300 },
+    { "name": "concurrent-1", "profile": "concurrent", "rate": 1, "max_requests": 100 },
+    { "name": "concurrent-4", "profile": "concurrent", "rate": 4, "max_requests": 200 },
+    { "name": "concurrent-8", "profile": "concurrent", "rate": 8, "max_requests": 300 },
+    { "name": "concurrent-16", "profile": "concurrent", "rate": 16, "max_requests": 300 }
+  ]
+}
