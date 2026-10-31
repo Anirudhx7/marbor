@@ -183,8 +183,17 @@ function AppShell({ session, onLogout, pendingCount }: AppShellProps) {
           <ErrorBoundary resetKey={pathname}>
             <Suspense
               fallback={
-                <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">
-                  Loading...
+                <div role="status" aria-label="Loading page" className="space-y-4 animate-pulse motion-reduce:animate-none">
+                  <div className="h-8 w-48 rounded-lg bg-secondary" />
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {[0, 1, 2].map(i => (
+                      <div key={i} className="glass-panel rounded-xl p-5 space-y-3">
+                        <div className="h-4 w-24 rounded bg-secondary" />
+                        <div className="h-8 w-32 rounded bg-secondary" />
+                        <div className="h-3 w-full rounded bg-secondary" />
+                      </div>
+                    ))}
+                  </div>
                 </div>
               }
             >
