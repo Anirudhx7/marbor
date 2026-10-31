@@ -518,7 +518,7 @@ ${BRAND_HTML(r)}
 
 <main class="doc-index" id="main">
 <div class="hero" data-reveal>
-  <h1>Run it, <em>route it</em>, read the numbers.</h1>
+  <h1>Run it, route it, read the numbers.</h1>
   <p class="lede">Everything you need to put Marbor in front of your cluster -- connect your tools, ship to production, and understand exactly what it's saving you.</p>
   <nav class="breadcrumb" aria-label="Breadcrumb"><ol><li><a href="../index.html">Home</a></li><li aria-hidden="true"><span class="sep">/</span></li><li><span class="current" aria-current="page">Docs</span></li></ol></nav>
 </div>

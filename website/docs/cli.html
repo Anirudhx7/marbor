@@ -126,7 +126,6 @@ a,button{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 .eyebrow{display:inline-flex;align-items:center;gap:9px;font-family:var(--font-mono);font-size:12px;color:var(--text-muted);border:1px solid var(--border);background:var(--bg-elevated);border-radius:99px;padding:6px 14px 6px 8px;margin-bottom:24px}
 .dot{width:8px;height:8px;border-radius:99px;background:var(--accent2);box-shadow:0 0 0 4px color-mix(in srgb,var(--accent2) 18%,transparent);margin-left:6px}
 h1{font-family:var(--font-display);font-size:clamp(40px,5.8vw,64px);line-height:1.06;letter-spacing:-.01em;font-weight:600;margin:0 0 18px;text-wrap:balance;max-width:18ch}
-h1 em{font-style:italic;color:var(--accent);font-weight:600}
 .lede{font-size:17.5px;color:var(--text-muted);max-width:62ch;margin:0 0 26px;text-wrap:pretty}
 .kicker{font-family:var(--font-mono);font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin:0 0 12px}
 /* DOC SHELL - landing .place card language */
@@ -707,23 +706,38 @@ marbor fit unsloth/Qwen3-8B-GGUF --node gpu-1 --ctx 16384"><svg viewBox="0 0 24 
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <p>requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).</p>
 <h4 id="now"><code>now</code><a class="anchor" href="#now" aria-label="Link to section">#</a></h4>
-<p>trigger an on-demand backup and download it</p>
+<p>trigger an on-demand backup and download it (gzip, .db.gz)</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <p>Flags:</p>
-<ul><li><code>--output string</code> - local file path to save to (default: server-suggested filename)</li></ul>
+<ul><li><code>--output string</code> - local file path to save to (default: server-suggested filename)</li><li><code>--force</code> - replace the output file if it already exists (default: refuse)</li></ul>
 <h4 id="list-7"><code>list</code><a class="anchor" href="#list-7" aria-label="Link to section">#</a></h4>
-<p>list backup files on the server</p>
+<p>list backup files on the server, with the last backup result</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<p>Flags:</p>
+<ul><li><code>--check</code> - exit 3, with the reasons on stderr, when something needs attention: no backups or no directory, a scheduled backup that never succeeded or is overdue, a failed, refused or cancelled backup, a damaged or unverified file, a note or notice, entries that could not be listed, a backup running over an hour, a retention problem, leftover files, or a restore that failed or finished with a note (for cron and monitoring)</li></ul>
+<h4 id="ack-restore"><code>ack-restore</code><a class="anchor" href="#ack-restore" aria-label="Link to section">#</a></h4>
+<p>clear the remembered result of the last restore</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<h4 id="download-name"><code>download &lt;name&gt;</code><a class="anchor" href="#download-name" aria-label="Link to section">#</a></h4>
+<p>download a stored backup file from the server</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<p>Flags:</p>
+<ul><li><code>--output string</code> - local file path to save to (default: the backup's own name)</li><li><code>--force</code> - replace the output file if it already exists (default: refuse)</li></ul>
 <h4 id="restore-filename"><code>restore &lt;filename&gt;</code><a class="anchor" href="#restore-filename" aria-label="Link to section">#</a></h4>
 <p>restore marbor.db from a backup file (marbor restarts)</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <p>Flags:</p>
-<ul><li><code>--yes</code> - confirm restore without prompting</li></ul>
-<h4 id="upload"><code>upload</code><a class="anchor" href="#upload" aria-label="Link to section">#</a></h4>
-<p>upload a local .db file as a restorable backup</p>
+<ul><li><code>--yes</code> - confirm restore without prompting</li><li><code>--wait</code> - wait for marbor to restart (up to 5 minutes) and exit nonzero unless the restore is reported as done</li></ul>
+<h4 id="delete-name-1"><code>delete &lt;name&gt;</code><a class="anchor" href="#delete-name-1" aria-label="Link to section">#</a></h4>
+<p>delete a stored backup file from the server (cannot be undone)</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <p>Flags:</p>
-<ul><li><code>--file string</code> - local .db file path (required) (required)</li></ul>
+<ul><li><code>--yes</code> - confirm deletion without prompting</li></ul>
+<h4 id="upload"><code>upload</code><a class="anchor" href="#upload" aria-label="Link to section">#</a></h4>
+<p>upload a local .db or .db.gz file as a restorable backup</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<p>Flags:</p>
+<ul><li><code>--file string</code> - local .db or .db.gz file path (required) (required)</li></ul>
 <h3 id="analytics"><code>analytics</code><a class="anchor" href="#analytics" aria-label="Link to section">#</a></h3>
 <p>hourly analytics + per-model stats</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
@@ -848,7 +862,7 @@ marbor fit unsloth/Qwen3-8B-GGUF --node gpu-1 --ctx 16384"><svg viewBox="0 0 24 
 <p>Distinct from "activity", which covers operator actions (drain/agent/runtime/node/warmup); "audit" covers individual proxied requests.</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <p>Flags:</p>
-<ul><li><code>--limit int</code> - max entries to show (1-1000, default 100)</li><li><code>--model string</code> - filter by exact model name</li><li><code>--key string</code> - filter by exact API key name</li><li><code>--node string</code> - filter by exact node name</li><li><code>--status string</code> - filter by status category: success, client_error, or server_error</li><li><code>--cloud string</code> - filter by cloud fallback: true or false</li><li><code>--since string</code> - filter from time (RFC3339)</li><li><code>--until string</code> - filter to time (RFC3339)</li></ul>
+<ul><li><code>--limit int</code> - max entries to show (1-1000, default 100)</li><li><code>--model string</code> - filter by exact model name</li><li><code>--key string</code> - filter by exact API key name</li><li><code>--node string</code> - filter by exact node name</li><li><code>--status string</code> - filter by status category: success, client_error, or server_error</li><li><code>--cloud string</code> - filter by cloud fallback: true or false</li><li><code>--since string</code> - filter from time (RFC3339)</li><li><code>--until string</code> - filter to time (RFC3339)</li><li><code>--before-id int</code> - page back: show entries older than this row id (taken from the previous page's footer)</li><li><code>--after-id int</code> - page forward: show entries newer than this row id (cannot be combined with --before-id)</li></ul>
 <p>requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).</p>
 <h3 id="users"><code>users</code><a class="anchor" href="#users" aria-label="Link to section">#</a></h3>
 <p>manage dashboard users</p>

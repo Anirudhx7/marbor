@@ -103,7 +103,6 @@ a:hover{text-decoration:underline}
 .eyebrow{display:inline-flex;align-items:center;gap:9px;font-family:var(--font-mono);font-size:12px;color:var(--text-muted);border:1px solid var(--border);background:var(--bg-elevated);border-radius:99px;padding:6px 14px 6px 8px;margin-bottom:24px}
 .dot{width:8px;height:8px;border-radius:99px;background:var(--accent2);box-shadow:0 0 0 4px color-mix(in srgb,var(--accent2) 18%,transparent);margin-left:6px;flex:none}
 h1{font-family:var(--font-display);font-size:clamp(40px,5.8vw,64px);line-height:1.06;letter-spacing:-.01em;font-weight:600;margin:0 0 18px;text-wrap:balance;max-width:18ch}
-h1 em{font-style:italic;color:var(--accent);font-weight:600}
 .lede{font-size:17.5px;color:var(--text-muted);max-width:62ch;margin:0 0 26px;text-wrap:pretty}
 .lede strong{color:var(--text);font-weight:650}
 .cta-row{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:20px}
@@ -313,7 +312,7 @@ footer{padding-bottom:calc(40px + env(safe-area-inset-bottom))}
 <main id="main" tabindex="-1"><div class="page">
 <div class="hero">
 <div class="eyebrow"><span class="dot" aria-hidden="true"></span><span data-version>{{VERSION}}</span>&nbsp;· 5 runtimes · apache-2.0 · self-hosted</div>
-<h1>The <em>intelligent control plane</em> for self-hosted AI inference.</h1>
+<h1>The intelligent control plane for self-hosted AI inference.</h1>
 <p class="lede">Marbor understands your GPU fleet, <strong>models, runtimes, capacity, deployments, and inference state</strong>, then places each request where it can be served best. Run Ollama, vLLM, TGI, llama.cpp, and MLX behind one OpenAI-compatible endpoint, with cost-metered cloud overflow that stays off until your hardware is full.</p>
 <div class="cta-row"><a class="btn btn-gold" href="#install">↓ Install in one command</a><a class="btn" href="demo/">Open live demo</a></div>
 <div class="install" id="install"><span class="plabel">install</span><code id="cmd">curl -fsSL raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | sh</code><button type="button" id="copyBtn" aria-live="polite">Copy</button></div>
