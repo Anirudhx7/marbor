@@ -295,7 +295,7 @@ function DrainConfirmModal({ nodeName, title, question, explanation, actionError
         <p className="text-xs text-muted-foreground">{explanation}</p>
         {children}
         {actionError && (
-          <p className="text-sm text-destructive">{actionError}</p>
+          <p role="alert" className="text-sm text-destructive">{actionError}</p>
         )}
         <div className="flex justify-end gap-3 pt-4 border-t border-border">
           <button
@@ -1190,7 +1190,7 @@ export function GPUNodes() {
       // A list too long to send is refused while the dialog is still open, so
       // the message shows inside it.
       try {
-        runtimeActionQuery({ force, acknowledgedSole });
+        runtimeActionQuery({ acknowledgeReplica: isReplicaMember(agentNode), force, acknowledgedSole });
       } catch (e: any) {
         setRuntimeActionError(e?.message || `Failed to ${action} runtime`);
         return;
@@ -3205,7 +3205,7 @@ export function GPUNodes() {
             This deletes the node's configuration. In-flight requests to it will fail over, and any warm models on it will need a cold start elsewhere.
           </p>
           {actionError && (
-            <p className="text-sm text-destructive">{actionError}</p>
+            <p role="alert" className="text-sm text-destructive">{actionError}</p>
           )}
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
             <button
@@ -3244,7 +3244,7 @@ export function GPUNodes() {
             The next request for this model on this node will trigger a cold start.
           </p>
           {actionError && (
-            <p className="text-sm text-destructive">{actionError}</p>
+            <p role="alert" className="text-sm text-destructive">{actionError}</p>
           )}
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
             <button
@@ -3362,7 +3362,7 @@ export function GPUNodes() {
               : 'The predictive engine will resume warming models onto this node based on usage patterns.'}
           </p>
           {actionError && (
-            <p className="text-sm text-destructive">{actionError}</p>
+            <p role="alert" className="text-sm text-destructive">{actionError}</p>
           )}
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
             <button
@@ -3773,7 +3773,7 @@ export function GPUNodes() {
                       </span>
                     </p>
                   </div>
-                  {runtimeActionError && <p className="text-sm text-destructive">{runtimeActionError}</p>}
+                  {runtimeActionError && <p role="alert" className="text-sm text-destructive">{runtimeActionError}</p>}
                   {runtimeActionNotice && <p className="text-sm text-muted-foreground">{runtimeActionNotice}</p>}
                   <div className="flex flex-wrap gap-2 pt-1">
                     <button
@@ -3807,7 +3807,7 @@ export function GPUNodes() {
                       {runtimeActionBusy === 'stop' ? 'Stopping...' : 'Stop'}
                     </button>
                     <button
-                      onClick={() => { setRuntimeActionNotice(null); setRuntimeActionConfirm('restart'); }}
+                      onClick={() => { setRuntimeActionNotice(null); setRuntimeActionError(null); setRuntimeActionConfirm('restart'); }}
                       disabled={runtimeActionBusy !== null}
                       title={demoMode ? 'No-op in demo mode' : undefined}
                       className="px-3 py-1.5 bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed text-foreground font-medium rounded-lg text-xs transition-colors shadow-sm"
@@ -4109,7 +4109,7 @@ export function GPUNodes() {
           <ReplicaImpactNotice id={runtimeNoticeId} text={runtimeReplicaNotice} />
           {runtimeActionConfirm === 'restart' && <SoleReplicaImpactNotice id={restartImpactId} state={restartImpact.state} />}
           {runtimeActionError && (
-            <p className="text-sm text-destructive">{runtimeActionError}</p>
+            <p role="alert" className="text-sm text-destructive">{runtimeActionError}</p>
           )}
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
             {/* aria-disabled, not disabled, while busy or checking: a disabled

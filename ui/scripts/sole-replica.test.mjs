@@ -221,7 +221,8 @@ test('the query size limit: just under passes, just over is refused', () => {
 test('a stale-ack refusal maps to the reopen banner; a plain sole_replica refusal keeps its wording', () => {
   const stale = runtimeActionFailureInfo(409, { error: 'server text', code: 'sole_replica', unacknowledged: ['m9'] }, 'Failed');
   assert.equal(stale.code, 'sole_replica');
-  assert.equal(stale.message, STALE_LIST_MESSAGE);
+  assert.ok(stale.message.startsWith(STALE_LIST_MESSAGE));
+  assert.match(stale.message, /Not in your list: m9./);
   const plain = runtimeActionFailureInfo(409, { error: 'x', code: 'sole_replica' }, 'Failed');
   assert.notEqual(plain.message, STALE_LIST_MESSAGE);
   const emptyList = runtimeActionFailureInfo(409, { error: 'x', code: 'sole_replica', unacknowledged: [] }, 'Failed');
@@ -263,7 +264,8 @@ test('force by action and state, spelled out', () => {
 test('the sole_replica code is one shared constant and the stale banner is accurate for any list', () => {
   assert.equal(SOLE_REPLICA_CODE, 'sole_replica');
   assert.doesNotMatch(STALE_LIST_MESSAGE, /the list changed/i);
-  assert.match(STALE_LIST_MESSAGE, /Review the current state below/);
+  assert.match(STALE_LIST_MESSAGE, /Review the current list and confirm again/);
+  assert.doesNotMatch(STALE_LIST_MESSAGE, /below|above/);
   const page = readFileSync(new URL('../src/pages/GPUNodes.tsx', import.meta.url), 'utf8');
   assert.doesNotMatch(page, /'sole_replica'/, 'GPUNodes uses SOLE_REPLICA_CODE');
 });
@@ -288,7 +290,7 @@ test('the drain dialog drops hover while the confirm button is held, and the res
   const start = src.indexOf('const runRuntimeAction');
   assert.ok(start >= 0);
   const block = src.slice(start, src.indexOf('const viewRuntimeLogs'));
-  const check = block.indexOf('runtimeActionQuery({ force, acknowledgedSole })');
+  const check = block.indexOf('runtimeActionQuery({ acknowledgeReplica: isReplicaMember(agentNode), force, acknowledgedSole })');
   const close = block.indexOf('setRuntimeActionConfirm(null)');
   assert.ok(check >= 0 && close > check, 'the size check comes before the dialog closes');
   assert.match(src, /aria-disabled:hover:bg-destructive/);
@@ -304,5 +306,17 @@ test('api.ts sends the acknowledgement for both actions and keeps the unacknowle
   const drainEnd = api.indexOf('export async function undrainNode');
   assert.ok(drainStart >= 0 && drainEnd > drainStart);
   assert.ok(api.slice(drainStart, drainEnd).includes('throw await runtimeActionFailure(res'));
-  assert.equal(runtimeActionFailureInfo(409, { error: 'x', code: 'sole_replica', unacknowledged: ['m'] }, 'Failed to drain node').message, STALE_LIST_MESSAGE);
+  assert.ok(runtimeActionFailureInfo(409, { error: 'x', code: 'sole_replica', unacknowledged: ['m'] }, 'Failed to drain node').message.startsWith(STALE_LIST_MESSAGE));
+});
+
+test('messages never point in a direction, and the restart pre-check carries the replica acknowledgement', () => {
+  for (const m of [
+    runtimeActionFailureInfo(409, { code: 'replica_member' }, 'F').message,
+    runtimeActionFailureInfo(409, { code: 'sole_replica' }, 'F').message,
+  ]) assert.doesNotMatch(m, /below|above/);
+  const page = readFileSync(new URL('../src/pages/GPUNodes.tsx', import.meta.url), 'utf8');
+  assert.ok(page.includes('runtimeActionQuery({ acknowledgeReplica: isReplicaMember(agentNode), force, acknowledgedSole })'));
+  assert.ok(page.includes('role="alert" className="text-sm text-destructive">{actionError}'));
+  assert.ok(page.includes('role="alert" className="text-sm text-destructive">{runtimeActionError}'));
+  assert.ok(page.includes("setRuntimeActionNotice(null); setRuntimeActionError(null); setRuntimeActionConfirm('restart');"));
 });

@@ -102,7 +102,8 @@ export const SOLE_REPLICA_CODE = 'sole_replica';
 export const MAX_SOLE_QUERY_BYTES = 6000;
 
 // withoutHover drops the hover variants from a class string, so a button held
-// with aria-disabled does not look interactive whatever class the caller gave it.
+// with aria-disabled does not look interactive: it removes plain hover: variants
+// (and those behind a breakpoint prefix), not other states such as group-hover.
 export function withoutHover(className: string): string {
   return className
     .split(/\s+/)
@@ -145,7 +146,7 @@ export function runtimeActionQuery(opts: { acknowledgeReplica?: boolean; force?:
 
 // Shown in the reopened dialog when the server refused because the models that
 // only this node can serve changed after the dialog listed them.
-export const STALE_LIST_MESSAGE = 'The models only this node serves changed since you opened this. Review the current state below and confirm again.';
+export const STALE_LIST_MESSAGE = 'The models only this node serves changed since you opened this. Review the current list and confirm again.';
 
 export interface RuntimeActionFailureInfo { message: string; code?: string }
 
@@ -162,13 +163,13 @@ export function runtimeActionFailureInfo(
   fallback: string,
 ): RuntimeActionFailureInfo {
   if (body.code === 'replica_member') {
-    return { message: 'This node is now part of a multi-host replica. Review the impact below and confirm again.', code: body.code };
+    return { message: 'This node is now part of a multi-host replica. Review the current impact and confirm again.', code: body.code };
   }
   if (body.code === SOLE_REPLICA_CODE && Array.isArray(body.unacknowledged) && body.unacknowledged.length > 0) {
-    return { message: STALE_LIST_MESSAGE, code: body.code };
+    return { message: `${STALE_LIST_MESSAGE} Not in your list: ${body.unacknowledged.join(', ')}.`, code: body.code };
   }
   if (body.code === SOLE_REPLICA_CODE) {
-    return { message: 'This node is now the only server of one or more models. Review the list below and confirm again.', code: body.code };
+    return { message: 'This node is now the only server of one or more models. Review the current list and confirm again.', code: body.code };
   }
   return { message: body.error || `${fallback} (HTTP ${status})`, code: body.code };
 }

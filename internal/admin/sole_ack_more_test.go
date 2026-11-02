@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -34,7 +35,7 @@ func TestAck_UnacknowledgedMatchesByNameAndDedupes(t *testing.T) {
 func TestAck_NearMissNamesDoNotMatch(t *testing.T) {
 	for _, near := range []string{"ORG/MODEL-A", soleModel + " ", soleModel + "x", "org/model", " " + soleModel} {
 		for _, action := range []string{"drain", "restart"} {
-			t.Run(action, func(t *testing.T) {
+			t.Run(fmt.Sprintf("%s/near=%q", action, near), func(t *testing.T) {
 				var hits atomic.Int32
 				s, cleanup := ackFixture(t, &hits)
 				defer cleanup()
@@ -51,7 +52,7 @@ func TestAck_NearMissNamesDoNotMatch(t *testing.T) {
 func TestAck_ForceThatIsNotExactTrueWithAckNeverProceeds(t *testing.T) {
 	for _, force := range []string{"1", "TRUE", "yes", ""} {
 		for _, action := range []string{"drain", "restart"} {
-			t.Run(action, func(t *testing.T) {
+			t.Run(fmt.Sprintf("%s/force=%q", action, force), func(t *testing.T) {
 				var hits atomic.Int32
 				s, cleanup := ackFixture(t, &hits)
 				defer cleanup()
@@ -117,12 +118,27 @@ func TestAck_AfterCommitRunsOnlyForChangesMade(t *testing.T) {
 	if commits.Load() != 0 {
 		t.Fatalf("afterCommit ran %d times for refusals", commits.Load())
 	}
-	if w := doAction(t, s, "drain", "a", ackQuery(soleModel)); w.Code != http.StatusOK {
-		t.Fatalf("status %d: %s", w.Code, w.Body.String())
+	for i, action := range []string{"drain", "restart"} {
+		if w := doAction(t, s, action, "a", ackQuery(soleModel)); w.Code != http.StatusOK {
+			t.Fatalf("%s: status %d: %s", action, w.Code, w.Body.String())
+		}
+		if got := commits.Load(); got != int32(i+1) {
+			t.Fatalf("after %s afterCommit ran %d times, want %d", action, got, i+1)
+		}
 	}
-	if commits.Load() != 1 {
-		t.Fatalf("afterCommit ran %d times, want 1", commits.Load())
+}
+
+// requestWaitsOnSoleLock reports whether some goroutine is blocked on a mutex
+// inside checkSoleReplica.
+func requestWaitsOnSoleLock() bool {
+	buf := make([]byte, 1<<20)
+	buf = buf[:runtime.Stack(buf, true)]
+	for _, g := range strings.Split(string(buf), "\n\n") {
+		if strings.Contains(g, "checkSoleReplica") && strings.Contains(g, "sync.runtime_SemacquireMutex") {
+			return true
+		}
 	}
+	return false
 }
 
 // A node that gains a sole model while the request waits for the lock is
@@ -136,7 +152,15 @@ func TestAck_SetGrowsWhileRequestWaitsForLock(t *testing.T) {
 	s.soleReplica.mu.Lock()
 	done := make(chan int, 1)
 	go func() { done <- drainQ(t, s, "a", ackQuery()).Code }()
-	time.Sleep(150 * time.Millisecond)
+	// Wait until the request is parked on the lock, so it is judged after the
+	// change below rather than before it.
+	deadline := time.Now().Add(10 * time.Second)
+	for !requestWaitsOnSoleLock() {
+		if time.Now().After(deadline) {
+			t.Fatal("the request never reached the sole-replica lock")
+		}
+		time.Sleep(time.Millisecond)
+	}
 	readyNode(t, s, "b", "")
 	s.soleReplica.mu.Unlock()
 	if code := recvCode(t, done, "drain"); code != http.StatusConflict {
@@ -171,7 +195,7 @@ func TestAck_AuditDetailIsExactAndUnforgeable(t *testing.T) {
 	forged := "evil\nReviewed: true, Forced: true"
 	for _, name := range []string{soleModel, "x Reviewed: true"} {
 		for _, action := range []string{"drain", "restart"} {
-			t.Run(action, func(t *testing.T) {
+			t.Run(fmt.Sprintf("%s/name=%q", action, name), func(t *testing.T) {
 				var hits atomic.Int32
 				s, cleanup := newSoleReplicaServer(t, okHandler(&hits))
 				defer cleanup()
@@ -230,7 +254,7 @@ func TestRestartMarker_PollCannotClearWhileInflight(t *testing.T) {
 // this walks every outcome so a new one cannot be forgotten.
 func TestWriteSoleRefusal_CoversEveryOutcome(t *testing.T) {
 	refusal := map[soleOutcome]bool{soleBlocked: true, soleStaleAck: true, soleBadQuery: true}
-	for o := soleNotChecked; o <= soleBadQuery; o++ {
+	for o := soleNotChecked; o < soleOutcomeCount; o++ {
 		w := httptest.NewRecorder()
 		wrote := writeSoleRefusal(w, "a", soleActionDrain, soleCheck{outcome: o})
 		if wrote != refusal[o] {
@@ -240,7 +264,7 @@ func TestWriteSoleRefusal_CoversEveryOutcome(t *testing.T) {
 			t.Errorf("outcome %d: wrote = %v but body length is %d", o, wrote, w.Body.Len())
 		}
 	}
-	if soleBadQuery != soleNotChecked+6 {
-		t.Error("a soleOutcome was added: extend this test and writeSoleRefusal")
+	if len(refusal) != 3 || soleOutcomeCount != soleBadQuery+1 {
+		t.Error("a soleOutcome was added after soleBadQuery: extend this test and writeSoleRefusal")
 	}
 }

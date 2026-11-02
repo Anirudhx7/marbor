@@ -21,11 +21,12 @@ const maxConflictBodyBytes = 1 << 20
 
 // stripControl removes control characters (escape sequences, newlines, bells)
 // from a name before it is printed to a terminal, so a model or runtime name
-// from a node cannot rewrite the screen. Display only: the names sent back in
-// acknowledge_sole stay as they were.
+// from a node cannot rewrite the screen. It also drops Unicode format characters
+// (bidi overrides, zero-width) and line or paragraph separators. Display only:
+// the names sent back in acknowledge_sole stay as they were.
 func stripControl(s string) string {
 	return strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
+		if unicode.IsControl(r) || unicode.In(r, unicode.Cf, unicode.Zl, unicode.Zp) {
 			return -1
 		}
 		return r
@@ -153,7 +154,15 @@ func gateSoleReplica(client *Client, flags *globalFlags, req soleRequest, stdout
 func reportSoleActionError(err error, stderr io.Writer) int {
 	code := reportError(err, stderr)
 	var cliErr *CLIError
-	if !errors.As(err, &cliErr) || len(cliErr.Raw) == 0 {
+	if !errors.As(err, &cliErr) {
+		return code
+	}
+	if cliErr.BodyCut {
+		// The lists cannot be trusted or shown; say so rather than stay silent.
+		fmt.Fprintln(stderr, "The response was cut off, so the current list of models could not be read. Nothing was changed. Run the command again to review it.")
+		return code
+	}
+	if len(cliErr.Raw) == 0 {
 		return code
 	}
 	var body struct {

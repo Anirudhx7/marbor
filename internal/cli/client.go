@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Exit codes: 0 ok, 1 user error, 2 server error, 3 the command worked but found
@@ -39,6 +40,10 @@ type CLIError struct {
 	// Raw is the response body of a 409, kept so a caller can read fields beyond
 	// the message (the sole-replica lists). Nil for every other error.
 	Raw []byte
+
+	// BodyCut is true when a 409 body was cut short, by a read error or by the
+	// size cap, so Raw (if set) is not the whole body.
+	BodyCut bool
 }
 
 func (e *CLIError) Error() string { return e.Msg }
@@ -254,10 +259,20 @@ func (c *Client) doRequestBodyWith(hc *http.Client, method, path string, body in
 		// server fault. The body is kept for callers that read more than the
 		// message.
 		defer resp.Body.Close()
-		raw, readErr := io.ReadAll(io.LimitReader(resp.Body, maxConflictBodyBytes))
-		conflict := &CLIError{Code: ExitUserError, Msg: readErrorMessage(bytes.NewReader(raw))}
-		if readErr == nil {
+		raw, readErr := io.ReadAll(io.LimitReader(resp.Body, maxConflictBodyBytes+1))
+		capped := len(raw) > maxConflictBodyBytes
+		if capped {
+			raw = raw[:maxConflictBodyBytes]
+		}
+		conflict := &CLIError{Code: ExitUserError, Msg: conflictMessage(readErrorMessage(bytes.NewReader(raw))), BodyCut: capped || readErr != nil}
+		switch {
+		case readErr != nil:
 			// A body that could not be read in full is not trusted for its lists.
+			conflict.Msg += " (the response body was cut off)"
+		case capped:
+			conflict.Msg += " (the response body was cut off at the size limit)"
+			conflict.Raw = raw
+		default:
 			conflict.Raw = raw
 		}
 		return nil, conflict
@@ -2871,6 +2886,23 @@ func (c *Client) savedSessionHint() string {
 
 // readErrorMessage best-effort extracts the "error" field the Admin API's
 // JSON error responses use ({"error":"..."}), falling back to raw body text.
+// maxConflictMsgBytes caps the text of a 409 message printed to the operator.
+const maxConflictMsgBytes = 400
+
+// conflictMessage strips control characters from a 409 message and cuts it to
+// maxConflictMsgBytes (on a rune boundary), saying so when it was cut.
+func conflictMessage(msg string) string {
+	msg = stripControl(msg)
+	if len(msg) <= maxConflictMsgBytes {
+		return msg
+	}
+	cut := maxConflictMsgBytes
+	for cut > 0 && !utf8.RuneStart(msg[cut]) {
+		cut--
+	}
+	return msg[:cut] + "... (message cut)"
+}
+
 func readErrorMessage(r io.Reader) string {
 	body, err := io.ReadAll(r)
 	if err != nil {

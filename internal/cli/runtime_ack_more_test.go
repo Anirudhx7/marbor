@@ -2,6 +2,7 @@ package cli
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,6 +16,11 @@ func TestStripControl(t *testing.T) {
 		"two\nlines\rand\x07": "twolinesand",
 		"tab\there":           "tabhere",
 		"café-中文":             "café-中文",
+		"del\x7fete":          "delete",
+		"c1\u009b2Jx":         "c12Jx",
+		"rtl‮evil":            "rtlevil",
+		"zero​width":          "zerowidth",
+		"line sep ":           "linesep",
 	}
 	for in, want := range cases {
 		if got := stripControl(in); got != want {
@@ -93,7 +99,7 @@ func TestAck_ForceOnTTYDoesNotPromptAndSendsBareForce(t *testing.T) {
 func TestAck_UnreadableCheckSendsBareForceOnlyWithFlag(t *testing.T) {
 	for _, action := range []string{"drain", "restart"} {
 		for _, force := range []bool{false, true} {
-			t.Run(action, func(t *testing.T) {
+			t.Run(fmt.Sprintf("%s/force=%v", action, force), func(t *testing.T) {
 				var posted string
 				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set("Content-Type", "application/json")
@@ -196,5 +202,53 @@ func TestConflictBody_ReadErrorKeepsStatusAndDropsRaw(t *testing.T) {
 	}
 	if cliErr.Code != ExitUserError || cliErr.Msg == "" || cliErr.Raw != nil {
 		t.Errorf("code %d msg %q raw %q", cliErr.Code, cliErr.Msg, cliErr.Raw)
+	}
+}
+
+// A long or hostile 409 message is cut and stripped before it is printed.
+func TestConflictBody_MessageIsTruncatedAndSanitized(t *testing.T) {
+	c := conflictServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusConflict)
+		w.Write([]byte(`{"error":"\u001b[2J` + strings.Repeat("e", 5000) + `"}`))
+	})
+	_, err := c.DrainNode("gpu-0", "", -1, false, nil)
+	var cliErr *CLIError
+	if !errors.As(err, &cliErr) {
+		t.Fatalf("err = %v", err)
+	}
+	if len(cliErr.Msg) > maxConflictMsgBytes+64 || !strings.Contains(cliErr.Msg, "message cut") {
+		t.Errorf("message is %d bytes: %.80q", len(cliErr.Msg), cliErr.Msg)
+	}
+	if strings.ContainsRune(cliErr.Msg, 0x1b) {
+		t.Errorf("message keeps an escape character: %.40q", cliErr.Msg)
+	}
+	if cliErr.BodyCut || cliErr.Raw == nil {
+		t.Errorf("a short body is whole: cut=%v raw=%d", cliErr.BodyCut, len(cliErr.Raw))
+	}
+}
+
+// A body cut by the cap or by a read error says so, and the report tells the
+// operator the list could not be read.
+func TestConflictBody_CutBodyIsStated(t *testing.T) {
+	capped := conflictServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusConflict)
+		w.Write([]byte(strings.Repeat("x", 2*maxConflictBodyBytes)))
+	})
+	broken := conflictServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "1000")
+		w.WriteHeader(http.StatusConflict)
+		w.Write([]byte(`{"error":"cut short"`))
+	})
+	for name, c := range map[string]*Client{"capped": capped, "read error": broken} {
+		_, err := c.DrainNode("gpu-0", "", -1, false, nil)
+		var cliErr *CLIError
+		if !errors.As(err, &cliErr) || !cliErr.BodyCut || !strings.Contains(cliErr.Msg, "cut off") {
+			t.Fatalf("%s: err = %v", name, err)
+		}
+		var stderr strings.Builder
+		reportSoleActionError(err, &stderr)
+		if !strings.Contains(stderr.String(), "response was cut off") {
+			t.Errorf("%s: stderr = %q", name, stderr.String())
+		}
 	}
 }

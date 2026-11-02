@@ -131,12 +131,13 @@ type soleConsent struct {
 // names are compared as exact strings.
 func soleConsentFrom(r *http.Request) soleConsent {
 	values, err := url.ParseQuery(r.URL.RawQuery)
-	c := soleConsent{parseErr: err, acked: map[string]bool{}}
+	c := soleConsent{parseErr: err}
 	if err != nil {
 		// ParseQuery keeps the pairs that did parse, but a request with a
 		// broken query is never trusted as consent.
 		return c
 	}
+	c.acked = map[string]bool{}
 	c.force = values.Get(forceParam) == "true"
 	if acks, present := values[acknowledgeSoleParam]; present {
 		c.ackGiven = true
@@ -151,8 +152,8 @@ func soleConsentFrom(r *http.Request) soleConsent {
 
 // unacknowledged returns the sole models the caller did not acknowledge.
 func (c soleConsent) unacknowledged(models []router.SoleReplicaModel) []string {
-	var out []string
-	seen := map[string]bool{}
+	out := make([]string, 0, len(models))
+	seen := make(map[string]bool, len(models))
 	for _, m := range models {
 		if !c.acked[m.Model] && !seen[m.Model] {
 			seen[m.Model] = true
@@ -174,6 +175,10 @@ const (
 	soleBlocked                        // sole models and no force; nothing was changed
 	soleStaleAck                       // force with an acknowledged list that misses a current sole model; nothing was changed
 	soleBadQuery                       // sole models and a query string that did not parse; nothing was changed
+
+	// soleOutcomeCount is one past the last outcome. Keep it last: a test walks
+	// every outcome up to it.
+	soleOutcomeCount
 )
 
 // soleCheck is the result of checkSoleReplica.
@@ -353,7 +358,7 @@ func (e *agentRefusedError) Error() string { return e.msg }
 // have taken the runtime down, so the caller sees that the outcome is unclear
 // rather than a plain refusal. Start and stop messages are never wrapped.
 func restartOutcomeUnclearError(err error) error {
-	return fmt.Errorf("%w; restart outcome unclear: the runtime may be restarting, check the node before retrying (the restart record clears on its own after the next poll, or after %s)", err, restartMarkerTTL)
+	return fmt.Errorf("%w; restart outcome unclear: the runtime may be restarting, or nothing was changed if the request never reached the agent; check the node before retrying (the restart record clears on its own after the next poll, or after %s)", err, restartMarkerTTL)
 }
 
 // soleSubject names the action and node for the 409 texts.
