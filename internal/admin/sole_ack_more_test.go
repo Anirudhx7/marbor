@@ -129,7 +129,10 @@ func TestAck_AfterCommitRunsOnlyForChangesMade(t *testing.T) {
 }
 
 // requestWaitsOnSoleLock reports whether some goroutine is blocked on a mutex
-// inside checkSoleReplica.
+// inside checkSoleReplica. It depends on the Go runtime naming a goroutine
+// blocked on a mutex with the frame sync.runtime_SemacquireMutex; if a Go
+// upgrade renames that frame, this helper stops matching and the tests using
+// it time out rather than pass.
 func requestWaitsOnSoleLock() bool {
 	buf := make([]byte, 1<<20)
 	buf = buf[:runtime.Stack(buf, true)]

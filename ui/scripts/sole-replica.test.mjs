@@ -316,7 +316,22 @@ test('messages never point in a direction, and the restart pre-check carries the
   ]) assert.doesNotMatch(m, /below|above/);
   const page = readFileSync(new URL('../src/pages/GPUNodes.tsx', import.meta.url), 'utf8');
   assert.ok(page.includes('runtimeActionQuery({ acknowledgeReplica: isReplicaMember(agentNode), force, acknowledgedSole })'));
-  assert.ok(page.includes('role="alert" className="text-sm text-destructive">{actionError}'));
-  assert.ok(page.includes('role="alert" className="text-sm text-destructive">{runtimeActionError}'));
-  assert.ok(page.includes("setRuntimeActionNotice(null); setRuntimeActionError(null); setRuntimeActionConfirm('restart');"));
+  // Every in-dialog error paragraph announces itself; the runtime panel's copy
+  // of the same error does not, so a screen reader hears it once.
+  const alertParas = page.match(/<p role="alert" className="text-sm text-destructive">\{(actionError|runtimeActionError)\}<\/p>/g) ?? [];
+  assert.equal(alertParas.filter(p => p.includes('{actionError}')).length, 4, 'four actionError paragraphs carry role="alert"');
+  assert.equal(alertParas.filter(p => p.includes('{runtimeActionError}')).length, 1, 'the runtime dialog paragraph carries role="alert"');
+  assert.equal(page.match(/\{runtimeActionError\}/g).length, 2, 'the runtime error renders in the panel and the dialog only');
+  assert.ok(page.includes('{runtimeActionError && <p className="text-sm text-destructive">{runtimeActionError}</p>}'), 'the panel paragraph has no role="alert"');
+  // Start, Stop and Restart all clear a stale error when the dialog opens.
+  assert.equal(page.match(/setRuntimeActionNotice\(null\);\s*setRuntimeActionError\(null\);/g).length, 3);
+});
+
+test('the stale-list message names at most five models and counts the rest', () => {
+  const names = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+  const m = runtimeActionFailureInfo(409, { code: 'sole_replica', unacknowledged: names }, 'F').message;
+  assert.match(m, /Not in your list: a, b, c, d, e and 2 more\.$/);
+  assert.doesNotMatch(m, /f, g/);
+  const five = runtimeActionFailureInfo(409, { code: 'sole_replica', unacknowledged: names.slice(0, 5) }, 'F').message;
+  assert.match(five, /Not in your list: a, b, c, d, e\.$/);
 });

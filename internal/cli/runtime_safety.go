@@ -159,7 +159,7 @@ func reportSoleActionError(err error, stderr io.Writer) int {
 	}
 	if cliErr.BodyCut {
 		// The lists cannot be trusted or shown; say so rather than stay silent.
-		fmt.Fprintln(stderr, "The response was cut off, so the current list of models could not be read. Nothing was changed. Run the command again to review it.")
+		fmt.Fprintln(stderr, "The response was cut off, so it could not be read in full. Nothing was changed. Run the command again.")
 		return code
 	}
 	if len(cliErr.Raw) == 0 {

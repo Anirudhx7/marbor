@@ -271,7 +271,7 @@ func (c *Client) doRequestBodyWith(hc *http.Client, method, path string, body in
 			conflict.Msg += " (the response body was cut off)"
 		case capped:
 			conflict.Msg += " (the response body was cut off at the size limit)"
-			conflict.Raw = raw
+			conflict.Raw = nil
 		default:
 			conflict.Raw = raw
 		}
@@ -2884,8 +2884,6 @@ func (c *Client) savedSessionHint() string {
 	return ""
 }
 
-// readErrorMessage best-effort extracts the "error" field the Admin API's
-// JSON error responses use ({"error":"..."}), falling back to raw body text.
 // maxConflictMsgBytes caps the text of a 409 message printed to the operator.
 const maxConflictMsgBytes = 400
 
@@ -2903,6 +2901,8 @@ func conflictMessage(msg string) string {
 	return msg[:cut] + "... (message cut)"
 }
 
+// readErrorMessage best-effort extracts the "error" field the Admin API's
+// JSON error responses use ({"error":"..."}), falling back to raw body text.
 func readErrorMessage(r io.Reader) string {
 	body, err := io.ReadAll(r)
 	if err != nil {

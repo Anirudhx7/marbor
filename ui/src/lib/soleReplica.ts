@@ -148,6 +148,9 @@ export function runtimeActionQuery(opts: { acknowledgeReplica?: boolean; force?:
 // only this node can serve changed after the dialog listed them.
 export const STALE_LIST_MESSAGE = 'The models only this node serves changed since you opened this. Review the current list and confirm again.';
 
+// The most unacknowledged model names the stale-list message spells out.
+export const MAX_STALE_NAMES = 5;
+
 export interface RuntimeActionFailureInfo { message: string; code?: string }
 
 // runtimeActionFailureInfo maps a non-2xx runtime action response to the
@@ -166,7 +169,10 @@ export function runtimeActionFailureInfo(
     return { message: 'This node is now part of a multi-host replica. Review the current impact and confirm again.', code: body.code };
   }
   if (body.code === SOLE_REPLICA_CODE && Array.isArray(body.unacknowledged) && body.unacknowledged.length > 0) {
-    return { message: `${STALE_LIST_MESSAGE} Not in your list: ${body.unacknowledged.join(', ')}.`, code: body.code };
+    const names = body.unacknowledged;
+    const shown = names.slice(0, MAX_STALE_NAMES).join(', ');
+    const more = names.length > MAX_STALE_NAMES ? ` and ${names.length - MAX_STALE_NAMES} more` : '';
+    return { message: `${STALE_LIST_MESSAGE} Not in your list: ${shown}${more}.`, code: body.code };
   }
   if (body.code === SOLE_REPLICA_CODE) {
     return { message: 'This node is now the only server of one or more models. Review the current list and confirm again.', code: body.code };

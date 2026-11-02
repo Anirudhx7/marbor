@@ -3773,12 +3773,13 @@ export function GPUNodes() {
                       </span>
                     </p>
                   </div>
-                  {runtimeActionError && <p role="alert" className="text-sm text-destructive">{runtimeActionError}</p>}
+                  {runtimeActionError && <p className="text-sm text-destructive">{runtimeActionError}</p>}
                   {runtimeActionNotice && <p className="text-sm text-muted-foreground">{runtimeActionNotice}</p>}
                   <div className="flex flex-wrap gap-2 pt-1">
                     <button
                       onClick={() => {
                         setRuntimeActionNotice(null);
+                        setRuntimeActionError(null);
                         if (agentNode?.runtimeStatus === 'up') {
                           setRuntimeActionNotice('Runtime is already running on this node.');
                           return;
@@ -3794,6 +3795,7 @@ export function GPUNodes() {
                     <button
                       onClick={() => {
                         setRuntimeActionNotice(null);
+                        setRuntimeActionError(null);
                         if (agentNode?.runtimeStatus && agentNode.runtimeStatus !== 'up') {
                           setRuntimeActionNotice('Runtime is already stopped on this node.');
                           return;

@@ -182,8 +182,10 @@ func TestConflictBody_IsCapped(t *testing.T) {
 	if !errors.As(err, &cliErr) {
 		t.Fatalf("err = %v", err)
 	}
-	if len(cliErr.Raw) != maxConflictBodyBytes {
-		t.Errorf("Raw is %d bytes, want %d", len(cliErr.Raw), maxConflictBodyBytes)
+	// The cap bounds the read; a capped body is never kept, so a truncated list
+	// is not trusted.
+	if !cliErr.BodyCut || cliErr.Raw != nil {
+		t.Errorf("capped body: cut=%v raw=%d bytes, want cut and no Raw", cliErr.BodyCut, len(cliErr.Raw))
 	}
 }
 
@@ -245,9 +247,12 @@ func TestConflictBody_CutBodyIsStated(t *testing.T) {
 		if !errors.As(err, &cliErr) || !cliErr.BodyCut || !strings.Contains(cliErr.Msg, "cut off") {
 			t.Fatalf("%s: err = %v", name, err)
 		}
+		if cliErr.Raw != nil {
+			t.Errorf("%s: Raw kept for a cut body: %d bytes", name, len(cliErr.Raw))
+		}
 		var stderr strings.Builder
 		reportSoleActionError(err, &stderr)
-		if !strings.Contains(stderr.String(), "response was cut off") {
+		if !strings.Contains(stderr.String(), "could not be read in full") {
 			t.Errorf("%s: stderr = %q", name, stderr.String())
 		}
 	}
