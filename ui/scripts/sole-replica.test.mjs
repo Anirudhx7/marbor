@@ -336,3 +336,17 @@ test('the stale-list message names at most five models and counts the rest', () 
   const five = runtimeActionFailureInfo(409, { code: 'sole_replica', unacknowledged: names.slice(0, 5) }, 'F').message;
   assert.match(five, /Not in your list: a, b, c, d, e\.$/);
 });
+
+test('a list with no usable names falls back to the plain neutral message', () => {
+  const m = runtimeActionFailureInfo(409, { code: 'sole_replica', unacknowledged: [1, null, {}] }, 'F').message;
+  assert.doesNotMatch(m, /Not in your list/);
+  assert.equal(m, 'This node is now the only server of one or more models. Review the current list and confirm again.');
+});
+
+test('the runtime action failure sets the error after the node refresh and clears it on dialog close', () => {
+  const page = readFileSync(new URL('../src/pages/GPUNodes.tsx', import.meta.url), 'utf8');
+  const refresh = page.indexOf("if (reopen && e.code === 'replica_member') await loadNodes();");
+  const setErr = page.lastIndexOf('setRuntimeActionError(e?.message || `Failed to ${action} runtime`);');
+  assert.ok(refresh > 0 && setErr > refresh, 'refresh runs before the error is set');
+  assert.ok(page.includes('setRuntimeActionConfirm(null); setRuntimeActionError(null); }}'), 'closing the dialog clears the error');
+});

@@ -1222,6 +1222,10 @@ export function GPUNodes() {
       // took effect.
       await loadNodes();
     } catch (e: any) {
+      const reopen = e instanceof RuntimeActionError && (e.code === 'replica_member' || e.code === SOLE_REPLICA_CODE);
+      // Refresh before the error is set, so the error and the reopened dialog
+      // land in one render and are announced once.
+      if (reopen && e.code === 'replica_member') await loadNodes();
       setRuntimeActionError(e?.message || `Failed to ${action} runtime`);
       // The node became a replica member (or its sole-replica list changed)
       // after the dialog opened: refresh and reopen the dialog (it refetches the
@@ -1230,10 +1234,7 @@ export function GPUNodes() {
       // replica_member (a stop or restart that now needs the replica
       // acknowledgement) is deliberate: it shows the replica notice before the
       // operator confirms again.
-      if (e instanceof RuntimeActionError && (e.code === 'replica_member' || e.code === SOLE_REPLICA_CODE)) {
-        if (e.code === 'replica_member') await loadNodes();
-        setRuntimeActionConfirm(action);
-      }
+      if (reopen) setRuntimeActionConfirm(action);
     } finally {
       setRuntimeActionBusy(null);
     }
@@ -4089,7 +4090,7 @@ export function GPUNodes() {
       {/* Runtime Start/Stop/Restart Confirmation Modal */}
       <Modal
         isOpen={runtimeActionConfirm !== null}
-        onClose={() => { if (runtimeActionBusy !== null) return; setRuntimeActionConfirm(null); }}
+        onClose={() => { if (runtimeActionBusy !== null) return; setRuntimeActionConfirm(null); setRuntimeActionError(null); }}
         title={
           runtimeActionConfirm === 'start' ? 'Start Runtime'
           : runtimeActionConfirm === 'stop' ? 'Stop Runtime'

@@ -168,8 +168,8 @@ export function runtimeActionFailureInfo(
   if (body.code === 'replica_member') {
     return { message: 'This node is now part of a multi-host replica. Review the current impact and confirm again.', code: body.code };
   }
-  if (body.code === SOLE_REPLICA_CODE && Array.isArray(body.unacknowledged) && body.unacknowledged.length > 0) {
-    const names = body.unacknowledged.filter((n): n is string => typeof n === 'string');
+  const names = Array.isArray(body.unacknowledged) ? body.unacknowledged.filter((n): n is string => typeof n === 'string') : [];
+  if (body.code === SOLE_REPLICA_CODE && names.length > 0) {
     const shown = names.slice(0, MAX_STALE_NAMES).join(', ');
     const more = names.length > MAX_STALE_NAMES ? ` and ${names.length - MAX_STALE_NAMES} more` : '';
     return { message: `${STALE_LIST_MESSAGE} Not in your list: ${shown}${more}.`, code: body.code };
