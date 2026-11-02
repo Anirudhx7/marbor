@@ -3773,7 +3773,7 @@ export function GPUNodes() {
                       </span>
                     </p>
                   </div>
-                  {runtimeActionError && <p className="text-sm text-destructive">{runtimeActionError}</p>}
+                  {runtimeActionError && <p role={runtimeActionConfirm ? undefined : 'alert'} className="text-sm text-destructive">{runtimeActionError}</p>}
                   {runtimeActionNotice && <p className="text-sm text-muted-foreground">{runtimeActionNotice}</p>}
                   <div className="flex flex-wrap gap-2 pt-1">
                     <button

@@ -270,8 +270,8 @@ func (c *Client) doRequestBodyWith(hc *http.Client, method, path string, body in
 			// A body that could not be read in full is not trusted for its lists.
 			conflict.Msg += " (the response body was cut off)"
 		case capped:
+			// A body cut at the cap is not trusted for its lists, so Raw stays nil.
 			conflict.Msg += " (the response body was cut off at the size limit)"
-			conflict.Raw = nil
 		default:
 			conflict.Raw = raw
 		}
