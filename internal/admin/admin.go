@@ -5256,11 +5256,17 @@ func (s *Server) handlePendingUserCount(w http.ResponseWriter, r *http.Request) 
 	fmt.Fprintf(w, `{"count":%d}`, count)
 }
 
+// bcryptCost is the bcrypt work factor for password hashes. It is a variable
+// only so the test binary can lower it: NewServer hashes the default admin
+// password, and at DefaultCost under the race detector that dominated the
+// package's run time. Production code never changes it.
+var bcryptCost = bcrypt.DefaultCost
+
 // hashPassword hashes a plaintext password with bcrypt (cost=DefaultCost).
 // The salt is embedded in the returned hash - no separate salt parameter needed.
 // Replaces the broken SHA-256 loop (audit finding #1 / #9).
 func hashPassword(password string) (string, error) {
-	h, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	h, err := bcrypt.GenerateFromPassword([]byte(password), bcryptCost)
 	if err != nil {
 		return "", fmt.Errorf("bcrypt: %w", err)
 	}
