@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -20,6 +21,12 @@ const (
 	// forceParam is the query parameter that proceeds past the sole-replica
 	// check (CLI: --force). Only the exact value "true" counts.
 	forceParam = "force"
+
+	// acknowledgeSoleParam is the optional repeated query parameter that names
+	// the models the caller was shown as having no other server. Sent together
+	// with force=true it makes the force conditional on that list still being
+	// the whole current list.
+	acknowledgeSoleParam = "acknowledge_sole"
 
 	// restartMarkerTTL bounds how long a restart keeps its node counted as
 	// unavailable when no later poll confirms it is back.
@@ -107,10 +114,53 @@ func soleReplicaField(impact router.SoleReplicaImpact, forced bool) *soleReplica
 	return &soleReplicaBody{soleReplicaLists: newSoleReplicaLists(impact), Forced: forced}
 }
 
-// forceRequested reports whether the request carries force=true. Any other
-// value, including 1, yes and TRUE, is treated as absent.
-func forceRequested(r *http.Request) bool {
-	return r.URL.Query().Get(forceParam) == "true"
+// soleConsent is what the caller said about the sole-replica check: whether it
+// sent force=true, whether it sent the acknowledge_sole key at all (even with an
+// empty value, which is an empty acknowledged list), and the model names it
+// acknowledged. parseErr is set when the query string did not parse; the check
+// then fails closed if any model has no other server.
+type soleConsent struct {
+	force    bool
+	ackGiven bool
+	acked    map[string]bool
+	parseErr error
+}
+
+// soleConsentFrom reads the consent from the request's raw query. Only the exact
+// value force=true counts as force; 1, yes and TRUE are treated as absent. Ack
+// names are compared as exact strings.
+func soleConsentFrom(r *http.Request) soleConsent {
+	values, err := url.ParseQuery(r.URL.RawQuery)
+	c := soleConsent{parseErr: err}
+	if err != nil {
+		// ParseQuery keeps the pairs that did parse, but a request with a
+		// broken query is never trusted as consent.
+		return c
+	}
+	c.acked = map[string]bool{}
+	c.force = values.Get(forceParam) == "true"
+	if acks, present := values[acknowledgeSoleParam]; present {
+		c.ackGiven = true
+		for _, a := range acks {
+			if a != "" {
+				c.acked[a] = true
+			}
+		}
+	}
+	return c
+}
+
+// unacknowledged returns the sole models the caller did not acknowledge.
+func (c soleConsent) unacknowledged(models []router.SoleReplicaModel) []string {
+	out := make([]string, 0, len(models))
+	seen := make(map[string]bool, len(models))
+	for _, m := range models {
+		if !c.acked[m.Model] && !seen[m.Model] {
+			seen[m.Model] = true
+			out = append(out, m.Model)
+		}
+	}
+	return out
 }
 
 // soleOutcome is how a sole-replica check ended. One value, so the impossible
@@ -123,12 +173,21 @@ const (
 	soleProceed                        // nothing needed force; the change was made
 	soleForced                         // force was sent and sole models existed; the change was made
 	soleBlocked                        // sole models and no force; nothing was changed
+	soleStaleAck                       // force with an acknowledged list that misses a current sole model; nothing was changed
+	soleBadQuery                       // sole models and a query string that did not parse; nothing was changed
+
+	// soleOutcomeCount is one past the last outcome. Keep it last: a test walks
+	// every outcome up to it.
+	soleOutcomeCount
 )
 
 // soleCheck is the result of checkSoleReplica.
 type soleCheck struct {
-	impact  router.SoleReplicaImpact
-	outcome soleOutcome
+	impact         router.SoleReplicaImpact
+	outcome        soleOutcome
+	unacknowledged []string // soleStaleAck: current sole models the caller did not acknowledge
+	ackEmpty       bool     // soleStaleAck: the key was sent but named no model
+	reviewed       bool     // soleForced: the acknowledge_sole key was sent
 }
 
 func (c soleCheck) found() bool   { return c.outcome != soleNodeMissing }
@@ -141,7 +200,7 @@ func (c soleCheck) forced() bool  { return c.outcome == soleForced }
 // a snapshot of each peer, and the router helpers re-lock per node, so a poll
 // landing mid-check can make the answer slightly stale; the lock serializes
 // marbor's own changes, not the fleet. Callers must not hold the lock.
-func (s *Server) checkSoleReplica(name string, force bool, commit func()) soleCheck {
+func (s *Server) checkSoleReplica(name string, consent soleConsent, commit func()) soleCheck {
 	st := &s.soleReplica
 	st.mu.Lock()
 	defer st.mu.Unlock()
@@ -149,17 +208,33 @@ func (s *Server) checkSoleReplica(name string, force bool, commit func()) soleCh
 	if !ok {
 		return soleCheck{outcome: soleNodeMissing}
 	}
-	if len(impact.Models) > 0 && !force {
+	if len(impact.Models) == 0 {
+		commit()
+		if st.afterCommit != nil {
+			st.afterCommit()
+		}
+		return soleCheck{impact: impact, outcome: soleProceed}
+	}
+	switch {
+	case consent.parseErr != nil:
+		return soleCheck{impact: impact, outcome: soleBadQuery}
+	case !consent.force:
 		return soleCheck{impact: impact, outcome: soleBlocked}
+	}
+	// force=true with the acknowledge_sole key: proceed only if every current
+	// sole model was acknowledged. Without the key force overrides unchecked.
+	// The comparison and the commit share this lock, so the list that was
+	// acknowledged is the list the change is made against.
+	if consent.ackGiven {
+		if missing := consent.unacknowledged(impact.Models); len(missing) > 0 {
+			return soleCheck{impact: impact, outcome: soleStaleAck, unacknowledged: missing, ackEmpty: len(consent.acked) == 0}
+		}
 	}
 	commit()
 	if st.afterCommit != nil {
 		st.afterCommit()
 	}
-	if force && len(impact.Models) > 0 {
-		return soleCheck{impact: impact, outcome: soleForced}
-	}
-	return soleCheck{impact: impact, outcome: soleProceed}
+	return soleCheck{impact: impact, outcome: soleForced, reviewed: consent.ackGiven}
 }
 
 // guardRuntimeActionSole runs the sole-replica check for a runtime action. Only
@@ -175,13 +250,12 @@ func (s *Server) guardRuntimeActionSole(w http.ResponseWriter, r *http.Request, 
 	if action != soleActionRestart {
 		return soleCheck{}, noop, true
 	}
-	sole := s.checkSoleReplica(nodeName, forceRequested(r), func() { s.markRestartStarted(nodeName) })
-	switch {
-	case !sole.found():
+	sole := s.checkSoleReplica(nodeName, soleConsentFrom(r), func() { s.markRestartStarted(nodeName) })
+	if !sole.found() {
 		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", nodeName))
 		return sole, noop, false
-	case sole.blocked():
-		writeSoleReplicaConflict(w, nodeName, action, sole.impact)
+	}
+	if writeSoleRefusal(w, nodeName, action, sole) {
 		return sole, noop, false
 	}
 	return sole, func(refused bool) { s.finishRestart(nodeName, refused) }, true
@@ -248,6 +322,11 @@ func (s *Server) finishRestart(name string, refused bool) {
 	if !ok {
 		return
 	}
+	// Purely defensive: decrement only while a restart is counted in flight, so
+	// the counter cannot go negative if the marker was recreated or dropped (by
+	// the TTL) while an older restart was still running. A poll cannot confirm
+	// the marker away while inflight is above zero, because the marker only gets
+	// a returned time once the last in-flight restart has ended.
 	if mk.inflight > 0 {
 		mk.inflight--
 	}
@@ -264,32 +343,98 @@ func (s *Server) finishRestart(name string, refused bool) {
 	st.restarting[name] = mk
 }
 
-// agentRefusedError is an error the agent itself reported for a runtime action:
-// it answered with an error status or message, so the action did not start.
-// Transport failures, timeouts and undecodable replies are not this type: the
-// action may have run.
+// agentRefusedError is an error that means the agent turned the action down
+// before running it: it answered with a 4xx status other than 408 and 499
+// (those two are what a proxy may emit after the request was passed on). Any 5xx
+// is not this type, not even one with a readable error body: the agent answers
+// 502 when a restart failed after it had already stopped the runtime. Transport
+// failures, timeouts, redirects and unreadable replies are not this type either:
+// the action may have run.
 type agentRefusedError struct{ msg string }
 
 func (e *agentRefusedError) Error() string { return e.msg }
 
+// restartOutcomeUnclearError wraps an agent failure of a restart that may still
+// have taken the runtime down, so the caller sees that the outcome is unclear
+// rather than a plain refusal. Start and stop messages are never wrapped.
+func restartOutcomeUnclearError(err error) error {
+	return fmt.Errorf("%w; restart outcome unclear: the runtime may be restarting, or nothing was changed if the request never reached the agent; check the node before retrying (the restart record clears on its own after the next poll, or after %s)", err, restartMarkerTTL)
+}
+
+// soleSubject names the action and node for the 409 texts.
+func soleSubject(name string, action soleAction) string {
+	if action == soleActionRestart {
+		return fmt.Sprintf("restarting the runtime on node %q", name)
+	}
+	return fmt.Sprintf("draining node %q", name)
+}
+
 // soleReplicaMessage is the human text of the 409.
 func soleReplicaMessage(name string, action soleAction, models []router.SoleReplicaModel) string {
-	subject := fmt.Sprintf("draining node %q", name)
-	if action == soleActionRestart {
-		subject = fmt.Sprintf("restarting the runtime on node %q", name)
+	subject := soleSubject(name, action)
+	names := make([]string, 0, len(models))
+	for _, m := range models {
+		names = append(names, m.Model)
 	}
+	return fmt.Sprintf("%s would leave %d model(s) with no other node that can serve them: %s. Pass force=true (CLI: --force) to proceed; only the exact value force=true is accepted.", subject, len(models), quotedList(names))
+}
+
+// quotedList quotes up to maxModelsInMessage names and counts the rest.
+func quotedList(names []string) string {
 	shown := make([]string, 0, maxModelsInMessage)
-	for i, m := range models {
+	for i, n := range names {
 		if i == maxModelsInMessage {
 			break
 		}
-		shown = append(shown, fmt.Sprintf("%q", m.Model))
+		shown = append(shown, fmt.Sprintf("%q", n))
 	}
 	list := strings.Join(shown, ", ")
-	if extra := len(models) - len(shown); extra > 0 {
+	if extra := len(names) - len(shown); extra > 0 {
 		list += fmt.Sprintf(" and %d more", extra)
 	}
-	return fmt.Sprintf("%s would leave %d model(s) with no other node that can serve them: %s. Pass force=true (CLI: --force) to proceed; only the exact value force=true is accepted.", subject, len(models), list)
+	return list
+}
+
+// staleAckMessage is the 409 text when the acknowledged list no longer covers
+// every model with no other server.
+func staleAckMessage(name string, action soleAction, unacknowledged []string, ackEmpty bool) string {
+	subject := soleSubject(name, action)
+	msg := fmt.Sprintf("%s was not done: the models with no other server changed since you reviewed them: %s; review and retry.", subject, quotedList(unacknowledged))
+	if ackEmpty {
+		msg += " acknowledge_sole was sent with no model name, which counts as an empty acknowledged list."
+	}
+	return msg
+}
+
+// writeSoleRefusal writes the response for a check that changed nothing: 409
+// for a block or a stale acknowledgement, 400 for an unparseable query. It
+// reports whether it wrote one, so each caller must stop when it returns true.
+func writeSoleRefusal(w http.ResponseWriter, name string, action soleAction, sole soleCheck) bool {
+	switch sole.outcome {
+	case soleBlocked:
+		writeSoleReplicaConflict(w, name, action, sole.impact)
+	case soleStaleAck:
+		writeStaleAckConflict(w, name, action, sole)
+	case soleBadQuery:
+		writeJSONError(w, http.StatusBadRequest, "malformed query string: the sole-replica check cannot read force or acknowledge_sole, so nothing was changed; other parameters were not read")
+	default:
+		return false
+	}
+	return true
+}
+
+// writeStaleAckConflict writes the 409 for force with an acknowledged list that
+// misses a current sole model. It carries the current lists and the models that
+// were not acknowledged.
+func writeStaleAckConflict(w http.ResponseWriter, name string, action soleAction, sole soleCheck) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusConflict)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"error":          staleAckMessage(name, action, sole.unacknowledged, sole.ackEmpty),
+		"code":           soleReplicaCode,
+		"sole_replica":   soleReplicaBody{soleReplicaLists: newSoleReplicaLists(sole.impact), Forced: false},
+		"unacknowledged": sole.unacknowledged,
+	})
 }
 
 // writeSoleReplicaConflict writes the 409 for a blocked drain or restart.
@@ -304,8 +449,10 @@ func writeSoleReplicaConflict(w http.ResponseWriter, name string, action soleAct
 }
 
 // soleReplicaAuditDetail extends an audit detail with the sole models that
-// were taken out of service, and whether force was needed to do it.
-func soleReplicaAuditDetail(detail string, impact router.SoleReplicaImpact, forced bool) string {
+// were taken out of service, whether force was needed to do it, and whether the
+// force came from a reviewed confirm (the acknowledge_sole key was sent). The
+// acknowledged names themselves are never written.
+func soleReplicaAuditDetail(detail string, impact router.SoleReplicaImpact, forced, reviewed bool) string {
 	if len(impact.Models) == 0 {
 		return detail
 	}
@@ -318,6 +465,9 @@ func soleReplicaAuditDetail(detail string, impact router.SoleReplicaImpact, forc
 	out := fmt.Sprintf("%s, Sole replica models: %q", detail, names)
 	if forced {
 		out += ", Forced: true"
+		if reviewed {
+			out += ", Reviewed: true"
+		}
 	}
 	return out
 }

@@ -581,11 +581,13 @@ export async function getSoleReplicaImpact(name: string, signal?: AbortSignal): 
 }
 
 // force=true is sent only from the confirm dialog, and only when the dialog
-// showed the operator the models that only this node can serve.
-export async function drainNode(name: string, graceSeconds?: number, force = false) {
+// showed the operator the models that only this node can serve; acknowledgedSole
+// then names exactly the models it showed, so the server refuses if the list
+// changed in the meantime. The demo path ignores both.
+export async function drainNode(name: string, graceSeconds?: number, force = false, acknowledgedSole?: string[]) {
   if (DEMO) return demoDelay(undefined);
   const body = graceSeconds !== undefined ? JSON.stringify({ grace_period_seconds: graceSeconds }) : undefined;
-  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/drain${runtimeActionQuery({ force })}`, {
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/drain${runtimeActionQuery({ force, acknowledgedSole })}`, {
     method: 'POST',
     headers: { ...authHeaders(), ...(body ? { 'Content-Type': 'application/json' } : {}) },
     body,
@@ -2206,7 +2208,7 @@ export class RuntimeActionError extends Error {
 // runtimeActionFailure builds the typed error for a non-2xx runtime action
 // response; the message wording lives in runtimeActionFailureInfo.
 async function runtimeActionFailure(res: Response, fallback: string): Promise<RuntimeActionError> {
-  const j = (await res.json().catch(() => ({}))) as { error?: string; code?: string; sole_replica?: SoleReplicaBody };
+  const j = (await res.json().catch(() => ({}))) as { error?: string; code?: string; sole_replica?: SoleReplicaBody; unacknowledged?: string[] };
   const info = runtimeActionFailureInfo(res.status, j, fallback);
   return new RuntimeActionError(info.message, res.status, info.code);
 }
@@ -2239,10 +2241,11 @@ export async function stopNodeRuntime(name: string, acknowledgeReplica = false):
 }
 
 // force is sent only when the dialog showed the models that only this node can
-// serve; both flags travel in one request when both notices were shown.
-export async function restartNodeRuntime(name: string, acknowledgeReplica = false, force = false): Promise<void> {
+// serve, together with acknowledgedSole (the names it showed); both flags travel
+// in one request when both notices were shown. The demo path ignores them.
+export async function restartNodeRuntime(name: string, acknowledgeReplica = false, force = false, acknowledgedSole?: string[]): Promise<void> {
   if (DEMO) return demoDelay(undefined);
-  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/runtime/restart${runtimeActionQuery({ acknowledgeReplica, force })}`, {
+  const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/runtime/restart${runtimeActionQuery({ acknowledgeReplica, force, acknowledgedSole })}`, {
     method: 'POST',
     headers: authHeaders(),
   });

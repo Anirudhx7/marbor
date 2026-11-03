@@ -453,7 +453,7 @@ func TestClient_RuntimeAction_EmptySuccessBody_NilReplicaNoError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	res, err := NewClient(srv.URL, "tok").RuntimeAction("gpu-0", "stop", true, false)
+	res, err := NewClient(srv.URL, "tok").RuntimeAction("gpu-0", "stop", true, false, nil)
 	if err != nil {
 		t.Fatalf("an empty success body must not be an error, got %v", err)
 	}

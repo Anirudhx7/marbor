@@ -22,7 +22,7 @@ import { RuntimeBadge } from '../components/RuntimeBadge';
 import { mockGPUNodes, mockRuntimeLogLines, withDemoSignals } from '../lib/mockData';
 import { SoleReplicaImpactNotice } from '../components/SoleReplicaImpactNotice';
 import { useSoleReplicaImpact } from '../lib/useSoleReplicaImpact';
-import { impactVisible, isChecking, confirmLabel, shouldForce } from '../lib/soleReplica';
+import { impactVisible, isChecking, confirmLabel, soleActionArgs, runtimeActionQuery, withoutHover, SOLE_REPLICA_CODE } from '../lib/soleReplica';
 import { readLastNodeCount, writeLastNodeCount } from '../lib/nodeCount';
 import { isReplicaMember, replicaImpactCopy } from '../lib/replicaImpact';
 import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, probeNodeTLS, fetchModelFit, unloadModel, getPinned, getMarborAgent, enableMarborAgent, regenerateMarborAgentToken, disableMarborAgent, checkNodeHealth, fetchReplicaSuggestions, applyDemoConfirmedGroups, getNodeControl, acceptNodeControl, clearNodeControl, startNodeRuntime, stopNodeRuntime, restartNodeRuntime, getNodeRuntimeLogs, RuntimeActionError } from '../lib/api';
@@ -295,13 +295,13 @@ function DrainConfirmModal({ nodeName, title, question, explanation, actionError
         <p className="text-xs text-muted-foreground">{explanation}</p>
         {children}
         {actionError && (
-          <p className="text-sm text-destructive">{actionError}</p>
+          <p role="alert" className="text-sm text-destructive">{actionError}</p>
         )}
         <div className="flex justify-end gap-3 pt-4 border-t border-border">
           <button
             onClick={() => { if (!busy) onClose(); }}
             aria-disabled={busy || undefined}
-            className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors aria-disabled:opacity-50 aria-disabled:pointer-events-none"
+            className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors aria-disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:hover:text-muted-foreground"
           >
             Cancel
           </button>
@@ -309,7 +309,7 @@ function DrainConfirmModal({ nodeName, title, question, explanation, actionError
             onClick={() => { if (!busy && !confirmDisabled) void onConfirm(); }}
             aria-disabled={busy || confirmDisabled || undefined}
             aria-describedby={confirmDescribedBy}
-            className={`${confirmClassName} aria-disabled:opacity-50 aria-disabled:pointer-events-none`}
+            className={`${busy || confirmDisabled ? withoutHover(confirmClassName) : confirmClassName} aria-disabled:opacity-50 aria-disabled:cursor-not-allowed`}
           >
             {confirmText}
           </button>
@@ -1181,6 +1181,21 @@ export function GPUNodes() {
   // a no-op so a demo click never hits a real endpoint.
   const runRuntimeAction = async (action: 'start' | 'stop' | 'restart') => {
     if (!agentNode || !controlStatus?.configured) return;
+    // force is sent only when this dialog listed models that only this node
+    // can serve, together with exactly the names it listed; a failed or
+    // unknown check never sends it (the server checks again and refuses if
+    // needed, including when the list changed since the dialog opened).
+    const { force, acknowledgedSole } = soleActionArgs(action, restartImpact.state);
+    if (!demoMode) {
+      // A list too long to send is refused while the dialog is still open, so
+      // the message shows inside it.
+      try {
+        runtimeActionQuery({ acknowledgeReplica: isReplicaMember(agentNode), force, acknowledgedSole });
+      } catch (e: any) {
+        setRuntimeActionError(e?.message || `Failed to ${action} runtime`);
+        return;
+      }
+    }
     setRuntimeActionConfirm(null);
     setRuntimeActionNotice(null);
     setRuntimeActionBusy(action);
@@ -1198,19 +1213,19 @@ export function GPUNodes() {
       // replica_member): the error below asks the operator to reopen the
       // dialog and review the impact instead of acknowledging unseen.
       const ackReplica = isReplicaMember(agentNode);
-      // force is sent only when this dialog listed models that only this node
-      // can serve; a failed or unknown check never sends it (the server checks
-      // again and refuses if needed).
-      const force = shouldForce(action, restartImpact.state);
       if (action === 'start') await startNodeRuntime(agentNode.name);
       else if (action === 'stop') await stopNodeRuntime(agentNode.name, ackReplica);
-      else await restartNodeRuntime(agentNode.name, ackReplica, force);
+      else await restartNodeRuntime(agentNode.name, ackReplica, force, acknowledgedSole);
       // Refresh immediately instead of waiting up to 10s for the next poll
       // tick - the modal's agentNode.runtimeStatus otherwise looks stale
       // right after a successful action even though the change already
       // took effect.
       await loadNodes();
     } catch (e: any) {
+      const reopen = e instanceof RuntimeActionError && (e.code === 'replica_member' || e.code === SOLE_REPLICA_CODE);
+      // Refresh before the error is set, so the error and the reopened dialog
+      // land in one render and are announced once.
+      if (reopen && e.code === 'replica_member') await loadNodes();
       setRuntimeActionError(e?.message || `Failed to ${action} runtime`);
       // The node became a replica member (or its sole-replica list changed)
       // after the dialog opened: refresh and reopen the dialog (it refetches the
@@ -1219,10 +1234,7 @@ export function GPUNodes() {
       // replica_member (a stop or restart that now needs the replica
       // acknowledgement) is deliberate: it shows the replica notice before the
       // operator confirms again.
-      if (e instanceof RuntimeActionError && (e.code === 'replica_member' || e.code === 'sole_replica')) {
-        if (e.code === 'replica_member') await loadNodes();
-        setRuntimeActionConfirm(action);
-      }
+      if (reopen) setRuntimeActionConfirm(action);
     } finally {
       setRuntimeActionBusy(null);
     }
@@ -1840,7 +1852,7 @@ export function GPUNodes() {
     }
   };
 
-  const handleDrainNode = async (name: string, graceSeconds?: number, force = false): Promise<boolean> => {
+  const handleDrainNode = async (name: string, graceSeconds?: number, force = false, acknowledgedSole?: string[]): Promise<boolean> => {
     if (demoMode) {
       setNodes(prev => prev.map(n => n.name === name ? withDemoSignals({ ...n, draining: true, drainedGraceSeconds: graceSeconds ?? 0 }) : n));
       setActionError(null);
@@ -1848,7 +1860,7 @@ export function GPUNodes() {
     }
     if (!isLive) return false;
     try {
-      await drainNode(name, graceSeconds, force);
+      await drainNode(name, graceSeconds, force, acknowledgedSole);
       await loadNodes();
       setActionError(null);
       return true;
@@ -1856,7 +1868,7 @@ export function GPUNodes() {
       setActionError(err?.message || `Failed to drain node ${name}`);
       // The models only this node serves changed since the dialog opened:
       // refetch so the operator reviews the new list before confirming again.
-      if (err instanceof RuntimeActionError && err.code === 'sole_replica') drainImpact.reload();
+      if (err instanceof RuntimeActionError && err.code === SOLE_REPLICA_CODE) drainImpact.reload();
       return false;
     }
   };
@@ -3194,7 +3206,7 @@ export function GPUNodes() {
             This deletes the node's configuration. In-flight requests to it will fail over, and any warm models on it will need a cold start elsewhere.
           </p>
           {actionError && (
-            <p className="text-sm text-destructive">{actionError}</p>
+            <p role="alert" className="text-sm text-destructive">{actionError}</p>
           )}
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
             <button
@@ -3233,7 +3245,7 @@ export function GPUNodes() {
             The next request for this model on this node will trigger a cold start.
           </p>
           {actionError && (
-            <p className="text-sm text-destructive">{actionError}</p>
+            <p role="alert" className="text-sm text-destructive">{actionError}</p>
           )}
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
             <button
@@ -3268,11 +3280,12 @@ export function GPUNodes() {
         onConfirm={async () => {
           if (!nodeToDrain) return;
           const grace = drainGraceSeconds.trim() === '' ? undefined : Number(drainGraceSeconds);
-          // force only when this dialog listed models that only this node can serve.
-          const force = shouldForce('drain', drainImpact.state);
+          // force only when this dialog listed models that only this node can
+          // serve, with exactly the names it listed.
+          const { force, acknowledgedSole } = soleActionArgs('drain', drainImpact.state);
           setDrainBusy(true);
           try {
-            const ok = await handleDrainNode(nodeToDrain, grace, force);
+            const ok = await handleDrainNode(nodeToDrain, grace, force, acknowledgedSole);
             if (ok) { setNodeToDrain(null); setDrainGraceSeconds(''); }
           } finally {
             setDrainBusy(false);
@@ -3350,7 +3363,7 @@ export function GPUNodes() {
               : 'The predictive engine will resume warming models onto this node based on usage patterns.'}
           </p>
           {actionError && (
-            <p className="text-sm text-destructive">{actionError}</p>
+            <p role="alert" className="text-sm text-destructive">{actionError}</p>
           )}
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
             <button
@@ -3761,12 +3774,13 @@ export function GPUNodes() {
                       </span>
                     </p>
                   </div>
-                  {runtimeActionError && <p className="text-sm text-destructive">{runtimeActionError}</p>}
+                  {runtimeActionError && <p role={runtimeActionConfirm ? undefined : 'alert'} className="text-sm text-destructive">{runtimeActionError}</p>}
                   {runtimeActionNotice && <p className="text-sm text-muted-foreground">{runtimeActionNotice}</p>}
                   <div className="flex flex-wrap gap-2 pt-1">
                     <button
                       onClick={() => {
                         setRuntimeActionNotice(null);
+                        setRuntimeActionError(null);
                         if (agentNode?.runtimeStatus === 'up') {
                           setRuntimeActionNotice('Runtime is already running on this node.');
                           return;
@@ -3782,6 +3796,7 @@ export function GPUNodes() {
                     <button
                       onClick={() => {
                         setRuntimeActionNotice(null);
+                        setRuntimeActionError(null);
                         if (agentNode?.runtimeStatus && agentNode.runtimeStatus !== 'up') {
                           setRuntimeActionNotice('Runtime is already stopped on this node.');
                           return;
@@ -3795,7 +3810,7 @@ export function GPUNodes() {
                       {runtimeActionBusy === 'stop' ? 'Stopping...' : 'Stop'}
                     </button>
                     <button
-                      onClick={() => { setRuntimeActionNotice(null); setRuntimeActionConfirm('restart'); }}
+                      onClick={() => { setRuntimeActionNotice(null); setRuntimeActionError(null); setRuntimeActionConfirm('restart'); }}
                       disabled={runtimeActionBusy !== null}
                       title={demoMode ? 'No-op in demo mode' : undefined}
                       className="px-3 py-1.5 bg-secondary hover:bg-secondary/80 disabled:opacity-50 disabled:cursor-not-allowed text-foreground font-medium rounded-lg text-xs transition-colors shadow-sm"
@@ -4075,7 +4090,7 @@ export function GPUNodes() {
       {/* Runtime Start/Stop/Restart Confirmation Modal */}
       <Modal
         isOpen={runtimeActionConfirm !== null}
-        onClose={() => { if (runtimeActionBusy !== null) return; setRuntimeActionConfirm(null); }}
+        onClose={() => { if (runtimeActionBusy !== null) return; setRuntimeActionConfirm(null); setRuntimeActionError(null); }}
         title={
           runtimeActionConfirm === 'start' ? 'Start Runtime'
           : runtimeActionConfirm === 'stop' ? 'Stop Runtime'
@@ -4097,7 +4112,7 @@ export function GPUNodes() {
           <ReplicaImpactNotice id={runtimeNoticeId} text={runtimeReplicaNotice} />
           {runtimeActionConfirm === 'restart' && <SoleReplicaImpactNotice id={restartImpactId} state={restartImpact.state} />}
           {runtimeActionError && (
-            <p className="text-sm text-destructive">{runtimeActionError}</p>
+            <p role="alert" className="text-sm text-destructive">{runtimeActionError}</p>
           )}
           <div className="flex justify-end gap-3 pt-4 border-t border-border">
             {/* aria-disabled, not disabled, while busy or checking: a disabled
@@ -4105,7 +4120,7 @@ export function GPUNodes() {
             <button
               onClick={() => { if (runtimeActionBusy === null) setRuntimeActionConfirm(null); }}
               aria-disabled={runtimeActionBusy !== null || undefined}
-              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors aria-disabled:opacity-50 aria-disabled:pointer-events-none"
+              className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors aria-disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:hover:text-muted-foreground"
             >
               Cancel
             </button>
@@ -4118,8 +4133,8 @@ export function GPUNodes() {
               aria-describedby={[runtimeReplicaNotice ? runtimeNoticeId : '', runtimeActionConfirm === 'restart' && impactVisible(restartImpact.state) ? restartImpactId : ''].filter(Boolean).join(' ') || undefined}
               className={
                 runtimeActionConfirm === 'start'
-                  ? "px-4 py-2 bg-success hover:bg-success/90 aria-disabled:opacity-50 aria-disabled:pointer-events-none text-success-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
-                  : "px-4 py-2 bg-destructive hover:bg-destructive/90 aria-disabled:opacity-50 aria-disabled:pointer-events-none text-destructive-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+                  ? "px-4 py-2 bg-success hover:bg-success/90 aria-disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:hover:bg-success text-success-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
+                  : "px-4 py-2 bg-destructive hover:bg-destructive/90 aria-disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:hover:bg-destructive text-destructive-foreground font-medium rounded-lg text-sm transition-colors shadow-sm"
               }
             >
               {runtimeActionBusy !== null

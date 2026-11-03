@@ -7,7 +7,9 @@ import {
   coldLoadSummary, unknownLine, COLD_COLLAPSE_AFTER,
   impactSummary, impactVisible, shouldForce, runtimeActionQuery, runtimeActionFailureInfo, soleCheckErrorMessage,
   endSentence, readSoleReplicaImpact, createImpactChecker,
+  soleActionArgs, MAX_SOLE_QUERY_BYTES, STALE_LIST_MESSAGE, SOLE_REPLICA_CODE, withoutHover,
 } from '../src/lib/soleReplica.ts';
+import { readFileSync } from 'node:fs';
 
 const empty = { models: [], cold_load_only: [], unknown: [] };
 const sole = { models: [{ model: 'm1', runtime: 'vllm' }], cold_load_only: [], unknown: [] };
@@ -169,4 +171,182 @@ test('cancel aborts the request and drops its result', async () => {
   await p;
   assert.equal(signalSeen.aborted, true);
   assert.deepEqual(seen.map(s => s.status), ['loading']);
+});
+
+// --- acknowledge_sole ---
+
+test('the ack sent equals the displayed list, and only with force', () => {
+  const two = { models: [{ model: 'm1', runtime: 'vllm' }, { model: 'org/m 2', runtime: 'ollama' }], cold_load_only: [], unknown: [] };
+  const ready = { status: 'ready', impact: two };
+  assert.deepEqual(soleActionArgs('drain', ready), { force: true, acknowledgedSole: ['m1', 'org/m 2'] });
+  assert.deepEqual(soleActionArgs('restart', ready), { force: true, acknowledgedSole: ['m1', 'org/m 2'] });
+  assert.deepEqual(soleActionArgs('stop', ready), { force: false });
+  for (const s of [{ status: 'loading' }, { status: 'error' }, { status: 'idle' },
+    { status: 'ready', impact: empty }, { status: 'ready', impact: cold }, { status: 'ready', impact: unk }]) {
+    assert.deepEqual(soleActionArgs('drain', s), { force: false });
+  }
+});
+
+test('force is only ever decided by shouldForce', () => {
+  const ready = { status: 'ready', impact: sole };
+  for (const action of ['drain', 'start', 'stop', 'restart']) {
+    assert.equal(soleActionArgs(action, ready).force, shouldForce(action, ready));
+  }
+});
+
+test('query carries one encoded acknowledge_sole per model after force', () => {
+  assert.equal(runtimeActionQuery({ force: true, acknowledgedSole: ['m1', 'm2'] }), '?force=true&acknowledge_sole=m1&acknowledge_sole=m2');
+  assert.equal(
+    runtimeActionQuery({ acknowledgeReplica: true, force: true, acknowledgedSole: ['a+b&c=d#e;f%41/g:h', 'café'] }),
+    `?acknowledge_replica=true&force=true&acknowledge_sole=${encodeURIComponent('a+b&c=d#e;f%41/g:h')}&acknowledge_sole=${encodeURIComponent('café')}`,
+  );
+  const q = runtimeActionQuery({ force: true, acknowledgedSole: ['a+b&c=d#e;f%41/g:h'] });
+  assert.equal(new URLSearchParams(q.slice(1)).get('acknowledge_sole'), 'a+b&c=d#e;f%41/g:h');
+});
+
+test('an empty reviewed list still sends the key; no force sends no ack', () => {
+  assert.equal(runtimeActionQuery({ force: true, acknowledgedSole: [] }), '?force=true&acknowledge_sole=');
+  assert.equal(runtimeActionQuery({ force: true }), '?force=true');
+  assert.equal(runtimeActionQuery({ force: false, acknowledgedSole: ['m1'] }), '');
+});
+
+test('the query size limit: just under passes, just over is refused', () => {
+  const base = 'force=true&acknowledge_sole='.length;
+  const under = 'a'.repeat(MAX_SOLE_QUERY_BYTES - base);
+  assert.equal(runtimeActionQuery({ force: true, acknowledgedSole: [under] }).length - 1, MAX_SOLE_QUERY_BYTES);
+  assert.throws(() => runtimeActionQuery({ force: true, acknowledgedSole: [under + 'a'] }), /Too many models/);
+  assert.equal(MAX_SOLE_QUERY_BYTES, 6000);
+});
+
+test('a stale-ack refusal maps to the reopen banner; a plain sole_replica refusal keeps its wording', () => {
+  const stale = runtimeActionFailureInfo(409, { error: 'server text', code: 'sole_replica', unacknowledged: ['m9'] }, 'Failed');
+  assert.equal(stale.code, 'sole_replica');
+  assert.ok(stale.message.startsWith(STALE_LIST_MESSAGE));
+  assert.match(stale.message, /Not in your list: m9./);
+  const plain = runtimeActionFailureInfo(409, { error: 'x', code: 'sole_replica' }, 'Failed');
+  assert.notEqual(plain.message, STALE_LIST_MESSAGE);
+  const emptyList = runtimeActionFailureInfo(409, { error: 'x', code: 'sole_replica', unacknowledged: [] }, 'Failed');
+  assert.notEqual(emptyList.message, STALE_LIST_MESSAGE);
+});
+
+test('both dialogs take force and the ack from soleActionArgs and never retry on a refusal', () => {
+  const src = readFileSync(new URL('../src/pages/GPUNodes.tsx', import.meta.url), 'utf8');
+  assert.equal(src.match(/soleActionArgs\(/g).length, 2);
+  assert.doesNotMatch(src, /shouldForce\(/);
+  const drainStart = src.indexOf('const handleDrainNode');
+  const drainEnd = src.indexOf('const handleUndrainNode');
+  assert.ok(drainStart >= 0 && drainEnd > drainStart, 'drain handler markers must exist');
+  const drainCatch = src.slice(drainStart, drainEnd);
+  assert.equal(drainCatch.match(/drainNode\(/g).length, 1, 'handleDrainNode calls the API once and never retries');
+  assert.match(drainCatch, /drainImpact\.reload\(\)/);
+  const restartStart = src.indexOf('const runRuntimeAction');
+  const restartEnd = src.indexOf('const viewRuntimeLogs');
+  assert.ok(restartStart >= 0 && restartEnd > restartStart, 'restart handler markers must exist');
+  const restartBlock = src.slice(restartStart, restartEnd);
+  assert.equal(restartBlock.match(/restartNodeRuntime\(/g).length, 1);
+  assert.match(restartBlock, /setRuntimeActionConfirm\(action\)/);
+});
+
+test('the same model under two runtimes is acknowledged once', () => {
+  const dup = { models: [{ model: 'm1', runtime: 'ollama' }, { model: 'm1', runtime: 'vllm' }, { model: 'm2', runtime: 'vllm' }], cold_load_only: [], unknown: [] };
+  assert.deepEqual(soleActionArgs('drain', { status: 'ready', impact: dup }), { force: true, acknowledgedSole: ['m1', 'm2'] });
+});
+
+test('force by action and state, spelled out', () => {
+  const ready = { status: 'ready', impact: sole };
+  const expected = { drain: true, restart: true, start: false, stop: false };
+  for (const [action, want] of Object.entries(expected)) {
+    assert.equal(soleActionArgs(action, ready).force, want, action);
+    assert.equal(soleActionArgs(action, { status: 'ready', impact: empty }).force, false, action);
+  }
+});
+
+test('the sole_replica code is one shared constant and the stale banner is accurate for any list', () => {
+  assert.equal(SOLE_REPLICA_CODE, 'sole_replica');
+  assert.doesNotMatch(STALE_LIST_MESSAGE, /the list changed/i);
+  assert.match(STALE_LIST_MESSAGE, /Review the current list and confirm again/);
+  assert.doesNotMatch(STALE_LIST_MESSAGE, /below|above/);
+  const page = readFileSync(new URL('../src/pages/GPUNodes.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(page, /'sole_replica'/, 'GPUNodes uses SOLE_REPLICA_CODE');
+});
+
+test('an encoded query is ASCII, so its length is its byte length', () => {
+  const q = runtimeActionQuery({ force: true, acknowledgedSole: ['café-中文', 'x y'] });
+  assert.ok(/^[ -~]*$/.test(q));
+  assert.equal(new TextEncoder().encode(q).length, q.length);
+});
+
+test('withoutHover removes hover variants only', () => {
+  assert.equal(
+    withoutHover('px-4 bg-amber-600 hover:bg-amber-600/90 sm:hover:shadow-lg group-hover:opacity-100 transition-colors'),
+    'px-4 bg-amber-600 group-hover:opacity-100 transition-colors',
+  );
+  assert.equal(withoutHover(''), '');
+});
+
+test('the drain dialog drops hover while the confirm button is held, and the restart size check runs before the dialog closes', () => {
+  const src = readFileSync(new URL('../src/pages/GPUNodes.tsx', import.meta.url), 'utf8');
+  assert.ok(src.includes('busy || confirmDisabled ? withoutHover(confirmClassName)'));
+  const start = src.indexOf('const runRuntimeAction');
+  assert.ok(start >= 0);
+  const block = src.slice(start, src.indexOf('const viewRuntimeLogs'));
+  const check = block.indexOf('runtimeActionQuery({ acknowledgeReplica: isReplicaMember(agentNode), force, acknowledgedSole })');
+  const close = block.indexOf('setRuntimeActionConfirm(null)');
+  assert.ok(check >= 0 && close > check, 'the size check comes before the dialog closes');
+  assert.match(src, /aria-disabled:hover:bg-destructive/);
+});
+
+test('api.ts sends the acknowledgement for both actions and keeps the unacknowledged list for the failure mapping', () => {
+  const api = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8');
+  assert.ok(api.includes('/drain${runtimeActionQuery({ force, acknowledgedSole })}'));
+  assert.ok(api.includes('/runtime/restart${runtimeActionQuery({ acknowledgeReplica, force, acknowledgedSole })}'));
+  assert.ok(api.includes('unacknowledged?: string[] };'));
+  assert.ok(api.includes('runtimeActionFailureInfo(res.status, j, fallback)'));
+  const drainStart = api.indexOf('export async function drainNode');
+  const drainEnd = api.indexOf('export async function undrainNode');
+  assert.ok(drainStart >= 0 && drainEnd > drainStart);
+  assert.ok(api.slice(drainStart, drainEnd).includes('throw await runtimeActionFailure(res'));
+  assert.ok(runtimeActionFailureInfo(409, { error: 'x', code: 'sole_replica', unacknowledged: ['m'] }, 'Failed to drain node').message.startsWith(STALE_LIST_MESSAGE));
+});
+
+test('messages never point in a direction, and the restart pre-check carries the replica acknowledgement', () => {
+  for (const m of [
+    runtimeActionFailureInfo(409, { code: 'replica_member' }, 'F').message,
+    runtimeActionFailureInfo(409, { code: 'sole_replica' }, 'F').message,
+  ]) assert.doesNotMatch(m, /below|above/);
+  const page = readFileSync(new URL('../src/pages/GPUNodes.tsx', import.meta.url), 'utf8');
+  assert.ok(page.includes('runtimeActionQuery({ acknowledgeReplica: isReplicaMember(agentNode), force, acknowledgedSole })'));
+  // Every in-dialog error paragraph announces itself; the runtime panel's copy
+  // of the same error announces itself only while no dialog is open, so a
+  // screen reader hears it once either way.
+  const alertParas = page.match(/<p role="alert" className="text-sm text-destructive">\{(actionError|runtimeActionError)\}<\/p>/g) ?? [];
+  assert.equal(alertParas.filter(p => p.includes('{actionError}')).length, 4, 'four actionError paragraphs carry role="alert"');
+  assert.equal(alertParas.filter(p => p.includes('{runtimeActionError}')).length, 1, 'the runtime dialog paragraph carries role="alert"');
+  assert.equal(page.match(/\{runtimeActionError\}/g).length, 2, 'the runtime error renders in the panel and the dialog only');
+  assert.ok(page.includes("{runtimeActionError && <p role={runtimeActionConfirm ? undefined : 'alert'} className=\"text-sm text-destructive\">{runtimeActionError}</p>}"), 'the panel paragraph announces only while no dialog is open');
+  // Start, Stop and Restart all clear a stale error when the dialog opens.
+  assert.equal(page.match(/setRuntimeActionNotice\(null\);\s*setRuntimeActionError\(null\);/g).length, 3);
+});
+
+test('the stale-list message names at most five models and counts the rest', () => {
+  const names = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+  const m = runtimeActionFailureInfo(409, { code: 'sole_replica', unacknowledged: names }, 'F').message;
+  assert.match(m, /Not in your list: a, b, c, d, e and 2 more\.$/);
+  assert.doesNotMatch(m, /f, g/);
+  const five = runtimeActionFailureInfo(409, { code: 'sole_replica', unacknowledged: names.slice(0, 5) }, 'F').message;
+  assert.match(five, /Not in your list: a, b, c, d, e\.$/);
+});
+
+test('a list with no usable names falls back to the plain neutral message', () => {
+  const m = runtimeActionFailureInfo(409, { code: 'sole_replica', unacknowledged: [1, null, {}] }, 'F').message;
+  assert.doesNotMatch(m, /Not in your list/);
+  assert.equal(m, 'This node is now the only server of one or more models. Review the current list and confirm again.');
+});
+
+test('the runtime action failure sets the error after the node refresh and clears it on dialog close', () => {
+  const page = readFileSync(new URL('../src/pages/GPUNodes.tsx', import.meta.url), 'utf8');
+  const refresh = page.indexOf("if (reopen && e.code === 'replica_member') await loadNodes();");
+  const setErr = page.lastIndexOf('setRuntimeActionError(e?.message || `Failed to ${action} runtime`);');
+  assert.ok(refresh > 0 && setErr > refresh, 'refresh runs before the error is set');
+  assert.ok(page.includes('setRuntimeActionConfirm(null); setRuntimeActionError(null); }}'), 'closing the dialog clears the error');
 });

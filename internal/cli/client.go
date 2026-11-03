@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Exit codes: 0 ok, 1 user error, 2 server error, 3 the command worked but found
@@ -35,6 +36,14 @@ const (
 type CLIError struct {
 	Code int
 	Msg  string
+
+	// Raw is the response body of a 409, kept so a caller can read fields beyond
+	// the message (the sole-replica lists). Nil for every other error.
+	Raw []byte
+
+	// BodyCut is true when a 409 body was cut short, by a read error or by the
+	// size cap, so Raw (if set) is not the whole body.
+	BodyCut bool
 }
 
 func (e *CLIError) Error() string { return e.Msg }
@@ -244,10 +253,30 @@ func (c *Client) doRequestBodyWith(hc *http.Client, method, path string, body in
 		// just needs to configure something first.
 		defer resp.Body.Close()
 		return nil, userErrorf("%s", readErrorMessage(resp.Body))
-	case resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusNotImplemented || resp.StatusCode == http.StatusConflict:
+	case resp.StatusCode == http.StatusConflict:
 		// 409 is a rejection the operator can act on (for example a runtime
 		// stop on a replica member that needs --acknowledge-replica), not a
-		// server fault.
+		// server fault. The body is kept for callers that read more than the
+		// message.
+		defer resp.Body.Close()
+		raw, readErr := io.ReadAll(io.LimitReader(resp.Body, maxConflictBodyBytes+1))
+		capped := len(raw) > maxConflictBodyBytes
+		if capped {
+			raw = raw[:maxConflictBodyBytes]
+		}
+		conflict := &CLIError{Code: ExitUserError, Msg: conflictMessage(readErrorMessage(bytes.NewReader(raw))), BodyCut: capped || readErr != nil}
+		switch {
+		case readErr != nil:
+			// A body that could not be read in full is not trusted for its lists.
+			conflict.Msg += " (the response body was cut off)"
+		case capped:
+			// A body cut at the cap is not trusted for its lists, so Raw stays nil.
+			conflict.Msg += " (the response body was cut off at the size limit)"
+		default:
+			conflict.Raw = raw
+		}
+		return nil, conflict
+	case resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusNotImplemented:
 		defer resp.Body.Close()
 		return nil, userErrorf("%s", readErrorMessage(resp.Body))
 	case resp.StatusCode >= 400:
@@ -283,19 +312,18 @@ func (c *Client) Logout() error {
 // acknowledge_replica=true, which the server requires for a stop or restart
 // on a multi-host replica head, worker or unresolved member. force sends
 // force=true, which a restart needs when it would leave a model with no other
-// node able to serve it. The returned Replica is nil for a standalone node.
-func (c *Client) RuntimeAction(node, action string, acknowledgeReplica, force bool) (*RuntimeActionResult, error) {
+// node able to serve it. ackSole, sent only with force, is the list of models
+// the operator was shown: nil sends no acknowledge_sole key (a bare force),
+// while a non-nil list, even an empty one, sends the key so the server checks
+// that list is still the whole current list. The returned Replica is nil for a
+// standalone node.
+func (c *Client) RuntimeAction(node, action string, acknowledgeReplica, force bool, ackSole []string) (*RuntimeActionResult, error) {
 	path := "/admin/nodes/" + urlPathEscape(node) + "/runtime/" + action
-	var query []string
-	if acknowledgeReplica {
-		query = append(query, "acknowledge_replica=true")
+	query, err := soleActionQuery(acknowledgeReplica, force, ackSole)
+	if err != nil {
+		return nil, err
 	}
-	if force {
-		query = append(query, "force=true")
-	}
-	if len(query) > 0 {
-		path += "?" + strings.Join(query, "&")
-	}
+	path += query
 	resp, err := c.doRequestBody(http.MethodPost, path, nil)
 	if err != nil {
 		return nil, err
@@ -635,8 +663,9 @@ type DrainResult struct {
 // (marbor-internal routing state; never sent to the Marbor Agent), mirroring the
 // UI's GPUNodes.tsx "Drain" action. graceSeconds < 0 means "not set" (absent
 // from the request body - infinite drain, today's frozen default). force sends
-// force=true, which a drain needs when the node is the only server of a model.
-func (c *Client) DrainNode(node, reason string, graceSeconds int, force bool) (*DrainResult, error) {
+// force=true, which a drain needs when the node is the only server of a model;
+// ackSole works as for RuntimeAction.
+func (c *Client) DrainNode(node, reason string, graceSeconds int, force bool, ackSole []string) (*DrainResult, error) {
 	body := map[string]any{}
 	if reason != "" {
 		body["reason"] = reason
@@ -647,10 +676,11 @@ func (c *Client) DrainNode(node, reason string, graceSeconds int, force bool) (*
 	if len(body) == 0 {
 		body = nil
 	}
-	path := "/admin/nodes/" + urlPathEscape(node) + "/drain"
-	if force {
-		path += "?force=true"
+	query, err := soleActionQuery(false, force, ackSole)
+	if err != nil {
+		return nil, err
 	}
+	path := "/admin/nodes/" + urlPathEscape(node) + "/drain" + query
 	resp, err := c.doRequestBody(http.MethodPost, path, body)
 	if err != nil {
 		return nil, err
@@ -2852,6 +2882,23 @@ func (c *Client) savedSessionHint() string {
 		return " - run marbor login again"
 	}
 	return ""
+}
+
+// maxConflictMsgBytes caps the text of a 409 message printed to the operator.
+const maxConflictMsgBytes = 400
+
+// conflictMessage strips control characters from a 409 message and cuts it to
+// maxConflictMsgBytes (on a rune boundary), saying so when it was cut.
+func conflictMessage(msg string) string {
+	msg = stripControl(msg)
+	if len(msg) <= maxConflictMsgBytes {
+		return msg
+	}
+	cut := maxConflictMsgBytes
+	for cut > 0 && !utf8.RuneStart(msg[cut]) {
+		cut--
+	}
+	return msg[:cut] + "... (message cut)"
 }
 
 // readErrorMessage best-effort extracts the "error" field the Admin API's
