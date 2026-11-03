@@ -1,6 +1,7 @@
 package router
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -37,7 +38,7 @@ func TestCorrelate_VLLMHugeNodeCountBoundsMissingRanks(t *testing.T) {
 	if strings.Contains(joined, "rank 33 has not been seen") {
 		t.Errorf("ranks beyond the cap must be summarized: %q", joined)
 	}
-	if !strings.Contains(joined, "and 1048543 more ranks have not been seen") {
+	if !strings.Contains(joined, fmt.Sprintf("and %d more ranks have not been seen", (1<<20)-1-maxListedMissingRanks)) {
 		t.Errorf("missing summary count: %q", joined)
 	}
 }

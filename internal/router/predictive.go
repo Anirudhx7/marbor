@@ -205,6 +205,7 @@ func (r *Router) RunPredictionCycle(ctx context.Context, now time.Time) {
 
 	for _, n := range healthy {
 		n.mu.RLock()
+		nodeRuntime := n.Runtime
 		var warmModels []string
 		for _, m := range n.LoadedModels {
 			warmModels = append(warmModels, m.Name)
@@ -245,7 +246,7 @@ func (r *Router) RunPredictionCycle(ctx context.Context, now time.Time) {
 
 				wasAlreadyWarm := false
 				for _, lm := range warmModels {
-					if ModelNamesEquivalent(lm, P) {
+					if modelNamesMatchOnRuntime(nodeRuntime, lm, P) {
 						wasAlreadyWarm = true
 						break
 					}
@@ -348,7 +349,7 @@ func (r *Router) runTimeOfDayPrewarm(ctx context.Context, targetHour int, health
 				n.mu.RLock()
 				loaded := false
 				for _, m := range n.LoadedModels {
-					if ModelNamesEquivalent(m.Name, model) {
+					if modelNamesMatchOnRuntime(n.Runtime, m.Name, model) {
 						loaded = true
 						break
 					}

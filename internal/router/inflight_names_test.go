@@ -114,3 +114,35 @@ func TestEvictForHeadroom_SkipsVictimThatGainedInFlightAfterSnapshot(t *testing.
 		t.Fatalf("expected selection to continue to the next victim, unloads: %v", unloaded)
 	}
 }
+
+// When every candidate is serving a request, the loop must give up instead of
+// spinning, and report that no room was made.
+func TestEvictForHeadroom_AllCandidatesInFlightTerminatesFalse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		t.Errorf("nothing should be unloaded, got %s", req.URL.Path)
+	}))
+	defer srv.Close()
+	r := &Router{
+		nodes: []*NodeState{{
+			Name: "n1", URL: srv.URL, Healthy: true, VRAMTotalMB: 120,
+			LoadedModels: []ModelInfo{
+				{Name: "a:latest", SizeVRAM: 50 * mib},
+				{Name: "b", SizeVRAM: 50 * mib},
+			},
+			modelInFlight: map[string]int32{"a": 1, "b:latest": 2},
+		}},
+		lastUsed: map[string]time.Time{},
+		pinned:   map[string]map[string]bool{},
+	}
+	evicted := 0
+	done := make(chan bool, 1)
+	go func() { done <- r.evictForHeadroom(context.Background(), "n1", "newmodel", 100*mib, &evicted) }()
+	select {
+	case ok := <-done:
+		if ok || evicted != 0 {
+			t.Fatalf("made room = %v, evicted = %d; want false, 0", ok, evicted)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("evictForHeadroom did not terminate")
+	}
+}

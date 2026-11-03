@@ -1047,7 +1047,7 @@ func (r *Router) evictForHeadroom(ctx context.Context, nodeName, forModel string
 					continue // higher-priority keep-warm model: protected
 				}
 			}
-			if inFlightFor(inFlight, m.name) > 0 {
+			if inFlightFor(inFlight, m.name, targetRuntime) > 0 {
 				// Actively serving a request right now: its last-used
 				// timestamp is stamped once at routing time and never
 				// refreshed mid-stream, so it can look coldest and get
@@ -1084,9 +1084,10 @@ func (r *Router) evictForHeadroom(ctx context.Context, nodeName, forModel string
 		// blocked, so re-read the live count right before unloading. A model
 		// that started serving since is skipped and selection continues.
 		target.mu.RLock()
-		live := inFlightFor(target.modelInFlight, victim.name)
+		live := inFlightFor(target.modelInFlight, victim.name, targetRuntime)
 		target.mu.RUnlock()
 		if live > 0 {
+			log.Printf("headroom: node %s: skipping eviction of %q for %q, it started serving a request after victims were chosen", nodeName, victim.name, forModel)
 			inFlight[victim.name] = live
 			continue
 		}
@@ -1103,13 +1104,14 @@ func (r *Router) evictForHeadroom(ctx context.Context, nodeName, forModel string
 	return free >= neededBytes
 }
 
-// inFlightFor sums the in-flight counts recorded under any name equivalent to
-// model, since requests are counted under the raw requested name while the
-// runtime reports residents in their tagged form.
-func inFlightFor(counts map[string]int32, model string) int32 {
+// inFlightFor sums the in-flight counts recorded under any name that matches
+// model on a node running runtime (see modelNamesMatchOnRuntime): requests are
+// counted under the raw requested name while Ollama
+// reports residents in their tagged form. Other runtimes match exactly.
+func inFlightFor(counts map[string]int32, model, runtime string) int32 {
 	var total int32
 	for name, n := range counts {
-		if ModelNamesEquivalent(name, model) {
+		if modelNamesMatchOnRuntime(runtime, name, model) {
 			total += n
 		}
 	}

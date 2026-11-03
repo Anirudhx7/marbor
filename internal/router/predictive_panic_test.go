@@ -33,16 +33,29 @@ func TestRunTimeOfDayPrewarm_PanicInPrewarmIsRecovered(t *testing.T) {
 		FetchedAt: time.Now(),
 	}
 	r.nodes[0].VRAMTotalMB = 8192
-	called := make(chan struct{}, 1)
+	panicked := make(chan struct{})
 	r.prewarmHook = func() {
-		called <- struct{}{}
+		defer close(panicked)
 		panic("boom")
 	}
 	r.runTimeOfDayPrewarm(context.Background(), 12, []*NodeState{r.nodes[0]}, r.warmupCfg, "10m")
 	select {
-	case <-called:
+	case <-panicked:
 	case <-time.After(3 * time.Second):
 		t.Fatal("prewarm goroutine never ran")
 	}
-	time.Sleep(200 * time.Millisecond) // let the panic unwind
+	// The deferred close runs while the panic unwinds. Recovery is observable
+	// through the router still serving: the process is alive and a lock the
+	// goroutine could have held is free.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		r.lockNodeLoad("node-a")()
+		r.RecordTransition("model-tod", time.Now())
+	}()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("router is stuck after a recovered prewarm panic")
+	}
 }

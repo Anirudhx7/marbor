@@ -55,17 +55,43 @@ func TestIsModelWarm_TaggedMatchKeepsDigestMismatchCheck(t *testing.T) {
 	}
 }
 
-func TestIsEligibleForModel_NonOllamaBareRequestTaggedResident(t *testing.T) {
+// ":latest" is an Ollama convention. Other runtimes serve exact ids, so a
+// bare request must not be treated as warm on a node reporting "name:latest".
+func TestNonOllamaNamesMatchExactlyOnly(t *testing.T) {
 	r := newTaggedRouter("vllm", ModelInfo{Name: "llama3:latest"})
-	if !r.isEligibleForModel(r.nodes[0], "llama3") {
-		t.Error("non-Ollama node reporting the :latest form must stay eligible for the bare name")
+	n := r.nodes[0]
+	if r.isModelWarm(n, "llama3") {
+		t.Error("bare request must not be warm against a :latest resident on a non-Ollama node")
 	}
-	if r.isEligibleForModel(r.nodes[0], "other") {
+	if r.isEligibleForModel(n, "llama3") {
+		t.Error("non-Ollama node reporting only the :latest form must be ineligible for the bare name")
+	}
+	if got := warmValue(r, "llama3"); got != 0 {
+		t.Errorf("warm factor = %v, want 0 for a non-Ollama near-match", got)
+	}
+	if !r.isEligibleForModel(n, "llama3:latest") {
+		t.Error("exact name must stay eligible")
+	}
+	if r.isEligibleForModel(n, "other") {
 		t.Error("non-Ollama node without the model must stay ineligible")
 	}
 }
 
-func TestRunTimeOfDayPrewarm_TaggedResidentIsWarm(t *testing.T) {
+func TestInFlightFor_RuntimeScopedEquivalence(t *testing.T) {
+	counts := map[string]int32{"m": 1}
+	if inFlightFor(counts, "m:latest", "ollama") != 1 || inFlightFor(counts, "m:latest", "") != 1 {
+		t.Error("Ollama (or unknown runtime) must treat m and m:latest as one model")
+	}
+	if inFlightFor(counts, "m:latest", "vllm") != 0 {
+		t.Error("non-Ollama runtimes match exact names only")
+	}
+	if inFlightFor(counts, "m", "vllm") != 1 {
+		t.Error("exact name must count on every runtime")
+	}
+}
+
+func prewarmHitsForResident(t *testing.T, runtime string) int32 {
+	t.Helper()
 	var hits int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if req.URL.Path == "/api/tags" {
@@ -94,9 +120,23 @@ func TestRunTimeOfDayPrewarm_TaggedResidentIsWarm(t *testing.T) {
 	}
 	r.nodes[0].LoadedModels = []ModelInfo{{Name: "model-tod:latest"}}
 	r.nodes[0].VRAMTotalMB = 8192
+	r.nodes[0].Runtime = runtime
 	r.runTimeOfDayPrewarm(context.Background(), hour, []*NodeState{r.nodes[0]}, r.warmupCfg, "10m")
-	time.Sleep(200 * time.Millisecond)
-	if got := atomic.LoadInt32(&hits); got != 0 {
+	deadline := time.Now().Add(time.Second)
+	for atomic.LoadInt32(&hits) == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	return atomic.LoadInt32(&hits)
+}
+
+func TestRunTimeOfDayPrewarm_TaggedResidentIsWarmOnOllama(t *testing.T) {
+	if got := prewarmHitsForResident(t, "ollama"); got != 0 {
 		t.Fatalf("prewarm reloaded a model already resident as :latest (%d requests)", got)
+	}
+}
+
+func TestRunTimeOfDayPrewarm_TaggedResidentIsNotWarmOnNonOllama(t *testing.T) {
+	if got := prewarmHitsForResident(t, "vllm"); got == 0 {
+		t.Fatal("non-Ollama near-match name must not count as already warm")
 	}
 }
