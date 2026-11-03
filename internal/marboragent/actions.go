@@ -199,6 +199,9 @@ func hfRepoID(model string) string {
 func runDownload(ctx context.Context, driver, identifier, hfToken string, name string, args ...string) error {
 	var cmd *exec.Cmd
 	if driver == "docker" && identifier != "" {
+		if err := validateDockerContainer(identifier); err != nil {
+			return err
+		}
 		dockerArgs := []string{"exec"}
 		if hfToken != "" {
 			dockerArgs = append(dockerArgs, "-e", "HF_TOKEN="+hfToken)
