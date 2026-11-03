@@ -739,8 +739,8 @@ type Router struct {
 	lastTimeOfDayPrewarmHour int
 	// prewarmHook, when set, runs at the start of every predictive prewarm. It
 	// must be set before the router starts and never changed afterwards (it is
-	// read without a lock). Tests
-	// use it to observe or fail a prewarm goroutine; production leaves it nil.
+	// read without a lock). Tests use it to observe or fail a prewarm
+	// goroutine; production leaves it nil.
 	prewarmHook func()
 	// decisionLog is a capped ring buffer of the most recent predictive
 	// decisions, exposed read-only via GET /api/predictive/decisions for

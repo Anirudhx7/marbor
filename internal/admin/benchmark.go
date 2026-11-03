@@ -16,6 +16,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math"
 	"net/http"
 	"sort"
@@ -348,16 +349,14 @@ func (s *Server) handleRunBenchmark(w http.ResponseWriter, r *http.Request) {
 		Models:    []string{body.Model},
 		ExpiresAt: time.Now().Add(benchmarkKeyTTL).Format(time.RFC3339),
 	}
-	if s.auth != nil {
-		s.auth.AddKey(k)
+	if err := s.persistKey(k); err != nil {
+		s.benchMu.Lock()
+		delete(s.benchJobs, jobID)
+		cancel()
+		s.benchMu.Unlock()
+		writeServerError(w, r, err)
+		return
 	}
-	_ = s.st.UpsertKey(store.KeyRecord{
-		Name:      k.Name,
-		Key:       k.Key,
-		Models:    k.Models,
-		Revoked:   false,
-		ExpiresAt: k.ExpiresAt,
-	})
 	job.mu.Lock()
 	job.keyName = keyName
 	job.mu.Unlock()
@@ -453,7 +452,9 @@ func (s *Server) runBenchmarkJob(ctx context.Context, job *benchmarkJob, apiKey 
 		if s.auth != nil {
 			s.auth.RevokeKey(job.keyName)
 		}
-		_ = s.st.DeleteKey(job.keyName)
+		if err := s.st.DeleteKey(job.keyName); err != nil {
+			log.Printf("admin: remove benchmark key %q: %v", job.keyName, err)
+		}
 	}()
 
 	target := fmt.Sprintf("http://localhost:%d", s.cfg.Proxy.Port)

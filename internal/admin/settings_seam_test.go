@@ -66,6 +66,7 @@ func TestAdmin_SettingsJSONUsesLowercaseNames(t *testing.T) {
 func TestAdmin_SettingsSaveKeepsCustomProxyPort(t *testing.T) {
 	cfg := config.Config{}
 	cfg.Proxy.Port = 12345
+	cfg.Auth.Keys = []config.KeyConfig{{Name: "k", Key: "sk-keep-me"}}
 	s := settingsServer(t, cfg)
 
 	m := getSettingsMap(t, s)
@@ -81,6 +82,12 @@ func TestAdmin_SettingsSaveKeepsCustomProxyPort(t *testing.T) {
 	s.mu.RLock()
 	got := s.cfg.Proxy.Port
 	s.mu.RUnlock()
+	s.mu.RLock()
+	keys := s.cfg.Auth.Keys
+	s.mu.RUnlock()
+	if len(keys) != 1 || keys[0].Key != "sk-keep-me" {
+		t.Errorf("auth keys after settings save = %+v, want the original key kept", keys)
+	}
 	if got != 12345 {
 		t.Errorf("proxy port after unrelated save = %d, want 12345", got)
 	}
@@ -94,5 +101,28 @@ func TestAdmin_SettingsDoesNotExposeAPIKeySecrets(t *testing.T) {
 	m := getSettingsMap(t, s)
 	if strings.Contains(string(m["auth"]), "sk-probe-1") {
 		t.Fatalf("settings response exposes an API key secret: %s", m["auth"])
+	}
+}
+
+// GET must not return key secrets anywhere in the body, and must not mask the
+// live config's cloud provider keys as a side effect.
+func TestAdmin_SettingsGetHidesKeysAndDoesNotMutateLiveConfig(t *testing.T) {
+	cfg := config.Config{}
+	cfg.Auth.Keys = []config.KeyConfig{{Name: "k", Key: "sk-secret-xyz"}}
+	cfg.CloudProviders = []config.CloudProvider{{Name: "openai", APIKey: "sk-cloud-real", Enabled: true}}
+	s := settingsServer(t, cfg)
+	req := httptest.NewRequest(http.MethodGet, "/admin/settings", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	body := rec.Body.String()
+	if strings.Contains(body, "sk-secret-xyz") || strings.Contains(body, "sk-cloud-real") {
+		t.Errorf("settings body leaks a secret: %s", body)
+	}
+	s.mu.RLock()
+	got := s.cfg.CloudProviders[0].APIKey
+	s.mu.RUnlock()
+	if got != "sk-cloud-real" {
+		t.Errorf("live cloud provider key = %q after GET, want it unchanged", got)
 	}
 }
