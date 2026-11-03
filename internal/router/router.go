@@ -737,6 +737,9 @@ type Router struct {
 	predictionsMetTotal      int64
 	lastAccuracyLogAt        time.Time
 	lastTimeOfDayPrewarmHour int
+	// prewarmHook, when set, runs at the start of every predictive prewarm. Tests
+	// use it to observe or fail a prewarm goroutine; production leaves it nil.
+	prewarmHook func()
 	// decisionLog is a capped ring buffer of the most recent predictive
 	// decisions, exposed read-only via GET /api/predictive/decisions for
 	// dashboard visibility. The engine has no scheduled queue to inspect -
@@ -1579,26 +1582,27 @@ func (r *Router) AddNode(n config.NodeConfig) bool {
 		// changing too - the DB's INSERT OR REPLACE already replaces the URL
 		// on a same-name POST with zero protection, so matching that is the
 		// correct minimal fix, not a new restriction.
-		existingByName.mu.Lock()
-		if existingByName.URL != n.URL {
-			// URL is actually changing - the upsert previously mutated it
-			// in place while leaving Healthy/Failures/SuccessHistory/
-			// HealthHistory/ThermalBreaches/LoadedModels/LastErrorAt/
-			// AgentTLSMismatch untouched, contradicting UpdateNodeURL's
-			// explicit design (it builds a brand-new NodeState) that a URL
-			// change means prior live state is stale and must not carry
-			// over. Draining is left alone: that's an explicit operator
-			// choice, not telemetry, and a URL fix shouldn't silently
-			// un-drain a node.
-			existingByName.Healthy = true
-			existingByName.Failures = 0
-			existingByName.SuccessHistory = nil
-			existingByName.HealthHistory = nil
-			existingByName.ThermalBreaches = 0
-			existingByName.LoadedModels = nil
-			existingByName.LastErrorAt = time.Time{}
-			existingByName.AgentTLSMismatch = false
+		existingByName.mu.RLock()
+		urlChanging := existingByName.URL != n.URL
+		existingByName.mu.RUnlock()
+		if urlChanging {
+			// A URL change publishes a brand-new NodeState instead of
+			// rewriting the live one: request handlers read node.URL without
+			// the node lock after Route returns, so an in-place write would
+			// race them. Prior live telemetry (health history, loaded
+			// models, failures) is stale for a new URL and starts fresh;
+			// draining is an explicit operator choice and is carried over,
+			// so a URL fix does not silently un-drain a node.
+			replacement := r.replacementNodeState(existingByName, n.URL, hostOrDefault(n.Host, n.URL))
+			for i, cur := range r.nodes {
+				if cur == existingByName {
+					r.nodes[i] = replacement
+					break
+				}
+			}
+			existingByName = replacement
 		}
+		existingByName.mu.Lock()
 		existingByName.URL = n.URL
 		existingByName.Host = hostOrDefault(n.Host, n.URL)
 		existingByName.GPUModel = n.GPUModel
@@ -2001,48 +2005,12 @@ func (r *Router) UpdateNodeURL(name string, newURL string) error {
 		return fmt.Errorf("node %q not found", name)
 	}
 
-	old.mu.Lock()
+	old.mu.RLock()
 	oldURL := old.URL
 	oldHost := old.Host
-	runtime := old.Runtime
-	autoDetect := old.autoDetect
-	gpuModel := old.GPUModel
-	nvidiaIndex := old.NvidiaIndex
-	vramOverrides := old.VRAMOverrides
-	vramTotalMBConfig := old.VRAMTotalMBConfig
-	declaredGPUIndices := old.DeclaredGPUIndices
-	maxInFlight := old.MaxInFlight
-	tlsFingerprint := old.TLSFingerprint
-	parallelismType := old.ParallelismType
-	parallelismWidth := old.ParallelismWidth
-	replicaPeers := old.ReplicaPeers
-	old.mu.Unlock()
+	old.mu.RUnlock()
 
-	newHost := ResultingHost(oldHost, oldURL, newURL)
-
-	node := &NodeState{
-		Name:               name,
-		URL:                newURL,
-		Host:               newHost,
-		GPUModel:           gpuModel,
-		NvidiaIndex:        nvidiaIndex,
-		VRAMOverrides:      vramOverrides,
-		VRAMTotalMBConfig:  vramTotalMBConfig,
-		DeclaredGPUIndices: declaredGPUIndices,
-		MaxInFlight:        maxInFlight,
-		TLSFingerprint:     tlsFingerprint,
-		ParallelismType:    parallelismType,
-		ParallelismWidth:   parallelismWidth,
-		ReplicaPeers:       replicaPeers,
-		Healthy:            true,
-		FirstSeenAt:        time.Now(),
-		Runtime:            runtime,
-	}
-	if autoDetect {
-		node.autoDetect = true
-	} else {
-		node.probe = runtimepkg.NewProbe(runtime, r.client)
-	}
+	node := r.replacementNodeState(old, newURL, ResultingHost(oldHost, oldURL, newURL))
 	r.nodes[idx] = node
 
 	delete(r.discoveredURLs, oldURL)
@@ -2059,6 +2027,49 @@ func (r *Router) UpdateNodeURL(name string, newURL string) error {
 	}
 	go r.pollNode(node)
 	return nil
+}
+
+// replacementNodeState builds the NodeState that takes over from old when its
+// URL changes. Configuration and operator choices carry over (metadata,
+// overrides, pinned TLS fingerprint, parallelism, and the drain and
+// prewarm-disabled flags, so a URL fix never silently un-drains a node);
+// live telemetry (health history, loaded models, in-flight counts, failures)
+// starts fresh because it described a different address. In-flight counts are
+// not copied on purpose: requests already running hold old and release their
+// counts there. The caller must hold r.mu and publish the result itself.
+func (r *Router) replacementNodeState(old *NodeState, newURL, newHost string) *NodeState {
+	old.mu.RLock()
+	node := &NodeState{
+		Name:                old.Name,
+		URL:                 newURL,
+		Host:                newHost,
+		GPUModel:            old.GPUModel,
+		NvidiaIndex:         old.NvidiaIndex,
+		VRAMOverrides:       old.VRAMOverrides,
+		VRAMTotalMBConfig:   old.VRAMTotalMBConfig,
+		DeclaredGPUIndices:  old.DeclaredGPUIndices,
+		MaxInFlight:         old.MaxInFlight,
+		TLSFingerprint:      old.TLSFingerprint,
+		ParallelismType:     old.ParallelismType,
+		ParallelismWidth:    old.ParallelismWidth,
+		ReplicaPeers:        old.ReplicaPeers,
+		Draining:            old.Draining,
+		DrainedReason:       old.DrainedReason,
+		DrainedGraceSeconds: old.DrainedGraceSeconds,
+		PrewarmDisabled:     old.PrewarmDisabled,
+		Healthy:             true,
+		FirstSeenAt:         time.Now(),
+		Runtime:             old.Runtime,
+	}
+	autoDetect := old.autoDetect
+	runtime := old.Runtime
+	old.mu.RUnlock()
+	if autoDetect {
+		node.autoDetect = true
+	} else {
+		node.probe = runtimepkg.NewProbe(runtime, r.client)
+	}
+	return node
 }
 
 // PatchNode applies runtime metadata overrides to a node without restarting.

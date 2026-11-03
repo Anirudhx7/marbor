@@ -1047,7 +1047,7 @@ func (r *Router) evictForHeadroom(ctx context.Context, nodeName, forModel string
 					continue // higher-priority keep-warm model: protected
 				}
 			}
-			if inFlight[m.name] > 0 {
+			if inFlightFor(inFlight, m.name) > 0 {
 				// Actively serving a request right now: its last-used
 				// timestamp is stamped once at routing time and never
 				// refreshed mid-stream, so it can look coldest and get
@@ -1080,6 +1080,16 @@ func (r *Router) evictForHeadroom(ctx context.Context, nodeName, forModel string
 			break
 		}
 		victim := loaded[coldIdx]
+		// The snapshot above can be minutes old once earlier unloads have
+		// blocked, so re-read the live count right before unloading. A model
+		// that started serving since is skipped and selection continues.
+		target.mu.RLock()
+		live := inFlightFor(target.modelInFlight, victim.name)
+		target.mu.RUnlock()
+		if live > 0 {
+			inFlight[victim.name] = live
+			continue
+		}
 		if err := r.unloadModel(ctx, target, victim.name, "LRU headroom"); err != nil {
 			log.Printf("headroom: failed to evict %q from %s: %v", victim.name, nodeName, truncateForLog(err.Error(), maxLogValueBytes))
 			break
@@ -1091,6 +1101,19 @@ func (r *Router) evictForHeadroom(ctx context.Context, nodeName, forModel string
 		*evicted++
 	}
 	return free >= neededBytes
+}
+
+// inFlightFor sums the in-flight counts recorded under any name equivalent to
+// model, since requests are counted under the raw requested name while the
+// runtime reports residents in their tagged form.
+func inFlightFor(counts map[string]int32, model string) int32 {
+	var total int32
+	for name, n := range counts {
+		if ModelNamesEquivalent(name, model) {
+			total += n
+		}
+	}
+	return total
 }
 
 // errNoHeadroom is the warm-load error recorded when room was needed and could
@@ -1598,7 +1621,7 @@ func (r *Router) makeHeadroom(ctx context.Context, n *NodeState, model string) e
 		// tick (gated only by the cooldown), that full wipe would repeat
 		// indefinitely for as long as this oversized model is requested.
 		log.Printf("ensureHeadroom: model %q (%d bytes) exceeds node %s's total capacity (%d bytes) - skipping", model, est, nodeName, totalBytes)
-		return nil
+		return errNoHeadroom
 	}
 
 	// Reserve this model's estimated footprint now, and pick up whatever other
@@ -1616,7 +1639,7 @@ func (r *Router) makeHeadroom(ctx context.Context, n *NodeState, model string) e
 	if est+reservedByOthers > totalBytes {
 		log.Printf("ensureHeadroom: model %q (%d bytes) plus %d bytes reserved by other in-flight warmups exceeds node %s's total capacity (%d bytes) - skipping", model, est, reservedByOthers, nodeName, totalBytes)
 		r.clearWarmReservation(nodeName, model)
-		return nil
+		return errNoHeadroom
 	}
 
 	// FragmentationOverheadMult: see EvictForHeadroom - allocator/CUDA graph
