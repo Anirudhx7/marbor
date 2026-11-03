@@ -307,7 +307,7 @@ type DockerConfig struct {
 }
 
 type ProxyConfig struct {
-	Port int `yaml:"port"`
+	Port int `yaml:"port" json:"port"`
 	// LogFormat controls the format of system (non-access) log lines.
 	// "text" emits the default Go log prefix lines; "json" emits slog JSON
 	// objects that log aggregators (Loki, Datadog, Fluentd) can parse natively.
@@ -345,8 +345,8 @@ type AuthConfig struct {
 	// Enabled turns auth enforcement on. Defaults to true (enabled) when the
 	// key is absent from the config file; set to false to explicitly disable.
 	// Read via IsEnabled(), never the field directly.
-	Enabled *bool       `yaml:"enabled,omitempty"`
-	Keys    []KeyConfig `yaml:"keys"`
+	Enabled *bool       `yaml:"enabled,omitempty" json:"enabled,omitempty"`
+	Keys    []KeyConfig `yaml:"keys" json:"keys"`
 }
 
 type KeyConfig struct {

@@ -22,6 +22,7 @@ import (
 	"net/url"
 	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -5014,19 +5015,10 @@ func (s *Server) handleApproveUser(w http.ResponseWriter, r *http.Request) {
 			MonthlyLimit: req.CreateKey.MonthlyLimit,
 			Models:       req.CreateKey.Models,
 		}
-		if s.auth != nil {
-			s.auth.AddKey(kc)
+		if err := s.persistKey(kc); err != nil {
+			writeServerError(w, r, err)
+			return
 		}
-		_ = s.st.UpsertKey(store.KeyRecord{
-			Name:          kc.Name,
-			Key:           kc.Key,
-			RateLimit:     kc.RateLimit,
-			DailyLimit:    kc.DailyLimit,
-			MonthlyLimit:  kc.MonthlyLimit,
-			DailyUsdCap:   kc.DailyUsdCap,
-			MonthlyUsdCap: kc.MonthlyUsdCap,
-			Models:        kc.Models,
-		})
 		req.APIKeyName = keyName
 	}
 
@@ -5485,10 +5477,23 @@ func validateExpiresAt(s string) error {
 
 func (s *Server) handleAddKey(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
-	var k config.KeyConfig
-	if err := json.NewDecoder(r.Body).Decode(&k); err != nil {
+	// The dashboard sends snake_case rate_limit/expires_at while the CLI sends
+	// camelCase; accept both and let the snake_case form fill a zero value.
+	var req struct {
+		config.KeyConfig
+		RateLimitSnake int    `json:"rate_limit"`
+		ExpiresAtSnake string `json:"expires_at"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
+	}
+	k := req.KeyConfig
+	if k.RateLimit == 0 {
+		k.RateLimit = req.RateLimitSnake
+	}
+	if k.ExpiresAt == "" {
+		k.ExpiresAt = req.ExpiresAtSnake
 	}
 	if k.Name == "" {
 		w.Header().Set("Content-Type", "application/json")
@@ -5527,7 +5532,10 @@ func (s *Server) handleAddKey(w http.ResponseWriter, r *http.Request) {
 		}
 		k.Key = key
 	}
-	s.persistKey(k)
+	if err := s.persistKey(k); err != nil {
+		writeServerError(w, r, err)
+		return
+	}
 	s.logSystemChange(r, "add_key", k.Name, fmt.Sprintf("RateLimit: %d, DailyLimit: %d, MonthlyLimit: %d, DailyUsdCap: %f, MonthlyUsdCap: %f, Models: %v, LocalOnly: %v, AllowLocalDegradation: %v", k.RateLimit, k.DailyLimit, k.MonthlyLimit, k.DailyUsdCap, k.MonthlyUsdCap, k.Models, k.LocalOnly, k.AllowLocalDegradation))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -5549,13 +5557,11 @@ func (s *Server) findKeyRecord(name string) (store.KeyRecord, bool, error) {
 	return store.KeyRecord{}, false, nil
 }
 
-// persistKey writes k to the in-memory auth middleware and the store. Shared
-// by handleAddKey (create) and handleRotateKey (explicit rotate).
-func (s *Server) persistKey(k config.KeyConfig) {
-	if s.auth != nil {
-		s.auth.AddKey(k)
-	}
-	_ = s.st.UpsertKey(store.KeyRecord{
+// persistKey writes k to the store first and only then to the in-memory auth
+// middleware, so a failed durable write never leaves a live key that would
+// vanish on restart. Shared by handleAddKey (create) and handleRotateKey.
+func (s *Server) persistKey(k config.KeyConfig) error {
+	if err := s.st.UpsertKey(store.KeyRecord{
 		Name:                  k.Name,
 		Key:                   k.Key,
 		RateLimit:             k.RateLimit,
@@ -5568,7 +5574,13 @@ func (s *Server) persistKey(k config.KeyConfig) {
 		ExpiresAt:             k.ExpiresAt,
 		LocalOnly:             k.LocalOnly,
 		AllowLocalDegradation: k.AllowLocalDegradation,
-	})
+	}); err != nil {
+		return err
+	}
+	if s.auth != nil {
+		s.auth.AddKey(k)
+	}
+	return nil
 }
 
 // handleRotateKey issues a new plaintext token for an existing key,
@@ -5606,7 +5618,10 @@ func (s *Server) handleRotateKey(w http.ResponseWriter, r *http.Request) {
 		LocalOnly:             existing.LocalOnly,
 		AllowLocalDegradation: existing.AllowLocalDegradation,
 	}
-	s.persistKey(k)
+	if err := s.persistKey(k); err != nil {
+		writeServerError(w, r, err)
+		return
+	}
 	s.logSystemChange(r, "rotate_key", name, "")
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -5615,10 +5630,15 @@ func (s *Server) handleRotateKey(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleRevokeKey(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	// Durable write first: a revocation that did not persist must not be
+	// reported as done, or the key would come back after a restart.
+	if err := s.st.RevokeKey(name); err != nil {
+		writeServerError(w, r, err)
+		return
+	}
 	if s.auth != nil {
 		s.auth.RevokeKey(name)
 	}
-	_ = s.st.RevokeKey(name)
 	s.logSystemChange(r, "revoke_key", name, "")
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -5649,7 +5669,7 @@ func (s *Server) handlePatchKey(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if s.auth == nil || !s.auth.PatchKey(name, patch) {
+	if s.auth == nil || !slices.Contains(s.auth.AllKeyNames(), name) {
 		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("key %q not found", name))
 		return
 	}
@@ -5659,12 +5679,14 @@ func (s *Server) handlePatchKey(w http.ResponseWriter, r *http.Request) {
 	// auth.PatchKey above still applies in that mode.
 	var keyRecord *store.KeyRecord
 	keys, err := s.st.AllKeys()
-	if err == nil {
-		for _, k := range keys {
-			if k.Name == name {
-				keyRecord = &k
-				break
-			}
+	if err != nil {
+		writeServerError(w, r, err)
+		return
+	}
+	for _, k := range keys {
+		if k.Name == name {
+			keyRecord = &k
+			break
 		}
 	}
 	if keyRecord != nil {
@@ -5695,7 +5717,15 @@ func (s *Server) handlePatchKey(w http.ResponseWriter, r *http.Request) {
 		if patch.AllowLocalDegradation != nil {
 			keyRecord.AllowLocalDegradation = *patch.AllowLocalDegradation
 		}
-		_ = s.st.UpsertKey(*keyRecord)
+		if err := s.st.UpsertKey(*keyRecord); err != nil {
+			writeServerError(w, r, err)
+			return
+		}
+	}
+	// Store write done (or no store attached): now apply to live auth.
+	if !s.auth.PatchKey(name, patch) {
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("key %q not found", name))
+		return
 	}
 	s.logSystemChange(r, "patch_key", name, fmt.Sprintf("RateLimitChanged: %v, DailyLimitChanged: %v, MonthlyLimitChanged: %v, DailyUsdCapChanged: %v, MonthlyUsdCapChanged: %v, ModelsChanged: %v, ExpiresAtChanged: %v, LocalOnlyChanged: %v, AllowLocalDegradationChanged: %v", patch.RateLimit != nil, patch.DailyLimit != nil, patch.MonthlyLimit != nil, patch.DailyUsdCap != nil, patch.MonthlyUsdCap != nil, patch.Models != nil, patch.ExpiresAt != nil, patch.LocalOnly != nil, patch.AllowLocalDegradation != nil))
 	w.Header().Set("Content-Type", "application/json")
@@ -5806,6 +5836,8 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	if cfg.LiteLLM.APIKey != "" {
 		cfg.LiteLLM.APIKey = "***"
 	}
+	// API key secrets are managed through the keys endpoints and never returned here.
+	cfg.Auth.Keys = nil
 	username, _ := r.Context().Value(ctxKeyUsername).(string)
 	if username == "" {
 		username = "admin"
