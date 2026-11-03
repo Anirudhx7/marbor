@@ -13,6 +13,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Query-string limits.** The list is sent in the URL: the dashboard and CLI refuse above 6000 encoded bytes and point to `--force` or a script. A query string that does not parse is ignored when no model would be left without a server, and answered 400 (nothing changed) when one would, including with a bare `force=true`. An audit entry for a forced drain or restart that was sent with a list ends with `Reviewed: true`; the model names in the request are never written to it.
 
 ### Fixed
+- **The marbor agent now rejects a Docker container identifier that is not a valid container name or ID** (for example one starting with `-`) before running `docker exec`, `inspect`, `logs` or the disk-stats probe, so a malformed identifier can no longer be read by the docker CLI as a flag.
 - **A runtime restart whose agent reply is a 5xx or unclear no longer clears the restart record.** Only a 4xx answer (other than 408 and 499, which a proxy can send after passing the request on, a known gap) counts as the agent refusing before it ran the restart. The error then says the outcome is unclear and that the restart record clears on its own after the next poll or after 15 minutes, so a drain of a peer is still checked against a node that may be restarting.
 - **Disabled confirm buttons in the drain and runtime dialogs show the not-allowed cursor again.**
 

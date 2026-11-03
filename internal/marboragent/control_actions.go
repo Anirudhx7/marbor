@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net/http"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -79,6 +80,19 @@ const (
 // what's actually installed on the machine running the test.
 var newControlDriver = buildControlDriver
 
+// dockerNameRE is Docker's own container name/ID grammar. The identifier is
+// passed straight to the docker CLI as a positional argument, so a value that
+// starts with "-" would be parsed as a flag; anchoring on an alphanumeric first
+// character closes that.
+var dockerNameRE = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]*$`)
+
+func validateDockerContainer(name string) error {
+	if !dockerNameRE.MatchString(name) {
+		return fmt.Errorf("invalid docker container identifier %q", name)
+	}
+	return nil
+}
+
 func buildControlDriver(driver, identifier, startCommand string) (control.ControlDriver, error) {
 	if startCommand != "" && driver != "process" {
 		return nil, fmt.Errorf("start_command is only valid for the process driver, got %q", driver)
@@ -87,6 +101,9 @@ func buildControlDriver(driver, identifier, startCommand string) (control.Contro
 	case "systemd":
 		return &control.SystemdDriver{Unit: identifier}, nil
 	case "docker":
+		if err := validateDockerContainer(identifier); err != nil {
+			return nil, err
+		}
 		return &control.DockerDriver{Container: identifier}, nil
 	case "process":
 		var cmd []string
@@ -361,6 +378,9 @@ func (s *Server) handleRuntimeDisk(w http.ResponseWriter, r *http.Request) {
 // than the host's, since it reflects whatever volume/mount is actually
 // backing the container regardless of which one that is.
 func dockerContainerDiskStats(ctx context.Context, container string) (freeBytes, totalBytes int64, err error) {
+	if err := validateDockerContainer(container); err != nil {
+		return 0, 0, err
+	}
 	cmd := exec.CommandContext(ctx, "docker", "exec", container, "sh", "-c",
 		`p="${OLLAMA_MODELS:-${HOME:-/root}/.ollama}"; df -Pk "$p" 2>/dev/null || df -Pk /`)
 	out, err := cmd.Output()
