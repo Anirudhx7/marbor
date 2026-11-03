@@ -340,6 +340,10 @@ func (s *Server) handleRunBenchmark(w http.ResponseWriter, r *http.Request) {
 	keyName := fmt.Sprintf("benchmark-%s-%s-%s", body.Node, body.Model, jobID)
 	keyValue, err := generateAPIKey(keyName)
 	if err != nil {
+		s.benchMu.Lock()
+		delete(s.benchJobs, jobID)
+		cancel()
+		s.benchMu.Unlock()
 		writeServerError(w, r, err)
 		return
 	}
