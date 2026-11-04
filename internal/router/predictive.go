@@ -205,10 +205,9 @@ func (r *Router) RunPredictionCycle(ctx context.Context, now time.Time) {
 
 	for _, n := range healthy {
 		n.mu.RLock()
-		loaded := make(map[string]struct{})
+		nodeRuntime := n.Runtime
 		var warmModels []string
 		for _, m := range n.LoadedModels {
-			loaded[m.Name] = struct{}{}
 			warmModels = append(warmModels, m.Name)
 		}
 		n.mu.RUnlock()
@@ -245,7 +244,13 @@ func (r *Router) RunPredictionCycle(ctx context.Context, now time.Time) {
 				P := freqs[i].model
 				count := freqs[i].count
 
-				_, wasAlreadyWarm := loaded[P]
+				wasAlreadyWarm := false
+				for _, lm := range warmModels {
+					if modelNamesMatchOnRuntime(nodeRuntime, lm, P) {
+						wasAlreadyWarm = true
+						break
+					}
+				}
 				warmupTriggered := false
 
 				// A manual/scheduled unload took P cold on purpose and it's
@@ -275,7 +280,7 @@ func (r *Router) RunPredictionCycle(ctx context.Context, now time.Time) {
 						warmupTriggered = true
 						planned[key] = struct{}{}
 						r.logPredictiveDigestDrift(n, P)
-						go r.prewarmPredicted(ctx, n, P, keepAlive)
+						go safeRun("prewarmPredicted", func() { r.prewarmPredicted(ctx, n, P, keepAlive) })
 
 						// Track prediction accuracy
 						r.predictiveMu.Lock()
@@ -344,7 +349,7 @@ func (r *Router) runTimeOfDayPrewarm(ctx context.Context, targetHour int, health
 				n.mu.RLock()
 				loaded := false
 				for _, m := range n.LoadedModels {
-					if m.Name == model {
+					if modelNamesMatchOnRuntime(n.Runtime, m.Name, model) {
 						loaded = true
 						break
 					}
@@ -367,7 +372,7 @@ func (r *Router) runTimeOfDayPrewarm(ctx context.Context, targetHour int, health
 
 					if estSize > 0 && freeBytes >= estSize {
 						r.logPredictiveDigestDrift(n, model)
-						go r.prewarmPredicted(ctx, n, model, keepAlive)
+						go safeRun("prewarmPredicted", func() { r.prewarmPredicted(ctx, n, model, keepAlive) })
 						log.Printf("[predictive] time-of-day prewarm triggered for model %q on node %s for hour %d (appeared on %d distinct days)",
 							model, n.Name, targetHour, distinctDays)
 					}
@@ -382,6 +387,9 @@ func (r *Router) runTimeOfDayPrewarm(ctx context.Context, targetHour int, health
 // scheduled warmup (see lockNodeLoad) so concurrent origins never evict from
 // the same stale snapshot at once.
 func (r *Router) prewarmPredicted(ctx context.Context, n *NodeState, model, keepAlive string) {
+	if r.prewarmHook != nil {
+		r.prewarmHook()
+	}
 	err := r.loadWithHeadroom(ctx, n, model, keepAlive)
 	if err == nil {
 		metrics.WarmupPing(model, n.Name, "ok")

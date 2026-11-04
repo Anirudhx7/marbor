@@ -163,6 +163,9 @@ type TokenEvent struct {
 }
 
 type Server struct {
+	// keysMu serializes API key create/rotate/revoke/patch so a concurrent
+	// revoke cannot be undone by another handler's store write.
+	keysMu             sync.Mutex
 	router             *router.Router
 	soleReplica        soleReplicaState // serializes the sole-replica check with drain/restart
 	auth               *auth.Middleware
@@ -1912,6 +1915,12 @@ func (s *Server) ReloadFromStore() (nodesAdded, nodesRemoved, authKeys, cloudPro
 	// them removes the partial-apply window entirely - a load failure at any
 	// stage returns before auth/clouds/nodes have been touched, matching the
 	// "keep previous state" contract the SIGHUP caller already assumes.
+	//
+	// keysMu spans the key load and the live apply: without it a revoke that
+	// lands between the read and auth.Reload is undone live, and a concurrent
+	// create/rotate is wiped from live auth until the next reload.
+	s.keysMu.Lock()
+	defer s.keysMu.Unlock()
 	runtimeKeys, kErr := s.st.AllKeys()
 	if kErr != nil {
 		return 0, 0, 0, 0, fmt.Errorf("load keys: %w", kErr)
@@ -4994,6 +5003,7 @@ func (s *Server) handleApproveUser(w http.ResponseWriter, r *http.Request) {
 	approver, _ := r.Context().Value(ctxKeyUsername).(string)
 	now := time.Now()
 	var newKeyValue string
+	createdKey := ""
 
 	if req.CreateKey != nil {
 		keyName := req.CreateKey.Name
@@ -5014,19 +5024,22 @@ func (s *Server) handleApproveUser(w http.ResponseWriter, r *http.Request) {
 			MonthlyLimit: req.CreateKey.MonthlyLimit,
 			Models:       req.CreateKey.Models,
 		}
-		if s.auth != nil {
-			s.auth.AddKey(kc)
+		s.keysMu.Lock()
+		defer s.keysMu.Unlock()
+		// Never overwrite an existing key: persistKey would replace its token
+		// and the failure rollback below would then delete it.
+		if _, exists, ferr := s.findKeyRecord(keyName); ferr != nil {
+			writeServerError(w, r, ferr)
+			return
+		} else if exists {
+			writeJSONError(w, http.StatusConflict, fmt.Sprintf("key %q already exists", keyName))
+			return
 		}
-		_ = s.st.UpsertKey(store.KeyRecord{
-			Name:          kc.Name,
-			Key:           kc.Key,
-			RateLimit:     kc.RateLimit,
-			DailyLimit:    kc.DailyLimit,
-			MonthlyLimit:  kc.MonthlyLimit,
-			DailyUsdCap:   kc.DailyUsdCap,
-			MonthlyUsdCap: kc.MonthlyUsdCap,
-			Models:        kc.Models,
-		})
+		if err := s.persistKey(kc); err != nil {
+			writeServerError(w, r, err)
+			return
+		}
+		createdKey = keyName
 		req.APIKeyName = keyName
 	}
 
@@ -5035,6 +5048,16 @@ func (s *Server) handleApproveUser(w http.ResponseWriter, r *http.Request) {
 	user.ApprovedAt = &now
 	user.ApprovedBy = approver
 	if err := s.st.UpdateUser(user); err != nil {
+		// Do not leave an orphan key behind for a user who is still pending.
+		if createdKey != "" {
+			if rerr := s.revokeKeyLiveFirst(createdKey); rerr != nil {
+				log.Printf("admin: revoke key %q after failed approval: %v", createdKey, rerr)
+			}
+			if derr := s.st.DeleteKey(createdKey); derr != nil {
+				log.Printf("admin: remove key %q after failed approval: %v", createdKey, derr)
+				s.logSystemChange(r, "approve_user", user.Username, "approval failed; key "+createdKey+" is revoked but could not be deleted: "+derr.Error())
+			}
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(`{"error":"failed to update user"}`))
@@ -5080,10 +5103,15 @@ func (s *Server) handleSuspendUser(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.st.DeleteUserSessionsByUserID(id)
 	if user.APIKeyName != "" {
-		if s.auth != nil {
-			s.auth.RevokeKey(user.APIKeyName)
+		s.keysMu.Lock()
+		err := s.revokeKeyLiveFirst(user.APIKeyName)
+		s.keysMu.Unlock()
+		if err != nil {
+			log.Printf("admin: revoke key %q for suspended user: durable write failed: %v", user.APIKeyName, err)
+			s.logSystemChange(r, "suspend_user", user.Username, "key revoked live; durable write failed: "+err.Error())
+			writeJSONError(w, http.StatusInternalServerError, "user suspended; "+keyRevokeNotPersistedMsg)
+			return
 		}
-		_ = s.st.RevokeKey(user.APIKeyName)
 	}
 	s.logSystemChange(r, "suspend_user", user.Username, "")
 	w.Header().Set("Content-Type", "application/json")
@@ -5128,10 +5156,15 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if user.APIKeyName != "" {
-		if s.auth != nil {
-			s.auth.RevokeKey(user.APIKeyName)
+		s.keysMu.Lock()
+		err := s.revokeKeyLiveFirst(user.APIKeyName)
+		s.keysMu.Unlock()
+		if err != nil {
+			log.Printf("admin: revoke key %q for deleted user: durable write failed: %v", user.APIKeyName, err)
+			s.logSystemChange(r, "delete_user", user.Username, "key revoked live; durable write failed: "+err.Error())
+			writeJSONError(w, http.StatusInternalServerError, "user deleted; "+keyRevokeNotPersistedMsg)
+			return
 		}
-		_ = s.st.RevokeKey(user.APIKeyName)
 	}
 	s.logSystemChange(r, "delete_user", user.Username, "")
 	w.Header().Set("Content-Type", "application/json")
@@ -5491,11 +5524,44 @@ func validateExpiresAt(s string) error {
 
 func (s *Server) handleAddKey(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
-	var k config.KeyConfig
-	if err := json.NewDecoder(r.Body).Decode(&k); err != nil {
+	// The dashboard sends snake_case rate_limit/expires_at while the CLI sends
+	// camelCase; accept both and let the snake_case form fill a zero value.
+	var req struct {
+		config.KeyConfig
+		RateLimitSnake             int     `json:"rate_limit"`
+		ExpiresAtSnake             string  `json:"expires_at"`
+		DailyLimitSnake            int     `json:"daily_limit"`
+		MonthlyLimitSnake          int     `json:"monthly_limit"`
+		DailyUsdCapSnake           float64 `json:"daily_usd_cap"`
+		MonthlyUsdCapSnake         float64 `json:"monthly_usd_cap"`
+		LocalOnlySnake             bool    `json:"local_only"`
+		AllowLocalDegradationSnake bool    `json:"allow_local_degradation"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+	k := req.KeyConfig
+	if k.RateLimit == 0 {
+		k.RateLimit = req.RateLimitSnake
+	}
+	if k.ExpiresAt == "" {
+		k.ExpiresAt = req.ExpiresAtSnake
+	}
+	if k.DailyLimit == 0 {
+		k.DailyLimit = req.DailyLimitSnake
+	}
+	if k.MonthlyLimit == 0 {
+		k.MonthlyLimit = req.MonthlyLimitSnake
+	}
+	if k.DailyUsdCap == 0 {
+		k.DailyUsdCap = req.DailyUsdCapSnake
+	}
+	if k.MonthlyUsdCap == 0 {
+		k.MonthlyUsdCap = req.MonthlyUsdCapSnake
+	}
+	k.LocalOnly = k.LocalOnly || req.LocalOnlySnake
+	k.AllowLocalDegradation = k.AllowLocalDegradation || req.AllowLocalDegradationSnake
 	if k.Name == "" {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
@@ -5517,6 +5583,10 @@ func (s *Server) handleAddKey(w http.ResponseWriter, r *http.Request) {
 	// than silently overwriting the existing key's token and handing back a
 	// fresh plaintext secret for what the caller thought was a create.
 	// Deliberate rotation goes through POST /admin/keys/{name}/rotate below.
+	// The check and the write share one critical section so two concurrent
+	// creates of the same name cannot both pass it.
+	s.keysMu.Lock()
+	defer s.keysMu.Unlock()
 	if existing, ok, err := s.findKeyRecord(k.Name); err != nil {
 		writeServerError(w, r, err)
 		return
@@ -5533,7 +5603,10 @@ func (s *Server) handleAddKey(w http.ResponseWriter, r *http.Request) {
 		}
 		k.Key = key
 	}
-	s.persistKey(k)
+	if err := s.persistKey(k); err != nil {
+		writeServerError(w, r, err)
+		return
+	}
 	s.logSystemChange(r, "add_key", k.Name, fmt.Sprintf("RateLimit: %d, DailyLimit: %d, MonthlyLimit: %d, DailyUsdCap: %f, MonthlyUsdCap: %f, Models: %v, LocalOnly: %v, AllowLocalDegradation: %v", k.RateLimit, k.DailyLimit, k.MonthlyLimit, k.DailyUsdCap, k.MonthlyUsdCap, k.Models, k.LocalOnly, k.AllowLocalDegradation))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -5555,13 +5628,11 @@ func (s *Server) findKeyRecord(name string) (store.KeyRecord, bool, error) {
 	return store.KeyRecord{}, false, nil
 }
 
-// persistKey writes k to the in-memory auth middleware and the store. Shared
-// by handleAddKey (create) and handleRotateKey (explicit rotate).
-func (s *Server) persistKey(k config.KeyConfig) {
-	if s.auth != nil {
-		s.auth.AddKey(k)
-	}
-	_ = s.st.UpsertKey(store.KeyRecord{
+// persistKey writes k to the store first and only then to the in-memory auth
+// middleware, so a failed durable write never leaves a live key that would
+// vanish on restart. Shared by handleAddKey (create) and handleRotateKey.
+func (s *Server) persistKey(k config.KeyConfig) error {
+	if err := s.st.UpsertKey(store.KeyRecord{
 		Name:                  k.Name,
 		Key:                   k.Key,
 		RateLimit:             k.RateLimit,
@@ -5574,7 +5645,13 @@ func (s *Server) persistKey(k config.KeyConfig) {
 		ExpiresAt:             k.ExpiresAt,
 		LocalOnly:             k.LocalOnly,
 		AllowLocalDegradation: k.AllowLocalDegradation,
-	})
+	}); err != nil {
+		return err
+	}
+	if s.auth != nil {
+		s.auth.AddKey(k)
+	}
+	return nil
 }
 
 // handleRotateKey issues a new plaintext token for an existing key,
@@ -5585,12 +5662,16 @@ func (s *Server) persistKey(k config.KeyConfig) {
 // POST /admin/keys/{name}/rotate
 func (s *Server) handleRotateKey(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	// Look up and write under one lock so a concurrent revoke cannot be
+	// undone by this rotation re-enabling the key.
+	s.keysMu.Lock()
+	defer s.keysMu.Unlock()
 	existing, ok, err := s.findKeyRecord(name)
 	if err != nil {
 		writeServerError(w, r, err)
 		return
 	}
-	if !ok {
+	if !ok || existing.Revoked {
 		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("key %q not found", name))
 		return
 	}
@@ -5612,19 +5693,40 @@ func (s *Server) handleRotateKey(w http.ResponseWriter, r *http.Request) {
 		LocalOnly:             existing.LocalOnly,
 		AllowLocalDegradation: existing.AllowLocalDegradation,
 	}
-	s.persistKey(k)
+	if err := s.persistKey(k); err != nil {
+		writeServerError(w, r, err)
+		return
+	}
 	s.logSystemChange(r, "rotate_key", name, "")
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(k)
 }
 
-func (s *Server) handleRevokeKey(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
+const keyRevokeNotPersistedMsg = "the key is revoked now, but the change could not be saved and the key may return after a restart or config reload; retry the revoke"
+
+// revokeKeyLiveFirst revokes name in the live auth state, then persists the
+// revocation. The returned error is the durable-write error only.
+func (s *Server) revokeKeyLiveFirst(name string) error {
 	if s.auth != nil {
 		s.auth.RevokeKey(name)
 	}
-	_ = s.st.RevokeKey(name)
+	return s.st.RevokeKey(name)
+}
+
+func (s *Server) handleRevokeKey(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	s.keysMu.Lock()
+	defer s.keysMu.Unlock()
+	// Live first: a revocation takes effect immediately and is never rolled
+	// back. If the durable write then fails, say so - the key is revoked now
+	// but could return after a restart.
+	if err := s.revokeKeyLiveFirst(name); err != nil {
+		log.Printf("admin: revoke key %q: durable write failed: %v", name, err)
+		s.logSystemChange(r, "revoke_key", name, "revoked live; durable write failed: "+err.Error())
+		writeJSONError(w, http.StatusInternalServerError, keyRevokeNotPersistedMsg)
+		return
+	}
 	s.logSystemChange(r, "revoke_key", name, "")
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -5655,7 +5757,13 @@ func (s *Server) handlePatchKey(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if s.auth == nil || !s.auth.PatchKey(name, patch) {
+	s.keysMu.Lock()
+	defer s.keysMu.Unlock()
+	if s.auth == nil {
+		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("key %q not found", name))
+		return
+	}
+	if _, _, found := s.auth.KeyUsdCaps(name); !found {
 		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("key %q not found", name))
 		return
 	}
@@ -5665,15 +5773,20 @@ func (s *Server) handlePatchKey(w http.ResponseWriter, r *http.Request) {
 	// auth.PatchKey above still applies in that mode.
 	var keyRecord *store.KeyRecord
 	keys, err := s.st.AllKeys()
-	if err == nil {
-		for _, k := range keys {
-			if k.Name == name {
-				keyRecord = &k
-				break
-			}
+	if err != nil {
+		writeServerError(w, r, err)
+		return
+	}
+	for _, k := range keys {
+		if k.Name == name {
+			keyRecord = &k
+			break
 		}
 	}
+	var prevRecord *store.KeyRecord
 	if keyRecord != nil {
+		prev := *keyRecord
+		prevRecord = &prev
 		if patch.RateLimit != nil {
 			keyRecord.RateLimit = *patch.RateLimit
 		}
@@ -5701,7 +5814,24 @@ func (s *Server) handlePatchKey(w http.ResponseWriter, r *http.Request) {
 		if patch.AllowLocalDegradation != nil {
 			keyRecord.AllowLocalDegradation = *patch.AllowLocalDegradation
 		}
-		_ = s.st.UpsertKey(*keyRecord)
+		if err := s.st.UpsertKey(*keyRecord); err != nil {
+			writeServerError(w, r, err)
+			return
+		}
+	}
+	// Store write done (or no store attached): now apply to live auth.
+	// keysMu is held, so the key found above cannot have been revoked by
+	// another key handler in between; a false here would mean live state and
+	// store diverged, which must not be reported as success.
+	if !s.auth.PatchKey(name, patch) {
+		log.Printf("admin: patch key %q: stored but missing from live auth", name)
+		if prevRecord != nil {
+			if rerr := s.st.UpsertKey(*prevRecord); rerr != nil {
+				log.Printf("admin: patch key %q: restoring the previous stored record failed: %v", name, rerr)
+			}
+		}
+		writeServerError(w, r, fmt.Errorf("key %q missing from live auth after store write", name))
+		return
 	}
 	s.logSystemChange(r, "patch_key", name, fmt.Sprintf("RateLimitChanged: %v, DailyLimitChanged: %v, MonthlyLimitChanged: %v, DailyUsdCapChanged: %v, MonthlyUsdCapChanged: %v, ModelsChanged: %v, ExpiresAtChanged: %v, LocalOnlyChanged: %v, AllowLocalDegradationChanged: %v", patch.RateLimit != nil, patch.DailyLimit != nil, patch.MonthlyLimit != nil, patch.DailyUsdCap != nil, patch.MonthlyUsdCap != nil, patch.Models != nil, patch.ExpiresAt != nil, patch.LocalOnly != nil, patch.AllowLocalDegradation != nil))
 	w.Header().Set("Content-Type", "application/json")
@@ -5797,7 +5927,9 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
 	cfg := s.cfg
 	s.mu.RUnlock()
-	// Mask sensitive fields before returning to the client.
+	// Mask sensitive fields before returning to the client. cfg is a shallow
+	// copy, so copy the slice before masking or the live config is altered.
+	cfg.CloudProviders = append([]config.CloudProvider(nil), cfg.CloudProviders...)
 	for i := range cfg.CloudProviders {
 		if cfg.CloudProviders[i].APIKey != "" {
 			cfg.CloudProviders[i].APIKey = "***"
@@ -5812,6 +5944,8 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	if cfg.LiteLLM.APIKey != "" {
 		cfg.LiteLLM.APIKey = "***"
 	}
+	// API key secrets are managed through the keys endpoints and never returned here.
+	cfg.Auth.Keys = nil
 	username, _ := r.Context().Value(ctxKeyUsername).(string)
 	if username == "" {
 		username = "admin"
@@ -7437,15 +7571,16 @@ func (s *Server) verifyModelLoads(ctx context.Context, nodeName, model string) e
 		Models:    []string{model},
 		ExpiresAt: time.Now().Add(pullVerifyKeyTTL).Format(time.RFC3339),
 	}
-	if s.auth != nil {
-		s.auth.AddKey(k)
+	if err := s.persistKey(k); err != nil {
+		return fmt.Errorf("persist verification key: %w", err)
 	}
-	_ = s.st.UpsertKey(store.KeyRecord{Name: k.Name, Key: k.Key, Models: k.Models, Revoked: false, ExpiresAt: k.ExpiresAt})
 	defer func() {
 		if s.auth != nil {
 			s.auth.RevokeKey(k.Name)
 		}
-		_ = s.st.DeleteKey(k.Name)
+		if err := s.st.DeleteKey(k.Name); err != nil {
+			log.Printf("admin: remove pull-verify key %q: %v", k.Name, err)
+		}
 	}()
 
 	target := fmt.Sprintf("http://localhost:%d", s.cfg.Proxy.Port)

@@ -84,3 +84,15 @@ func (r *Router) driftedResidentDigest(n *NodeState, model string) bool {
 	}
 	return r.digestMismatch(entry.Name, entry.Digest)
 }
+
+// modelNamesMatchOnRuntime reports whether a and b name the same model on a
+// node running runtime. The bare-name ":latest" shorthand is an Ollama
+// convention, so equivalence applies only to Ollama (or an unset runtime,
+// which routing treats as Ollama); every other runtime serves exact ids and
+// matches exactly.
+func modelNamesMatchOnRuntime(runtime, a, b string) bool {
+	if a == b {
+		return true
+	}
+	return normalizeRuntime(runtime) == runtimeOllama && ModelNamesEquivalent(a, b)
+}

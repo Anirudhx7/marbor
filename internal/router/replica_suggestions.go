@@ -631,6 +631,10 @@ func evidenceSource(t *marboragent.Topology) string {
 	return strings.Join(t.Evidence, ", ")
 }
 
+// maxListedMissingRanks caps how many unseen ranks a suggestion names one by
+// one before summarizing the remainder as a count.
+const maxListedMissingRanks = 32
+
 func (c *correlator) vllmCandidate(key string, group []attribution, masterHost, masterText string) (candidate, bool) {
 	sort.Slice(group, func(i, j int) bool { return group[i].row.Name < group[j].row.Name })
 	cd := candidate{launcher: LauncherVLLMMultiprocessing, runtime: "vllm"}
@@ -718,10 +722,24 @@ func (c *correlator) vllmCandidate(key string, group []attribution, masterHost, 
 	}
 
 	if total > 1 {
-		for r := 0; r < total; r++ {
+		// The node count is agent-supplied, so cap how many absent ranks are
+		// spelled out. The scan stops once the cap is reached (it can pass at
+		// most len(byRank) seen ranks first); the rest are counted, not listed.
+		seenInRange := 0
+		for r := range byRank {
+			if r >= 0 && r < total {
+				seenInRange++
+			}
+		}
+		listed := 0
+		for r := 0; r < total && listed < maxListedMissingRanks; r++ {
 			if len(byRank[r]) == 0 {
 				missing = append(missing, fmt.Sprintf("rank %d has not been seen. Register its host as a node and update its agent; the worker will show down because a headless worker serves no HTTP", r))
+				listed++
 			}
+		}
+		if more := total - seenInRange - listed; more > 0 {
+			missing = append(missing, fmt.Sprintf("and %d more ranks have not been seen", more))
 		}
 	}
 
