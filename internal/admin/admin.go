@@ -384,15 +384,20 @@ func (s *Server) LoadFromStore() error {
 		logs := make([]RequestLog, 0, len(recs))
 		for _, rec := range recs {
 			logs = append(logs, RequestLog{
-				ID:         rec.ID,
-				ApiKey:     rec.KeyName,
-				Model:      rec.Model,
-				Node:       rec.NodeName,
-				Status:     strconv.Itoa(rec.StatusCode),
-				HTTPStatus: rec.StatusCode,
-				Latency:    int(rec.LatencyMs),
-				Tokens:     rec.TokensUsed,
-				Time:       rec.TS,
+				ID:            rec.ID,
+				ApiKey:        rec.KeyName,
+				Model:         rec.Model,
+				Node:          rec.NodeName,
+				Status:        strconv.Itoa(rec.StatusCode),
+				HTTPStatus:    rec.StatusCode,
+				Latency:       int(rec.LatencyMs),
+				Tokens:        rec.TokensUsed,
+				Time:          rec.TS,
+				RoutingReason: rec.RoutingReason,
+				RoutingDetail: rec.RoutingDetail,
+				PrefillMs:     rec.PrefillMs,
+				QueueWaitMs:   rec.QueueWaitMs,
+				CloudMs:       rec.CloudMs,
 			})
 		}
 		s.mu.Lock()
@@ -536,6 +541,11 @@ type RequestLog struct {
 	// requests without a round-trip to SQLite.
 	RoutingReason string `json:"routingReason,omitempty"`
 	RoutingDetail string `json:"-"`
+	// QueueWaitMs and CloudMs split a cloud-routed request's latency: time
+	// queued for a local node, and time in the cloud call. Nil when the
+	// request was not cloud-routed or the value was not measured.
+	QueueWaitMs *int64 `json:"queueWaitMs,omitempty"`
+	CloudMs     *int64 `json:"cloudMs,omitempty"`
 	// PrefillMs is Ollama's real prompt_eval_duration in milliseconds (see
 	// proxy.statusRecorder.promptEvalDurationMs) - the prefill half of a
 	// request's total latency, as opposed to generation time. 0 means
@@ -1662,6 +1672,8 @@ func (s *Server) handleRequests(w http.ResponseWriter, r *http.Request) {
 		Cloud         bool      `json:"cloud"`
 		RoutingReason string    `json:"routingReason,omitempty"`
 		PrefillMs     int64     `json:"prefillMs,omitempty"`
+		QueueWaitMs   *int64    `json:"queueWaitMs,omitempty"`
+		CloudMs       *int64    `json:"cloudMs,omitempty"`
 	}
 	s.mu.RLock()
 	reqs := make([]RequestLog, len(s.requests))
@@ -1688,6 +1700,8 @@ func (s *Server) handleRequests(w http.ResponseWriter, r *http.Request) {
 			Cloud:         isCloud,
 			RoutingReason: req.RoutingReason,
 			PrefillMs:     req.PrefillMs,
+			QueueWaitMs:   req.QueueWaitMs,
+			CloudMs:       req.CloudMs,
 		}
 	}
 	// Reverse so newest entries come first.
@@ -6323,6 +6337,19 @@ func (s *Server) IncrSpill(keyName, servedBy string) {
 // request's chosen node; nil for cloud-fallback requests, which have no
 // router.RoutingDecision.
 func (s *Server) LogRequest(requestID, apiKey, sourceIP, model, node, status string, httpStatus int, latencyMs int, tokens int64, prefillMs int64, decision *router.RoutingDecision) {
+	s.LogRequestTimed(requestID, apiKey, sourceIP, model, node, status, httpStatus, latencyMs, tokens, prefillMs, decision, RequestTiming{})
+}
+
+// RequestTiming is the measured queue-wait and cloud-call time of a
+// cloud-routed request. Nil fields mean "not measured" and are stored as
+// NULL, never as 0.
+type RequestTiming struct {
+	QueueWaitMs *int64
+	CloudMs     *int64
+}
+
+// LogRequestTimed is LogRequest plus the cloud-route timing split.
+func (s *Server) LogRequestTimed(requestID, apiKey, sourceIP, model, node, status string, httpStatus int, latencyMs int, tokens int64, prefillMs int64, decision *router.RoutingDecision, timing RequestTiming) {
 	var tps float64
 	if tokens > 0 && latencyMs > 0 {
 		tps = float64(tokens) / (float64(latencyMs) / 1000.0)
@@ -6368,6 +6395,8 @@ func (s *Server) LogRequest(requestID, apiKey, sourceIP, model, node, status str
 		RoutingReason: routingReason,
 		RoutingDetail: routingDetail,
 		PrefillMs:     prefillMs,
+		QueueWaitMs:   timing.QueueWaitMs,
+		CloudMs:       timing.CloudMs,
 	})
 	if len(s.requests) > 50 {
 		s.requests = s.requests[len(s.requests)-50:]
@@ -6417,6 +6446,8 @@ func (s *Server) LogRequest(requestID, apiKey, sourceIP, model, node, status str
 		RoutingReason: routingReason,
 		RoutingDetail: routingDetail,
 		PrefillMs:     prefillMs,
+		QueueWaitMs:   timing.QueueWaitMs,
+		CloudMs:       timing.CloudMs,
 	}:
 	default:
 		// Prevent blocking the proxy path if SQLite writes are completely backed up.

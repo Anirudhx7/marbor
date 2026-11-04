@@ -17,6 +17,7 @@ import { Badge } from '../components/Badge';
 import { SavingsCard } from '../components/SavingsCard';
 import { CardKicker } from '../components/CardKicker';
 import { useLiveRequests } from '../hooks/useLiveRequests';
+import { waitCloudSummary } from '../lib/requestsView';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import { mockGPUNodes, mockSavings } from '../lib/mockData';
 import { readLastNodeCount, writeLastNodeCount } from '../lib/nodeCount';
@@ -934,7 +935,10 @@ export function Dashboard() {
                     {req.tokensPerSec > 0 ? req.tokensPerSec.toFixed(1) : '-'}
                   </td>
                   <td className="px-6 py-3 text-right font-medium font-mono">
-                    <span className={req.latency > 1000 ? 'text-amber-700 dark:text-amber-400' : 'text-primary'}>
+                    <span
+                      className={req.latency > 1000 ? 'text-amber-700 dark:text-amber-400' : 'text-primary'}
+                      title={waitCloudSummary(req.queueWaitMs, req.cloudMs)}
+                    >
                       {req.latency}ms
                     </span>
                   </td>
@@ -1004,6 +1008,9 @@ export function Dashboard() {
                   <div className={`text-sm font-mono font-medium ${req.latency > 1000 ? 'text-amber-700 dark:text-amber-400' : 'text-primary'}`}>
                     {req.latency}ms
                   </div>
+                  {waitCloudSummary(req.queueWaitMs, req.cloudMs) && (
+                    <div className="text-[10px] font-mono text-muted-foreground">{waitCloudSummary(req.queueWaitMs, req.cloudMs)}</div>
+                  )}
                 </div>
               </div>
             </div>

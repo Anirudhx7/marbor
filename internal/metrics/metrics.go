@@ -118,6 +118,11 @@ var (
 		Help: "Requests that overflowed to a cloud provider because no local node could serve them",
 	}, []string{"provider"})
 
+	cloudOverflowReasonTotal = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "marbor_cloud_overflow_reason_total",
+		Help: "Requests that went to a cloud provider (or were refused because the key is local_only), by the reason no local node served them",
+	}, []string{"reason"})
+
 	localDegradationTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "marbor_local_degradation_total",
 		Help: "Requests substituted to a declared local alternate model (opt-in) instead of falling through to cloud",
@@ -228,6 +233,13 @@ func Retry(node string) {
 // CloudFallback records a request overflowing to the named cloud provider.
 func CloudFallback(provider string) {
 	cloudFallbacksTotal.WithLabelValues(provider).Inc()
+}
+
+// CloudOverflowReason counts one cloud-routed or local_only-blocked request
+// under its reason code. Callers pass only the fixed codes defined in the
+// proxy package, so the label set stays bounded.
+func CloudOverflowReason(reason string) {
+	cloudOverflowReasonTotal.WithLabelValues(reason).Inc()
 }
 
 // LocalDegradation records a request substituted from its requested model to
