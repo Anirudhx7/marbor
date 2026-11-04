@@ -157,11 +157,10 @@ func readUptimeAndBoot() (int64, int64, bool) {
 	if len(fields) < 1 {
 		return 0, 0, false
 	}
-	uptimeSec, err := strconv.ParseFloat(fields[0], 64)
-	if err != nil {
+	uptime, ok := parseUptimeSeconds(fields[0])
+	if !ok {
 		return 0, 0, false
 	}
-	uptime := int64(uptimeSec)
 	boot := time.Now().Unix() - uptime
 	return uptime, boot, true
 }

@@ -2,6 +2,7 @@ package marboragent
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"sync/atomic"
 )
@@ -128,10 +129,26 @@ func (s *Server) runtimeTarget() (name, url string) {
 	return sched.RuntimeTarget()
 }
 
+// marshalStatus is json.Marshal, a variable only so a test can force the
+// otherwise-unreachable failure path.
+var marshalStatus = json.Marshal
+
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	t := s.snapshot()
+	body, err := marshalStatus(t)
+	if err != nil {
+		// A non-finite reading is the realistic cause: drop just those
+		// readings and serve the rest rather than blanking the node.
+		log.Printf("marbor-agent: status marshal failed, retrying without non-finite readings: %v", err)
+		body, err = marshalStatus(withoutNonFinite(t))
+	}
+	if err != nil {
+		log.Printf("marbor-agent: status marshal failed after sanitizing: %v", err)
+		http.Error(w, "status unavailable", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(t)
+	_, _ = w.Write(append(body, '\n'))
 }
 
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
