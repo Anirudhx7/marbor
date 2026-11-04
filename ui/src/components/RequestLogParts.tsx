@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { RoutingDecision } from '../types';
+import { formatDurationMs } from '../lib/requestsView';
 
 // One entry per table column: the header, its sizing and its alignment all
 // come from here, and the full-width rows use COLUMNS.length, so the column
@@ -30,6 +31,13 @@ const REASON_LABELS: Record<string, string> = {
   session_affinity: 'Session affinity',
   pinned_warm: 'Pinned + warm',
   score_based: 'Score-based',
+  no_node_serves_model: 'No node serves model',
+  all_nodes_unavailable: 'All nodes unavailable',
+  saturated_sla_expired: 'Saturated past SLA',
+  queue_timeout_cloud: 'Queue timed out',
+  queue_full_cloud: 'Queue full',
+  local_upstream_failed: 'Local node failed',
+  local_only_blocked: 'Blocked: local only',
 };
 
 // ScrollableValue backs every cell that can legitimately hold a value longer
@@ -123,7 +131,16 @@ export function ReasonBadge({ reason }: { reason?: string }) {
 // lazily fetched (or looked up from static mock data in demo mode) on first
 // expand. State is one of: undefined (not yet fetched), 'loading', 'error',
 // or the resolved RoutingDecision.
-export function ExplainPanel({ state }: { state: RoutingDecision | 'loading' | 'error' | undefined }) {
+export function ExplainPanel({
+  state,
+  queueWaitMs,
+  cloudMs,
+}: {
+  state: RoutingDecision | 'loading' | 'error' | undefined;
+  // Measured timings from the request row; shown only when at least one was recorded.
+  queueWaitMs?: number;
+  cloudMs?: number;
+}) {
   if (state === 'loading' || state === undefined) {
     return <div className="text-sm text-muted-foreground">Loading routing explanation...</div>;
   }
@@ -149,7 +166,12 @@ export function ExplainPanel({ state }: { state: RoutingDecision | 'loading' | '
           </span>
         )}
       </div>
-      {state.detail && <div className="text-muted-foreground text-xs">{state.detail}</div>}
+      {state.detail && <div className="text-muted-foreground text-xs break-words">{state.detail}</div>}
+      {(queueWaitMs !== undefined || cloudMs !== undefined) && (
+        <div className="text-xs font-mono text-muted-foreground">
+          Waited {formatDurationMs(queueWaitMs)}, cloud {formatDurationMs(cloudMs)}
+        </div>
+      )}
       {state.components && state.components.length > 0 && (
         <ExplainTable
           ariaLabel="Score components table: scroll horizontally for more columns"

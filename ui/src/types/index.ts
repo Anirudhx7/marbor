@@ -327,6 +327,9 @@ export interface LiveRequest {
   tokens: number;
   tokensPerSec: number;
   timestamp: string | Date;
+  // Optional measured timings for cloud-routed rows (ms); absent when unmeasured.
+  queueWaitMs?: number;
+  cloudMs?: number;
 }
 
 export interface APIKey {
@@ -641,6 +644,11 @@ export interface RequestEntry {
   // Ollama-native prefill time (prompt_eval_duration), ms. Absent/0 when the
   // source engine didn't report it - never a fabricated measurement.
   prefillMs?: number;
+  // Cloud-routed requests only: time spent waiting for a local slot before
+  // the request went to cloud, and the cloud call's own duration, in ms.
+  // Absent when not measured - never 0 as a stand-in.
+  queueWaitMs?: number;
+  cloudMs?: number;
 }
 
 export interface ScoreComponent {
@@ -669,6 +677,10 @@ export interface RoutingDecision {
   node: string;
   reason: string;
   detail?: string;
+  // Why no local node could take the request, when the decision went to
+  // cloud or was blocked: no_node_serves_model | all_nodes_unavailable |
+  // at_capacity_healthy | unknown_state.
+  noRoute?: string;
   affinityLost?: boolean;
   score?: number;
   components?: ScoreComponent[];

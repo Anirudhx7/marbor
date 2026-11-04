@@ -30,6 +30,8 @@ type Entry struct {
 	Cloud         bool      `json:"cloud"`
 	CloudModel    string    `json:"cloud_model,omitempty"`
 	RoutingReason string    `json:"routing_reason,omitempty"`
+	QueueWaitMs   *int64    `json:"queue_wait_ms,omitempty"`
+	CloudMs       *int64    `json:"cloud_ms,omitempty"`
 }
 
 // Logger writes audit entries to the store. Disabled (no-op) when enabled=false.
@@ -195,6 +197,8 @@ func (l *Logger) Log(e Entry) {
 		Cloud:         e.Cloud,
 		CloudModel:    e.CloudModel,
 		RoutingReason: e.RoutingReason,
+		QueueWaitMs:   e.QueueWaitMs,
+		CloudMs:       e.CloudMs,
 	}
 	// The closed check and the send share one read lock, so Close cannot
 	// finish its transition between them. Only the check and a non-blocking
@@ -371,6 +375,8 @@ func (l *Logger) Query(opts QueryOptions) ([]Entry, error) {
 			Cloud:         e.Cloud,
 			CloudModel:    e.CloudModel,
 			RoutingReason: e.RoutingReason,
+			QueueWaitMs:   e.QueueWaitMs,
+			CloudMs:       e.CloudMs,
 		})
 	}
 	return out, nil

@@ -1037,6 +1037,8 @@ interface AuditLogEntry {
   cloud: boolean;
   cloud_model?: string;
   routing_reason?: string;
+  queue_wait_ms?: number;
+  cloud_ms?: number;
 }
 
 // AuditPageEntry is a request row plus the server row id used as the cursor.
@@ -1112,6 +1114,8 @@ export async function fetchAuditPage(filters: AuditLogFilters = {}): Promise<Aud
       latency_ms: e.latency_ms,
       cloud: e.cloud,
       routingReason: e.routing_reason || undefined,
+      queueWaitMs: typeof e.queue_wait_ms === 'number' ? e.queue_wait_ms : undefined,
+      cloudMs: typeof e.cloud_ms === 'number' ? e.cloud_ms : undefined,
     })),
     nextBeforeId: data.next_before_id || undefined,
     prevAfterId: data.prev_after_id || undefined,

@@ -690,6 +690,14 @@ func (s *sqliteStore) migrate() error {
 		// cloud fallback, streaming without a JSON tail) - not distinguished
 		// from a genuinely-zero prefill, matching gen_duration_ms's convention.
 		`ALTER TABLE request_log ADD COLUMN prefill_ms INTEGER NOT NULL DEFAULT 0`,
+		// Cloud overflow latency split: time queued for a local node before the
+		// request went to cloud, and time spent in the cloud call. NULL (not 0)
+		// for requests that were not cloud-routed or for rows predating this
+		// migration, so a real 0 ms is distinguishable from "not measured".
+		`ALTER TABLE request_log ADD COLUMN queue_wait_ms INTEGER`,
+		`ALTER TABLE request_log ADD COLUMN cloud_ms INTEGER`,
+		`ALTER TABLE audit_log ADD COLUMN queue_wait_ms INTEGER`,
+		`ALTER TABLE audit_log ADD COLUMN cloud_ms INTEGER`,
 	} {
 		// Idempotent: a rerun against an already-migrated DB hits "duplicate
 		// column name" for every statement here, which is benign and must be
@@ -965,9 +973,9 @@ func (s *sqliteStore) AppendRequest(r RequestRecord) error {
 	}
 	_, err := s.db.Exec(
 		`INSERT OR IGNORE INTO request_log
-			(id, key_name, model, node_name, status_code, latency_ms, tokens_used, cost_usd, routed_to, is_cloud, ts, routing_reason, routing_detail, prefill_ms)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		r.ID, r.KeyName, r.Model, r.NodeName, r.StatusCode, r.LatencyMs, r.TokensUsed, r.CostUSD, r.RoutedTo, isCloud, r.TS.Unix(), r.RoutingReason, r.RoutingDetail, r.PrefillMs,
+			(id, key_name, model, node_name, status_code, latency_ms, tokens_used, cost_usd, routed_to, is_cloud, ts, routing_reason, routing_detail, prefill_ms, queue_wait_ms, cloud_ms)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		r.ID, r.KeyName, r.Model, r.NodeName, r.StatusCode, r.LatencyMs, r.TokensUsed, r.CostUSD, r.RoutedTo, isCloud, r.TS.Unix(), r.RoutingReason, r.RoutingDetail, r.PrefillMs, nullInt64(r.QueueWaitMs), nullInt64(r.CloudMs),
 	)
 	if err != nil {
 		return fmt.Errorf("store: AppendRequest: %w", err)
@@ -987,7 +995,7 @@ func (s *sqliteStore) AppendRequest(r RequestRecord) error {
 
 func (s *sqliteStore) LastRequests(n int) ([]RequestRecord, error) {
 	rows, err := s.db.Query(
-		`SELECT id, key_name, model, node_name, status_code, latency_ms, tokens_used, cost_usd, routed_to, is_cloud, ts, routing_reason, routing_detail, prefill_ms
+		`SELECT id, key_name, model, node_name, status_code, latency_ms, tokens_used, cost_usd, routed_to, is_cloud, ts, routing_reason, routing_detail, prefill_ms, queue_wait_ms, cloud_ms
 		 FROM request_log ORDER BY ts DESC LIMIT ?`, n,
 	)
 	if err != nil {
@@ -1000,10 +1008,11 @@ func (s *sqliteStore) LastRequests(n int) ([]RequestRecord, error) {
 		var r RequestRecord
 		var isCloud int
 		var ts int64
+		var qw, cm sql.NullInt64
 		var reason, detail sql.NullString
 		if err := rows.Scan(
 			&r.ID, &r.KeyName, &r.Model, &r.NodeName, &r.StatusCode,
-			&r.LatencyMs, &r.TokensUsed, &r.CostUSD, &r.RoutedTo, &isCloud, &ts, &reason, &detail, &r.PrefillMs,
+			&r.LatencyMs, &r.TokensUsed, &r.CostUSD, &r.RoutedTo, &isCloud, &ts, &reason, &detail, &r.PrefillMs, &qw, &cm,
 		); err != nil {
 			return nil, fmt.Errorf("store: LastRequests scan: %w", err)
 		}
@@ -1011,6 +1020,7 @@ func (s *sqliteStore) LastRequests(n int) ([]RequestRecord, error) {
 		r.TS = time.Unix(ts, 0).UTC()
 		r.RoutingReason = reason.String
 		r.RoutingDetail = detail.String
+		r.QueueWaitMs, r.CloudMs = ptrInt64(qw), ptrInt64(cm)
 		recs = append(recs, r)
 	}
 	if err := rows.Err(); err != nil {
@@ -1030,13 +1040,14 @@ func (s *sqliteStore) GetRequest(id string) (RequestRecord, bool, error) {
 	var r RequestRecord
 	var isCloud int
 	var ts int64
+	var qw, cm sql.NullInt64
 	var reason, detail sql.NullString
 	err := s.db.QueryRow(
-		`SELECT id, key_name, model, node_name, status_code, latency_ms, tokens_used, cost_usd, routed_to, is_cloud, ts, routing_reason, routing_detail, prefill_ms
+		`SELECT id, key_name, model, node_name, status_code, latency_ms, tokens_used, cost_usd, routed_to, is_cloud, ts, routing_reason, routing_detail, prefill_ms, queue_wait_ms, cloud_ms
 		 FROM request_log WHERE id = ?`, id,
 	).Scan(
 		&r.ID, &r.KeyName, &r.Model, &r.NodeName, &r.StatusCode,
-		&r.LatencyMs, &r.TokensUsed, &r.CostUSD, &r.RoutedTo, &isCloud, &ts, &reason, &detail, &r.PrefillMs,
+		&r.LatencyMs, &r.TokensUsed, &r.CostUSD, &r.RoutedTo, &isCloud, &ts, &reason, &detail, &r.PrefillMs, &qw, &cm,
 	)
 	if err == sql.ErrNoRows {
 		return RequestRecord{}, false, nil
@@ -1048,6 +1059,7 @@ func (s *sqliteStore) GetRequest(id string) (RequestRecord, bool, error) {
 	r.TS = time.Unix(ts, 0).UTC()
 	r.RoutingReason = reason.String
 	r.RoutingDetail = detail.String
+	r.QueueWaitMs, r.CloudMs = ptrInt64(qw), ptrInt64(cm)
 	return r, true, nil
 }
 
@@ -2173,10 +2185,10 @@ func (s *sqliteStore) AppendAuditLog(e AuditEntry) error {
 		cloud = 1
 	}
 	_, err := s.db.Exec(
-		`INSERT INTO audit_log (ts, request_id, key_name, model, node, status, latency_ms, cloud, cloud_model, routing_reason)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO audit_log (ts, request_id, key_name, model, node, status, latency_ms, cloud, cloud_model, routing_reason, queue_wait_ms, cloud_ms)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		formatAuditTS(e.Time), e.RequestID, e.KeyName, e.Model,
-		e.Node, e.Status, e.LatencyMs, cloud, e.CloudModel, e.RoutingReason,
+		e.Node, e.Status, e.LatencyMs, cloud, e.CloudModel, e.RoutingReason, nullInt64(e.QueueWaitMs), nullInt64(e.CloudMs),
 	)
 	if err != nil {
 		return fmt.Errorf("store: AppendAuditLog: %w", err)
@@ -2240,7 +2252,7 @@ func buildAuditQuery(opts AuditQuery) (string, []interface{}) {
 		opts.Limit = DefaultAuditQueryLimit
 	}
 
-	query := `SELECT id, ts, request_id, key_name, model, node, status, latency_ms, cloud, cloud_model, routing_reason
+	query := `SELECT id, ts, request_id, key_name, model, node, status, latency_ms, cloud, cloud_model, routing_reason, queue_wait_ms, cloud_ms
 	          FROM audit_log WHERE 1=1`
 	args := []interface{}{}
 
@@ -2320,12 +2332,14 @@ func (s *sqliteStore) QueryAuditLog(opts AuditQuery) ([]AuditEntry, error) {
 		var e AuditEntry
 		var tsStr string
 		var cloud int
+		var qw, cm sql.NullInt64
 		if err := rows.Scan(&e.ID, &tsStr, &e.RequestID, &e.KeyName, &e.Model,
-			&e.Node, &e.Status, &e.LatencyMs, &cloud, &e.CloudModel, &e.RoutingReason); err != nil {
+			&e.Node, &e.Status, &e.LatencyMs, &cloud, &e.CloudModel, &e.RoutingReason, &qw, &cm); err != nil {
 			return nil, fmt.Errorf("store: QueryAuditLog scan: %w", err)
 		}
 		e.Time, _ = time.Parse(time.RFC3339Nano, tsStr)
 		e.Cloud = cloud != 0
+		e.QueueWaitMs, e.CloudMs = ptrInt64(qw), ptrInt64(cm)
 		entries = append(entries, e)
 	}
 	if err := rows.Err(); err != nil {
@@ -3796,4 +3810,20 @@ func (s *sqliteStore) migrateModelConfigsToNodeKeyed() error {
 		return err
 	}
 	return tx.Commit()
+}
+
+// nullInt64 maps an optional measurement to a SQL value: NULL when absent.
+func nullInt64(p *int64) interface{} {
+	if p == nil {
+		return nil
+	}
+	return *p
+}
+
+func ptrInt64(n sql.NullInt64) *int64 {
+	if !n.Valid {
+		return nil
+	}
+	v := n.Int64
+	return &v
 }

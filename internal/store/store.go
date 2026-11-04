@@ -314,8 +314,14 @@ type RequestRecord struct {
 	RoutingDetail string `json:"routing_detail,omitempty"`
 	// PrefillMs is Ollama-native prefill time (prompt_eval_duration), 0 when
 	// the source engine didn't report it - see prefill_ms migration comment.
-	PrefillMs int64     `json:"prefill_ms,omitempty"`
-	TS        time.Time `json:"ts"`
+	PrefillMs int64 `json:"prefill_ms,omitempty"`
+	// QueueWaitMs is the time the request spent waiting for a local node before
+	// it went to cloud, CloudMs the time spent in the cloud call. Both are nil
+	// (stored NULL) unless the request was routed to cloud and the value was
+	// measured; they are measured, never derived from the total.
+	QueueWaitMs *int64    `json:"queue_wait_ms,omitempty"`
+	CloudMs     *int64    `json:"cloud_ms,omitempty"`
+	TS          time.Time `json:"ts"`
 }
 
 // HourlyBucket tracks request counts and costs for one UTC hour.
@@ -542,6 +548,10 @@ type AuditEntry struct {
 	Cloud         bool      `json:"cloud"`
 	CloudModel    string    `json:"cloud_model,omitempty"`
 	RoutingReason string    `json:"routing_reason,omitempty"`
+	// QueueWaitMs and CloudMs split the latency of a cloud-routed request; nil
+	// when not cloud-routed or not measured.
+	QueueWaitMs *int64 `json:"queue_wait_ms,omitempty"`
+	CloudMs     *int64 `json:"cloud_ms,omitempty"`
 }
 
 // SystemAuditEntry is one administrative mutation event persisted to SQLite.

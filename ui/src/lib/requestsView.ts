@@ -253,3 +253,18 @@ export function loadedSummary(rows: number, hasOlder: boolean): string {
   const noun = rows === 1 ? 'request' : 'requests';
   return hasOlder ? `At least ${rows} ${noun} loaded, older ones available` : `${rows} ${noun} loaded, no older requests match`;
 }
+
+// One duration for a timing line: milliseconds under a second, seconds with
+// one decimal above. A missing value is "-", never 0 - zero would read as a
+// measurement that was not taken.
+export function formatDurationMs(ms: number | undefined): string {
+  if (typeof ms !== 'number' || !Number.isFinite(ms) || ms < 0) return '-';
+  return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`;
+}
+
+// "waited 1.5s, cloud 320ms" for a cloud-routed request, or undefined when
+// neither timing was measured (so callers render nothing extra).
+export function waitCloudSummary(queueWaitMs: number | undefined, cloudMs: number | undefined): string | undefined {
+  if (queueWaitMs === undefined && cloudMs === undefined) return undefined;
+  return `waited ${formatDurationMs(queueWaitMs)}, cloud ${formatDurationMs(cloudMs)}`;
+}
