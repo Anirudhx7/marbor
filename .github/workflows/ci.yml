@@ -267,6 +267,9 @@ jobs:
         id: sha
         run: echo "short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
       - name: Log in to GHCR
         uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
         with:
@@ -282,3 +285,6 @@ jobs:
           tags: |
             ghcr.io/anirudhx7/marbor:main
             ghcr.io/anirudhx7/marbor:main-${{ steps.sha.outputs.short }}
+          # One multi-arch manifest: Linux amd64 + arm64 (covers Intel/AMD servers, Windows/Intel Mac Docker Desktop,
+          # Apple Silicon Docker Desktop, Graviton/Ampere). Go cross-compiles on the runner, no QEMU.
+          platforms: linux/amd64,linux/arm64
