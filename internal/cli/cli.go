@@ -195,7 +195,13 @@ func authenticatedClient(flags *globalFlags) (*Client, error) {
 	username := resolveCred(flags.username, "MARBOR_USERNAME")
 	password := resolveCred(flags.password, "MARBOR_PASSWORD")
 
-	if username != "" && password != "" {
+	// A lone username or password is almost certainly a mistake, and falling
+	// back to the saved session would run the command as whoever logged in
+	// last, possibly a more privileged user - refuse instead.
+	if (username == "") != (password == "") {
+		return nil, userErrorf("both a username and a password are required (--username/--password or MARBOR_USERNAME+MARBOR_PASSWORD); only one was given")
+	}
+	if username != "" {
 		client := NewClient(flags.server, "")
 		if err := client.Login(username, password); err != nil {
 			return nil, err

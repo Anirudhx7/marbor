@@ -541,3 +541,35 @@ func TestRun_Whoami_ServerUnreachable_ShowsCachedIdentity(t *testing.T) {
 		t.Fatalf("expected cached identity shown despite being unreachable, got %+v", out)
 	}
 }
+
+func TestAuthenticatedClient_LoneUsernameOrPasswordIsUserError(t *testing.T) {
+	cases := []struct {
+		name     string
+		username string
+		password string
+	}{
+		{"lone username", "alice", ""},
+		{"lone password", "", "secret"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			withTempConfigDir(t)
+			t.Setenv("MARBOR_USERNAME", tc.username)
+			t.Setenv("MARBOR_PASSWORD", tc.password)
+			mustSaveSession(t, "http://marbor.invalid", "saved-tok")
+
+			flags := &globalFlags{server: "http://marbor.invalid"}
+			client, err := authenticatedClient(flags)
+			if err == nil {
+				t.Fatalf("expected an error, got client %+v (saved session must not be used)", client)
+			}
+			cliErr, ok := err.(*CLIError)
+			if !ok || cliErr.Code != ExitUserError {
+				t.Fatalf("expected a user error, got %#v", err)
+			}
+			if !strings.Contains(err.Error(), "both") {
+				t.Errorf("message should say both are required, got %q", err.Error())
+			}
+		})
+	}
+}
