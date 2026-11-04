@@ -55,10 +55,13 @@ func newFlagSet(name string, stderr io.Writer) (*flag.FlagSet, *globalFlags) {
 // variable - the flag>env priority previously baked into the flag default
 // itself (see newFlagSet's doc comment for why that was unsafe for secrets).
 func resolveCred(flagVal, envKey string) string {
-	if flagVal != "" {
+	if strings.TrimSpace(flagVal) != "" {
 		return flagVal
 	}
-	return os.Getenv(envKey)
+	if v := os.Getenv(envKey); strings.TrimSpace(v) != "" {
+		return v
+	}
+	return ""
 }
 
 // normalizeServerURL strips a trailing slash, matching NewClient's own
@@ -195,6 +198,8 @@ func authenticatedClient(flags *globalFlags) (*Client, error) {
 	username := resolveCred(flags.username, "MARBOR_USERNAME")
 	password := resolveCred(flags.password, "MARBOR_PASSWORD")
 
+	// (runLogin, unlike this function, may prompt for a lone value on a
+	// terminal - that is intentional and separate.)
 	// A lone username or password is almost certainly a mistake, and falling
 	// back to the saved session would run the command as whoever logged in
 	// last, possibly a more privileged user - refuse instead.
