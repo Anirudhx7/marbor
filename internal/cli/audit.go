@@ -73,10 +73,10 @@ func runAudit(flags *globalFlags, limit int, model, key, node, status, cloud, si
 		return code
 	}
 	tw := newTabWriter(stdout)
-	fmt.Fprintln(tw, "ID\tTIME\tREQUEST ID\tKEY\tMODEL\tNODE\tSTATUS\tLATENCY MS\tCLOUD")
+	fmt.Fprintln(tw, "ID\tTIME\tREQUEST ID\tKEY\tMODEL\tNODE\tSTATUS\tLATENCY MS\tWAIT MS\tCLOUD MS\tCLOUD\tREASON")
 	for _, e := range result.Entries {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%s\n",
-			auditIDCell(e.ID), e.Time.Format("2006-01-02T15:04:05Z07:00"), e.RequestID, e.KeyName, e.Model, e.Node, e.Status, e.LatencyMs, yesNo(e.Cloud))
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%s\t%s\t%s\t%s\n",
+			auditIDCell(e.ID), e.Time.Format("2006-01-02T15:04:05Z07:00"), e.RequestID, e.KeyName, e.Model, e.Node, e.Status, e.LatencyMs, msOrDash(e.QueueWaitMs), msOrDash(e.CloudMs), yesNo(e.Cloud), e.RoutingReason)
 	}
 	if err := tw.Flush(); err != nil {
 		fmt.Fprintln(stderr, err)

@@ -77,14 +77,14 @@ func runRequestsList(flags *globalFlags, stdout, stderr io.Writer) int {
 		return code
 	}
 	tw := newTabWriter(stdout)
-	fmt.Fprintln(tw, "TIME\tID\tKEY\tMODEL\tNODE\tSTATUS\tLATENCY MS\tPREFILL MS\tCLOUD\tREASON")
+	fmt.Fprintln(tw, "TIME\tID\tKEY\tMODEL\tNODE\tSTATUS\tLATENCY MS\tWAIT MS\tCLOUD MS\tPREFILL MS\tCLOUD\tREASON")
 	for _, r := range reqs {
 		prefill := "-"
 		if r.PrefillMs > 0 {
 			prefill = fmt.Sprintf("%d", r.PrefillMs)
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%d\t%d\t%s\t%s\t%s\n",
-			r.Time.Format("2006-01-02T15:04:05Z07:00"), r.ID, r.KeyName, r.Model, r.Node, r.Status, r.LatencyMs, prefill, yesNo(r.Cloud), r.RoutingReason)
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%d\t%d\t%s\t%s\t%s\t%s\t%s\n",
+			r.Time.Format("2006-01-02T15:04:05Z07:00"), r.ID, r.KeyName, r.Model, r.Node, r.Status, r.LatencyMs, msOrDash(r.QueueWaitMs), msOrDash(r.CloudMs), prefill, yesNo(r.Cloud), r.RoutingReason)
 	}
 	if err := tw.Flush(); err != nil {
 		fmt.Fprintln(stderr, err)
@@ -108,10 +108,10 @@ func runRequestsLive(flags *globalFlags, stdout, stderr io.Writer) int {
 		return code
 	}
 	tw := newTabWriter(stdout)
-	fmt.Fprintln(tw, "TIME\tID\tMODEL\tNODE\tSTATUS\tHTTP\tLATENCY MS\tTOK/S")
+	fmt.Fprintln(tw, "TIME\tID\tMODEL\tNODE\tSTATUS\tHTTP\tLATENCY MS\tWAIT MS\tCLOUD MS\tTOK/S")
 	for _, r := range reqs {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%d\t%d\t%.1f\n",
-			r.Time.Format("2006-01-02T15:04:05Z07:00"), r.ID, r.Model, r.Node, r.Status, r.HTTPStatus, r.Latency, r.TokensPerSec)
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%d\t%d\t%s\t%s\t%.1f\n",
+			r.Time.Format("2006-01-02T15:04:05Z07:00"), r.ID, r.Model, r.Node, r.Status, r.HTTPStatus, r.Latency, msOrDash(r.QueueWaitMs), msOrDash(r.CloudMs), r.TokensPerSec)
 	}
 	if err := tw.Flush(); err != nil {
 		fmt.Fprintln(stderr, err)
@@ -137,6 +137,9 @@ func runRequestsExplain(flags *globalFlags, requestID string, stdout, stderr io.
 
 	fmt.Fprintf(stdout, "Node:   %s\n", decision.Node)
 	fmt.Fprintf(stdout, "Reason: %s\n", decision.Reason)
+	if decision.NoRoute != "" {
+		fmt.Fprintf(stdout, "No local route: %s\n", decision.NoRoute)
+	}
 	if decision.Detail != "" {
 		fmt.Fprintf(stdout, "Detail: %s\n", decision.Detail)
 	}
@@ -170,4 +173,13 @@ func runRequestsExplain(flags *globalFlags, requestID string, stdout, stderr io.
 	}
 
 	return ExitOK
+}
+
+// msOrDash prints a measured duration in milliseconds, or "-" when it was
+// not measured (never a fabricated 0).
+func msOrDash(p *int64) string {
+	if p == nil {
+		return "-"
+	}
+	return fmt.Sprintf("%d", *p)
 }

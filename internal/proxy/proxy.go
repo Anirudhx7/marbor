@@ -75,7 +75,7 @@ func writeAPIError(w http.ResponseWriter, status int, message, errType, code str
 // returns true. Returns false (does nothing) for a key that is not
 // local_only, so both existing call sites fall through to today's behavior
 // unchanged.
-func (h *Handler) localOnlyBlocked(w http.ResponseWriter, keyName, modelName string) bool {
+func (h *Handler) localOnlyBlocked(w http.ResponseWriter, r *http.Request, keyName, modelName, requestID string, start time.Time, res router.WaitResult) bool {
 	if h.auth == nil || !h.auth.IsLocalOnly(keyName) {
 		return false
 	}
@@ -86,6 +86,8 @@ func (h *Handler) localOnlyBlocked(w http.ResponseWriter, keyName, modelName str
 	if h.admin != nil {
 		h.admin.IncrSpill(keyName, "blocked")
 	}
+	metrics.CloudOverflowReason(CloudReasonLocalOnlyBlocked)
+	h.logBlocked(r, keyName, modelName, requestID, start, res)
 	return true
 }
 
@@ -573,7 +575,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if node == nil {
-		if h.localOnlyBlocked(w, keyName, modelName) {
+		if h.localOnlyBlocked(w, r, keyName, modelName, requestID, start, waitRes) {
 			return
 		}
 		// Try cloud fallback first - cloud providers support /api/* paths via
@@ -593,7 +595,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.Header().Del("X-Marbor-Model-Alias")
 			w.Header().Del("X-Marbor-Model-Fallback")
 			cloudBody, cloudModel := cloudRequestFor(body, modelName, clientModelName, aliased)
-			h.proxyToCloud(w, r, cloudBody, cloudModel, keyName, requestID, start, clouds, 0)
+			h.proxyToCloud(w, r, cloudBody, cloudModel, keyName, requestID, start, clouds, 0, newCloudRoute(waitRes, false))
 			return
 		}
 		// No local node and no cloud. If this was an Ollama-native path, return
@@ -853,7 +855,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			// No alternate nodes - try cloud fallback.
-			if h.localOnlyBlocked(rw, keyName, modelName) {
+			if h.localOnlyBlocked(rw, origReq, keyName, modelName, requestID, start, waitRes) {
 				retryErr = errCloudHandled
 				return
 			}
@@ -874,7 +876,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				rw.Header().Del("X-Marbor-Model-Alias")
 				rw.Header().Del("X-Marbor-Model-Fallback")
 				cloudBody, cloudModel := cloudRequestFor(baseBody, modelName, clientModelName, aliased)
-				h.proxyToCloud(rw, origReq, cloudBody, cloudModel, keyName, requestID, start, clouds, 0)
+				h.proxyToCloud(rw, origReq, cloudBody, cloudModel, keyName, requestID, start, clouds, 0, newCloudRoute(waitRes, true))
 				return
 			}
 			// The detail was logged above; return a generic message so upstream
@@ -1325,7 +1327,11 @@ func serveAndRecoverAbort(proxy *httputil.ReverseProxy, w http.ResponseWriter, r
 	return false
 }
 
-func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []byte, modelName, keyName, requestID string, start time.Time, clouds []config.CloudProvider, idx int) {
+func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []byte, modelName, keyName, requestID string, start time.Time, clouds []config.CloudProvider, idx int, route *cloudRoute) {
+	if route == nil {
+		// Defensive: a caller that has no route record still gets a valid one.
+		route = newCloudRoute(router.WaitResult{}, false)
+	}
 	// Same guard as the local retry loop's ErrorHandler: don't spend a
 	// billable metered cloud API call on a request nobody is waiting for.
 	// Checked here (not just at each call site) so it also covers the
@@ -1337,6 +1343,9 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 	hasNext := idx+1 < len(clouds)
 	delegated := false
 	metrics.CloudFallback(cloud.Name)
+	if idx == 0 {
+		metrics.CloudOverflowReason(route.reason)
+	}
 	path := translateCloudPath(r.URL.Path)
 
 	// Anthropic has no embeddings endpoint. Chat/completions requests are
@@ -1345,7 +1354,7 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 	// so return a clear 501 before the request leaves the marbor.
 	if strings.EqualFold(cloud.Provider, "anthropic") && path == "/v1/embeddings" {
 		if hasNext {
-			h.proxyToCloud(w, r, body, modelName, keyName, requestID, start, clouds, idx+1)
+			h.proxyToCloud(w, r, body, modelName, keyName, requestID, start, clouds, idx+1, route)
 			return
 		}
 		writeAPIError(w, http.StatusNotImplemented,
@@ -1456,7 +1465,7 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 			// Use the original, unmutated request r (not outReq, which is the
 			// Director-rewritten outbound request) so the fallback provider
 			// sees the client's real path when deciding on Ollama translation.
-			h.proxyToCloud(w, r, body, modelName, keyName, requestID, start, clouds, idx+1)
+			h.proxyToCloud(w, r, body, modelName, keyName, requestID, start, clouds, idx+1, route)
 			return
 		}
 		writeAPIError(w, http.StatusBadGateway, "upstream unavailable", "server_error", "upstream_error")
@@ -1474,6 +1483,8 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 	}
 
 	elapsed := time.Since(start)
+	cloudElapsed := time.Since(route.cloudStart)
+	queueWait, cloudTime := route.split(elapsed, cloudElapsed)
 	duration := elapsed.Seconds()
 	nodeName := "cloud:" + cloud.Name
 	status := "cloud"
@@ -1492,17 +1503,8 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 	if h.admin != nil {
 		latencyMs := int(elapsed.Milliseconds())
 		tokens := rec.tokenCount(aborted || rec.truncatedTail)
-		clientIP := r.RemoteAddr
-		if h.trustProxyHeaders {
-			if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-				if parts := strings.SplitN(fwd, ",", 2); len(parts) > 0 {
-					clientIP = strings.TrimSpace(parts[0])
-				}
-			} else if fwd2 := r.Header.Get("X-Real-IP"); fwd2 != "" {
-				clientIP = fwd2
-			}
-		}
-		h.admin.LogRequest(requestID, keyName, clientIP, loggedModel, nodeName, status, rec.statusCode, latencyMs, tokens, 0, nil)
+		clientIP := h.clientIP(r)
+		h.admin.LogRequestTimed(requestID, keyName, clientIP, loggedModel, nodeName, status, rec.statusCode, latencyMs, tokens, 0, route.decision(nodeName), admin.RequestTiming{QueueWaitMs: &queueWait, CloudMs: &cloudTime})
 		if tokens >= 0 {
 			h.admin.TrackCloudCostModel(keyName, cloud.Name, modelName, cloud.CostPer1KTokens, tokens)
 			// Model-config rpm/tpm caps are keyed to a specific local marbor
@@ -1517,15 +1519,18 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 		// must be a real HTTP status code (or "aborted"), and metricStatus
 		// (computed above for Prometheus) already is.
 		h.audit.Log(audit.Entry{
-			Time:       time.Now(),
-			RequestID:  requestID,
-			KeyName:    keyName,
-			Model:      modelName,
-			Node:       nodeName,
-			Status:     metricStatus,
-			LatencyMs:  int(elapsed.Milliseconds()),
-			Cloud:      true,
-			CloudModel: cloudModel,
+			Time:          time.Now(),
+			RequestID:     requestID,
+			KeyName:       keyName,
+			Model:         modelName,
+			Node:          nodeName,
+			Status:        metricStatus,
+			LatencyMs:     int(elapsed.Milliseconds()),
+			Cloud:         true,
+			CloudModel:    cloudModel,
+			RoutingReason: route.reason,
+			QueueWaitMs:   &queueWait,
+			CloudMs:       &cloudTime,
 		})
 	}
 	h.access.Log(AccessLogEntry{

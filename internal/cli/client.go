@@ -1050,6 +1050,9 @@ type RoutingDecision struct {
 	Components    []ScoreComponent    `json:"components,omitempty"`
 	Excluded      []ExcludedCandidate `json:"excluded,omitempty"`
 	ExcludedTotal int                 `json:"excludedTotal,omitempty"`
+	// NoRoute classifies why no local node was chosen (no_node_serves_model,
+	// all_nodes_unavailable, at_capacity_healthy, unknown_state); empty otherwise.
+	NoRoute string `json:"noRoute,omitempty"`
 }
 
 // ExcludedCandidate mirrors router.ExcludedCandidate. Reason is the
@@ -1600,6 +1603,10 @@ type RequestEntry struct {
 	Cloud         bool      `json:"cloud"`
 	RoutingReason string    `json:"routingReason,omitempty"`
 	PrefillMs     int64     `json:"prefillMs,omitempty"`
+	// QueueWaitMs / CloudMs split a cloud-routed request's latency; nil when
+	// not cloud-routed or not measured.
+	QueueWaitMs *int64 `json:"queueWaitMs,omitempty"`
+	CloudMs     *int64 `json:"cloudMs,omitempty"`
 }
 
 // Requests calls GET /admin/requests - the full in-memory request log ring,
@@ -1635,6 +1642,8 @@ type LiveRequestEntry struct {
 	TokensPerSec  float64   `json:"tokensPerSec"`
 	Time          time.Time `json:"time"`
 	RoutingReason string    `json:"routingReason,omitempty"`
+	QueueWaitMs   *int64    `json:"queueWaitMs,omitempty"`
+	CloudMs       *int64    `json:"cloudMs,omitempty"`
 }
 
 // LiveRequests calls GET /admin/requests/live - the same bounded in-memory
@@ -1670,6 +1679,8 @@ type AuditEntry struct {
 	Cloud         bool      `json:"cloud"`
 	CloudModel    string    `json:"cloud_model,omitempty"`
 	RoutingReason string    `json:"routing_reason,omitempty"`
+	QueueWaitMs   *int64    `json:"queue_wait_ms,omitempty"`
+	CloudMs       *int64    `json:"cloud_ms,omitempty"`
 }
 
 // AuditFilter mirrors the query params for GET /admin/audit.
