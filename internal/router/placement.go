@@ -1368,6 +1368,31 @@ type candidateFilter struct {
 	// down maps a replica head name to its first member whose agent is not
 	// answering.
 	down map[string]*NodeState
+	// Exact per-reason counts over every node the filter evaluated (not
+	// capped like excluded). They feed classifyNoRoute.
+	nodesSeen    int
+	nUnavailable int // unhealthy, draining or replica member unreachable
+	nOverCap     int
+	nStatic      int // runtime mismatch, model not served by a polled node, GPU group, replica worker/unresolved
+	nUnknown     int // never polled and excluded as ineligible, or an unrecognised reason
+}
+
+// classifyNoRoute names why the filter left no candidate. A full healthy node
+// wins over every other mix (the wait can help), then unknown state (wait,
+// bounded), then unavailable, then static. Anything unrecognised is waitable,
+// never a spill.
+func (f candidateFilter) classifyNoRoute() string {
+	switch {
+	case f.nOverCap > 0:
+		return NoRouteAtCapacityHealthy
+	case f.nUnknown > 0:
+		return NoRouteUnknownState
+	case f.nUnavailable > 0:
+		return NoRouteAllNodesUnavailable
+	case f.nStatic > 0 || f.nodesSeen == 0:
+		return NoRouteNoNodeServesModel
+	}
+	return NoRouteUnknownState
 }
 
 // filterAndSelect runs the pre-score hard filter and selection shared by
@@ -1389,6 +1414,9 @@ func (r *Router) filterAndSelect(nodes []*NodeState, modelName, runtimeFilter, p
 		decision = r.finishLastResort(f, node, decision)
 	}
 	applyExclusionExplainability(decision, f.excluded, f.excludedTotal)
+	if node == nil && decision != nil && decision.Reason == ReasonNoCandidate {
+		decision.NoRoute = f.classifyNoRoute()
+	}
 	return node, warm, decision
 }
 
@@ -1466,7 +1494,9 @@ func (r *Router) filterCandidatesWithFallback(nodes []*NodeState, modelName, run
 		if exclude[n.URL] { // safe on a nil map: indexing returns the zero value, never panics
 			continue
 		}
+		f.nodesSeen++
 		reason := ""
+		neverPolled := false
 		switch {
 		case runtimeFilter != "" && n.GetRuntime() != runtimeFilter:
 			reason = ExcludeReasonRuntimeMismatch
@@ -1474,6 +1504,7 @@ func (r *Router) filterCandidatesWithFallback(nodes []*NodeState, modelName, run
 			n.mu.RLock()
 			isHealthy := n.Healthy
 			isDraining := n.Draining
+			neverPolled = n.LastPollAt.IsZero()
 			n.mu.RUnlock()
 			switch {
 			case !isHealthy:
@@ -1504,6 +1535,24 @@ func (r *Router) filterCandidatesWithFallback(nodes []*NodeState, modelName, run
 			continue
 		}
 		f.excludedTotal++
+		switch reason {
+		case ExcludeReasonUnhealthy, ExcludeReasonDraining, ExcludeReasonReplicaMemberUnreachable:
+			f.nUnavailable++
+		case ExcludeReasonOverCapacity:
+			f.nOverCap++
+		case ExcludeReasonRuntimeMismatch, ExcludeReasonInsufficientGPUGroup, ExcludeReasonReplicaWorker, ExcludeReasonReplicaUnresolved:
+			f.nStatic++
+		case ExcludeReasonIneligibleModel:
+			// A node not polled since start has no loaded-model list yet, so
+			// "model not served" cannot be known for it.
+			if neverPolled {
+				f.nUnknown++
+			} else {
+				f.nStatic++
+			}
+		default:
+			f.nUnknown++
+		}
 		if reason == ExcludeReasonReplicaMemberUnreachable {
 			f.lastResort = append(f.lastResort, n)
 			f.excluded = append(f.excluded, ExcludedCandidate{Node: n.Name, Reason: reason})
