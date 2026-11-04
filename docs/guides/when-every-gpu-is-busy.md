@@ -75,7 +75,7 @@ Every request that overflowed to cloud is logged with a reason and two separate 
 | `queue_timeout_cloud` | No node freed up within the full queue timeout |
 | `queue_full_cloud` | The queue was full or disabled |
 | `local_upstream_failed` | A local node took the request and failed it, so it was retried on cloud |
-| `local_only_blocked` | The key is `local_only`, so the request got a 503 and never left your network |
+| `local_only_blocked` | The key is `local_only`, so the request got a 503 and never left your network; it records the time it waited but no cloud time |
 
 See them with `marbor requests` (WAIT MS and CLOUD MS columns, REASON), `marbor requests explain <id>` for the sentence, the Requests page in the dashboard, or the `marbor_cloud_overflow_reason_total{reason}` metric.
 

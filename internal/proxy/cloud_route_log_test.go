@@ -14,7 +14,7 @@ func (e *fastPathEnv) lastRow(t *testing.T) store.RequestRecord {
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
 		if recs, err := e.st.LastRequests(5); err == nil && len(recs) > 0 {
-			return recs[len(recs)-1]
+			return recs[0]
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
@@ -35,6 +35,7 @@ func TestProxy_CloudRoute_RecordsReasonAndTiming(t *testing.T) {
 		{"no node serves model", fastPathOpts{runtime: "vllm", timeoutMs: 5000, slaMs: 2000}, CloudReasonNoNodeServesModel, 0},
 		{"saturated sla expired", fastPathOpts{state: "saturated", timeoutMs: 5000, slaMs: 300}, CloudReasonSaturatedSLAExpired, 280},
 		{"queue timeout", fastPathOpts{state: "saturated", timeoutMs: 300, slaMs: 0}, CloudReasonQueueTimeout, 280},
+		{"queue disabled", fastPathOpts{state: "saturated", timeoutMs: 0, slaMs: 0}, CloudReasonQueueFull, 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -86,7 +87,38 @@ func TestProxy_LocalOnlyBlocked_LogsRow(t *testing.T) {
 	if row.RoutingReason != CloudReasonLocalOnlyBlocked || row.StatusCode != http.StatusServiceUnavailable {
 		t.Errorf("row reason=%q status=%d, want local_only_blocked/503", row.RoutingReason, row.StatusCode)
 	}
+	if row.NodeName != "none" || row.QueueWaitMs == nil {
+		t.Errorf("node=%q queue_wait_ms=%v, want node none and a measured wait", row.NodeName, row.QueueWaitMs)
+	}
 	if row.CloudMs != nil {
 		t.Errorf("cloud_ms = %v, want nil: nothing was sent to cloud", *row.CloudMs)
+	}
+}
+
+// A local node that was chosen and then failed sends the request to cloud with
+// its own reason, and the failed node's exclusion list is not carried over.
+func TestProxy_LocalUpstreamFailed_Reason(t *testing.T) {
+	e := newFastPathEnv(t, fastPathOpts{timeoutMs: 5000, slaMs: 2000})
+	e.localSrv.Close() // node still looks healthy, so it is chosen and the dial fails
+	rec, _ := e.do()
+	if rec.Code != http.StatusOK || e.cloudHits.Load() != 1 {
+		t.Fatalf("status=%d cloudHits=%d, want cloud after the local failure", rec.Code, e.cloudHits.Load())
+	}
+	row := e.lastRow(t)
+	if row.RoutingReason != CloudReasonLocalUpstreamFailed {
+		t.Errorf("routing_reason = %q, want %q", row.RoutingReason, CloudReasonLocalUpstreamFailed)
+	}
+}
+
+// The split never exceeds the total, whatever the clock reads were.
+func TestCloudRoute_SplitBounded(t *testing.T) {
+	c := &cloudRoute{waited: 900 * time.Millisecond}
+	q, cl := c.split(1000*time.Millisecond, 400*time.Millisecond)
+	if q != 900 || cl != 100 {
+		t.Errorf("split = %d/%d, want 900/100 (cloud clamped to the remainder)", q, cl)
+	}
+	q, cl = c.split(500*time.Millisecond, 400*time.Millisecond)
+	if q != 500 || cl != 0 {
+		t.Errorf("split = %d/%d, want 500/0 (wait clamped to the total)", q, cl)
 	}
 }

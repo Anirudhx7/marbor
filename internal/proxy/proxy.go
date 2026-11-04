@@ -1328,6 +1328,10 @@ func serveAndRecoverAbort(proxy *httputil.ReverseProxy, w http.ResponseWriter, r
 }
 
 func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []byte, modelName, keyName, requestID string, start time.Time, clouds []config.CloudProvider, idx int, route *cloudRoute) {
+	if route == nil {
+		// Defensive: a caller that has no route record still gets a valid one.
+		route = newCloudRoute(router.WaitResult{}, false)
+	}
 	// Same guard as the local retry loop's ErrorHandler: don't spend a
 	// billable metered cloud API call on a request nobody is waiting for.
 	// Checked here (not just at each call site) so it also covers the
@@ -1479,6 +1483,8 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 	}
 
 	elapsed := time.Since(start)
+	cloudElapsed := time.Since(route.cloudStart)
+	queueWait, cloudTime := route.split(elapsed, cloudElapsed)
 	duration := elapsed.Seconds()
 	nodeName := "cloud:" + cloud.Name
 	status := "cloud"
@@ -1497,17 +1503,8 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 	if h.admin != nil {
 		latencyMs := int(elapsed.Milliseconds())
 		tokens := rec.tokenCount(aborted || rec.truncatedTail)
-		clientIP := r.RemoteAddr
-		if h.trustProxyHeaders {
-			if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-				if parts := strings.SplitN(fwd, ",", 2); len(parts) > 0 {
-					clientIP = strings.TrimSpace(parts[0])
-				}
-			} else if fwd2 := r.Header.Get("X-Real-IP"); fwd2 != "" {
-				clientIP = fwd2
-			}
-		}
-		h.admin.LogRequestTimed(requestID, keyName, clientIP, loggedModel, nodeName, status, rec.statusCode, latencyMs, tokens, 0, route.decision(nodeName), admin.RequestTiming{QueueWaitMs: ms(route.waited), CloudMs: ms(time.Since(route.cloudStart))})
+		clientIP := h.clientIP(r)
+		h.admin.LogRequestTimed(requestID, keyName, clientIP, loggedModel, nodeName, status, rec.statusCode, latencyMs, tokens, 0, route.decision(nodeName), admin.RequestTiming{QueueWaitMs: &queueWait, CloudMs: &cloudTime})
 		if tokens >= 0 {
 			h.admin.TrackCloudCostModel(keyName, cloud.Name, modelName, cloud.CostPer1KTokens, tokens)
 			// Model-config rpm/tpm caps are keyed to a specific local marbor
@@ -1532,8 +1529,8 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 			Cloud:         true,
 			CloudModel:    cloudModel,
 			RoutingReason: route.reason,
-			QueueWaitMs:   ms(route.waited),
-			CloudMs:       ms(time.Since(route.cloudStart)),
+			QueueWaitMs:   &queueWait,
+			CloudMs:       &cloudTime,
 		})
 	}
 	h.access.Log(AccessLogEntry{
