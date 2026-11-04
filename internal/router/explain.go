@@ -132,6 +132,11 @@ type RoutingDecision struct {
 	// candidates exceeds the number listed - omitted entirely in the
 	// common case where every excluded candidate is already listed.
 	ExcludedTotal int `json:"excludedTotal,omitempty"`
+	// NoRoute classifies why nothing was chosen. Set only when Reason is
+	// no_candidate, to one of the NoRoute* values. It is derived from exact
+	// per-reason counts taken during the hard filter, not from the capped
+	// Excluded list.
+	NoRoute string `json:"noRoute,omitempty"`
 	// lastResort is set when the node was chosen only because no other
 	// candidate remained and its replica member's host agent is dark.
 	lastResort bool
@@ -147,6 +152,30 @@ const (
 	// to go.
 	ReasonNoCandidate = "no_candidate"
 )
+
+// NoRoute values classify a no_candidate decision. The first two are hard: no
+// local node can serve the request now, so queueing for one cannot help
+// quickly. The last two are waitable.
+const (
+	// NoRouteNoNodeServesModel: no registered node can ever serve this model
+	// or path (no nodes, runtime mismatch, model not on any node of a runtime
+	// that does not load on demand, GPU group or replica shape).
+	NoRouteNoNodeServesModel = "no_node_serves_model"
+	// NoRouteAllNodesUnavailable: nodes that could serve it exist but none is
+	// usable now (unhealthy, draining, or a replica member is unreachable).
+	NoRouteAllNodesUnavailable = "all_nodes_unavailable"
+	// NoRouteAtCapacityHealthy: a healthy node that serves it is full.
+	NoRouteAtCapacityHealthy = "at_capacity_healthy"
+	// NoRouteUnknownState: a node has not been polled yet, or the filter gave
+	// a reason this classifier does not know. Treated as waitable.
+	NoRouteUnknownState = "unknown_state"
+)
+
+// IsHardNoRoute reports whether a NoRoute class means no local node can serve
+// the request now, so queueing for one cannot help quickly.
+func IsHardNoRoute(noRoute string) bool {
+	return noRoute == NoRouteNoNodeServesModel || noRoute == NoRouteAllNodesUnavailable
+}
 
 func sumComponents(components []ScoreComponent) float64 {
 	total := 0.0
