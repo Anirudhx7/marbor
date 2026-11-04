@@ -46,13 +46,14 @@ func newFlagSet(name string, stderr io.Writer) (*flag.FlagSet, *globalFlags) {
 	g := &globalFlags{}
 	fs.StringVar(&g.server, "server", envOr("MARBOR_SERVER", "http://localhost:8080"), "Admin API base URL")
 	fs.BoolVar(&g.jsonOutput, "json", false, "output machine-readable JSON instead of a human table")
-	fs.StringVar(&g.username, "username", "", "admin username, used to log in (env MARBOR_USERNAME)")
-	fs.StringVar(&g.password, "password", "", "admin password, used to log in (env MARBOR_PASSWORD)")
+	fs.StringVar(&g.username, "username", "", "admin username, used to log in (env MARBOR_USERNAME); must be given together with --password")
+	fs.StringVar(&g.password, "password", "", "admin password, used to log in (env MARBOR_PASSWORD); must be given together with --username")
 	return fs, g
 }
 
 // resolveCred returns flagVal if set, otherwise the named environment
-// variable - the flag>env priority previously baked into the flag default
+// variable. A whitespace-only value counts as unset; any other value is
+// returned untrimmed. This is the flag>env priority previously baked into the flag default
 // itself (see newFlagSet's doc comment for why that was unsafe for secrets).
 func resolveCred(flagVal, envKey string) string {
 	if strings.TrimSpace(flagVal) != "" {
@@ -125,8 +126,8 @@ func renderTable(w io.Writer, indent string, rows [][2]string) {
 var authFlagsRows = [][2]string{
 	{"--server string", `Admin API base URL (default "http://localhost:8080", env MARBOR_SERVER)`},
 	{"--json", "output machine-readable JSON instead of a human table"},
-	{"--username string", "admin username, used to log in (env MARBOR_USERNAME)"},
-	{"--password string", "admin password, used to log in (env MARBOR_PASSWORD)"},
+	{"--username string", "admin username, used to log in (env MARBOR_USERNAME); must be given together with --password"},
+	{"--password string", "admin password, used to log in (env MARBOR_PASSWORD); must be given together with --username"},
 }
 
 // printModelsUsage, printRuntimeUsage, printLoginUsage, and
@@ -198,11 +199,11 @@ func authenticatedClient(flags *globalFlags) (*Client, error) {
 	username := resolveCred(flags.username, "MARBOR_USERNAME")
 	password := resolveCred(flags.password, "MARBOR_PASSWORD")
 
-	// (runLogin, unlike this function, may prompt for a lone value on a
-	// terminal - that is intentional and separate.)
 	// A lone username or password is almost certainly a mistake, and falling
 	// back to the saved session would run the command as whoever logged in
 	// last, possibly a more privileged user - refuse instead.
+	// (runLogin, unlike this function, may prompt for a lone value on a
+	// terminal - that is intentional and separate.)
 	if (username == "") != (password == "") {
 		return nil, userErrorf("both a username and a password are required (--username/--password or MARBOR_USERNAME+MARBOR_PASSWORD); only one was given")
 	}

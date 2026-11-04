@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -146,7 +147,7 @@ func TestTasklistNamesMarbor(t *testing.T) {
 		{"empty", "", 1234, false},
 	}
 	for _, tc := range cases {
-		if got := tasklistNamesMarbor(tc.out, tc.pid); got != tc.want {
+		if got, _ := tasklistNamesMarbor(tc.out, tc.pid); got != tc.want {
 			t.Errorf("%s: tasklistNamesMarbor = %v, want %v", tc.name, got, tc.want)
 		}
 	}
@@ -181,7 +182,7 @@ func TestPidIdentityConfirmed(t *testing.T) {
 				gotName, gotArgs = name, args
 				return []byte(tc.out), tc.err
 			}
-			if got := pidIdentityConfirmed(tc.goos, 42, run); got != tc.want {
+			if got, reason := pidIdentityConfirmed(tc.goos, 42, run); got != tc.want || (!got && reason == "") {
 				t.Errorf("got %v, want %v", got, tc.want)
 			}
 			if gotName != tc.wantName || strings.Join(gotArgs, " ") != tc.wantArgs {
@@ -200,9 +201,9 @@ func TestStopPidfileProcess_UnconfirmedIsNotSignalled(t *testing.T) {
 
 	for _, goos := range []string{"darwin", "windows", "plan9"} {
 		var stdout, stderr bytes.Buffer
-		stopped, unverified := stopPidfileProcess(path, goos, failing, &stdout, &stderr)
-		if stopped || !unverified {
-			t.Fatalf("%s: stopped=%v unverified=%v, want false/true", goos, stopped, unverified)
+		outcome := stopPidfileProcess(path, goos, failing, &stdout, &stderr)
+		if outcome != pidUnverified {
+			t.Fatalf("%s: outcome=%v, want pidUnverified", goos, outcome)
 		}
 		if !strings.Contains(stderr.String(), "could not be verified as marbor") || !strings.Contains(stderr.String(), "nothing was signalled") {
 			t.Errorf("%s: warning text missing, got %q", goos, stderr.String())
@@ -218,8 +219,115 @@ func TestStopPidfileProcess_UnconfirmedIsNotSignalled(t *testing.T) {
 
 func TestStopPidfileProcess_NoPidfile(t *testing.T) {
 	var out bytes.Buffer
-	stopped, unverified := stopPidfileProcess(filepath.Join(t.TempDir(), "missing.pid"), "linux", nil, &out, &out)
-	if stopped || unverified {
-		t.Errorf("got stopped=%v unverified=%v, want false/false", stopped, unverified)
+	outcome := stopPidfileProcess(filepath.Join(t.TempDir(), "missing.pid"), "linux", nil, &out, &out)
+	if outcome != pidNone {
+		t.Errorf("got outcome=%v, want pidNone", outcome)
+	}
+}
+
+func TestPidIdentityConfirmed_LinuxProc(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		return
+	}
+	// The test binary's argv[0] is not exactly marbor.
+	if ok, reason := pidIdentityConfirmed("linux", os.Getpid(), nil); ok || reason == "" {
+		t.Errorf("own test pid: ok=%v reason=%q, want false with a reason", ok, reason)
+	}
+	ok, reason := pidIdentityConfirmed("linux", deadPid(t), nil)
+	if ok || !strings.Contains(reason, "/proc/") {
+		t.Errorf("nonexistent pid: ok=%v reason=%q, want false naming /proc", ok, reason)
+	}
+}
+
+func TestTasklistNamesMarbor_ParseError(t *testing.T) {
+	if ok, err := tasklistNamesMarbor("\"unterminated,1234\n", 1234); ok || err == nil {
+		t.Errorf("ok=%v err=%v, want false with an error", ok, err)
+	}
+	if ok, err := tasklistNamesMarbor("", 1); ok || err == nil {
+		t.Errorf("empty output: ok=%v err=%v, want false with an error", ok, err)
+	}
+}
+
+func TestUninstallSummary(t *testing.T) {
+	cases := []struct {
+		name    string
+		service bool
+		outcome pidfileOutcome
+		want    []string
+		notWant []string
+	}{
+		{"nothing", false, pidNone, []string{"Nothing to uninstall"}, nil},
+		{"stopped", false, pidStopped, []string{"has been uninstalled"}, []string{"may still be running"}},
+		{"unverified only", false, pidUnverified, []string{"Nothing was uninstalled", "may still be running"}, []string{"Nothing to uninstall"}},
+		{"stop failed only", false, pidStopFailed, []string{"Nothing was uninstalled", "could not be stopped"}, []string{"Nothing to uninstall"}},
+		{"service plus unverified", true, pidUnverified, []string{"has been uninstalled", "may still be running"}, []string{"Nothing"}},
+		{"service plus stop failed", true, pidStopFailed, []string{"has been uninstalled", "could not be stopped"}, []string{"Nothing"}},
+	}
+	for _, tc := range cases {
+		got := uninstallSummary(tc.service, tc.outcome)
+		for _, w := range tc.want {
+			if !strings.Contains(got, w) {
+				t.Errorf("%s: %q missing %q", tc.name, got, w)
+			}
+		}
+		for _, w := range tc.notWant {
+			if strings.Contains(got, w) {
+				t.Errorf("%s: %q must not contain %q", tc.name, got, w)
+			}
+		}
+	}
+}
+
+// TestHelperSleep is not a test: when re-executed with the helper variable
+// set it just sleeps, giving the tests a harmless child process to stop or
+// time out on.
+func TestHelperSleep(t *testing.T) {
+	if os.Getenv("MARBOR_TEST_HELPER_SLEEP") == "" {
+		return
+	}
+	time.Sleep(30 * time.Second)
+}
+
+func TestStopPidfileProcess_ConfirmedStopsChild(t *testing.T) {
+	cmd := exec.Command(os.Args[0], "-test.run=TestHelperSleep")
+	cmd.Env = append(os.Environ(), "MARBOR_TEST_HELPER_SLEEP=1")
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start child: %v", err)
+	}
+	pid := cmd.Process.Pid
+	exited := make(chan struct{})
+	go func() { _ = cmd.Wait(); close(exited) }()
+	t.Cleanup(func() { _ = cmd.Process.Kill() })
+
+	goos, out := "darwin", "marbor\n"
+	if runtime.GOOS == "windows" {
+		goos, out = "windows", "\"marbor.exe\",\""+strconv.Itoa(pid)+"\"\r\n"
+	}
+	run := func(string, ...string) ([]byte, error) { return []byte(out), nil }
+	path := writePidfile(t, strconv.Itoa(pid))
+
+	var stdout, stderr bytes.Buffer
+	if got := stopPidfileProcess(path, goos, run, &stdout, &stderr); got != pidStopped {
+		t.Fatalf("outcome = %v, want pidStopped (stderr: %s)", got, stderr.String())
+	}
+	select {
+	case <-exited:
+	case <-time.After(10 * time.Second):
+		t.Fatal("child did not exit after being stopped")
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("pidfile should be removed, stat err = %v", err)
+	}
+}
+
+func TestRunCommandWithTimeout_KillsHungCommand(t *testing.T) {
+	t.Setenv("MARBOR_TEST_HELPER_SLEEP", "1")
+	start := time.Now()
+	_, err := runCommandWithTimeout(50*time.Millisecond, os.Args[0], "-test.run=TestHelperSleep")
+	if err == nil {
+		t.Fatal("expected an error from a command that outlives the timeout")
+	}
+	if elapsed := time.Since(start); elapsed > 10*time.Second {
+		t.Errorf("command was not cut off promptly: %v", elapsed)
 	}
 }
