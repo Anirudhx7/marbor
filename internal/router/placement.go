@@ -1551,6 +1551,7 @@ func (r *Router) filterCandidatesWithFallback(nodes []*NodeState, modelName, run
 				f.nStatic++
 			}
 		default:
+			// Unrecognised reasons are waitable. A new ExcludeReason* constant needs a class above.
 			f.nUnknown++
 		}
 		if reason == ExcludeReasonReplicaMemberUnreachable {

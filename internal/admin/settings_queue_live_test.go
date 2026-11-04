@@ -63,7 +63,7 @@ func waitDurationCloud(r *router.Router) time.Duration {
 		r.IncrConn(n)
 	}
 	start := time.Now()
-	r.WaitForNodeWithPrefixOpts(context.Background(), "llama3.2", "", "", "", router.WaitOpts{CloudUsable: true})
+	r.WaitForNodeWithPrefixOpts(context.Background(), "llama3.2", "", "", "", router.WaitOpts{CloudUsable: func() bool { return true }})
 	return time.Since(start)
 }
 

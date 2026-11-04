@@ -25,7 +25,7 @@ func (r *Router) WaitForNode(ctx context.Context, modelName, sessionID, runtimeF
 	if node, warm, decision := r.Route(modelName, sessionID, runtimeFilter); node != nil {
 		return node, warm, decision
 	}
-	res := r.waitForNodeInternal(ctx, modelName, sessionID, runtimeFilter, "", WaitOpts{})
+	res := r.waitForNodeInternal(ctx, modelName, sessionID, runtimeFilter, "", resolvedOpts{})
 	return res.Node, res.Warm, res.Decision
 }
 
@@ -41,13 +41,22 @@ func (r *Router) WaitForNodeWithPrefix(ctx context.Context, modelName, sessionID
 
 // WaitOpts tunes one wait.
 type WaitOpts struct {
-	// CloudUsable is true when a request that finds no local node can really
-	// go to a cloud provider (a chain is configured, the key may use cloud and
-	// the spend budget is not exhausted). Only then may the wait end early:
+	// CloudUsable reports whether a request that finds no local node can
+	// really go to a cloud provider (a chain is configured, the key may use
+	// it and the spend cap allows it). It is called at most once, and only
+	// after the immediate route found no node, so requests that get a node
+	// never pay for it. Only when it returns true may the wait end early:
 	// hard classes skip the queue and the overflow SLA caps the wait. When
-	// false the wait lasts up to the queue timeout for every class.
-	CloudUsable bool
+	// nil or false the wait lasts up to the queue timeout for every class.
+	CloudUsable func() bool
 }
+
+// resolve evaluates CloudUsable once and fixes the answer for the wait.
+func (o WaitOpts) resolve() resolvedOpts {
+	return resolvedOpts{cloudUsable: o.CloudUsable != nil && o.CloudUsable()}
+}
+
+type resolvedOpts struct{ cloudUsable bool }
 
 // Wait outcomes reported in WaitResult.Outcome.
 const (
@@ -89,10 +98,11 @@ func (r *Router) WaitForNodeWithPrefixOpts(ctx context.Context, modelName, sessi
 	if node != nil {
 		return WaitResult{Node: node, Warm: warm, Decision: decision, Outcome: WaitRouted}
 	}
-	if nr := noRouteOf(decision); opts.CloudUsable && IsHardNoRoute(nr) {
+	ro := opts.resolve()
+	if nr := noRouteOf(decision); ro.cloudUsable && IsHardNoRoute(nr) {
 		return WaitResult{Decision: decision, Outcome: WaitSkipHard, NoRoute: nr}
 	}
-	res := r.waitForNodeInternal(ctx, modelName, sessionID, runtimeFilter, preferredNode, opts)
+	res := r.waitForNodeInternal(ctx, modelName, sessionID, runtimeFilter, preferredNode, ro)
 	if res.Decision == nil {
 		res.Decision = decision
 		res.NoRoute = noRouteOf(decision)
@@ -111,7 +121,7 @@ func noRouteOf(d *RoutingDecision) string {
 // caller has already tried an immediate route and found nothing. preferredNode
 // is threaded through to every retry route call so a queued request keeps
 // benefiting from its locality hint on each wake-up.
-func (r *Router) waitForNodeInternal(ctx context.Context, modelName, sessionID, runtimeFilter, preferredNode string, opts WaitOpts) WaitResult {
+func (r *Router) waitForNodeInternal(ctx context.Context, modelName, sessionID, runtimeFilter, preferredNode string, ro resolvedOpts) WaitResult {
 	// Queue disabled (timeout or depth == 0): fall through immediately.
 	// config.Validate() sets the production defaults; callers that bypass
 	// Validate() (unit tests, zero-config New()) get no queue.
@@ -143,7 +153,7 @@ func (r *Router) waitForNodeInternal(ctx context.Context, modelName, sessionID, 
 	// Route() considers, only how long a request waits for capacity.
 	waitTimeout := queueTimeout
 	slaCapped := false
-	if sla := time.Duration(r.overflowSLAMs.Load()) * time.Millisecond; opts.CloudUsable && sla > 0 && sla < waitTimeout {
+	if sla := time.Duration(r.overflowSLAMs.Load()) * time.Millisecond; ro.cloudUsable && sla > 0 && sla < waitTimeout {
 		waitTimeout = sla
 		slaCapped = true
 	}
@@ -166,7 +176,7 @@ func (r *Router) waitForNodeInternal(ctx context.Context, modelName, sessionID, 
 		if decision != nil {
 			last = decision
 		}
-		if nr := noRouteOf(decision); opts.CloudUsable && IsHardNoRoute(nr) {
+		if nr := noRouteOf(decision); ro.cloudUsable && IsHardNoRoute(nr) {
 			return WaitResult{Decision: decision, Outcome: WaitSkipHard, NoRoute: nr, Waited: time.Since(started)}, true
 		}
 		return WaitResult{}, false
@@ -181,11 +191,11 @@ func (r *Router) waitForNodeInternal(ctx context.Context, modelName, sessionID, 
 		case <-ctx.Done():
 			return WaitResult{Decision: last, Outcome: WaitCtxCancelled, NoRoute: noRouteOf(last), Waited: time.Since(started)}
 		case <-timer.C:
-			metrics.QueueTimeout()
 			// One last look: a slot may have freed as the timer fired.
 			if res, done := recheck(); done {
 				return res
 			}
+			metrics.QueueTimeout()
 			outcome := WaitQueueTimeout
 			if slaCapped {
 				outcome = WaitSLAExpired
