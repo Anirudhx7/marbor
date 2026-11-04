@@ -4,6 +4,7 @@ package router
 
 import (
 	"context"
+	"math"
 	"sync/atomic"
 	"time"
 
@@ -191,7 +192,7 @@ func (r *Router) SetQueueTimeout(ms int) {
 // negative disables the queue. Lowering it below the current depth turns new
 // arrivals away until it drains; it never evicts a request already waiting.
 func (r *Router) SetQueueMaxDepth(n int) {
-	r.queueMaxDepth.Store(int32(n))
+	r.queueMaxDepth.Store(clampQueueDepth(n))
 }
 
 // SetOverflowSLA changes the cap on how long a request waits for local
@@ -200,4 +201,17 @@ func (r *Router) SetQueueMaxDepth(n int) {
 // after the call.
 func (r *Router) SetOverflowSLA(ms int) {
 	r.overflowSLAMs.Store(int64(ms))
+}
+
+// clampQueueDepth converts a configured depth to the int32 the queue stores.
+// A value that does not fit is capped rather than wrapped: a wrapped negative
+// would read as "queue disabled". Zero or negative means disabled.
+func clampQueueDepth(n int) int32 {
+	if n <= 0 {
+		return 0
+	}
+	if n > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	return int32(n)
 }

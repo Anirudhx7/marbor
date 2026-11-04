@@ -6,17 +6,19 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/Anirudhx7/marbor/internal/auth"
 	"github.com/Anirudhx7/marbor/internal/config"
 	"github.com/Anirudhx7/marbor/internal/router"
+	"github.com/Anirudhx7/marbor/internal/store"
 )
 
 // queueSettingsServer returns a server whose router has one unhealthy node
 // (so every WaitForNode has to wait) and a deliberately long queue timeout.
-func queueSettingsServer(t *testing.T) (*Server, *router.Router) {
+func queueSettingsServer(t *testing.T, st ...store.Store) (*Server, *router.Router) {
 	t.Helper()
 	rc := config.RoutingConfig{
 		PollIntervalMs: 2000, UpstreamTimeoutMs: 120000, MaxRetries: 2,
@@ -27,7 +29,7 @@ func queueSettingsServer(t *testing.T) (*Server, *router.Router) {
 	r.Nodes()[0].Healthy = false
 	cfg := config.Config{}
 	cfg.Routing = rc
-	return NewServer(r, auth.NewMiddleware(cfg.Auth), cfg), r
+	return NewServer(r, auth.NewMiddleware(cfg.Auth), cfg, st...), r
 }
 
 func putRoutingSettings(t *testing.T, s *Server, routing map[string]any) *httptest.ResponseRecorder {
@@ -107,12 +109,17 @@ func TestAdmin_SettingsRejectsNegativeQueueValues(t *testing.T) {
 
 // A reload re-applies the configured values and keeps them live.
 func TestAdmin_ReloadFromStoreKeepsQueueSettingsApplied(t *testing.T) {
-	s, r := queueSettingsServer(t)
+	st, err := store.Open(filepath.Join(t.TempDir(), "reload-queue.db"))
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(func() { st.Close() })
+	s, r := queueSettingsServer(t, st)
 	s.mu.Lock()
 	s.cfg.Routing.OverflowSLAMs = 150
 	s.mu.Unlock()
 	if _, _, _, _, err := s.ReloadFromStore(); err != nil {
-		t.Skipf("ReloadFromStore needs a store in this harness: %v", err)
+		t.Fatalf("ReloadFromStore: %v", err)
 	}
 	if d := waitDuration(r); d < 100*time.Millisecond || d > 1500*time.Millisecond {
 		t.Fatalf("waited %v after reload with SLA 150, want about 150ms", d)

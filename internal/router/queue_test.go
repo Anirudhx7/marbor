@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"math"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -401,5 +402,19 @@ func TestQueueSettersRaceWithWaiters(t *testing.T) {
 	wg.Wait()
 	if returned.Load() != 40 {
 		t.Fatalf("%d of 40 waiters returned", returned.Load())
+	}
+}
+
+// A depth larger than int32 must be capped, not wrapped negative (which would
+// silently disable the queue).
+func TestSetQueueMaxDepthClampsOversizedValue(t *testing.T) {
+	r := newQueueRouter("http://localhost:11434", 10, 500)
+	r.SetQueueMaxDepth(math.MaxInt32 + 5)
+	if got := r.queueMaxDepth.Load(); got != math.MaxInt32 {
+		t.Fatalf("depth = %d after an oversized value, want %d", got, int32(math.MaxInt32))
+	}
+	r.SetQueueMaxDepth(-3)
+	if got := r.queueMaxDepth.Load(); got != 0 {
+		t.Fatalf("depth = %d after a negative value, want 0", got)
 	}
 }

@@ -615,8 +615,9 @@ type Router struct {
 	queueTimeoutMs atomic.Int64
 	// maxInFlightPerNode is the global default in-flight cap - 0 means
 	// uncapped. Overridable per node via NodeState.MaxInFlight. Set once at
-	// construction; a live change requires
-	// a restart, consistent with the other RoutingConfig numeric knobs above.
+	// construction; a live change requires a restart. The queue timeout, queue
+	// depth and overflow SLA above are the RoutingConfig numeric knobs that are
+	// live-tunable.
 	maxInFlightPerNode int
 	timezone           string // timezone location name (e.g. "UTC", "Asia/Kolkata", "Local")
 	warmupCfg          config.WarmupConfig
@@ -941,7 +942,7 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 	r.prefixLocalityWeight.Store(math.Float64bits(cfg.PrefixLocalityWeight))
 	r.SetModelAliases(cfg.ModelAliases)
 	r.queueTimeoutMs.Store(queueTimeout.Milliseconds())
-	r.queueMaxDepth.Store(int32(queueMaxDepth))
+	r.SetQueueMaxDepth(queueMaxDepth)
 	r.overflowSLAMs.Store(int64(cfg.OverflowSLAMs))
 	rr = r
 	return r
