@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -274,5 +275,131 @@ func TestWaitForNodeQueueFullRejectsImmediately(t *testing.T) {
 	}
 	if elapsed > 50*time.Millisecond {
 		t.Errorf("queue-full should reject instantly, took %v", elapsed)
+	}
+}
+
+// newUnroutableQueueRouter returns a router whose only node is unhealthy, so
+// every WaitForNode call has to wait for its timer.
+func newUnroutableQueueRouter(maxDepth, timeoutMs int) *Router {
+	r := newQueueRouter("http://localhost:11434", maxDepth, timeoutMs)
+	r.mu.RLock()
+	n := r.nodes[0]
+	r.mu.RUnlock()
+	n.mu.Lock()
+	n.Healthy = false
+	n.mu.Unlock()
+	return r
+}
+
+func timedWait(r *Router) time.Duration {
+	start := time.Now()
+	r.WaitForNode(context.Background(), "llama3.2", "", "")
+	return time.Since(start)
+}
+
+// A queue timeout changed after construction applies to the next waiter.
+func TestSetQueueTimeoutAppliesLive(t *testing.T) {
+	r := newUnroutableQueueRouter(10, 5000)
+	r.SetQueueTimeout(150)
+	if d := timedWait(r); d < 100*time.Millisecond || d > 1500*time.Millisecond {
+		t.Fatalf("waited %v after SetQueueTimeout(150), want about 150ms", d)
+	}
+}
+
+// An overflow SLA set after construction caps the wait for the next waiter.
+func TestSetOverflowSLAAppliesLive(t *testing.T) {
+	r := newUnroutableQueueRouter(10, 5000)
+	r.SetOverflowSLA(150)
+	if d := timedWait(r); d < 100*time.Millisecond || d > 1500*time.Millisecond {
+		t.Fatalf("waited %v after SetOverflowSLA(150), want about 150ms", d)
+	}
+}
+
+// An SLA of zero means no cap beyond the queue timeout, including when it is
+// reset from a non-zero value.
+func TestSetOverflowSLAZeroUsesQueueTimeout(t *testing.T) {
+	r := newUnroutableQueueRouter(10, 300)
+	r.SetOverflowSLA(50)
+	r.SetOverflowSLA(0)
+	if d := timedWait(r); d < 250*time.Millisecond {
+		t.Fatalf("waited %v with SLA reset to 0, want the 300ms queue timeout", d)
+	}
+}
+
+// Setting the depth or the timeout to zero turns the queue off at once.
+func TestSetQueueMaxDepthZeroDisablesQueue(t *testing.T) {
+	r := newUnroutableQueueRouter(10, 5000)
+	r.SetQueueMaxDepth(0)
+	if d := timedWait(r); d > 200*time.Millisecond {
+		t.Fatalf("waited %v with depth 0, want an immediate return", d)
+	}
+	r.SetQueueMaxDepth(10)
+	r.SetQueueTimeout(0)
+	if d := timedWait(r); d > 200*time.Millisecond {
+		t.Fatalf("waited %v with timeout 0, want an immediate return", d)
+	}
+}
+
+// A waiter that is already queued keeps the timer it started with when the
+// settings change underneath it.
+func TestQueuedWaiterKeepsItsTimer(t *testing.T) {
+	r := newUnroutableQueueRouter(10, 400)
+	done := make(chan time.Duration, 1)
+	go func() { done <- timedWait(r) }()
+	time.Sleep(50 * time.Millisecond)
+	r.SetQueueTimeout(5000)
+	r.SetOverflowSLA(5000)
+	select {
+	case d := <-done:
+		if d < 300*time.Millisecond || d > 1500*time.Millisecond {
+			t.Fatalf("queued waiter returned after %v, want about its original 400ms", d)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("queued waiter did not return on its original timer")
+	}
+}
+
+// Lowering the depth below the number already waiting turns new arrivals away
+// without evicting anyone.
+func TestSetQueueMaxDepthLowerKeepsWaiters(t *testing.T) {
+	r := newUnroutableQueueRouter(10, 600)
+	done := make(chan time.Duration, 1)
+	go func() { done <- timedWait(r) }()
+	time.Sleep(50 * time.Millisecond)
+	r.SetQueueMaxDepth(1)
+	if d := timedWait(r); d > 200*time.Millisecond {
+		t.Fatalf("new arrival waited %v with the queue full, want an immediate return", d)
+	}
+	select {
+	case d := <-done:
+		if d < 400*time.Millisecond {
+			t.Fatalf("existing waiter was evicted after %v", d)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("existing waiter did not return")
+	}
+}
+
+// Setters racing with many waiters must be clean under -race.
+func TestQueueSettersRaceWithWaiters(t *testing.T) {
+	r := newUnroutableQueueRouter(100, 200)
+	var wg sync.WaitGroup
+	var returned atomic.Int32
+	for i := 0; i < 40; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			timedWait(r)
+			returned.Add(1)
+		}()
+	}
+	for i := 0; i < 200; i++ {
+		r.SetQueueTimeout(100 + i%200)
+		r.SetOverflowSLA(i % 150)
+		r.SetQueueMaxDepth(50 + i%100)
+	}
+	wg.Wait()
+	if returned.Load() != 40 {
+		t.Fatalf("%d of 40 waiters returned", returned.Load())
 	}
 }

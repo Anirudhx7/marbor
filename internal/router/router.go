@@ -554,11 +554,12 @@ type Router struct {
 	// (config.RoutingConfig.ModelAliases). Swapped as a whole, never mutated
 	// in place, so the per-request resolve path takes no lock. See aliases.go.
 	modelAliases atomic.Pointer[map[string]string]
-	// overflowSLA, when > 0, caps how long WaitForNode waits in the local
+	// overflowSLAMs, when > 0, caps how long WaitForNode waits in the local
 	// capacity queue before returning nil (triggering cloud fallback or 503)
 	// - see config.RoutingConfig.OverflowSLAMs. It never affects Route()'s
 	// Hard-Constraint filtering, only how long a request waits for capacity.
-	overflowSLA time.Duration
+	// Live-tunable through SetOverflowSLA.
+	overflowSLAMs atomic.Int64
 	// thermalWatchdog gates Sustained Degradation Auto-Drain. Immutable after
 	// construction (config-only, not runtime-toggleable).
 	thermalWatchdog config.ThermalWatchdogConfig
@@ -602,14 +603,19 @@ type Router struct {
 	modelArchFacts map[string]ModelArchFacts
 	archFactsMu    sync.RWMutex
 	// notifyCh is closed and recreated to broadcast wakes when a connection is freed.
-	notifyCh      chan struct{}
-	notifyMu      sync.Mutex
-	queueDepth    int32 // atomic, current waiters in WaitForNode
-	queueMaxDepth int
-	queueTimeout  time.Duration
+	notifyCh   chan struct{}
+	notifyMu   sync.Mutex
+	queueDepth int32 // atomic, current waiters in WaitForNode
+	// queueMaxDepth, queueTimeoutMs and overflowSLAMs are live-tunable: the
+	// settings page writes them through SetQueueMaxDepth, SetQueueTimeout and
+	// SetOverflowSLA while requests are waiting, so they are atomics. A waiter
+	// reads each once on entry; a change applies to requests that enter the
+	// queue after it.
+	queueMaxDepth  atomic.Int32
+	queueTimeoutMs atomic.Int64
 	// maxInFlightPerNode is the global default in-flight cap - 0 means
 	// uncapped. Overridable per node via NodeState.MaxInFlight. Set once at
-	// construction (same as queueMaxDepth/overflowSLA); a live change requires
+	// construction; a live change requires
 	// a restart, consistent with the other RoutingConfig numeric knobs above.
 	maxInFlightPerNode int
 	timezone           string // timezone location name (e.g. "UTC", "Asia/Kolkata", "Local")
@@ -911,7 +917,6 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 		healthSuccessThreshold:   healthSuccessThreshold,
 		fallbackChains:           cfg.FallbackChains,
 		localDegradationChains:   cfg.LocalDegradationChains,
-		overflowSLA:              time.Duration(cfg.OverflowSLAMs) * time.Millisecond,
 		thermalWatchdog:          thermalWatchdog,
 		affinity:                 make(map[string]*affinityEntry),
 		affinityTTL:              affinityTTL,
@@ -927,8 +932,6 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 		nvidiaCache:              make(map[int]GPUStats),
 		nvidiaPollInterval:       nvidiaPollInterval,
 		notifyCh:                 make(chan struct{}),
-		queueMaxDepth:            queueMaxDepth,
-		queueTimeout:             queueTimeout,
 		maxInFlightPerNode:       cfg.MaxInFlightPerNode,
 		lastAccuracyLogAt:        time.Now(),
 		lastTimeOfDayPrewarmHour: -1,
@@ -937,6 +940,9 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 	r.prefixLocalityEnabled.Store(cfg.PrefixLocalityEnabled)
 	r.prefixLocalityWeight.Store(math.Float64bits(cfg.PrefixLocalityWeight))
 	r.SetModelAliases(cfg.ModelAliases)
+	r.queueTimeoutMs.Store(queueTimeout.Milliseconds())
+	r.queueMaxDepth.Store(int32(queueMaxDepth))
+	r.overflowSLAMs.Store(int64(cfg.OverflowSLAMs))
 	rr = r
 	return r
 }

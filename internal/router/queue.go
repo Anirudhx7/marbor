@@ -110,13 +110,15 @@ func (r *Router) waitForNodeInternal(ctx context.Context, modelName, sessionID, 
 	// Queue disabled (timeout or depth == 0): fall through immediately.
 	// config.Validate() sets the production defaults; callers that bypass
 	// Validate() (unit tests, zero-config New()) get no queue.
-	if r.queueTimeout <= 0 || r.queueMaxDepth <= 0 {
+	queueTimeout := time.Duration(r.queueTimeoutMs.Load()) * time.Millisecond
+	maxDepth := int(r.queueMaxDepth.Load())
+	if queueTimeout <= 0 || maxDepth <= 0 {
 		return nil, false, nil
 	}
 
 	// Claim a queue slot atomically. Reject if already at capacity.
 	depth := atomic.AddInt32(&r.queueDepth, 1)
-	if int(depth) > r.queueMaxDepth {
+	if int(depth) > maxDepth {
 		atomic.AddInt32(&r.queueDepth, -1)
 		return nil, false, nil
 	}
@@ -137,9 +139,9 @@ func (r *Router) waitForNodeInternal(ctx context.Context, modelName, sessionID, 
 	// fallback (or 503), overriding the longer queue_timeout_ms for that
 	// purpose only. This never changes which nodes Route() considers - it is
 	// a queue-wait timing knob, not a Hard-Constraint bypass.
-	waitTimeout := r.queueTimeout
-	if r.overflowSLA > 0 && r.overflowSLA < waitTimeout {
-		waitTimeout = r.overflowSLA
+	waitTimeout := queueTimeout
+	if sla := time.Duration(r.overflowSLAMs.Load()) * time.Millisecond; sla > 0 && sla < waitTimeout {
+		waitTimeout = sla
 	}
 	timer := time.NewTimer(waitTimeout)
 	defer timer.Stop()
@@ -175,4 +177,27 @@ func (r *Router) waitForNodeInternal(ctx context.Context, modelName, sessionID, 
 // QueueDepth returns the current number of requests waiting in WaitForNode.
 func (r *Router) QueueDepth() int {
 	return int(atomic.LoadInt32(&r.queueDepth))
+}
+
+// SetQueueTimeout changes how long a queued request waits for a node, in
+// milliseconds. Zero or negative disables the queue. It applies to requests
+// that enter the queue after the call; requests already waiting keep the
+// timer they started with.
+func (r *Router) SetQueueTimeout(ms int) {
+	r.queueTimeoutMs.Store(int64(ms))
+}
+
+// SetQueueMaxDepth changes how many requests may wait at once. Zero or
+// negative disables the queue. Lowering it below the current depth turns new
+// arrivals away until it drains; it never evicts a request already waiting.
+func (r *Router) SetQueueMaxDepth(n int) {
+	r.queueMaxDepth.Store(int32(n))
+}
+
+// SetOverflowSLA changes the cap on how long a request waits for local
+// capacity before cloud fallback, in milliseconds. Zero or negative means no
+// cap beyond the queue timeout. It applies to requests that enter the queue
+// after the call.
+func (r *Router) SetOverflowSLA(ms int) {
+	r.overflowSLAMs.Store(int64(ms))
 }
