@@ -8,8 +8,8 @@ Every command accepts these in addition to any flags listed under it:
 
 - `--server` - Admin API base URL (default "http://localhost:8080", env MARBOR_SERVER)
 - `--json` - output machine-readable JSON instead of a human table
-- `--username` - admin username, used to log in (env MARBOR_USERNAME) - must be given together with --password
-- `--password` - admin password, used to log in (env MARBOR_PASSWORD) - must be given together with --username
+- `--username` - admin username, used to log in (env MARBOR_USERNAME); must be given together with --password
+- `--password` - admin password, used to log in (env MARBOR_PASSWORD); must be given together with --username
 
 ## Exit status
 

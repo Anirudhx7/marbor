@@ -687,8 +687,8 @@ The recommended flow is `marbor login` once (interactively, or with
 the OS user config dir) so every later command in that shell, in a fresh terminal, or across a
 reboot works with zero flags until the session expires. For scripts/CI/containers where a
 persisted file isn't wanted, pass credentials on every invocation instead:
-`--username`/`--password` or `MARBOR_USERNAME`/`MARBOR_PASSWORD` (always together - a lone username or password is refused, never replaced by the saved session; these always take priority over the
-saved session). There is no `--token`/`MARBOR_TOKEN` flag - a bearer token passed as a CLI argument
+`--username`/`--password` or `MARBOR_USERNAME`/`MARBOR_PASSWORD` (these always take priority over the
+saved session). Give the username and password together: a lone username or password is refused rather than replaced by the saved session. There is no `--token`/`MARBOR_TOKEN` flag - a bearer token passed as a CLI argument
 or read from an env var would still be visible in shell history, `ps`/Task Manager, and
 process-creation logging for the life of that process, so login/saved-session and
 username+password are the only credential paths. `marbor whoami` reports the saved identity,
