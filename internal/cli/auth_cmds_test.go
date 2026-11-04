@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -542,33 +543,69 @@ func TestRun_Whoami_ServerUnreachable_ShowsCachedIdentity(t *testing.T) {
 	}
 }
 
-func TestAuthenticatedClient_LoneUsernameOrPasswordIsUserError(t *testing.T) {
+func TestAuthenticatedClient_CredentialPairing(t *testing.T) {
 	cases := []struct {
-		name     string
-		username string
-		password string
+		name         string
+		flagUser     string
+		flagPass     string
+		envUser      string
+		envPass      string
+		wantUserErr  bool
+		wantLogin    bool
+		wantSavedUse bool
 	}{
-		{"lone username", "alice", ""},
-		{"lone password", "", "secret"},
+		{name: "lone username flag", flagUser: "alice", wantUserErr: true},
+		{name: "lone password flag", flagPass: "secret", wantUserErr: true},
+		{name: "lone username env", envUser: "alice", wantUserErr: true},
+		{name: "lone password env", envPass: "secret", wantUserErr: true},
+		{name: "username flag with password env", flagUser: "alice", envPass: "secret", wantLogin: true},
+		{name: "whitespace-only password", flagUser: "alice", flagPass: "   ", wantUserErr: true},
+		{name: "whitespace-only username", flagUser: "  ", flagPass: "secret", wantUserErr: true},
+		{name: "both set", flagUser: "alice", flagPass: "secret", wantLogin: true},
+		{name: "neither set", wantSavedUse: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			withTempConfigDir(t)
-			t.Setenv("MARBOR_USERNAME", tc.username)
-			t.Setenv("MARBOR_PASSWORD", tc.password)
-			mustSaveSession(t, "http://marbor.invalid", "saved-tok")
+			t.Setenv("MARBOR_USERNAME", tc.envUser)
+			t.Setenv("MARBOR_PASSWORD", tc.envPass)
 
-			flags := &globalFlags{server: "http://marbor.invalid"}
-			client, err := authenticatedClient(flags)
-			if err == nil {
-				t.Fatalf("expected an error, got client %+v (saved session must not be used)", client)
+			var logins int
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/admin/v1/login" {
+					logins++
+					http.SetCookie(w, &http.Cookie{Name: "marbor_session", Value: "login-tok"})
+					w.Header().Set("Content-Type", "application/json")
+					w.Write([]byte(`{"role":"admin","username":"alice"}`))
+					return
+				}
+				w.WriteHeader(http.StatusNotFound)
+			}))
+			defer srv.Close()
+			mustSaveSession(t, srv.URL, "saved-tok")
+
+			client, err := authenticatedClient(&globalFlags{server: srv.URL, username: tc.flagUser, password: tc.flagPass})
+			if tc.wantUserErr {
+				var cliErr *CLIError
+				if !errors.As(err, &cliErr) || cliErr.Code != ExitUserError {
+					t.Fatalf("expected a user error, got client=%+v err=%v", client, err)
+				}
+				if !strings.Contains(err.Error(), "both") {
+					t.Errorf("message should say both are required, got %q", err.Error())
+				}
+				if logins != 0 {
+					t.Errorf("no login must be attempted, got %d", logins)
+				}
+				return
 			}
-			cliErr, ok := err.(*CLIError)
-			if !ok || cliErr.Code != ExitUserError {
-				t.Fatalf("expected a user error, got %#v", err)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
 			}
-			if !strings.Contains(err.Error(), "both") {
-				t.Errorf("message should say both are required, got %q", err.Error())
+			if tc.wantLogin && (logins != 1 || client.Token == "saved-tok") {
+				t.Errorf("expected a fresh login, got logins=%d token=%q", logins, client.Token)
+			}
+			if tc.wantSavedUse && (logins != 0 || client.Token != "saved-tok") {
+				t.Errorf("expected saved session, got logins=%d token=%q", logins, client.Token)
 			}
 		})
 	}
