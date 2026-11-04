@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Anirudhx7/marbor/internal/auth"
 	"github.com/Anirudhx7/marbor/internal/config"
@@ -23,6 +24,9 @@ type flakyKeyStore struct {
 	failUpsert, failRevoke, failAll, failUpdateUser, failDelete bool
 	// afterUpsert runs after each successful UpsertKey (test hook).
 	afterUpsert func()
+	// afterAllKeys runs once after the next successful AllKeys read, then is
+	// cleared (test hook).
+	afterAllKeys func()
 }
 
 var errInjected = errors.New("injected store failure")
@@ -63,7 +67,13 @@ func (f *flakyKeyStore) AllKeys() ([]store.KeyRecord, error) {
 	if f.failAll {
 		return nil, errInjected
 	}
-	return f.Store.AllKeys()
+	recs, err := f.Store.AllKeys()
+	if err == nil && f.afterAllKeys != nil {
+		hook := f.afterAllKeys
+		f.afterAllKeys = nil
+		hook()
+	}
+	return recs, err
 }
 
 func newFlakyKeyServer(t *testing.T) (*Server, *auth.Middleware, *flakyKeyStore) {
@@ -328,6 +338,36 @@ func TestAdmin_RotateRacingRevokeNeverResurrectsKey(t *testing.T) {
 		if hasLiveKey(a, "k1") {
 			t.Fatalf("iteration %d: key is live after a revoke raced a rotate", i)
 		}
+	}
+}
+
+// A revoke that lands between ReloadFromStore's key read and its live apply
+// must not be undone by the stale snapshot.
+func TestAdmin_RevokeDuringReloadStaysRevoked(t *testing.T) {
+	s, a, fs := newFlakyKeyServer(t)
+	if rec := keyReq(t, s, http.MethodPost, "/admin/keys", `{"name":"k1"}`); rec.Code != http.StatusCreated {
+		t.Fatalf("create = %d", rec.Code)
+	}
+	revoked := make(chan struct{})
+	fs.afterAllKeys = func() {
+		// Fires after the reload read the keys and before it applies them.
+		go func() {
+			defer close(revoked)
+			keyReq(t, s, http.MethodDelete, "/admin/keys/k1", "")
+		}()
+		// Unserialised, the revoke finishes here, before the stale apply. With
+		// keysMu held across the reload it stays blocked until the reload ends.
+		select {
+		case <-revoked:
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
+	if _, _, _, _, err := s.ReloadFromStore(); err != nil {
+		t.Fatalf("ReloadFromStore: %v", err)
+	}
+	<-revoked
+	if hasLiveKey(a, "k1") {
+		t.Fatal("key is live after a revoke raced a reload")
 	}
 }
 

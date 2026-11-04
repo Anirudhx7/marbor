@@ -1915,6 +1915,12 @@ func (s *Server) ReloadFromStore() (nodesAdded, nodesRemoved, authKeys, cloudPro
 	// them removes the partial-apply window entirely - a load failure at any
 	// stage returns before auth/clouds/nodes have been touched, matching the
 	// "keep previous state" contract the SIGHUP caller already assumes.
+	//
+	// keysMu spans the key load and the live apply: without it a revoke that
+	// lands between the read and auth.Reload is undone live, and a concurrent
+	// create/rotate is wiped from live auth until the next reload.
+	s.keysMu.Lock()
+	defer s.keysMu.Unlock()
 	runtimeKeys, kErr := s.st.AllKeys()
 	if kErr != nil {
 		return 0, 0, 0, 0, fmt.Errorf("load keys: %w", kErr)
@@ -5691,7 +5697,7 @@ func (s *Server) handleRotateKey(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(k)
 }
 
-const keyRevokeNotPersistedMsg = "the key is revoked now, but the change could not be saved and the key may return after a restart; retry the revoke"
+const keyRevokeNotPersistedMsg = "the key is revoked now, but the change could not be saved and the key may return after a restart or config reload; retry the revoke"
 
 // revokeKeyLiveFirst revokes name in the live auth state, then persists the
 // revocation. The returned error is the durable-write error only.
