@@ -43,13 +43,23 @@ const benchmarkJobMaxAge = 10 * time.Minute
 // generous like nodePullTimeout rather than tight like nodeUnloadModelTimeout.
 var benchmarkSampleTimeout = 5 * time.Minute
 
-// benchmarkKeyTTL is how far in the future the ephemeral benchmark API key's
-// expires_at is set - defense in depth only. The key is always explicitly
-// deleted (auth.RevokeKey + store.DeleteKey) when the job ends, on every exit
-// path (success, error, cancel); this TTL exists purely in case that cleanup
-// is ever skipped by a crash mid-job, so an orphaned key can't authenticate
-// forever.
-const benchmarkKeyTTL = 15 * time.Minute
+// benchmarkKeyTTLMin is the floor so tiny runs keep the original 15m window.
+const benchmarkKeyTTLMin = 15 * time.Minute
+
+// benchmarkKeyTTLFor is how far in the future the ephemeral benchmark API
+// key's expires_at is set for a run of n samples per phase. It must outlast
+// the run or the proxy rejects the key mid-flight, so it covers the worst
+// case: n+1 evicts (the initial one plus one before each later cold sample,
+// each bounded by the unload timeout plus the 2s settle sleep) and 2n samples
+// (cold and warm) each bounded by benchmarkSampleTimeout, plus a fixed margin.
+// Explicit cleanup (auth.RevokeKey + store.DeleteKey when the job ends, on
+// every exit path) is the real mechanism; the TTL only bounds an orphaned key
+// if that cleanup is skipped by a crash.
+func benchmarkKeyTTLFor(n int) time.Duration {
+	evict := nodeUnloadModelTimeout + 2*time.Second
+	ttl := time.Duration(n+1)*evict + time.Duration(2*n)*benchmarkSampleTimeout + 2*time.Minute
+	return max(ttl, benchmarkKeyTTLMin)
+}
 
 // benchmarkJob tracks one in-flight or recently-finished hardware benchmark
 // run for the progress UI. Mirrors pullJob's shape/lifecycle.
@@ -351,7 +361,7 @@ func (s *Server) handleRunBenchmark(w http.ResponseWriter, r *http.Request) {
 		Name:      keyName,
 		Key:       keyValue,
 		Models:    []string{body.Model},
-		ExpiresAt: time.Now().Add(benchmarkKeyTTL).Format(time.RFC3339),
+		ExpiresAt: time.Now().Add(benchmarkKeyTTLFor(body.N)).Format(time.RFC3339),
 	}
 	if err := s.persistKey(k); err != nil {
 		s.benchMu.Lock()
