@@ -11,9 +11,9 @@ Marbor places a request on a node as soon as one is healthy and under its in-fli
 | `routing.queue_max_depth` | 100 | Requests allowed to wait at once |
 | `routing.queue_timeout_ms` | 30000 | How long a request waits before it gives up |
 | `routing.max_in_flight_per_node` | 0 (no cap) | Global cap on concurrent requests per node |
-| `routing.overflow_sla_ms` | 0 (off) | If set and shorter than the queue timeout, how long a request waits before it overflows to cloud (or gets the 503) |
+| `routing.overflow_sla_ms` | 2000 on a fresh install, 0 once saved as 0 | When a cloud provider can take the request, how long it waits for a busy local node before overflowing to cloud. 0 waits the full queue timeout |
 
-Change them by writing a partial settings file, applying it, and restarting Marbor. These settings are read once at startup, so `marbor config reload` does not apply them:
+Change them by writing a partial settings file and applying it. The queue depth, queue timeout and overflow SLA take effect on the next request without a restart; the other settings in this table are read once at startup, so apply them with a restart:
 
 ```bash
 cat > queue.json <<'EOF'
@@ -52,9 +52,9 @@ marbor cloud budget-status
 
 Overflow is off until you add a provider, so a fresh Marbor never sends a prompt off your network.
 
-Overflow does not happen the instant a node is full. The request first waits in the queue, and only when `queue_timeout_ms` (or the shorter `overflow_sla_ms`) runs out with no local slot does it go to the cloud provider. If a node frees up during that wait, the request is served locally. A request that overflows is sent with the provider's `--default-model`, not the model name the client asked for, so pick a default model that suits your clients.
+Overflow does not happen the instant a node is full. A request for a healthy node that is full first waits, up to `overflow_sla_ms` when a cloud provider can take it (otherwise up to `queue_timeout_ms`), and only then goes to the cloud provider. A request no local node can serve right now (every node is down or draining, or no node serves that model) does not wait at all and goes to the cloud provider immediately; with no cloud provider, a local-only key, or an exhausted cloud budget it waits the full `queue_timeout_ms` as before. If a node frees up during that wait, the request is served locally. A request that overflows is sent with the provider's `--default-model`, not the model name the client asked for, so pick a default model that suits your clients.
 
-To keep sensitive workloads on your own hardware, mark their keys local-only. Such a key waits in the queue like any other, then fails closed with a `503` and code `local_only_blocked` instead of reaching a cloud provider:
+To keep sensitive workloads on your own hardware, mark their keys local-only. Such a key waits the full queue timeout like any other request with no cloud, then fails closed with a `503` and code `local_only_blocked` instead of reaching a cloud provider:
 
 ```bash
 marbor key set-local-only data-team true
