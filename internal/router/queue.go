@@ -3,9 +3,7 @@ package router
 // queue.go - Connection-tracking queue and WaitForNode implementation.
 
 import (
-	"context"
 	"sync/atomic"
-	"time"
 
 	"github.com/Anirudhx7/marbor/internal/metrics"
 )
@@ -67,111 +65,6 @@ func (r *Router) DecrModelInFlight(node *NodeState, model string) {
 		}
 	}
 	node.mu.Unlock()
-}
-
-// WaitForNode is the queued variant of Route. It first tries Route() immediately;
-// if no node is available it waits up to queueTimeout for one to free up (signaled
-// by DecrConn). Returns nil after timeout or context cancellation, at which point
-// the caller should fall through to cloud fallback or 503.
-//
-// runtimeFilter, when non-empty, restricts candidates to nodes whose Runtime
-// matches exactly (e.g. "ollama"). Pass "" to allow any runtime.
-//
-// If the queue is already at queueMaxDepth, returns nil immediately without queuing
-// to prevent unbounded memory growth under sustained overload.
-func (r *Router) WaitForNode(ctx context.Context, modelName, sessionID, runtimeFilter string) (*NodeState, bool, *RoutingDecision) {
-	// Fast path: immediate route.
-	if node, warm, decision := r.Route(modelName, sessionID, runtimeFilter); node != nil {
-		return node, warm, decision
-	}
-	return r.waitForNodeInternal(ctx, modelName, sessionID, runtimeFilter, "")
-}
-
-// WaitForNodeWithPrefix is the prefix-locality-aware sibling of WaitForNode -
-// see RouteWithPrefix. preferredNode, when non-empty, is a soft placement
-// preference only (see the prefix_match ScoreComponent in placement.go);
-// eligibility and every stronger optimization signal is unaffected. Pass
-// preferredNode == "" for identical behavior to WaitForNode.
-func (r *Router) WaitForNodeWithPrefix(ctx context.Context, modelName, sessionID, runtimeFilter, preferredNode string) (*NodeState, bool, *RoutingDecision) {
-	// Fast path: immediate route.
-	if node, warm, decision := r.RouteWithPrefix(modelName, sessionID, runtimeFilter, preferredNode); node != nil {
-		return node, warm, decision
-	}
-	return r.waitForNodeInternal(ctx, modelName, sessionID, runtimeFilter, preferredNode)
-}
-
-// waitForNodeInternal is the shared queued-wait body for WaitForNode and
-// WaitForNodeWithPrefix, called only after each has already tried its own
-// fast-path immediate route and found nothing. preferredNode is threaded
-// through to every retry route call so a queued request keeps benefiting
-// from its locality hint (if any) on each wake-up, not just the initial try.
-func (r *Router) waitForNodeInternal(ctx context.Context, modelName, sessionID, runtimeFilter, preferredNode string) (*NodeState, bool, *RoutingDecision) {
-
-	// Queue disabled (timeout or depth == 0): fall through immediately.
-	// config.Validate() sets the production defaults; callers that bypass
-	// Validate() (unit tests, zero-config New()) get no queue.
-	queueTimeout := time.Duration(r.queueTimeoutMs.Load()) * time.Millisecond
-	maxDepth := int(r.queueMaxDepth.Load())
-	if queueTimeout <= 0 || maxDepth <= 0 {
-		return nil, false, nil
-	}
-
-	// Claim a queue slot atomically. Reject if already at capacity.
-	depth := atomic.AddInt32(&r.queueDepth, 1)
-	if int(depth) > maxDepth {
-		atomic.AddInt32(&r.queueDepth, -1)
-		return nil, false, nil
-	}
-	// Publish via a fresh load, not the locally-captured `depth` return
-	// value: two concurrent waiters' AddInt32-then-publish pairs can
-	// interleave (e.g. B's increment+publish lands between A's increment
-	// and A's publish), so publishing A's own stale captured value after
-	// B's already-fresher publish would leave the exported gauge showing a
-	// value other than the true current depth.
-	metrics.QueueDepth(float64(atomic.LoadInt32(&r.queueDepth)))
-	defer func() {
-		atomic.AddInt32(&r.queueDepth, -1)
-		metrics.QueueDepth(float64(atomic.LoadInt32(&r.queueDepth)))
-	}()
-
-	// SLA-driven cloud overflow: an operator-set overflow_sla_ms caps how long
-	// this request waits for local capacity before falling through to cloud
-	// fallback (or 503), overriding the longer queue_timeout_ms for that
-	// purpose only. This never changes which nodes Route() considers - it is
-	// a queue-wait timing knob, not a Hard-Constraint bypass.
-	waitTimeout := queueTimeout
-	if sla := time.Duration(r.overflowSLAMs.Load()) * time.Millisecond; sla > 0 && sla < waitTimeout {
-		waitTimeout = sla
-	}
-	timer := time.NewTimer(waitTimeout)
-	defer timer.Stop()
-	// Periodic safety-net retry: coalesced notifyCh signals can miss concurrent
-	// DecrConn bursts (channel capacity 1). 500ms poll is the fallback safety net;
-	// immediate wakeups are handled via the notifyCh channel (#15).
-	retryTick := time.NewTicker(500 * time.Millisecond)
-	defer retryTick.Stop()
-
-	for {
-		r.notifyMu.Lock()
-		ch := r.notifyCh
-		r.notifyMu.Unlock()
-
-		select {
-		case <-ctx.Done():
-			return nil, false, nil
-		case <-timer.C:
-			metrics.QueueTimeout()
-			return nil, false, nil
-		case <-ch:
-			if node, warm, decision := r.RouteWithPrefix(modelName, sessionID, runtimeFilter, preferredNode); node != nil {
-				return node, warm, decision
-			}
-		case <-retryTick.C:
-			if node, warm, decision := r.RouteWithPrefix(modelName, sessionID, runtimeFilter, preferredNode); node != nil {
-				return node, warm, decision
-			}
-		}
-	}
 }
 
 // QueueDepth returns the current number of requests waiting in WaitForNode.

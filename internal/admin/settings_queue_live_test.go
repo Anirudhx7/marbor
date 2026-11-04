@@ -51,6 +51,22 @@ func putRoutingSettings(t *testing.T, s *Server, routing map[string]any) *httpte
 	return rec
 }
 
+// waitDurationCloud waits as a request that may use cloud, against a healthy
+// node that is full (the SLA only caps a wait when cloud can take the request).
+func waitDurationCloud(r *router.Router) time.Duration {
+	n := r.Nodes()[0]
+	n.Lock()
+	n.Healthy = true
+	n.MaxInFlight = 1
+	n.Unlock()
+	if n.ActiveConns == 0 {
+		r.IncrConn(n)
+	}
+	start := time.Now()
+	r.WaitForNodeWithPrefixOpts(context.Background(), "llama3.2", "", "", "", router.WaitOpts{CloudUsable: true})
+	return time.Since(start)
+}
+
 func waitDuration(r *router.Router) time.Duration {
 	start := time.Now()
 	r.WaitForNode(context.Background(), "llama3.2", "", "")
@@ -65,7 +81,7 @@ func TestAdmin_SettingsSaveAppliesOverflowSLALive(t *testing.T) {
 	if rec.Code >= 300 {
 		t.Fatalf("PUT settings = %d: %s", rec.Code, rec.Body.String())
 	}
-	if d := waitDuration(r); d < 100*time.Millisecond || d > 1500*time.Millisecond {
+	if d := waitDurationCloud(r); d < 100*time.Millisecond || d > 1500*time.Millisecond {
 		t.Fatalf("waited %v after saving overflow_sla_ms=150, want about 150ms", d)
 	}
 }
@@ -109,12 +125,12 @@ func TestAdmin_SettingsRejectsNegativeQueueValues(t *testing.T) {
 func TestAdmin_ReloadFromStoreKeepsQueueSettingsApplied(t *testing.T) {
 	s, r := queueSettingsServer(t)
 	s.mu.Lock()
-	s.cfg.Routing.OverflowSLAMs = 150
+	s.cfg.Routing.QueueTimeoutMs = 150
 	s.mu.Unlock()
 	if _, _, _, _, err := s.ReloadFromStore(); err != nil {
 		t.Skipf("ReloadFromStore needs a store in this harness: %v", err)
 	}
 	if d := waitDuration(r); d < 100*time.Millisecond || d > 1500*time.Millisecond {
-		t.Fatalf("waited %v after reload with SLA 150, want about 150ms", d)
+		t.Fatalf("waited %v after reload with queue timeout 150, want about 150ms", d)
 	}
 }

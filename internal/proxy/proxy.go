@@ -521,7 +521,20 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// This eliminates the previous discard-and-fall-through behavior where a valid
 	// Ollama node could be available but the request still hit 503 because a
 	// non-Ollama node was returned and silently discarded (#3).
-	node, warm, decision := h.router.WaitForNodeWithPrefix(r.Context(), modelName, sessionID, runtimeFilter, prefixPreferredNode)
+	// cloudUsable tells the wait whether a request with no local node can
+	// really go to cloud: a chain exists, the key may leave local nodes, and
+	// the spend budget allows it. Only then may the wait end early (hard
+	// no-route classes skip the queue, the overflow SLA caps the wait);
+	// otherwise every class waits the full queue timeout as before.
+	cloudUsable := len(h.router.CloudChain()) > 0 &&
+		(h.auth == nil || !h.auth.IsLocalOnly(keyName))
+	if cloudUsable && h.admin != nil {
+		if exceeded, _ := h.admin.CloudBudgetExceeded(keyName); exceeded {
+			cloudUsable = false
+		}
+	}
+	waitRes := h.router.WaitForNodeWithPrefixOpts(r.Context(), modelName, sessionID, runtimeFilter, prefixPreferredNode, router.WaitOpts{CloudUsable: cloudUsable})
+	node, warm, decision := waitRes.Node, waitRes.Warm, waitRes.Decision
 
 	// degradedOnce enforces the documented single-hop invariant across both
 	// trigger sites in this method: a request may substitute at most once,
