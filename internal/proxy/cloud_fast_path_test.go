@@ -27,6 +27,7 @@ type fastPathEnv struct {
 	localHits atomic.Int32
 	node      *router.NodeState
 	st        store.Store
+	localSrv  *httptest.Server
 }
 
 type fastPathOpts struct {
@@ -54,6 +55,7 @@ func newFastPathEnv(t *testing.T, o fastPathOpts) *fastPathEnv {
 		w.Write([]byte(`{"id":"l","choices":[]}`))
 	}))
 	t.Cleanup(localSrv.Close)
+	env.localSrv = localSrv
 
 	clouds := []config.CloudProvider{{Name: "fake-openai", Provider: "openai", BaseURL: cloudSrv.URL, APIKey: "k", CostPer1KTokens: 0.002, Enabled: true}}
 	r := router.New(config.RoutingConfig{MaxInFlightPerNode: 1}, []config.NodeConfig{

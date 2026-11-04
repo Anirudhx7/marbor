@@ -108,10 +108,10 @@ func runRequestsLive(flags *globalFlags, stdout, stderr io.Writer) int {
 		return code
 	}
 	tw := newTabWriter(stdout)
-	fmt.Fprintln(tw, "TIME\tID\tMODEL\tNODE\tSTATUS\tHTTP\tLATENCY MS\tTOK/S")
+	fmt.Fprintln(tw, "TIME\tID\tMODEL\tNODE\tSTATUS\tHTTP\tLATENCY MS\tWAIT MS\tCLOUD MS\tTOK/S")
 	for _, r := range reqs {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%d\t%d\t%.1f\n",
-			r.Time.Format("2006-01-02T15:04:05Z07:00"), r.ID, r.Model, r.Node, r.Status, r.HTTPStatus, r.Latency, r.TokensPerSec)
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%d\t%d\t%s\t%s\t%.1f\n",
+			r.Time.Format("2006-01-02T15:04:05Z07:00"), r.ID, r.Model, r.Node, r.Status, r.HTTPStatus, r.Latency, msOrDash(r.QueueWaitMs), msOrDash(r.CloudMs), r.TokensPerSec)
 	}
 	if err := tw.Flush(); err != nil {
 		fmt.Fprintln(stderr, err)

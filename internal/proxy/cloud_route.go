@@ -29,8 +29,12 @@ const (
 // guessing. cloudStart is when the cloud phase began, including any failover
 // between providers.
 type cloudRoute struct {
-	reason     string
-	noRoute    string
+	reason  string
+	noRoute string
+	// waited is the real time the request spent in the local queue wait before
+	// this route was decided. It is 0 when the request skipped the queue. For
+	// local_upstream_failed it is the wait that preceded the local attempt that
+	// then failed, not time spent before cloud.
 	waited     time.Duration
 	base       *router.RoutingDecision
 	cloudStart time.Time
@@ -41,6 +45,11 @@ type cloudRoute struct {
 // failed, rather than none being found.
 func newCloudRoute(res router.WaitResult, retryFailure bool) *cloudRoute {
 	c := &cloudRoute{noRoute: res.NoRoute, waited: res.Waited, base: res.Decision, cloudStart: time.Now()}
+	if retryFailure {
+		// The decision belongs to the local node that failed, so its exclusion
+		// list would be stale for the cloud route.
+		c.base = nil
+	}
 	switch {
 	case retryFailure:
 		c.reason = CloudReasonLocalUpstreamFailed
@@ -52,7 +61,11 @@ func newCloudRoute(res router.WaitResult, retryFailure bool) *cloudRoute {
 		c.reason = CloudReasonSaturatedSLAExpired
 	case res.Outcome == router.WaitQueueFull || res.Outcome == router.WaitQueueDisabled:
 		c.reason = CloudReasonQueueFull
+	case res.Outcome == router.WaitQueueTimeout:
+		c.reason = CloudReasonQueueTimeout
 	default:
+		// Any other outcome (a local node that failed, a cancelled client) is not a
+		// queue timeout; fall back to the generic label.
 		c.reason = cloudReasonUnclassifiedFallback
 	}
 	return c
@@ -73,7 +86,7 @@ func (c *cloudRoute) sentence() string {
 	case CloudReasonLocalUpstreamFailed:
 		return "The local node failed this request, so it went to cloud."
 	case CloudReasonLocalOnlyBlocked:
-		return "This key is local_only and no local node was available, so the request was refused and never sent to cloud."
+		return "This key is local_only and no local node could serve the request, so it was refused and never sent to cloud."
 	default:
 		return "No local node became free within the queue timeout, so it went to cloud."
 	}
@@ -90,10 +103,14 @@ func (c *cloudRoute) decision(node string) *router.RoutingDecision {
 	return d
 }
 
-// ms returns whole milliseconds as a pointer for the nullable log columns.
-func ms(d time.Duration) *int64 {
-	v := d.Milliseconds()
-	return &v
+// split returns the measured queue wait and cloud time in milliseconds, both
+// bounded so that wait + cloud never exceeds the request total. All three
+// durations come from one set of clock reads taken by the caller.
+func (c *cloudRoute) split(total, cloud time.Duration) (queueWait, cloudTime int64) {
+	totalMs := total.Milliseconds()
+	queueWait = min(c.waited.Milliseconds(), totalMs)
+	cloudTime = max(min(cloud.Milliseconds(), totalMs-queueWait), 0)
+	return queueWait, cloudTime
 }
 
 // logBlocked records the 503 a local_only key gets when no local node can
@@ -102,10 +119,12 @@ func ms(d time.Duration) *int64 {
 func (h *Handler) logBlocked(r *http.Request, keyName, modelName, requestID string, start time.Time, res router.WaitResult) {
 	route := newCloudRoute(res, false)
 	route.reason = CloudReasonLocalOnlyBlocked
+	total := time.Since(start)
+	waitMs, _ := route.split(total, 0)
 	if h.admin != nil {
 		h.admin.LogRequestTimed(requestID, keyName, h.clientIP(r), modelName, "none", "error",
-			http.StatusServiceUnavailable, int(time.Since(start).Milliseconds()), 0, 0,
-			route.decision("none"), admin.RequestTiming{QueueWaitMs: ms(route.waited)})
+			http.StatusServiceUnavailable, int(total.Milliseconds()), 0, 0,
+			route.decision("none"), admin.RequestTiming{QueueWaitMs: &waitMs})
 	}
 	if h.audit != nil {
 		h.audit.Log(audit.Entry{
@@ -115,9 +134,9 @@ func (h *Handler) logBlocked(r *http.Request, keyName, modelName, requestID stri
 			Model:         modelName,
 			Node:          "none",
 			Status:        "503",
-			LatencyMs:     int(time.Since(start).Milliseconds()),
+			LatencyMs:     int(total.Milliseconds()),
 			RoutingReason: route.reason,
-			QueueWaitMs:   ms(route.waited),
+			QueueWaitMs:   &waitMs,
 		})
 	}
 }
