@@ -157,15 +157,19 @@ func TestWaitForNodeOverflowSLACapsWaitBelowQueueTimeout(t *testing.T) {
 	n := r.nodes[0]
 	r.mu.RUnlock()
 	n.mu.Lock()
-	n.Healthy = false
+	n.MaxInFlight = 1
 	n.mu.Unlock()
+	atomic.StoreInt32(&n.ActiveConns, 1)
 
 	start := time.Now()
-	node, _, _ := r.WaitForNode(context.Background(), "llama3.2", "", "")
+	res := r.WaitForNodeWithPrefixOpts(context.Background(), "llama3.2", "", "", "", WaitOpts{CloudUsable: true})
 	elapsed := time.Since(start)
 
-	if node != nil {
-		t.Error("expected nil node (still unhealthy), got non-nil")
+	if res.Node != nil {
+		t.Error("expected nil node (still saturated), got non-nil")
+	}
+	if res.Outcome != WaitSLAExpired {
+		t.Errorf("outcome = %q, want %q", res.Outcome, WaitSLAExpired)
 	}
 	if elapsed >= 1*time.Second {
 		t.Errorf("elapsed = %v, expected the ~150ms overflow SLA to cap the wait well under the 5s queue timeout", elapsed)
@@ -292,6 +296,25 @@ func newUnroutableQueueRouter(maxDepth, timeoutMs int) *Router {
 	return r
 }
 
+// saturate makes the only node healthy but full, a waitable state.
+func saturate(r *Router) {
+	r.mu.RLock()
+	n := r.nodes[0]
+	r.mu.RUnlock()
+	n.mu.Lock()
+	n.Healthy = true
+	n.MaxInFlight = 1
+	n.mu.Unlock()
+	atomic.StoreInt32(&n.ActiveConns, 1)
+}
+
+// timedCloudWait is timedWait for a request that may use cloud.
+func timedCloudWait(r *Router) time.Duration {
+	start := time.Now()
+	r.WaitForNodeWithPrefixOpts(context.Background(), "llama3.2", "", "", "", WaitOpts{CloudUsable: true})
+	return time.Since(start)
+}
+
 func timedWait(r *Router) time.Duration {
 	start := time.Now()
 	r.WaitForNode(context.Background(), "llama3.2", "", "")
@@ -310,8 +333,9 @@ func TestSetQueueTimeoutAppliesLive(t *testing.T) {
 // An overflow SLA set after construction caps the wait for the next waiter.
 func TestSetOverflowSLAAppliesLive(t *testing.T) {
 	r := newUnroutableQueueRouter(10, 5000)
+	saturate(r)
 	r.SetOverflowSLA(150)
-	if d := timedWait(r); d < 100*time.Millisecond || d > 1500*time.Millisecond {
+	if d := timedCloudWait(r); d < 100*time.Millisecond || d > 1500*time.Millisecond {
 		t.Fatalf("waited %v after SetOverflowSLA(150), want about 150ms", d)
 	}
 }
@@ -320,9 +344,10 @@ func TestSetOverflowSLAAppliesLive(t *testing.T) {
 // reset from a non-zero value.
 func TestSetOverflowSLAZeroUsesQueueTimeout(t *testing.T) {
 	r := newUnroutableQueueRouter(10, 300)
+	saturate(r)
 	r.SetOverflowSLA(50)
 	r.SetOverflowSLA(0)
-	if d := timedWait(r); d < 250*time.Millisecond {
+	if d := timedCloudWait(r); d < 250*time.Millisecond {
 		t.Fatalf("waited %v with SLA reset to 0, want the 300ms queue timeout", d)
 	}
 }
