@@ -78,7 +78,7 @@ func (r *Router) QueueDepth() int {
 // that enter the queue after the call; requests already waiting keep the
 // timer they started with.
 func (r *Router) SetQueueTimeout(ms int) {
-	r.queueTimeoutMs.Store(int64(ms))
+	r.queueTimeoutMs.Store(int64(max(ms, 0)))
 }
 
 // SetQueueMaxDepth changes how many requests may wait at once. Zero or
@@ -93,7 +93,7 @@ func (r *Router) SetQueueMaxDepth(n int) {
 // cap beyond the queue timeout. It applies to requests that enter the queue
 // after the call.
 func (r *Router) SetOverflowSLA(ms int) {
-	r.overflowSLAMs.Store(int64(ms))
+	r.overflowSLAMs.Store(int64(max(ms, 0)))
 }
 
 // clampQueueDepth converts a configured depth to the int32 the queue stores.

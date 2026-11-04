@@ -162,7 +162,7 @@ func TestWaitForNodeOverflowSLACapsWaitBelowQueueTimeout(t *testing.T) {
 	atomic.StoreInt32(&n.ActiveConns, 1)
 
 	start := time.Now()
-	res := r.WaitForNodeWithPrefixOpts(context.Background(), "llama3.2", "", "", "", WaitOpts{CloudUsable: true})
+	res := r.WaitForNodeWithPrefixOpts(context.Background(), "llama3.2", "", "", "", WaitOpts{CloudUsable: func() bool { return true }})
 	elapsed := time.Since(start)
 
 	if res.Node != nil {
@@ -311,7 +311,7 @@ func saturate(r *Router) {
 // timedCloudWait is timedWait for a request that may use cloud.
 func timedCloudWait(r *Router) time.Duration {
 	start := time.Now()
-	r.WaitForNodeWithPrefixOpts(context.Background(), "llama3.2", "", "", "", WaitOpts{CloudUsable: true})
+	r.WaitForNodeWithPrefixOpts(context.Background(), "llama3.2", "", "", "", WaitOpts{CloudUsable: func() bool { return true }})
 	return time.Since(start)
 }
 

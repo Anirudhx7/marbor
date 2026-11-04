@@ -520,12 +520,13 @@ type RoutingConfig struct {
 	// nil/empty (no behavior change).
 	ModelAliases map[string]string `yaml:"model_aliases" json:"model_aliases"`
 	// OverflowSLAMs, when > 0, caps how long a request waits in the local
-	// capacity queue before falling through to cloud fallback (or 503),
-	// overriding the longer queue_timeout_ms for that purpose only. It never
-	// bypasses a genuine Hard Constraint (health, runtime compatibility) -
-	// Route() itself is unaffected; this only shortens how long a request
-	// waits for local capacity to free up. Default 0 (disabled): the full
-	// queue_timeout_ms applies as before.
+	// capacity queue for a busy node before falling through to cloud, when
+	// cloud can take the request (a provider is configured, the key may use
+	// it and the spend cap is not reached); it never exceeds queue_timeout_ms.
+	// 0 means wait the full queue_timeout_ms. Route() itself is unaffected.
+	// An install that never saved this setting starts with 2000; the default
+	// is applied when the stored settings are loaded, so an explicit stored 0
+	// is kept.
 	OverflowSLAMs int `yaml:"overflow_sla_ms" json:"overflow_sla_ms"`
 	// MaxInFlightPerNode is a Tier-1 hard-constraint cap: a node with
 	// ActiveConns >= this value is ineligible for routing (immediate
