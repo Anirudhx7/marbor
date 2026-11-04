@@ -2,6 +2,7 @@ import { memo } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { RequestEntry, RoutingDecision } from '../types';
 import { formatRelativeTime } from '../lib/time';
+import { waitCloudSummary } from '../lib/requestsView';
 import { COLUMNS, ExplainPanel, ReasonBadge, ScrollableValue, StatusBadge } from './RequestLogParts';
 
 export type ExplainState = RoutingDecision | 'loading' | 'error' | undefined;
@@ -20,6 +21,7 @@ interface RowProps {
 // same rows does not re-render up to 500 of them; relative times refresh with
 // the next page that changes.
 export const RequestRow = memo(function RequestRow({ entry, expanded, explain, onToggle }: RowProps) {
+  const timing = entry.cloud ? waitCloudSummary(entry.queueWaitMs, entry.cloudMs) : undefined;
   return (
     <>
       <tr className="border-b border-border last:border-0 hover:bg-secondary/30 transition-colors">
@@ -61,7 +63,10 @@ export const RequestRow = memo(function RequestRow({ entry, expanded, explain, o
         <td className="px-4 py-3 whitespace-nowrap">
           <StatusBadge status={entry.status} />
         </td>
-        <td className="px-4 py-3 whitespace-nowrap text-right font-mono text-xs text-muted-foreground">{entry.latency_ms} ms</td>
+        <td className="px-4 py-3 whitespace-nowrap text-right font-mono text-xs text-muted-foreground" title={timing}>
+          {entry.latency_ms} ms
+          {timing && <div className="text-[10px] text-muted-foreground/70">{timing}</div>}
+        </td>
         <td className="px-4 py-3 whitespace-nowrap text-right font-mono text-xs text-muted-foreground">
           {entry.prefillMs ? `${entry.prefillMs} ms` : '-'}
         </td>
@@ -80,7 +85,7 @@ export const RequestRow = memo(function RequestRow({ entry, expanded, explain, o
       {expanded && (
         <tr className="border-b border-border last:border-0 bg-secondary/20">
           <td colSpan={COLUMNS.length} className="px-4 py-3">
-            <ExplainPanel state={explain} />
+            <ExplainPanel state={explain} queueWaitMs={entry.queueWaitMs} cloudMs={entry.cloudMs} />
           </td>
         </tr>
       )}
@@ -89,6 +94,7 @@ export const RequestRow = memo(function RequestRow({ entry, expanded, explain, o
 });
 
 export const RequestCard = memo(function RequestCard({ entry, expanded, explain, onToggle }: RowProps) {
+  const timing = entry.cloud ? waitCloudSummary(entry.queueWaitMs, entry.cloudMs) : undefined;
   return (
     <div className="bg-card/50 backdrop-blur-sm border border-border/60 rounded-xl p-4 space-y-3 active:bg-secondary/50 transition-colors">
       <div className="flex items-center justify-between gap-2">
@@ -105,6 +111,7 @@ export const RequestCard = memo(function RequestCard({ entry, expanded, explain,
         <div>
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Latency</div>
           <div className="text-sm text-foreground font-mono">{entry.latency_ms} ms</div>
+          {timing && <div className="text-[10px] font-mono text-muted-foreground break-words">{timing}</div>}
         </div>
         <div>
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Prefill</div>
@@ -155,7 +162,7 @@ export const RequestCard = memo(function RequestCard({ entry, expanded, explain,
       </button>
       {expanded && (
         <div className="pt-2">
-          <ExplainPanel state={explain} />
+          <ExplainPanel state={explain} queueWaitMs={entry.queueWaitMs} cloudMs={entry.cloudMs} />
         </div>
       )}
     </div>

@@ -26,6 +26,7 @@ type fastPathEnv struct {
 	cloudHits atomic.Int32
 	localHits atomic.Int32
 	node      *router.NodeState
+	st        store.Store
 }
 
 type fastPathOpts struct {
@@ -78,6 +79,7 @@ func newFastPathEnv(t *testing.T, o fastPathOpts) *fastPathEnv {
 		t.Fatalf("store.Open: %v", err)
 	}
 	t.Cleanup(func() { st.Close() })
+	env.st = st
 	a := admin.NewServer(r, nil, config.Config{CloudBudget: config.CloudBudgetConfig{DailyUSDCap: o.dailyCap}}, st)
 	t.Cleanup(a.Shutdown)
 	if o.withBudget {

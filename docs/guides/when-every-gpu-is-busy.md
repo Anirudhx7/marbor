@@ -63,6 +63,22 @@ marbor spill        # per-key counts of requests served locally vs cloud vs bloc
 
 Cap what cloud overflow can cost with a key's `--daily-usd-cap` and `--monthly-usd-cap` (see [Per-key quotas](per-key-quotas-self-hosted-llm.html)) and the global caps under **Settings > Cloud Spend Cap**.
 
+## Seeing why a request went to cloud
+
+Every request that overflowed to cloud is logged with a reason and two separate timings: how long it waited for a local node, and how long the cloud call took. The values are measured, and show `-` when they were not.
+
+| Reason | Meaning |
+|---|---|
+| `no_node_serves_model` | No local node serves that model, so it went to cloud without queueing |
+| `all_nodes_unavailable` | Every node that could serve it was down or draining, so it went to cloud without queueing |
+| `saturated_sla_expired` | Healthy nodes stayed busy past `overflow_sla_ms` |
+| `queue_timeout_cloud` | No node freed up within the full queue timeout |
+| `queue_full_cloud` | The queue was full or disabled |
+| `local_upstream_failed` | A local node took the request and failed it, so it was retried on cloud |
+| `local_only_blocked` | The key is `local_only`, so the request got a 503 and never left your network |
+
+See them with `marbor requests` (WAIT MS and CLOUD MS columns, REASON), `marbor requests explain <id>` for the sentence, the Requests page in the dashboard, or the `marbor_cloud_overflow_reason_total{reason}` metric.
+
 ## Make busy less likely
 
 - Spread models across nodes so a hot model has more than one place to run: `marbor models fleet` shows where each one is warm.
