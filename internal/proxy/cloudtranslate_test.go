@@ -164,6 +164,36 @@ func TestCloudFallbackAPIChatYieldsOllamaNDJSON(t *testing.T) {
 	}
 }
 
+// TestCloudFallbackAPIGenerateLegacyCompletionsText verifies that streaming
+// /api/generate keeps text from legacy completions chunks, which carry
+// choices[].text instead of choices[].delta.content.
+func TestCloudFallbackAPIGenerateLegacyCompletionsText(t *testing.T) {
+	chunks := []string{
+		`{"id":"g1","choices":[{"text":"World"}]}`,
+	}
+	cloud := sseCloud(t, chunks, 5, 10)
+	defer cloud.Close()
+
+	h, _ := newCloudOnlyHandler(t, cloud.URL)
+	rec := httptest.NewRecorder()
+	body := bytes.NewReader([]byte(`{"model":"codellama","prompt":"hello","stream":true}`))
+	req := httptest.NewRequest("POST", "/api/generate", body)
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var got strings.Builder
+	for _, l := range parseNDJSON(t, rec.Body.String()) {
+		if s, ok := l["response"].(string); ok {
+			got.WriteString(s)
+		}
+	}
+	if got.String() != "World" {
+		t.Errorf("streamed response text = %q, want %q", got.String(), "World")
+	}
+}
+
 // TestCloudFallbackAPIGenerateYieldsOllamaNDJSON verifies /api/generate cloud
 // fallback emits {"response":...} NDJSON (not {"message":...}).
 func TestCloudFallbackAPIGenerateYieldsOllamaNDJSON(t *testing.T) {

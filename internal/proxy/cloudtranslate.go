@@ -348,6 +348,7 @@ func translateSSEToNDJSON(src io.ReadCloser, origPath, clientModel string) io.Re
 					Delta struct {
 						Content string `json:"content"`
 					} `json:"delta"`
+					Text         string `json:"text"`
 					FinishReason string `json:"finish_reason"`
 				} `json:"choices"`
 				Usage *struct {
@@ -395,6 +396,9 @@ func translateSSEToNDJSON(src io.ReadCloser, origPath, clientModel string) io.Re
 					doneReason = choice.FinishReason
 				}
 				content := choice.Delta.Content
+				if content == "" {
+					content = choice.Text
+				}
 				// Emit even empty strings to keep done:false heartbeats working;
 				// but skip truly nil deltas (role-only chunks from some providers).
 				var line []byte
