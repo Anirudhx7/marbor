@@ -777,7 +777,6 @@ export const mockAPIKeys: APIKey[] = [
 
 export const defaultSettings: Settings = {
   proxyPort: 11434,
-  authMode: 'api-key',
   liteLLMEnabled: false,
   liteLLMEndpoint: 'http://localhost:4000',
   liteLLMApiKey: '',
@@ -2119,7 +2118,7 @@ export const mockActivityEntries = [
   { time: new Date(Date.now() - 2 * 60 * 60_000).toISOString(), username: 'system', action: 'scheduled_warmup', target: 'gpu-node-01', details: 'Schedule sched-1724170000000000000: action=warmup node=gpu-node-01 models=[llama3.3:8b] status=ok', source_ip: '' },
   { time: new Date(Date.now() - 5 * 60 * 60_000).toISOString(), username: 'admin', action: 'patch_schedule', target: 'sched-1724170000000000000', details: 'Action: warmup, Node: gpu-node-01, At: 09:00, Models: [gemma2:9b], Enabled: true', source_ip: '192.168.1.5' },
   { time: new Date(Date.now() - 26 * 60 * 60_000).toISOString(), username: 'admin', action: 'delete_schedule', target: 'sched-1724170000000000000', details: '', source_ip: '192.168.1.5' },
-  { time: new Date(Date.now() - 3 * 24 * 60 * 60_000).toISOString(), username: 'admin', action: 'update_settings', target: 'global', details: 'Timezone: UTC, AuthEnabled: true, PollInterval: 2000ms, DailyCap: 25, MonthlyCap: 500', source_ip: '10.0.0.5' },
+  { time: new Date(Date.now() - 3 * 24 * 60 * 60_000).toISOString(), username: 'admin', action: 'update_settings', target: 'global', details: 'Timezone: UTC, PollInterval: 2000ms, DailyCap: 25, MonthlyCap: 500', source_ip: '10.0.0.5' },
   { time: new Date(Date.now() - 8 * 24 * 60 * 60_000).toISOString(), username: 'admin', action: 'patch_node', target: 'gpu-node-03', details: 'URLChanged: false, RuntimeChanged: true', source_ip: '192.168.1.5' },
   { time: new Date(Date.now() - 15 * 24 * 60 * 60_000).toISOString(), username: 'system', action: 'scheduled_drain', target: 'gpu-node-03', details: 'Schedule sched-1724100000000000000: action=drain node=gpu-node-03 models=[] status=ok', source_ip: '' },
   { time: new Date(Date.now() - 20 * 24 * 60 * 60_000).toISOString(), username: 'sam.lee', action: 'pull_model', target: 'gpu-node-02', details: 'Model: mistral:7b', source_ip: '192.168.1.20' },

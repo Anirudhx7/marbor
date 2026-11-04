@@ -391,7 +391,6 @@ export interface RequestDistributionData {
 
 export interface Settings {
   proxyPort: number;
-  authMode: 'api-key' | 'no-auth';
   liteLLMEnabled: boolean;
   liteLLMEndpoint: string;
   liteLLMApiKey: string;

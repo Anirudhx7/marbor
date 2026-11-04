@@ -126,3 +126,70 @@ func TestAdmin_SettingsGetHidesKeysAndDoesNotMutateLiveConfig(t *testing.T) {
 		t.Errorf("live cloud provider key = %q after GET, want it unchanged", got)
 	}
 }
+
+// The settings save has no authentication switch: auth.enabled in the request
+// body is ignored and the running value is kept, whatever the body carries.
+func TestAdmin_SettingsSaveIgnoresAuthEnabled(t *testing.T) {
+	cases := []struct {
+		name  string
+		start bool
+		auth  string // raw JSON for the "auth" key; "" omits the key entirely
+	}{
+		{"true to false", true, `{"enabled":false}`},
+		{"false to true", false, `{"enabled":true}`},
+		{"true with no auth key", true, ""},
+		{"false with no auth key", false, ""},
+		{"true with null", true, `{"enabled":null}`},
+		{"false with null", false, `{"enabled":null}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := config.Config{}
+			cfg.Auth.Enabled = config.BoolPtr(tc.start)
+			s := settingsServer(t, cfg)
+
+			m := getSettingsMap(t, s)
+			if tc.auth == "" {
+				delete(m, "auth")
+			} else {
+				m["auth"] = json.RawMessage(tc.auth)
+			}
+			body, err := json.Marshal(m)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req := httptest.NewRequest(http.MethodPut, "/admin/settings", bytes.NewReader(body))
+			req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			s.Handler().ServeHTTP(rec, req)
+			if rec.Code >= 300 {
+				t.Fatalf("PUT settings = %d: %s", rec.Code, rec.Body.String())
+			}
+
+			s.mu.RLock()
+			got := s.cfg.Auth.Enabled
+			s.mu.RUnlock()
+			if got == nil || *got != tc.start {
+				t.Errorf("live auth.enabled after PUT = %v, want unchanged %v", got, tc.start)
+			}
+
+			var reported struct {
+				Enabled *bool `json:"enabled"`
+			}
+			if err := json.Unmarshal(getSettingsMap(t, s)["auth"], &reported); err != nil {
+				t.Fatal(err)
+			}
+			if reported.Enabled == nil || *reported.Enabled != tc.start {
+				t.Errorf("GET reports auth.enabled = %v, want %v", reported.Enabled, tc.start)
+			}
+
+			// A save must not open the admin API to unauthenticated callers.
+			unauth := httptest.NewRecorder()
+			s.Handler().ServeHTTP(unauth, httptest.NewRequest(http.MethodGet, "/admin/settings", nil))
+			if unauth.Code != http.StatusUnauthorized {
+				t.Errorf("unauthenticated GET /admin/settings after PUT = %d, want 401", unauth.Code)
+			}
+		})
+	}
+}

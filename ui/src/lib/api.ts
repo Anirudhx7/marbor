@@ -2027,7 +2027,7 @@ export async function fetchSystemAuditFiltered(f: SystemAuditFilter = {}): Promi
       { time: isoHours(20), username: 'admin', action: 'runtime_stop', target: 'gpu-node-03', details: 'Driver: docker', source_ip: '192.168.1.5' },
       { time: isoDays(2), username: 'dana.rao', action: 'add_node', target: 'gpu-node-05', details: auditAddNodeDetails('gpu-node-05'), source_ip: '192.168.1.12' },
       { time: isoDays(3), username: 'system', action: 'scheduled_drain', target: 'gpu-node-03', details: 'Schedule sched-1724100000000000000: action=drain node=gpu-node-03 models=[] status=ok', source_ip: '' },
-      { time: isoDays(5), username: 'admin', action: 'update_settings', target: 'global', details: 'Timezone: UTC, AuthEnabled: true, DailyCap: 150.00', source_ip: '192.168.1.5' },
+      { time: isoDays(5), username: 'admin', action: 'update_settings', target: 'global', details: 'Timezone: UTC, DailyCap: 150.00', source_ip: '192.168.1.5' },
       { time: isoDays(7), username: 'admin', action: 'delete_schedule', target: 'sched-1724170000000000001', details: '', source_ip: '192.168.1.5' },
       { time: isoDays(10), username: 'admin', action: 'add_key', target: 'ci-bot', details: 'RateLimit: 1000', source_ip: '10.0.0.1' },
       // Sign-ins and key changes: shown by default, narrowed with the Access and Keys kinds
