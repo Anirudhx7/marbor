@@ -1,10 +1,12 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -82,5 +84,83 @@ func TestWaitForProcessExit_DeadPidReturnsQuickly(t *testing.T) {
 func TestWaitForProcessExit_LivePidTimesOut(t *testing.T) {
 	if waitForProcessExit(os.Getpid(), 250*time.Millisecond) {
 		t.Fatal("waitForProcessExit = true for the running test process, want false")
+	}
+}
+
+func TestParsePsComm(t *testing.T) {
+	cases := []struct {
+		out  string
+		want bool
+	}{
+		{"marbor\n", true},
+		{"/usr/local/bin/marbor\n", true},
+		{"  /opt/bin/marbor  \n", true},
+		{"marbor-agent\n", false},
+		{"sshd\n", false},
+		{"", false},
+	}
+	for _, tc := range cases {
+		if got := psCommNamesMarbor(tc.out); got != tc.want {
+			t.Errorf("psCommNamesMarbor(%q) = %v, want %v", tc.out, got, tc.want)
+		}
+	}
+}
+
+func TestParseTasklistCSV(t *testing.T) {
+	cases := []struct {
+		out  string
+		want bool
+	}{
+		{"\"marbor.exe\",\"1234\",\"Console\",\"1\",\"20,000 K\"\r\n", true},
+		{"\"MARBOR.EXE\",\"1234\",\"Console\",\"1\",\"20,000 K\"\r\n", true},
+		{"\"marbor-agent.exe\",\"1234\",\"Console\",\"1\",\"20,000 K\"\r\n", false},
+		{"\"notepad.exe\",\"1234\",\"Console\",\"1\",\"20,000 K\"\r\n", false},
+		{"INFO: No tasks are running which match the specified criteria.\r\n", false},
+		{"", false},
+	}
+	for _, tc := range cases {
+		if got := tasklistNamesMarbor(tc.out); got != tc.want {
+			t.Errorf("tasklistNamesMarbor(%q) = %v, want %v", tc.out, got, tc.want)
+		}
+	}
+}
+
+func TestPidIdentityConfirmed(t *testing.T) {
+	failing := func(string, ...string) ([]byte, error) { return nil, errors.New("boom") }
+	var gotName string
+	var gotArgs []string
+	runner := func(out string) func(string, ...string) ([]byte, error) {
+		return func(name string, args ...string) ([]byte, error) {
+			gotName, gotArgs = name, args
+			return []byte(out), nil
+		}
+	}
+
+	if pidIdentityConfirmed("plan9", 42, runner("marbor\n")) {
+		t.Error("unknown OS must not be confirmed")
+	}
+	if pidIdentityConfirmed("darwin", 42, failing) {
+		t.Error("darwin runner error must not be confirmed")
+	}
+	if !pidIdentityConfirmed("darwin", 42, runner("/usr/local/bin/marbor\n")) {
+		t.Error("darwin marbor should be confirmed")
+	}
+	if gotName != "ps" || strings.Join(gotArgs, " ") != "-p 42 -o comm=" {
+		t.Errorf("unexpected darwin command: %s %v", gotName, gotArgs)
+	}
+	if pidIdentityConfirmed("darwin", 42, runner("bash\n")) {
+		t.Error("darwin non-marbor must not be confirmed")
+	}
+	if pidIdentityConfirmed("windows", 42, failing) {
+		t.Error("windows runner error must not be confirmed")
+	}
+	if !pidIdentityConfirmed("windows", 42, runner("\"marbor.exe\",\"42\",\"Console\",\"1\",\"1 K\"\r\n")) {
+		t.Error("windows marbor.exe should be confirmed")
+	}
+	if gotName != "tasklist" || strings.Join(gotArgs, " ") != "/FI PID eq 42 /FO CSV /NH" {
+		t.Errorf("unexpected windows command: %s %v", gotName, gotArgs)
+	}
+	if pidIdentityConfirmed("windows", 42, runner("\"chrome.exe\",\"42\"\r\n")) {
+		t.Error("windows non-marbor must not be confirmed")
 	}
 }
