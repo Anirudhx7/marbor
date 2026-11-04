@@ -89,10 +89,8 @@ func runUninstall(args []string) {
 		}
 	}
 
-	stopped, unverified := stopPidfileProcess(marborPidfile, runtime.GOOS, runCommandOutput, os.Stdout, os.Stderr)
-	if stopped {
-		didSomething = true
-	}
+	serviceRemoved := didSomething
+	outcome := stopPidfileProcess(marborPidfile, runtime.GOOS, runCommandOutput, os.Stdout, os.Stderr)
 
 	if *purge {
 		if binPath, err := os.Executable(); err == nil {
@@ -105,13 +103,7 @@ func runUninstall(args []string) {
 	}
 
 	fmt.Println()
-	if didSomething {
-		fmt.Println("marbor has been uninstalled from this host.")
-	} else if unverified {
-		fmt.Println("Nothing was uninstalled: a background process named in " + marborPidfile + " could not be verified as marbor, so it was left running.")
-	} else {
-		fmt.Println("Nothing to uninstall on this host: no marbor service and no background marbor process were found.")
-	}
+	fmt.Println(uninstallSummary(serviceRemoved, outcome))
 	fmt.Println("marbor.db was left untouched - remove it yourself if you also want the database gone.")
 }
 
@@ -154,27 +146,61 @@ func waitForProcessExit(pid int, deadline time.Duration) bool {
 // readRunningPidfile only proves the PID is alive, not that it is still the
 // process the pidfile named: on a long-lived host PID recycling can point a
 // stale pidfile at an unrelated process, so anything unconfirmed (lookup
-// error, renamed binary, unknown OS) is left alone. stopped reports that the
-// process was signalled; unverified reports that a live PID was found but
-// could not be verified, so nothing was signalled and the pidfile was kept.
-func stopPidfileProcess(path, goos string, run commandRunner, stdout, stderr io.Writer) (stopped, unverified bool) {
+// error, renamed binary, unknown OS) is left alone with the pidfile kept.
+// The returned outcome says what happened.
+func stopPidfileProcess(path, goos string, run commandRunner, stdout, stderr io.Writer) pidfileOutcome {
 	pid, ok := readRunningPidfile(path)
 	if !ok {
-		return false, false
+		return pidNone
 	}
-	if !pidIdentityConfirmed(goos, pid, run) {
-		fmt.Fprintf(stderr, "  [!] %s names PID %d, but it could not be verified as marbor (the process may belong to something else after PID reuse, the lookup tool may have failed, or the binary may have been renamed) - nothing was signalled and %s was kept.\n", path, pid, path)
-		return false, true
+	if confirmed, reason := pidIdentityConfirmed(goos, pid, run); !confirmed {
+		fmt.Fprintf(stderr, "  [!] %s names PID %d, but it could not be verified as marbor (%s; the process may belong to something else after PID reuse, the lookup tool may have failed, or the binary may have been renamed) - nothing was signalled and %s was kept.\n", path, pid, reason, path)
+		return pidUnverified
 	}
 	fmt.Fprintf(stdout, "Stopping background marbor process (PID %d)...\n", pid)
 	if !terminatePid(pid, goos, stderr) {
-		return false, false
+		return pidStopFailed
 	}
 	if !waitForProcessExit(pid, 5*time.Second) {
 		fmt.Fprintf(stderr, "  [!] PID %d did not exit within 5s of being stopped - it may still be running\n", pid)
 	}
-	_ = os.Remove(path)
-	return true, false
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		fmt.Fprintf(stderr, "  [!] could not remove %s: %v\n", path, err)
+	}
+	return pidStopped
+}
+
+// pidfileOutcome is what stopPidfileProcess did about the pidfile's process.
+type pidfileOutcome int
+
+const (
+	pidNone       pidfileOutcome = iota // no live process named by the pidfile
+	pidStopped                          // verified as marbor and signalled
+	pidUnverified                       // live PID, could not be verified; left alone
+	pidStopFailed                       // verified as marbor but could not be signalled
+)
+
+// uninstallSummary builds the closing message. A marbor process that may
+// still be running is always called out, whether or not a service was removed.
+func uninstallSummary(serviceRemoved bool, outcome pidfileOutcome) string {
+	var warn string
+	switch outcome {
+	case pidUnverified:
+		warn = "A background process named in " + marborPidfile + " could not be verified as marbor and was left running; a marbor process may still be running."
+	case pidStopFailed:
+		warn = "A running marbor process named in " + marborPidfile + " could not be stopped; it may still be running."
+	}
+	switch {
+	case serviceRemoved || outcome == pidStopped:
+		msg := "marbor has been uninstalled from this host."
+		if warn != "" {
+			msg += "\n" + warn
+		}
+		return msg
+	case warn != "":
+		return "Nothing was uninstalled. " + warn
+	}
+	return "Nothing to uninstall on this host: no marbor service and no background marbor process were found."
 }
 
 // terminatePid sends SIGTERM to pid, falling back to a hard Kill on Windows
@@ -207,27 +233,56 @@ type commandRunner func(name string, args ...string) ([]byte, error)
 // runCommandOutput is the production commandRunner, bounded so a hung tool
 // cannot stall uninstall.
 func runCommandOutput(name string, args ...string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	return runCommandWithTimeout(commandTimeout, name, args...)
+}
+
+// commandTimeout bounds each identity-lookup command.
+const commandTimeout = 5 * time.Second
+
+func runCommandWithTimeout(timeout time.Duration, name string, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	return exec.CommandContext(ctx, name, args...).Output()
 }
 
 // pidIdentityConfirmed reports whether pid is positively identified as a
 // marbor process on goos. It fails closed: any lookup error, unparseable
-// output, or unsupported OS yields false.
-func pidIdentityConfirmed(goos string, pid int, run commandRunner) bool {
+// output, or unsupported OS yields false. When false, reason says why.
+func pidIdentityConfirmed(goos string, pid int, run commandRunner) (confirmed bool, reason string) {
 	switch goos {
 	case "linux":
 		data, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
-		return err == nil && cmdlineNamesMarbor(data)
+		if err != nil {
+			return false, fmt.Sprintf("could not read /proc/%d/cmdline: %v", pid, err)
+		}
+		if !cmdlineNamesMarbor(data) {
+			return false, "its command name is not marbor"
+		}
+		return true, ""
 	case "darwin":
 		out, err := run("ps", "-p", strconv.Itoa(pid), "-o", "comm=")
-		return err == nil && psCommNamesMarbor(string(out))
+		if err != nil {
+			return false, fmt.Sprintf("ps failed: %v", err)
+		}
+		if !psCommNamesMarbor(string(out)) {
+			return false, "its command name is not marbor"
+		}
+		return true, ""
 	case "windows":
 		out, err := run("tasklist", "/FI", fmt.Sprintf("PID eq %d", pid), "/FO", "CSV", "/NH")
-		return err == nil && tasklistNamesMarbor(string(out), pid)
+		if err != nil {
+			return false, fmt.Sprintf("tasklist failed: %v", err)
+		}
+		ok, perr := tasklistNamesMarbor(string(out), pid)
+		if perr != nil {
+			return false, perr.Error()
+		}
+		if !ok {
+			return false, "tasklist did not report marbor.exe for this PID"
+		}
+		return true, ""
 	}
-	return false
+	return false, "process identity checks are not supported on " + goos
 }
 
 // cmdlineNamesMarbor reports whether the NUL-separated /proc cmdline bytes
@@ -252,13 +307,17 @@ func psCommNamesMarbor(out string) bool {
 // row is considered; its image name must be marbor.exe (case-insensitive) and
 // its PID field must equal pid. Localized "no tasks" text is not CSV and so
 // never matches.
-func tasklistNamesMarbor(out string, pid int) bool {
+// A non-nil error means the output was not usable CSV.
+func tasklistNamesMarbor(out string, pid int) (bool, error) {
 	r := csv.NewReader(strings.NewReader(out))
 	r.FieldsPerRecord = -1
 	r.LazyQuotes = true
 	rec, err := r.Read()
-	if err != nil || len(rec) < 2 {
-		return false
+	if err != nil {
+		return false, fmt.Errorf("could not parse tasklist output: %w", err)
 	}
-	return strings.EqualFold(strings.TrimSpace(rec[0]), "marbor.exe") && strings.TrimSpace(rec[1]) == strconv.Itoa(pid)
+	if len(rec) < 2 {
+		return false, fmt.Errorf("unexpected tasklist output %q", strings.TrimSpace(out))
+	}
+	return strings.EqualFold(strings.TrimSpace(rec[0]), "marbor.exe") && strings.TrimSpace(rec[1]) == strconv.Itoa(pid), nil
 }

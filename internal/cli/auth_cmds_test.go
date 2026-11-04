@@ -610,3 +610,28 @@ func TestAuthenticatedClient_CredentialPairing(t *testing.T) {
 		})
 	}
 }
+
+func TestRunLogin_WhitespaceOnlyPasswordIsTreatedAsUnset(t *testing.T) {
+	withTempConfigDir(t)
+	t.Setenv("MARBOR_USERNAME", "")
+	t.Setenv("MARBOR_PASSWORD", "")
+
+	var requests int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"login", "--server", srv.URL, "--username", "admin", "--password", "   "}, &stdout, &stderr)
+	if code != ExitUserError {
+		t.Fatalf("expected exit %d (no usable password, no terminal), got %d (stderr: %s)", ExitUserError, code, stderr.String())
+	}
+	if requests != 0 {
+		t.Errorf("a blank password must never be sent to the server, got %d requests", requests)
+	}
+	if s, err := loadSession(); err != nil || s != nil {
+		t.Errorf("no session may be saved, got %+v err=%v", s, err)
+	}
+}
