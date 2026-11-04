@@ -6073,9 +6073,7 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	// silently reverted by this handler overwriting the whole struct with an
 	// older snapshot.
 	incoming.Auth.Keys = s.cfg.Auth.Keys
-	// The settings save has no authentication switch: the running middleware
-	// is not reloaded from this handler, so accepting the field would only
-	// make the live config disagree with what is enforced.
+	// auth.enabled in the request is ignored; the running value is kept.
 	incoming.Auth.Enabled = s.cfg.Auth.Enabled
 	incoming.CloudProviders = s.cfg.CloudProviders
 	incoming.Nodes = s.cfg.Nodes
@@ -6223,7 +6221,7 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		log.Printf("admin: failed to persist hide_budget_banner setting: %v", err)
 	}
 
-	s.logSystemChange(r, "update_settings", "global", fmt.Sprintf("Timezone: %s, AuthEnabled: %v, PollInterval: %dms, DailyCap: %f, MonthlyCap: %f", incoming.Timezone, incoming.Auth.Enabled != nil && *incoming.Auth.Enabled, incoming.Routing.PollIntervalMs, incoming.CloudBudget.DailyUSDCap, incoming.CloudBudget.MonthlyUSDCap))
+	s.logSystemChange(r, "update_settings", "global", fmt.Sprintf("Timezone: %s, PollInterval: %dms, DailyCap: %f, MonthlyCap: %f", incoming.Timezone, incoming.Routing.PollIntervalMs, incoming.CloudBudget.DailyUSDCap, incoming.CloudBudget.MonthlyUSDCap))
 
 	// Settings now persist to SQLite routing_rules/runtime_nodes/runtime_keys
 	// tables on each mutation. Scalar settings migration to the settings table
