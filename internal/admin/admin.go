@@ -6541,8 +6541,11 @@ func (s *Server) cloudSpendSince(since time.Time) float64 {
 // human-readable reason if so. Global caps default to 0 (disabled); a key
 // with no cap configured is only subject to the global check.
 func (s *Server) CloudBudgetExceeded(keyName string) (bool, string) {
+	// The settings PUT replaces s.cfg under s.mu; read the caps under it too.
+	s.mu.RLock()
 	dailyCap := s.cfg.CloudBudget.DailyUSDCap
 	monthlyCap := s.cfg.CloudBudget.MonthlyUSDCap
+	s.mu.RUnlock()
 	now := time.Now().UTC()
 	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
