@@ -1388,10 +1388,12 @@ export function SettingsPage() {
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1.5">Queue Max Depth</label>
               <input type="number" value={settings.routingQueueMaxDepth} onChange={(e) => setSettings({ ...settings, routingQueueMaxDepth: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
+              <p className="text-xs text-muted-foreground mt-1">How many requests may wait at once. Applies immediately.</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1.5">Queue Timeout (ms)</label>
               <input type="number" value={settings.routingQueueTimeoutMs} onChange={(e) => setSettings({ ...settings, routingQueueTimeoutMs: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
+              <p className="text-xs text-muted-foreground mt-1">Longest a request waits for a free local node. Applies immediately.</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1.5">Health Failure Threshold</label>
@@ -1402,8 +1404,9 @@ export function SettingsPage() {
               <input type="number" value={settings.routingHealthSuccessThreshold} onChange={(e) => setSettings({ ...settings, routingHealthSuccessThreshold: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1.5">Cloud Overflow SLA (ms, 0 = disabled)</label>
+              <label className="block text-sm font-medium text-muted-foreground mb-1.5">Cloud Overflow SLA (ms)</label>
               <input type="number" value={settings.routingOverflowSlaMs} onChange={(e) => setSettings({ ...settings, routingOverflowSlaMs: parseInt(e.target.value) || 0 })} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50" />
+              <p className="text-xs text-muted-foreground mt-1">How long a request waits for a busy local node before going to cloud. 0 = wait the full queue timeout. Applies immediately.</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1.5">Max In-Flight Per Node (0 = uncapped)</label>

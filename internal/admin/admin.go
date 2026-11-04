@@ -1971,6 +1971,14 @@ func (s *Server) ReloadFromStore() (nodesAdded, nodesRemoved, authKeys, cloudPro
 	s.auth.Reload(config.AuthConfig{Enabled: authEnabled, Keys: keys})
 	s.router.SetClouds(cloudCfgs)
 	added, removed := s.router.SyncNodes(nodeCfgs)
+	// The queue wait knobs live in s.cfg (replaced by the settings PUT), so this
+	// is idempotent; it keeps a reload consistent with what is configured.
+	s.mu.RLock()
+	queueTimeoutMs, queueMaxDepth, overflowSLAMs := s.cfg.Routing.QueueTimeoutMs, s.cfg.Routing.QueueMaxDepth, s.cfg.Routing.OverflowSLAMs
+	s.mu.RUnlock()
+	s.router.SetQueueTimeout(queueTimeoutMs)
+	s.router.SetQueueMaxDepth(queueMaxDepth)
+	s.router.SetOverflowSLA(overflowSLAMs)
 
 	s.mu.Lock()
 	s.cfg.Auth.Keys = keys
@@ -6061,6 +6069,10 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	// before validation, and the live value is restored under s.mu below.
 	incoming.Routing.ModelAliases = nil
 
+	if incoming.Routing.QueueTimeoutMs < 0 || incoming.Routing.QueueMaxDepth < 0 || incoming.Routing.OverflowSLAMs < 0 {
+		writeJSONError(w, http.StatusBadRequest, "validation failed: queue_timeout_ms, queue_max_depth and overflow_sla_ms must not be negative")
+		return
+	}
 	if err := incoming.Validate(); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "validation failed: "+err.Error())
 		return
@@ -6103,6 +6115,10 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	s.router.SetLiteLLM(incoming.LiteLLM)
 	s.router.SetContextWindows(incoming.ContextWindows)
 	s.router.SetPrefixLocality(incoming.Routing.PrefixLocalityEnabled, incoming.Routing.PrefixLocalityWeight)
+	// Queue wait knobs take effect on the next request that enters the queue.
+	s.router.SetQueueTimeout(incoming.Routing.QueueTimeoutMs)
+	s.router.SetQueueMaxDepth(incoming.Routing.QueueMaxDepth)
+	s.router.SetOverflowSLA(incoming.Routing.OverflowSLAMs)
 	// Per-user display timezone (so one user's change doesn't affect others'
 	// wall-clock rendering via handleSettings's per-user override above).
 	// We still persist the global "timezone" for the fleet-wide scheduler
