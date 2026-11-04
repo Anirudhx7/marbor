@@ -65,10 +65,10 @@ const benchmarkKeySettle = 2 * time.Second
 // benchmarkKeyTTLFor is how far in the future the ephemeral benchmark API
 // key's expires_at is set for a run of n samples per phase. It must outlast
 // the run or the proxy rejects the key mid-flight, so it covers the worst
-// case: n evicts (the initial one plus one before each later cold sample),
-// plus one deliberate extra evict of headroom, each bounded by unloadTimeout plus the settle pause, and 2n
-// samples (cold and warm)
-// each bounded by sampleTimeout, plus a fixed margin, clamped to
+// case: n+1 evicts (n are needed, the initial one plus one before each later
+// cold sample; the extra is deliberate headroom), each bounded by
+// unloadTimeout plus the settle pause, and 2n samples (cold and warm), each
+// bounded by sampleTimeout, plus a fixed margin, clamped to
 // [benchmarkKeyTTLMin, benchmarkKeyTTLMax]. Explicit cleanup (auth.RevokeKey
 // + store.DeleteKey when the job ends, on every exit path) is the real
 // mechanism; the TTL only bounds an orphaned key if that cleanup is skipped
