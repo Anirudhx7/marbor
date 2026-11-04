@@ -65,8 +65,8 @@ const benchmarkKeySettle = 2 * time.Second
 // benchmarkKeyTTLFor is how far in the future the ephemeral benchmark API
 // key's expires_at is set for a run of n samples per phase. It must outlast
 // the run or the proxy rejects the key mid-flight, so it covers the worst
-// case: n+1 evicts (the initial one, one before each later cold sample, and
-// one spare), each bounded by unloadTimeout plus the settle pause, and 2n
+// case: n evicts (the initial one plus one before each later cold sample),
+// plus one deliberate extra evict of headroom, each bounded by unloadTimeout plus the settle pause, and 2n
 // samples (cold and warm)
 // each bounded by sampleTimeout, plus a fixed margin, clamped to
 // [benchmarkKeyTTLMin, benchmarkKeyTTLMax]. Explicit cleanup (auth.RevokeKey
@@ -88,17 +88,26 @@ const (
 )
 
 // IsEphemeralProbeKey reports whether rec looks like a leftover benchmark or
-// pull-verify probe key: the reserved name prefix, an expiry, a single-model
-// scope and no usage limits (every real probe key has exactly that shape). The
-// boot-time sweep deletes these, since no probe can be running at startup. The
-// shape checks keep an operator's own key that merely starts with the prefix.
+// pull-verify probe key: a reserved name prefix, not revoked, local-only, an
+// expiry, a single-model scope and no usage limits (the shape every probe key
+// is created with). The boot-time sweep deletes these, since no probe can be
+// running at startup. Creating an operator key with a reserved prefix is
+// rejected by the admin API, and the shape checks are a second line of
+// defence; a hand-crafted record matching every field is indistinguishable
+// from a probe key.
 func IsEphemeralProbeKey(rec store.KeyRecord) bool {
-	if !strings.HasPrefix(rec.Name, benchmarkKeyPrefix) && !strings.HasPrefix(rec.Name, pullVerifyKeyPrefix) {
+	if !hasReservedProbePrefix(rec.Name) {
 		return false
 	}
-	return rec.ExpiresAt != "" && len(rec.Models) == 1 &&
+	return !rec.Revoked && rec.LocalOnly && rec.ExpiresAt != "" && len(rec.Models) == 1 &&
 		rec.RateLimit == 0 && rec.DailyLimit == 0 && rec.MonthlyLimit == 0 &&
 		rec.DailyUsdCap == 0 && rec.MonthlyUsdCap == 0
+}
+
+// hasReservedProbePrefix reports whether name starts with a prefix reserved
+// for the internal probe keys.
+func hasReservedProbePrefix(name string) bool {
+	return strings.HasPrefix(name, benchmarkKeyPrefix) || strings.HasPrefix(name, pullVerifyKeyPrefix)
 }
 
 // benchmarkJob tracks one in-flight or recently-finished hardware benchmark

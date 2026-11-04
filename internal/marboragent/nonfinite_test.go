@@ -242,7 +242,7 @@ func TestHandleStatusSanitizesNonFinite(t *testing.T) {
 func TestHandleStatusMarshalFailureIs500(t *testing.T) {
 	orig := marshalStatus
 	marshalStatus = func(any) ([]byte, error) { return nil, errors.New("boom") }
-	defer func() { marshalStatus = orig }()
+	t.Cleanup(func() { marshalStatus = orig })
 	sched := NewScheduler("v-test")
 	sched.snap.Store(&Telemetry{})
 	srv := &Server{Token: "sekret", Version: "v-test"}

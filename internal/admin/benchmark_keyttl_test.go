@@ -70,7 +70,7 @@ func TestBenchmarkKeyTTLFor_FloorAndCeiling(t *testing.T) {
 
 func TestIsEphemeralProbeKey(t *testing.T) {
 	exp := time.Now().Add(time.Hour).Format(time.RFC3339)
-	probe := store.KeyRecord{Name: "benchmark-n-m-1-2", Models: []string{"m"}, ExpiresAt: exp}
+	probe := store.KeyRecord{Name: "benchmark-n-m-1-2", Models: []string{"m"}, ExpiresAt: exp, LocalOnly: true}
 	if !IsEphemeralProbeKey(probe) {
 		t.Error("benchmark probe key not recognised")
 	}
@@ -80,9 +80,11 @@ func TestIsEphemeralProbeKey(t *testing.T) {
 		t.Error("pull-verify probe key not recognised")
 	}
 	for name, rec := range map[string]store.KeyRecord{
-		"other name":    {Name: "team", Models: []string{"m"}, ExpiresAt: exp},
+		"other name":    {Name: "team", Models: []string{"m"}, ExpiresAt: exp, LocalOnly: true},
+		"not local":     {Name: "benchmark-x", Models: []string{"m"}, ExpiresAt: exp},
+		"revoked":       {Name: "benchmark-x", Models: []string{"m"}, ExpiresAt: exp, LocalOnly: true, Revoked: true},
 		"no expiry":     {Name: "benchmark-x", Models: []string{"m"}},
-		"no models":     {Name: "benchmark-x", ExpiresAt: exp},
+		"no models":     {Name: "benchmark-x", ExpiresAt: exp, LocalOnly: true},
 		"two models":    {Name: "benchmark-x", Models: []string{"a", "b"}, ExpiresAt: exp},
 		"rate limited":  {Name: "benchmark-x", Models: []string{"m"}, ExpiresAt: exp, RateLimit: 5},
 		"daily usd cap": {Name: "benchmark-x", Models: []string{"m"}, ExpiresAt: exp, DailyUsdCap: 1},

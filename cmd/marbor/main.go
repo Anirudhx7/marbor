@@ -1198,6 +1198,7 @@ func loadStoredKeys(authMw *auth.Middleware, st store.Store) (int, error) {
 		// can be running at startup, so drop it rather than let it authenticate
 		// until its expiry.
 		if admin.IsEphemeralProbeKey(k) {
+			log.Printf("removing leftover probe key %q", k.Name)
 			if err := st.DeleteKey(k.Name); err != nil {
 				log.Printf("WARNING: could not remove leftover probe key %q: %v", k.Name, err)
 			}

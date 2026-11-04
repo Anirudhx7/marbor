@@ -10,7 +10,10 @@ import "reflect"
 // single bad reading anywhere in the snapshot would blank the whole node.
 //
 // It copies rather than mutating because the snapshot's slices and pointers
-// are shared with the Scheduler's cached reading.
+// are shared with the Scheduler's cached reading. Pointers, slices and maps in
+// the result are fresh; unexported struct fields are carried over by the
+// struct copy (shared, not scrubbed) because they cannot be set through
+// reflection - encoding/json ignores them, so they never reach the payload.
 func withoutNonFinite[T any](v T) T {
 	out := scrubFloats(reflect.ValueOf(v))
 	return out.Interface().(T)
@@ -23,6 +26,13 @@ func scrubFloats(in reflect.Value) reflect.Value {
 			return reflect.Zero(in.Type())
 		}
 		return in
+	case reflect.Interface:
+		if in.IsNil() {
+			return in
+		}
+		out := reflect.New(in.Type()).Elem()
+		out.Set(scrubFloats(in.Elem()))
+		return out
 	case reflect.Ptr:
 		if in.IsNil() {
 			return in

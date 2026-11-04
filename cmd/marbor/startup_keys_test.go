@@ -102,8 +102,10 @@ func TestLoadStoredKeysSweepsLeftoverProbeKeys(t *testing.T) {
 	exp := time.Now().Add(time.Hour).Format(time.RFC3339)
 	for _, k := range []store.KeyRecord{
 		{Name: "benchmark-n1-llama-123-1", Key: "sk-b", Models: []string{"llama"}, ExpiresAt: exp, LocalOnly: true},
-		{Name: "pull-verify-n1-llama-99", Key: "sk-p", Models: []string{"llama"}, ExpiresAt: exp},
-		// Operator keys that merely share a prefix keep their shape-based protection.
+		{Name: "pull-verify-n1-llama-99", Key: "sk-p", Models: []string{"llama"}, ExpiresAt: exp, LocalOnly: true},
+		// Keys that share a prefix but do not have every probe-key field are kept.
+		{Name: "benchmark-crafted", Key: "sk-c", Models: []string{"llama"}, ExpiresAt: exp, LocalOnly: false},
+		{Name: "benchmark-revoked", Key: "sk-v", Models: []string{"llama"}, ExpiresAt: exp, LocalOnly: true, Revoked: true},
 		{Name: "benchmark-team", Key: "sk-t", RateLimit: 10},
 		{Name: "benchmark-all", Key: "sk-a"},
 		{Name: "real", Key: "sk-r"},
@@ -117,8 +119,8 @@ func TestLoadStoredKeysSweepsLeftoverProbeKeys(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadStoredKeys: %v", err)
 	}
-	if n != 3 {
-		t.Errorf("registered %d keys, want 3", n)
+	if n != 4 {
+		t.Errorf("registered %d keys, want 4", n)
 	}
 	rows, _ := st.AllKeys()
 	got := map[string]bool{}
@@ -128,7 +130,7 @@ func TestLoadStoredKeysSweepsLeftoverProbeKeys(t *testing.T) {
 	if got["benchmark-n1-llama-123-1"] || got["pull-verify-n1-llama-99"] {
 		t.Errorf("leftover probe keys not deleted: %v", got)
 	}
-	if !got["benchmark-team"] || !got["benchmark-all"] || !got["real"] {
+	if !got["benchmark-team"] || !got["benchmark-all"] || !got["real"] || !got["benchmark-crafted"] || !got["benchmark-revoked"] {
 		t.Errorf("operator keys wrongly deleted: %v", got)
 	}
 }
