@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -19,8 +20,14 @@ func waitRouter(t *testing.T, nodes []nrNode, timeoutMs, slaMs int) *Router {
 
 func doWait(r *Router, cloud bool) (WaitResult, time.Duration) {
 	start := time.Now()
-	res := r.WaitForNodeWithPrefixOpts(context.Background(), "model-x", "", "", "", WaitOpts{CloudUsable: cloud})
-	return res, time.Since(start)
+	depth0 := r.QueueDepth()
+	res := r.WaitForNodeWithPrefixOpts(context.Background(), "model-x", "", "", "", WaitOpts{CloudUsable: func() bool { return cloud }})
+	d := time.Since(start)
+	// Every outcome must release the queue slot it claimed.
+	if n := r.QueueDepth(); n != depth0 {
+		panic(fmt.Sprintf("queue depth = %d after outcome %q, want %d", n, res.Outcome, depth0))
+	}
+	return res, d
 }
 
 // Hard classes return at once with cloud usable, claim no queue slot, and
@@ -153,7 +160,7 @@ func TestWait_ContextCancelled(t *testing.T) {
 	r := waitRouter(t, []nrNode{{state: "full"}}, 5000, 0)
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { time.Sleep(100 * time.Millisecond); cancel() }()
-	res := r.WaitForNodeWithPrefixOpts(ctx, "model-x", "", "", "", WaitOpts{CloudUsable: true})
+	res := r.WaitForNodeWithPrefixOpts(ctx, "model-x", "", "", "", WaitOpts{CloudUsable: func() bool { return true }})
 	if res.Outcome != WaitCtxCancelled {
 		t.Errorf("outcome = %q, want ctx_cancelled", res.Outcome)
 	}
@@ -172,6 +179,7 @@ func TestWait_UnknownStateWaits(t *testing.T) {
 }
 
 // The setters run concurrently with many waiters under the race detector.
+// It has no assertions on purpose: the race detector is the check.
 func TestWait_SettersLiveRace(t *testing.T) {
 	r := waitRouter(t, []nrNode{{state: "full"}}, 200, 100)
 	var wg sync.WaitGroup
@@ -179,7 +187,7 @@ func TestWait_SettersLiveRace(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			doWait(r, true)
+			r.WaitForNodeWithPrefixOpts(context.Background(), "model-x", "", "", "", WaitOpts{CloudUsable: func() bool { return true }})
 		}()
 	}
 	for i := 0; i < 50; i++ {
