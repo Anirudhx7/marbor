@@ -1,47 +1,97 @@
 package admin
 
 import (
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/Anirudhx7/marbor/internal/store"
 )
 
-// worstCaseBenchmarkRun recomputes the longest a run can take from the same
-// timeout variables the job uses: N+1 evicts (initial plus one before each
-// later cold sample) and 2N samples, each sample bounded by its timeout.
-func worstCaseBenchmarkRun(n int) time.Duration {
-	evict := nodeUnloadModelTimeout + 2*time.Second
-	return time.Duration(n+1)*evict + time.Duration(2*n)*benchmarkSampleTimeout
+const (
+	testSample = 5 * time.Minute
+	testUnload = 30 * time.Second
+)
+
+// worstCaseByCounting walks the job's steps (see runBenchmarkJob) and sums
+// each call's own bound, rather than re-using the production formula: one
+// initial evict, then per cold sample an evict (all but the first) plus the
+// sample, then n warm samples.
+func worstCaseByCounting(n int) time.Duration {
+	evicts, samples := 1, 0
+	for i := 0; i < n; i++ {
+		if i > 0 {
+			evicts++
+		}
+		samples++ // cold
+	}
+	samples += n // warm
+	return time.Duration(evicts)*(testUnload+2*time.Second) + time.Duration(samples)*testSample
 }
 
-func TestBenchmarkKeyTTLFor_CoversWorstCase(t *testing.T) {
-	for _, n := range []int{1, 10, 50} {
-		if got, need := benchmarkKeyTTLFor(n), worstCaseBenchmarkRun(n); got < need {
-			t.Errorf("n=%d: ttl %v is below worst-case run %v", n, got, need)
+func TestBenchmarkKeyTTLFor_CoversCountedWorstCase(t *testing.T) {
+	for _, n := range []int{1, 2, 10, 50} {
+		if got, need := benchmarkKeyTTLFor(n, testSample, testUnload), worstCaseByCounting(n); got < need {
+			t.Errorf("n=%d: ttl %v is below counted worst-case run %v", n, got, need)
 		}
 	}
 }
 
-func TestBenchmarkKeyTTLFor_MonotonicAndFloor(t *testing.T) {
+func TestBenchmarkKeyTTLFor_PinnedValues(t *testing.T) {
+	// n=50: 51 evicts x 32s + 100 samples x 5m + 2m margin = 8h49m12s.
+	if got, want := benchmarkKeyTTLFor(benchmarkMaxN, testSample, testUnload), 8*time.Hour+49*time.Minute+12*time.Second; got != want {
+		t.Errorf("n=50 ttl = %v, want %v", got, want)
+	}
+	if benchmarkKeyTTLFor(benchmarkMaxN, testSample, testUnload) > benchmarkKeyTTLMax {
+		t.Errorf("n=50 ttl exceeds the hard max")
+	}
+	// n=10 (the default): 11 x 32s + 20 x 5m + 2m = 1h47m52s.
+	if got, want := benchmarkKeyTTLFor(10, testSample, testUnload), time.Hour+47*time.Minute+52*time.Second; got != want {
+		t.Errorf("n=10 ttl = %v, want %v", got, want)
+	}
+}
+
+func TestBenchmarkKeyTTLFor_FloorAndCeiling(t *testing.T) {
+	if got := benchmarkKeyTTLFor(1, time.Second, time.Second); got != benchmarkKeyTTLMin {
+		t.Errorf("tiny run ttl = %v, want floor %v", got, benchmarkKeyTTLMin)
+	}
+	if got := benchmarkKeyTTLFor(benchmarkMaxN, time.Hour, time.Hour); got != benchmarkKeyTTLMax {
+		t.Errorf("huge timeouts ttl = %v, want ceiling %v", got, benchmarkKeyTTLMax)
+	}
 	prev := time.Duration(0)
-	for n := 1; n <= 50; n++ {
-		got := benchmarkKeyTTLFor(n)
+	for n := 1; n <= benchmarkMaxN; n++ {
+		got := benchmarkKeyTTLFor(n, testSample, testUnload)
 		if got < prev {
-			t.Fatalf("n=%d: ttl %v less than n=%d ttl %v", n, got, n-1, prev)
+			t.Fatalf("n=%d: ttl %v shrank from %v", n, got, prev)
 		}
 		prev = got
 	}
-	if benchmarkKeyTTLFor(50) <= benchmarkKeyTTLFor(1) {
-		t.Errorf("ttl does not grow with n")
-	}
-	if benchmarkKeyTTLFor(1) < 15*time.Minute {
-		t.Errorf("ttl for n=1 is below the previous 15m window")
-	}
 }
 
-func TestBenchmarkKeyTTLFor_DefaultNNotExpiredAt16Minutes(t *testing.T) {
-	const defaultN = 10
-	expiresAt := time.Now().Add(benchmarkKeyTTLFor(defaultN))
-	if !time.Now().Add(16 * time.Minute).Before(expiresAt) {
-		t.Errorf("key for default n=%d would be expired at 16 minutes", defaultN)
+func TestIsEphemeralProbeKey(t *testing.T) {
+	exp := time.Now().Add(time.Hour).Format(time.RFC3339)
+	probe := store.KeyRecord{Name: "benchmark-n-m-1-2", Models: []string{"m"}, ExpiresAt: exp}
+	if !IsEphemeralProbeKey(probe) {
+		t.Error("benchmark probe key not recognised")
+	}
+	pv := probe
+	pv.Name = pullVerifyKeyPrefix + "n-m-1"
+	if !IsEphemeralProbeKey(pv) {
+		t.Error("pull-verify probe key not recognised")
+	}
+	for name, rec := range map[string]store.KeyRecord{
+		"other name":    {Name: "team", Models: []string{"m"}, ExpiresAt: exp},
+		"no expiry":     {Name: "benchmark-x", Models: []string{"m"}},
+		"no models":     {Name: "benchmark-x", ExpiresAt: exp},
+		"two models":    {Name: "benchmark-x", Models: []string{"a", "b"}, ExpiresAt: exp},
+		"rate limited":  {Name: "benchmark-x", Models: []string{"m"}, ExpiresAt: exp, RateLimit: 5},
+		"daily usd cap": {Name: "benchmark-x", Models: []string{"m"}, ExpiresAt: exp, DailyUsdCap: 1},
+	} {
+		if IsEphemeralProbeKey(rec) {
+			t.Errorf("%s: operator key treated as probe key", name)
+		}
+	}
+	if !strings.HasPrefix(probe.Name, benchmarkKeyPrefix) {
+		t.Error("prefix constant drifted")
 	}
 }

@@ -134,17 +134,17 @@ func applyXPUStats(info *GPUInfo, statsOut []byte) {
 		return
 	}
 	if temp, ok := xpuField(stats.DeviceLevel, "GPU_TEMPERATURE", "temperature"); ok {
-		if v, ok := parseFiniteFloat(temp); ok {
+		if v, parsed := parseFiniteFloat(temp); parsed {
 			info.TemperatureC = &v
 		}
 	}
 	if power, ok := xpuField(stats.DeviceLevel, "GPU_POWER", "power"); ok {
-		if v, ok := parseFiniteFloat(power); ok {
+		if v, parsed := parseFiniteFloat(power); parsed {
 			info.PowerWatts = &v
 		}
 	}
 	if util, ok := xpuField(stats.DeviceLevel, "GPU_UTILIZATION", "gpu_utilization"); ok {
-		if v, ok := parseFiniteFloat(util); ok && v >= 0 && v <= 100 {
+		if v, parsed := parseFiniteFloat(util); parsed && validPercent(v) {
 			info.CorePercent = &v
 		}
 	}

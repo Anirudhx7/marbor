@@ -92,3 +92,43 @@ func TestLoadStoredKeysReportsKeyListError(t *testing.T) {
 		t.Fatalf("got (%d, %v), want (0, error)", n, err)
 	}
 }
+
+func TestLoadStoredKeysSweepsLeftoverProbeKeys(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "marbor.db"))
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	defer st.Close()
+	exp := time.Now().Add(time.Hour).Format(time.RFC3339)
+	for _, k := range []store.KeyRecord{
+		{Name: "benchmark-n1-llama-123-1", Key: "sk-b", Models: []string{"llama"}, ExpiresAt: exp, LocalOnly: true},
+		{Name: "pull-verify-n1-llama-99", Key: "sk-p", Models: []string{"llama"}, ExpiresAt: exp},
+		// Operator keys that merely share a prefix keep their shape-based protection.
+		{Name: "benchmark-team", Key: "sk-t", RateLimit: 10},
+		{Name: "benchmark-all", Key: "sk-a"},
+		{Name: "real", Key: "sk-r"},
+	} {
+		if err := st.UpsertKey(k); err != nil {
+			t.Fatalf("UpsertKey: %v", err)
+		}
+	}
+	mw := auth.NewMiddleware(config.AuthConfig{Enabled: config.BoolPtr(true)})
+	n, err := loadStoredKeys(mw, st)
+	if err != nil {
+		t.Fatalf("loadStoredKeys: %v", err)
+	}
+	if n != 3 {
+		t.Errorf("registered %d keys, want 3", n)
+	}
+	rows, _ := st.AllKeys()
+	got := map[string]bool{}
+	for _, r := range rows {
+		got[r.Name] = true
+	}
+	if got["benchmark-n1-llama-123-1"] || got["pull-verify-n1-llama-99"] {
+		t.Errorf("leftover probe keys not deleted: %v", got)
+	}
+	if !got["benchmark-team"] || !got["benchmark-all"] || !got["real"] {
+		t.Errorf("operator keys wrongly deleted: %v", got)
+	}
+}

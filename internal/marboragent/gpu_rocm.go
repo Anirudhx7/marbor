@@ -104,22 +104,22 @@ func parseROCmSMIJSON(data []byte) (GPUBlock, bool) {
 		// kept only as a last-resort fallback for a card that exposes no
 		// edge reading at all.
 		if temp, ok := rocmField(card, "Temperature (Sensor edge) (C)", "Temperature (edge) (C)", "Temperature (Sensor junction) (C)"); ok {
-			if v, ok := parseFiniteFloat(temp); ok {
+			if v, parsed := parseFiniteFloat(temp); parsed {
 				info.TemperatureC = &v
 			}
 		}
 		if fan, ok := rocmField(card, "Fan speed (%)", "Fan Speed (%)"); ok {
-			if v, ok := parseFiniteFloat(fan); ok && v >= 0 && v <= 100 {
+			if v, parsed := parseFiniteFloat(fan); parsed && validPercent(v) {
 				info.FanPercent = &v
 			}
 		}
 		if power, ok := rocmField(card, "Average Graphics Package Power (W)", "Current Socket Graphics Package Power (W)"); ok {
-			if v, ok := parseFiniteFloat(power); ok {
+			if v, parsed := parseFiniteFloat(power); parsed {
 				info.PowerWatts = &v
 			}
 		}
 		if util, ok := rocmField(card, "GPU use (%)", "GPU Use (%)"); ok {
-			if v, ok := parseFiniteFloat(util); ok && v >= 0 && v <= 100 {
+			if v, parsed := parseFiniteFloat(util); parsed && validPercent(v) {
 				info.CorePercent = &v
 			}
 		}

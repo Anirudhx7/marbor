@@ -1194,6 +1194,15 @@ func loadStoredKeys(authMw *auth.Middleware, st store.Store) (int, error) {
 	}
 	n := 0
 	for _, k := range runtimeKeys {
+		// A benchmark / pull-verify probe key that survived a crash: no probe
+		// can be running at startup, so drop it rather than let it authenticate
+		// until its expiry.
+		if admin.IsEphemeralProbeKey(k) {
+			if err := st.DeleteKey(k.Name); err != nil {
+				log.Printf("WARNING: could not remove leftover probe key %q: %v", k.Name, err)
+			}
+			continue
+		}
 		if k.Revoked {
 			authMw.RevokeKey(k.Name)
 			continue

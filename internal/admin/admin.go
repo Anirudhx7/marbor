@@ -7047,7 +7047,7 @@ const pullJobMaxAge = 10 * time.Minute
 // regardless.
 var pullVerifyTimeout = 5 * time.Minute
 
-// pullVerifyKeyTTL is defense-in-depth only, mirroring benchmarkKeyTTL's
+// pullVerifyKeyTTL is defense-in-depth only, mirroring the benchmark key's
 // reasoning: the ephemeral key is always explicitly revoked/deleted when
 // verifyModelLoads returns, on every exit path: this TTL just bounds how
 // long an orphaned key could authenticate if that cleanup were ever skipped
@@ -7562,15 +7562,17 @@ func (s *Server) verifyModelLoads(ctx context.Context, nodeName, model string) e
 	if s.cfg.Proxy.Port <= 0 {
 		return fmt.Errorf("proxy port is not configured - cannot verify model load")
 	}
-	keyName := fmt.Sprintf("pull-verify-%s-%s-%d", nodeName, model, time.Now().UnixNano())
+	keyName := fmt.Sprintf(pullVerifyKeyPrefix+"%s-%s-%d", nodeName, model, time.Now().UnixNano())
 	keyValue, err := generateAPIKey(keyName)
 	if err != nil {
 		return fmt.Errorf("generate verification key: %w", err)
 	}
 	k := config.KeyConfig{
-		Name:      keyName,
-		Key:       keyValue,
-		Models:    []string{model},
+		Name:   keyName,
+		Key:    keyValue,
+		Models: []string{model},
+		// The probe checks the node can load the model; cloud must not answer.
+		LocalOnly: true,
 		ExpiresAt: time.Now().Add(pullVerifyKeyTTL).Format(time.RFC3339),
 	}
 	if err := s.persistKey(k); err != nil {

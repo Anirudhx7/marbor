@@ -100,7 +100,7 @@ func parseCelsius(s string) (float64, bool) {
 	if s == "" || s == "N/A" {
 		return 0, false
 	}
-	s = strings.TrimSpace(strings.TrimSuffix(s, "C"))
+	s = strings.TrimSuffix(s, "C")
 	return parseFiniteFloat(s)
 }
 
@@ -111,7 +111,7 @@ func parseWatts(s string) (float64, bool) {
 	if s == "" || s == "N/A" {
 		return 0, false
 	}
-	s = strings.TrimSpace(strings.TrimSuffix(s, "W"))
+	s = strings.TrimSuffix(s, "W")
 	return parseFiniteFloat(s)
 }
 
@@ -120,9 +120,9 @@ func parsePercent(s string) (float64, bool) {
 	if s == "" || s == "N/A" {
 		return 0, false
 	}
-	s = strings.TrimSpace(strings.TrimSuffix(s, "%"))
+	s = strings.TrimSuffix(s, "%")
 	v, ok := parseFiniteFloat(s)
-	if !ok || v < 0 || v > 100 {
+	if !ok || !validPercent(v) {
 		return 0, false
 	}
 	return v, true

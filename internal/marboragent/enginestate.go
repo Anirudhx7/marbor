@@ -193,10 +193,27 @@ func parsePrometheusText(body []byte) map[string][]float64 {
 // accepts). A non-finite reading is treated as absent, never as a value.
 func parseFiniteFloat(s string) (float64, bool) {
 	v, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
-	if err != nil || math.IsNaN(v) || math.IsInf(v, 0) {
+	if err != nil || !isFinite(v) {
 		return 0, false
 	}
 	return v, true
+}
+
+// isFinite reports whether v is neither NaN nor +/-Inf. It is the single
+// definition every non-finite guard in this package uses.
+func isFinite(v float64) bool {
+	return !math.IsNaN(v) && !math.IsInf(v, 0)
+}
+
+// validPercent reports whether v is a finite value inside [0,100]. GPU CLI
+// readings (nvidia-smi, rocm-smi, xpu-smi) outside that range are a tool
+// glitch with no honest interpretation, so they are reported as absent. This
+// differs deliberately from clampPercent below, which clamps a runtime's own
+// Prometheus gauge: that is a ratio the engine computed, where a fractional
+// overshoot from rounding or a mid-scrape reset is real data nudged just out
+// of range, not a malformed reading. Both treat NaN/Inf as absent.
+func validPercent(v float64) bool {
+	return isFinite(v) && v >= 0 && v <= 100
 }
 
 // clampPercent bounds a reported percentage to [0,100] - a runtime's own
@@ -206,7 +223,7 @@ func parseFiniteFloat(s string) (float64, bool) {
 // clamps display range only; it never substitutes a value the runtime did
 // not report (that stays nil, per the honest-unknown rule above).
 func clampPercent(v float64) *float64 {
-	if math.IsNaN(v) || math.IsInf(v, 0) {
+	if !isFinite(v) {
 		return nil
 	}
 	if v < 0 {
@@ -229,7 +246,7 @@ func sumSamples(samples map[string][]float64, name string) (float64, bool) {
 	for _, v := range vals {
 		sum += v
 	}
-	if math.IsNaN(sum) || math.IsInf(sum, 0) {
+	if !isFinite(sum) {
 		return 0, false
 	}
 	return sum, true

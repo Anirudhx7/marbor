@@ -527,3 +527,99 @@ func TestCloudFallbackAPIEmbeddingsDoesNotTriggerPluralBuilder(t *testing.T) {
 		t.Errorf("/api/embeddings response has plural 'embeddings' key, want singular 'embedding' only: %v", got)
 	}
 }
+
+// streamCloudFallback drives a streaming request through a mock SSE cloud and
+// returns the NDJSON lines the client sees.
+func streamCloudFallback(t *testing.T, path, reqBody string, chunks []string) []map[string]interface{} {
+	t.Helper()
+	cloud := sseCloud(t, chunks, 5, 10)
+	defer cloud.Close()
+	h, _ := newCloudOnlyHandler(t, cloud.URL)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("POST", path, bytes.NewReader([]byte(reqBody))))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	lines := parseNDJSON(t, rec.Body.String())
+	if len(lines) == 0 {
+		t.Fatal("no NDJSON lines")
+	}
+	return lines
+}
+
+func assertFinalDone(t *testing.T, lines []map[string]interface{}) {
+	t.Helper()
+	last := lines[len(lines)-1]
+	if done, _ := last["done"].(bool); !done {
+		t.Fatalf("last line is not done:true: %v", last)
+	}
+	if last["done_reason"] != "stop" {
+		t.Errorf("done_reason = %v, want stop", last["done_reason"])
+	}
+	if got, _ := last["eval_count"].(float64); got != 10 {
+		t.Errorf("eval_count = %v, want 10", last["eval_count"])
+	}
+	for _, l := range lines[:len(lines)-1] {
+		if done, _ := l["done"].(bool); done {
+			t.Errorf("done:true before the final line: %v", l)
+		}
+	}
+}
+
+func generatedText(lines []map[string]interface{}) string {
+	var b strings.Builder
+	for _, l := range lines {
+		if s, ok := l["response"].(string); ok {
+			b.WriteString(s)
+		}
+	}
+	return b.String()
+}
+
+// A chunk carrying both delta.content and text must emit the delta once, not
+// the text as well and not twice.
+func TestCloudFallbackGenerateDeltaPreferredOverText(t *testing.T) {
+	lines := streamCloudFallback(t, "/api/generate", `{"model":"m","prompt":"hi","stream":true}`, []string{
+		`{"id":"g","choices":[{"delta":{"content":"Hello"},"text":"IGNORED"}]}`,
+	})
+	if got := generatedText(lines); got != "Hello" {
+		t.Errorf("text = %q, want %q", got, "Hello")
+	}
+	assertFinalDone(t, lines)
+}
+
+// A stream mixing chat-shaped and completions-shaped chunks keeps all text in
+// order and still ends with the single done line.
+func TestCloudFallbackGenerateMixedShapeStream(t *testing.T) {
+	lines := streamCloudFallback(t, "/api/generate", `{"model":"m","prompt":"hi","stream":true}`, []string{
+		`{"id":"g","choices":[{"delta":{"content":"A"}}]}`,
+		`{"id":"g","choices":[{"text":"B"}]}`,
+		`{"id":"g","choices":[{"delta":{"content":"C"}}]}`,
+		`{"id":"g","choices":[{"text":"D"}]}`,
+	})
+	if got := generatedText(lines); got != "ABCD" {
+		t.Errorf("text = %q, want ABCD", got)
+	}
+	assertFinalDone(t, lines)
+}
+
+// /api/chat shares the same stream translator, so completions-style text
+// must survive there too, as message.content.
+func TestCloudFallbackChatLegacyCompletionsText(t *testing.T) {
+	lines := streamCloudFallback(t, "/api/chat", `{"model":"m","messages":[{"role":"user","content":"hi"}],"stream":true}`, []string{
+		`{"id":"g","choices":[{"text":"Hi "}]}`,
+		`{"id":"g","choices":[{"delta":{"content":"there"}}]}`,
+	})
+	var b strings.Builder
+	for _, l := range lines {
+		if m, ok := l["message"].(map[string]interface{}); ok {
+			if s, ok := m["content"].(string); ok {
+				b.WriteString(s)
+			}
+		}
+	}
+	if b.String() != "Hi there" {
+		t.Errorf("chat text = %q, want %q", b.String(), "Hi there")
+	}
+	assertFinalDone(t, lines)
+}

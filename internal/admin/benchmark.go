@@ -20,6 +20,7 @@ import (
 	"math"
 	"net/http"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -43,22 +44,61 @@ const benchmarkJobMaxAge = 10 * time.Minute
 // generous like nodePullTimeout rather than tight like nodeUnloadModelTimeout.
 var benchmarkSampleTimeout = 5 * time.Minute
 
+// benchmarkMaxN is the largest per-phase sample count a run may request.
+const benchmarkMaxN = 50
+
 // benchmarkKeyTTLMin is the floor so tiny runs keep the original 15m window.
 const benchmarkKeyTTLMin = 15 * time.Minute
+
+// benchmarkKeyTTLMax is the hard ceiling on the ephemeral key's lifetime. The
+// worst-case n=50 run with the default timeouts needs 8h49m12s, so 9h covers
+// it; the cap keeps a raised timeout from silently stretching the key's life.
+// Because of this bound, a key orphaned by a crash can outlive the process by
+// up to 9h - a boot-time sweep (see IsEphemeralProbeKey) removes it on the
+// next start, and the TTL is only the backstop until then.
+const benchmarkKeyTTLMax = 9 * time.Hour
+
+// benchmarkKeySettle is the pause after each evict, matching the sleep in
+// the job's evict step.
+const benchmarkKeySettle = 2 * time.Second
 
 // benchmarkKeyTTLFor is how far in the future the ephemeral benchmark API
 // key's expires_at is set for a run of n samples per phase. It must outlast
 // the run or the proxy rejects the key mid-flight, so it covers the worst
-// case: n+1 evicts (the initial one plus one before each later cold sample,
-// each bounded by the unload timeout plus the 2s settle sleep) and 2n samples
-// (cold and warm) each bounded by benchmarkSampleTimeout, plus a fixed margin.
-// Explicit cleanup (auth.RevokeKey + store.DeleteKey when the job ends, on
-// every exit path) is the real mechanism; the TTL only bounds an orphaned key
-// if that cleanup is skipped by a crash.
-func benchmarkKeyTTLFor(n int) time.Duration {
-	evict := nodeUnloadModelTimeout + 2*time.Second
-	ttl := time.Duration(n+1)*evict + time.Duration(2*n)*benchmarkSampleTimeout + 2*time.Minute
-	return max(ttl, benchmarkKeyTTLMin)
+// case: n+1 evicts (the initial one, one before each later cold sample, and
+// one spare), each bounded by unloadTimeout plus the settle pause, and 2n
+// samples (cold and warm)
+// each bounded by sampleTimeout, plus a fixed margin, clamped to
+// [benchmarkKeyTTLMin, benchmarkKeyTTLMax]. Explicit cleanup (auth.RevokeKey
+// + store.DeleteKey when the job ends, on every exit path) is the real
+// mechanism; the TTL only bounds an orphaned key if that cleanup is skipped
+// by a crash.
+func benchmarkKeyTTLFor(n int, sampleTimeout, unloadTimeout time.Duration) time.Duration {
+	evict := unloadTimeout + benchmarkKeySettle
+	ttl := time.Duration(n+1)*evict + time.Duration(2*n)*sampleTimeout + 2*time.Minute
+	return min(max(ttl, benchmarkKeyTTLMin), benchmarkKeyTTLMax)
+}
+
+// Ephemeral probe keys (the benchmark's and the post-pull load check's) are
+// named with these prefixes and live only for the duration of one request
+// sequence.
+const (
+	benchmarkKeyPrefix  = "benchmark-"
+	pullVerifyKeyPrefix = "pull-verify-"
+)
+
+// IsEphemeralProbeKey reports whether rec looks like a leftover benchmark or
+// pull-verify probe key: the reserved name prefix, an expiry, a single-model
+// scope and no usage limits (every real probe key has exactly that shape). The
+// boot-time sweep deletes these, since no probe can be running at startup. The
+// shape checks keep an operator's own key that merely starts with the prefix.
+func IsEphemeralProbeKey(rec store.KeyRecord) bool {
+	if !strings.HasPrefix(rec.Name, benchmarkKeyPrefix) && !strings.HasPrefix(rec.Name, pullVerifyKeyPrefix) {
+		return false
+	}
+	return rec.ExpiresAt != "" && len(rec.Models) == 1 &&
+		rec.RateLimit == 0 && rec.DailyLimit == 0 && rec.MonthlyLimit == 0 &&
+		rec.DailyUsdCap == 0 && rec.MonthlyUsdCap == 0
 }
 
 // benchmarkJob tracks one in-flight or recently-finished hardware benchmark
@@ -284,8 +324,8 @@ func (s *Server) handleRunBenchmark(w http.ResponseWriter, r *http.Request) {
 	if body.N <= 0 {
 		body.N = 10
 	}
-	if body.N > 50 {
-		writeJSONError(w, http.StatusBadRequest, "n must be <= 50")
+	if body.N > benchmarkMaxN {
+		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("n must be <= %d", benchmarkMaxN))
 		return
 	}
 
@@ -347,7 +387,7 @@ func (s *Server) handleRunBenchmark(w http.ResponseWriter, r *http.Request) {
 	s.benchJobs[jobID] = job
 	s.benchMu.Unlock()
 
-	keyName := fmt.Sprintf("benchmark-%s-%s-%s", body.Node, body.Model, jobID)
+	keyName := fmt.Sprintf(benchmarkKeyPrefix+"%s-%s-%s", body.Node, body.Model, jobID)
 	keyValue, err := generateAPIKey(keyName)
 	if err != nil {
 		s.benchMu.Lock()
@@ -358,10 +398,13 @@ func (s *Server) handleRunBenchmark(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	k := config.KeyConfig{
-		Name:      keyName,
-		Key:       keyValue,
-		Models:    []string{body.Model},
-		ExpiresAt: time.Now().Add(benchmarkKeyTTLFor(body.N)).Format(time.RFC3339),
+		Name:   keyName,
+		Key:    keyValue,
+		Models: []string{body.Model},
+		// A benchmark measures the node's own hardware: a cloud spill would
+		// bill the cloud and report numbers that are not the node's.
+		LocalOnly: true,
+		ExpiresAt: time.Now().Add(benchmarkKeyTTLFor(body.N, benchmarkSampleTimeout, nodeUnloadModelTimeout)).Format(time.RFC3339),
 	}
 	if err := s.persistKey(k); err != nil {
 		s.benchMu.Lock()
@@ -483,7 +526,7 @@ func (s *Server) runBenchmarkJob(ctx context.Context, job *benchmarkJob, apiKey 
 		fail(fmt.Errorf("initial evict: %w", err))
 		return
 	}
-	time.Sleep(2 * time.Second)
+	time.Sleep(benchmarkKeySettle)
 
 	job.setPhase("cold")
 	for i := 0; i < job.N; i++ {
@@ -495,7 +538,7 @@ func (s *Server) runBenchmarkJob(ctx context.Context, job *benchmarkJob, apiKey 
 				fail(fmt.Errorf("evict before cold sample %d: %w", i+1, err))
 				return
 			}
-			time.Sleep(2 * time.Second)
+			time.Sleep(benchmarkKeySettle)
 		}
 		sample, err := bench.MeasureChatLatency(ctx, client, target, job.Model, apiKey)
 		if err != nil {
