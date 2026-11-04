@@ -2,6 +2,7 @@ package marboragent
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -16,9 +17,15 @@ func RenderPrometheus(t Telemetry) string {
 	var b strings.Builder
 
 	writeGauge := func(name, help string, value float64) {
+		if math.IsNaN(value) || math.IsInf(value, 0) {
+			return
+		}
 		fmt.Fprintf(&b, "# HELP %s %s\n# TYPE %s gauge\n%s %s\n", name, help, name, name, formatFloat(value))
 	}
 	writeGaugeLabeled := func(name, help, labelName, labelValue string, value float64) {
+		if math.IsNaN(value) || math.IsInf(value, 0) {
+			return
+		}
 		fmt.Fprintf(&b, "# HELP %s %s\n# TYPE %s gauge\n%s{%s=%q} %s\n", name, help, name, name, labelName, labelValue, formatFloat(value))
 	}
 

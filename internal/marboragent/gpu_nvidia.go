@@ -101,11 +101,7 @@ func parseCelsius(s string) (float64, bool) {
 		return 0, false
 	}
 	s = strings.TrimSpace(strings.TrimSuffix(s, "C"))
-	v, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
-	if err != nil {
-		return 0, false
-	}
-	return v, true
+	return parseFiniteFloat(s)
 }
 
 // parseWatts parses a power reading like "218.00 W". Returns ok=false for
@@ -116,11 +112,7 @@ func parseWatts(s string) (float64, bool) {
 		return 0, false
 	}
 	s = strings.TrimSpace(strings.TrimSuffix(s, "W"))
-	v, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
-	if err != nil {
-		return 0, false
-	}
-	return v, true
+	return parseFiniteFloat(s)
 }
 
 func parsePercent(s string) (float64, bool) {
@@ -129,8 +121,8 @@ func parsePercent(s string) (float64, bool) {
 		return 0, false
 	}
 	s = strings.TrimSpace(strings.TrimSuffix(s, "%"))
-	v, err := strconv.ParseFloat(s, 64)
-	if err != nil {
+	v, ok := parseFiniteFloat(s)
+	if !ok || v < 0 || v > 100 {
 		return 0, false
 	}
 	return v, true

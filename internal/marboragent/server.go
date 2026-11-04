@@ -130,8 +130,13 @@ func (s *Server) runtimeTarget() (name, url string) {
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	t := s.snapshot()
+	body, err := json.Marshal(t)
+	if err != nil {
+		http.Error(w, "status unavailable", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(t)
+	_, _ = w.Write(append(body, '\n'))
 }
 
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {

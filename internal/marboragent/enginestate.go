@@ -48,6 +48,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -178,13 +179,24 @@ func parsePrometheusText(body []byte) map[string][]float64 {
 		if i := strings.IndexByte(name, '{'); i >= 0 {
 			name = name[:i]
 		}
-		v, err := strconv.ParseFloat(fields[1], 64)
-		if err != nil {
+		v, ok := parseFiniteFloat(fields[1])
+		if !ok {
 			continue
 		}
 		out[name] = append(out[name], v)
 	}
 	return out
+}
+
+// parseFiniteFloat parses s as a float64 and reports ok=false for anything
+// unparseable or non-finite (NaN, +Inf, -Inf, which strconv.ParseFloat
+// accepts). A non-finite reading is treated as absent, never as a value.
+func parseFiniteFloat(s string) (float64, bool) {
+	v, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
+	if err != nil || math.IsNaN(v) || math.IsInf(v, 0) {
+		return 0, false
+	}
+	return v, true
 }
 
 // clampPercent bounds a reported percentage to [0,100] - a runtime's own
@@ -194,6 +206,9 @@ func parsePrometheusText(body []byte) map[string][]float64 {
 // clamps display range only; it never substitutes a value the runtime did
 // not report (that stays nil, per the honest-unknown rule above).
 func clampPercent(v float64) *float64 {
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return nil
+	}
 	if v < 0 {
 		v = 0
 	} else if v > 100 {
@@ -213,6 +228,9 @@ func sumSamples(samples map[string][]float64, name string) (float64, bool) {
 	var sum float64
 	for _, v := range vals {
 		sum += v
+	}
+	if math.IsNaN(sum) || math.IsInf(sum, 0) {
+		return 0, false
 	}
 	return sum, true
 }
