@@ -777,7 +777,6 @@ export const mockAPIKeys: APIKey[] = [
 
 export const defaultSettings: Settings = {
   proxyPort: 11434,
-  authMode: 'api-key',
   liteLLMEnabled: false,
   liteLLMEndpoint: 'http://localhost:4000',
   liteLLMApiKey: '',

@@ -126,3 +126,31 @@ func TestAdmin_SettingsGetHidesKeysAndDoesNotMutateLiveConfig(t *testing.T) {
 		t.Errorf("live cloud provider key = %q after GET, want it unchanged", got)
 	}
 }
+
+// The settings save has no authentication switch: auth.enabled in the request
+// body must not change the live config, whichever way it points.
+func TestAdmin_SettingsSaveIgnoresAuthEnabled(t *testing.T) {
+	for _, start := range []bool{true, false} {
+		cfg := config.Config{}
+		cfg.Auth.Enabled = config.BoolPtr(start)
+		s := settingsServer(t, cfg)
+
+		m := getSettingsMap(t, s)
+		m["auth"] = json.RawMessage(`{"enabled":` + map[bool]string{true: "true", false: "false"}[!start] + `}`)
+		body, _ := json.Marshal(m)
+		req := httptest.NewRequest(http.MethodPut, "/admin/settings", bytes.NewReader(body))
+		req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+		if rec.Code >= 300 {
+			t.Fatalf("PUT settings = %d: %s", rec.Code, rec.Body.String())
+		}
+		s.mu.RLock()
+		got := s.cfg.Auth.Enabled
+		s.mu.RUnlock()
+		if got == nil || *got != start {
+			t.Errorf("auth.enabled after PUT with %v = %v, want unchanged %v", !start, got, start)
+		}
+	}
+}

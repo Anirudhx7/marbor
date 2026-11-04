@@ -6073,6 +6073,10 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	// silently reverted by this handler overwriting the whole struct with an
 	// older snapshot.
 	incoming.Auth.Keys = s.cfg.Auth.Keys
+	// The settings save has no authentication switch: the running middleware
+	// is not reloaded from this handler, so accepting the field would only
+	// make the live config disagree with what is enforced.
+	incoming.Auth.Enabled = s.cfg.Auth.Enabled
 	incoming.CloudProviders = s.cfg.CloudProviders
 	incoming.Nodes = s.cfg.Nodes
 	incoming.Routing.ModelAliases = s.cfg.Routing.ModelAliases

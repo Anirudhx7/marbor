@@ -544,7 +544,6 @@ export function SettingsPage() {
         if (!active || currentAppPath() !== '/settings') return;
         const loaded: Settings = {
           proxyPort: settingsData.proxy?.port || 11434,
-          authMode: settingsData.auth?.enabled ? 'api-key' : 'no-auth',
           liteLLMEnabled: settingsData.litellm?.enabled || false,
           liteLLMEndpoint: settingsData.litellm?.url || '',
           liteLLMApiKey: settingsData.litellm?.api_key || '',
@@ -654,7 +653,6 @@ export function SettingsPage() {
         timezone: settings.timezone,
         proxy: { port: settings.proxyPort, log_level: settings.logLevel, access_log: settings.proxyAccessLog, trust_proxy_headers: settings.proxyTrustProxyHeaders },
         admin: { bind_address: settings.adminBindAddress, cors_origin: settings.adminCorsOrigin },
-        auth: { enabled: settings.authMode === 'api-key' },
         routing: {
           poll_interval_ms: settings.pollingInterval,
           allow_management_endpoints: settings.allowManagementEndpoints || false,
@@ -918,40 +916,6 @@ export function SettingsPage() {
               <p className="text-[10px] text-muted-foreground mt-1">
                 Scheduler and prediction cycles will evaluate relative to this timezone.
               </p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-2">
-                Authentication Mode
-              </label>
-              <div className="space-y-2">
-                <label className="flex items-center gap-3 p-3 rounded-lg border border-border bg-secondary/30 cursor-pointer hover:border-primary/40 transition-colors">
-                  <input
-                    type="radio"
-                    name="authMode"
-                    checked={settings.authMode === 'api-key'}
-                    onChange={() => setSettings({ ...settings, authMode: 'api-key' })}
-                    className="accent-primary"
-                  />
-                  <div>
-                    <p className="text-sm font-medium text-foreground">API Key Authentication</p>
-                    <p className="text-xs text-muted-foreground">Require valid API key for all requests</p>
-                  </div>
-                </label>
-                <label className="flex items-center gap-3 p-3 rounded-lg border border-border bg-secondary/30 cursor-pointer hover:border-primary/40 transition-colors">
-                  <input
-                    type="radio"
-                    name="authMode"
-                    checked={settings.authMode === 'no-auth'}
-                    onChange={() => setSettings({ ...settings, authMode: 'no-auth' })}
-                    className="accent-primary"
-                  />
-                  <div>
-                    <p className="text-sm font-medium text-foreground">No authentication</p>
-                    <p className="text-xs text-muted-foreground">Allow all requests (development only)</p>
-                  </div>
-                </label>
-              </div>
             </div>
           </div>
         </div>
