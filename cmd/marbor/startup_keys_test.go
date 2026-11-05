@@ -122,7 +122,10 @@ func TestLoadStoredKeysSweepsLeftoverProbeKeys(t *testing.T) {
 	if n != 4 {
 		t.Errorf("registered %d keys, want 4", n)
 	}
-	rows, _ := st.AllKeys()
+	rows, err := st.AllKeys()
+	if err != nil {
+		t.Fatalf("AllKeys: %v", err)
+	}
 	got := map[string]bool{}
 	for _, r := range rows {
 		got[r.Name] = true
@@ -164,23 +167,29 @@ func TestLoadStoredKeysRevokedProbeShapedKeyIsKeptAndRevoked(t *testing.T) {
 	if len(mw.AllKeyNames()) != 0 {
 		t.Errorf("revoked key still live: %v", mw.AllKeyNames())
 	}
-	rows, _ := st.AllKeys()
+	rows, err := st.AllKeys()
+	if err != nil {
+		t.Fatalf("AllKeys: %v", err)
+	}
 	if len(rows) != 1 || rows[0].Name != rec.Name {
 		t.Errorf("revoked row was removed from the store: %+v", rows)
 	}
 }
 
-// Keys an operator can legitimately have (approved users' keys, or names that
-// only contain a reserved prefix) must survive the sweep and authenticate.
-func TestLoadStoredKeysApprovedUserKeysSurviveSweep(t *testing.T) {
+// Keys an operator can legitimately have must survive the sweep and be
+// registered in auth. The records isolate the prefix check: my-benchmark-key has
+// the full probe shape and differs from a probe key only in that the reserved
+// prefix is not at the start of its name; team is an approved-style bare key.
+func TestLoadStoredKeysPrefixMustBeAtStartToBeSwept(t *testing.T) {
 	st, err := store.Open(filepath.Join(t.TempDir(), "marbor.db"))
 	if err != nil {
 		t.Fatalf("store.Open: %v", err)
 	}
 	defer st.Close()
+	exp := time.Now().Add(time.Hour).Format(time.RFC3339)
 	for _, k := range []store.KeyRecord{
 		{Name: "team", Key: "sk-team"},
-		{Name: "my-benchmark-key", Key: "sk-mine"},
+		{Name: "my-benchmark-key", Key: "sk-mine", Models: []string{"llama"}, ExpiresAt: exp, LocalOnly: true},
 	} {
 		if err := st.UpsertKey(k); err != nil {
 			t.Fatalf("UpsertKey: %v", err)
@@ -194,8 +203,51 @@ func TestLoadStoredKeysApprovedUserKeysSurviveSweep(t *testing.T) {
 	if n != 2 {
 		t.Errorf("registered %d keys, want 2", n)
 	}
-	rows, _ := st.AllKeys()
+	rows, err := st.AllKeys()
+	if err != nil {
+		t.Fatalf("AllKeys: %v", err)
+	}
 	if len(rows) != 2 {
 		t.Errorf("rows after sweep = %d, want 2", len(rows))
+	}
+	live := map[string]bool{}
+	for _, name := range mw.AllKeyNames() {
+		live[name] = true
+	}
+	if !live["team"] || !live["my-benchmark-key"] {
+		t.Errorf("survivors not registered in auth: %v", mw.AllKeyNames())
+	}
+}
+
+// A probe-prefixed key with the full probe shape except AllowLocalDegradation
+// is an operator key: it is kept in the store and registered in auth.
+func TestLoadStoredKeysProbeShapedKeyAllowingDegradationIsKept(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "marbor.db"))
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	defer st.Close()
+	exp := time.Now().Add(time.Hour).Format(time.RFC3339)
+	rec := store.KeyRecord{Name: "benchmark-n1-llama-1-1", Key: "sk-deg", Models: []string{"llama"}, ExpiresAt: exp, LocalOnly: true, AllowLocalDegradation: true}
+	if err := st.UpsertKey(rec); err != nil {
+		t.Fatalf("UpsertKey: %v", err)
+	}
+	mw := auth.NewMiddleware(config.AuthConfig{Enabled: config.BoolPtr(true)})
+	n, err := loadStoredKeys(mw, st)
+	if err != nil {
+		t.Fatalf("loadStoredKeys: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("registered %d keys, want 1", n)
+	}
+	rows, err := st.AllKeys()
+	if err != nil {
+		t.Fatalf("AllKeys: %v", err)
+	}
+	if len(rows) != 1 || rows[0].Name != rec.Name {
+		t.Errorf("row was swept: %+v", rows)
+	}
+	if names := mw.AllKeyNames(); len(names) != 1 || names[0] != rec.Name {
+		t.Errorf("key not registered in auth: %v", names)
 	}
 }

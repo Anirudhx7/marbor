@@ -25,17 +25,23 @@ func TestHandleApproveUser_RejectsReservedProbePrefixes(t *testing.T) {
 		t.Fatalf("POST /admin/keys status = %d, want 400", createRec.Code)
 	}
 	wantMsg := decodeErrorBody(t, createRec.Body.String())
+	if wantMsg == "" || !strings.Contains(wantMsg, "reserved") {
+		t.Fatalf("POST /admin/keys message %q is empty or does not say the name is reserved", wantMsg)
+	}
+	const defaultNameClause = " (the default key name is derived from the username; set create_key.name to choose another)"
 
 	cases := []struct {
-		name     string
-		username string
-		body     string
+		name        string
+		username    string
+		body        string
+		defaultName bool
 	}{
-		{"benchmark prefix", "carol", `{"create_key":{"name":"benchmark-team"}}`},
-		{"pull-verify prefix", "carol", `{"create_key":{"name":"pull-verify-x"}}`},
-		{"bare benchmark prefix", "carol", `{"create_key":{"name":"benchmark-"}}`},
-		{"bare pull-verify prefix", "carol", `{"create_key":{"name":"pull-verify-"}}`},
-		{"default name from username", "benchmark-bob", `{"create_key":{}}`},
+		{"benchmark prefix", "carol", `{"create_key":{"name":"benchmark-team"}}`, false},
+		{"pull-verify prefix", "carol", `{"create_key":{"name":"pull-verify-x"}}`, false},
+		{"bare benchmark prefix", "carol", `{"create_key":{"name":"benchmark-"}}`, false},
+		{"bare pull-verify prefix", "carol", `{"create_key":{"name":"pull-verify-"}}`, false},
+		{"default name from username", "benchmark-bob", `{"create_key":{}}`, true},
+		{"default pull-verify name from username", "pull-verify-x", `{"create_key":{}}`, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -45,11 +51,19 @@ func TestHandleApproveUser_RejectsReservedProbePrefixes(t *testing.T) {
 			if rec.Code != http.StatusBadRequest {
 				t.Fatalf("status = %d, want 400: %s", rec.Code, rec.Body.String())
 			}
-			if got := decodeErrorBody(t, rec.Body.String()); got != wantMsg {
-				t.Errorf("error = %q, want identical to POST /admin/keys text %q", got, wantMsg)
+			want := wantMsg
+			if tc.defaultName {
+				want += defaultNameClause
 			}
-			if strings.Contains(rec.Body.String(), "sk-") || strings.Contains(rec.Body.String(), "api_key_value") {
-				t.Errorf("response leaks key material: %s", rec.Body.String())
+			if got := decodeErrorBody(t, rec.Body.String()); got != want {
+				t.Errorf("error = %q, want %q", got, want)
+			}
+			var fields map[string]any
+			if err := json.Unmarshal(rec.Body.Bytes(), &fields); err != nil {
+				t.Fatalf("body is not JSON: %v", err)
+			}
+			if len(fields) != 1 || fields["error"] == nil {
+				t.Errorf("body fields = %v, want only \"error\"", fields)
 			}
 			u, err := s.st.GetUserByID(id)
 			if err != nil {
@@ -73,9 +87,10 @@ func TestHandleApproveUser_RejectsReservedProbePrefixes(t *testing.T) {
 }
 
 // Only the exact lowercase prefix at the start of the name is reserved;
-// anything else is an ordinary operator key name.
+// anything else is an ordinary operator key name. The handler does not trim,
+// so a leading space puts the name outside the prefix.
 func TestHandleApproveUser_AllowsNamesOutsideReservedPrefixes(t *testing.T) {
-	for _, name := range []string{"team", "my-benchmark-key", "Benchmark-x"} {
+	for _, name := range []string{"team", "my-benchmark-key", "Benchmark-x", " benchmark-x"} {
 		t.Run(name, func(t *testing.T) {
 			s, a, _ := newFlakyKeyServer(t)
 			id := seedUser(t, s, "dave", "pending", "")

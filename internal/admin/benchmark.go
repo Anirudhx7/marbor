@@ -107,12 +107,12 @@ func IsEphemeralProbeKey(rec store.KeyRecord) bool {
 
 // reservedProbePrefixMessage is the error returned whenever a caller tries to
 // give an operator key a name starting with a reserved probe prefix.
-var reservedProbePrefixMessage = fmt.Sprintf("key names starting with %q or %q are reserved for internal probe keys", benchmarkKeyPrefix, pullVerifyKeyPrefix)
+const reservedProbePrefixMessage = `key names starting with "` + benchmarkKeyPrefix + `" or "` + pullVerifyKeyPrefix + `" are reserved for internal probe keys`
 
-// benchmarkProbeKey builds the short-lived key a benchmark run authenticates
-// with. A benchmark measures the node's own hardware, so the key is local-only:
-// a cloud spill would bill the cloud and report numbers that are not the node's.
-func benchmarkProbeKey(name, value, model string, ttl time.Duration) config.KeyConfig {
+// probeKey builds a short-lived, local-only, single-model key. Local-only
+// because a probe measures or checks the node itself: a cloud spill would bill
+// the cloud and answer for the node.
+func probeKey(name, value, model string, ttl time.Duration) config.KeyConfig {
 	return config.KeyConfig{
 		Name:      name,
 		Key:       value,
@@ -122,17 +122,14 @@ func benchmarkProbeKey(name, value, model string, ttl time.Duration) config.KeyC
 	}
 }
 
-// pullVerifyProbeKey builds the short-lived key the post-pull load check
-// authenticates with. The probe checks the node can load the model, so the key
-// is local-only: cloud must not answer.
+// benchmarkProbeKey builds the key a benchmark run authenticates with.
+func benchmarkProbeKey(name, value, model string, ttl time.Duration) config.KeyConfig {
+	return probeKey(name, value, model, ttl)
+}
+
+// pullVerifyProbeKey builds the key the post-pull load check authenticates with.
 func pullVerifyProbeKey(name, value, model string) config.KeyConfig {
-	return config.KeyConfig{
-		Name:      name,
-		Key:       value,
-		Models:    []string{model},
-		LocalOnly: true,
-		ExpiresAt: time.Now().Add(pullVerifyKeyTTL).Format(time.RFC3339),
-	}
+	return probeKey(name, value, model, pullVerifyKeyTTL)
 }
 
 // hasReservedProbePrefix reports whether name starts with a prefix reserved

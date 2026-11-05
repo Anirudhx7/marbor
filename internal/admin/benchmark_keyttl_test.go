@@ -1,7 +1,6 @@
 package admin
 
 import (
-	"strings"
 	"testing"
 	"time"
 
@@ -88,51 +87,60 @@ func TestIsEphemeralProbeKey(t *testing.T) {
 			t.Errorf("probe key with prefix %q not recognised", prefix)
 		}
 	}
-	for name, mutate := range map[string]func(*store.KeyRecord){
-		"other name":              func(r *store.KeyRecord) { r.Name = "team" },
-		"prefix not at start":     func(r *store.KeyRecord) { r.Name = "my-" + benchmarkKeyPrefix + "x" },
-		"not local":               func(r *store.KeyRecord) { r.LocalOnly = false },
-		"revoked":                 func(r *store.KeyRecord) { r.Revoked = true },
-		"no expiry":               func(r *store.KeyRecord) { r.ExpiresAt = "" },
-		"no models":               func(r *store.KeyRecord) { r.Models = nil },
-		"two models":              func(r *store.KeyRecord) { r.Models = []string{"a", "b"} },
-		"rate limited":            func(r *store.KeyRecord) { r.RateLimit = 5 },
-		"daily limit":             func(r *store.KeyRecord) { r.DailyLimit = 5 },
-		"monthly limit":           func(r *store.KeyRecord) { r.MonthlyLimit = 5 },
-		"daily usd cap":           func(r *store.KeyRecord) { r.DailyUsdCap = 1 },
-		"monthly usd cap":         func(r *store.KeyRecord) { r.MonthlyUsdCap = 1 },
-		"allow local degradation": func(r *store.KeyRecord) { r.AllowLocalDegradation = true },
+	for _, tc := range []struct {
+		name   string
+		mutate func(*store.KeyRecord)
+	}{
+		{"other name", func(r *store.KeyRecord) { r.Name = "team" }},
+		{"prefix not at start", func(r *store.KeyRecord) { r.Name = "my-benchmark-x" }},
+		{"not local", func(r *store.KeyRecord) { r.LocalOnly = false }},
+		{"revoked", func(r *store.KeyRecord) { r.Revoked = true }},
+		{"no expiry", func(r *store.KeyRecord) { r.ExpiresAt = "" }},
+		{"no models", func(r *store.KeyRecord) { r.Models = nil }},
+		{"two models", func(r *store.KeyRecord) { r.Models = []string{"a", "b"} }},
+		{"rate limited", func(r *store.KeyRecord) { r.RateLimit = 5 }},
+		{"daily limit", func(r *store.KeyRecord) { r.DailyLimit = 5 }},
+		{"monthly limit", func(r *store.KeyRecord) { r.MonthlyLimit = 5 }},
+		{"daily usd cap", func(r *store.KeyRecord) { r.DailyUsdCap = 1 }},
+		{"monthly usd cap", func(r *store.KeyRecord) { r.MonthlyUsdCap = 1 }},
+		{"allow local degradation", func(r *store.KeyRecord) { r.AllowLocalDegradation = true }},
 	} {
-		rec := probeShape()
-		mutate(&rec)
-		if IsEphemeralProbeKey(rec) {
-			t.Errorf("%s: operator key treated as probe key", name)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			rec := probeShape()
+			tc.mutate(&rec)
+			if IsEphemeralProbeKey(rec) {
+				t.Errorf("operator key treated as probe key: %+v", rec)
+			}
+		})
 	}
-	if !strings.HasPrefix(probeShape().Name, benchmarkKeyPrefix) {
-		t.Error("prefix constant drifted")
-	}
-}
-
-// recordFromConfig mirrors what persistKey stores for a key.
-func recordFromConfig(k config.KeyConfig) store.KeyRecord {
-	return store.KeyRecord{
-		Name: k.Name, Key: k.Key, RateLimit: k.RateLimit, DailyLimit: k.DailyLimit,
-		MonthlyLimit: k.MonthlyLimit, DailyUsdCap: k.DailyUsdCap, MonthlyUsdCap: k.MonthlyUsdCap,
-		Models: k.Models, ExpiresAt: k.ExpiresAt, LocalOnly: k.LocalOnly,
-		AllowLocalDegradation: k.AllowLocalDegradation,
+	if probeShape().Name[:len("benchmark-")] != "benchmark-" {
+		t.Error("probeShape no longer starts with the literal benchmark- prefix")
 	}
 }
 
 // The predicate must match the keys the two probe creation sites really
-// build, or the boot-time sweep silently stops cleaning up after a crash.
+// build, or the boot-time sweep silently stops cleaning up after a crash. The
+// keys go through the real persistKey and are read back from the store.
 func TestIsEphemeralProbeKey_MatchesKeysBuiltByProbeSites(t *testing.T) {
-	bench := benchmarkProbeKey("benchmark-n1-m-1-1", "sk-b", "m", time.Hour)
-	if !IsEphemeralProbeKey(recordFromConfig(bench)) {
-		t.Errorf("benchmark probe key %+v not matched by IsEphemeralProbeKey", bench)
+	s, _, fs := newFlakyKeyServer(t)
+	for _, k := range []config.KeyConfig{
+		benchmarkProbeKey(benchmarkKeyPrefix+"n1-m-1-1", "sk-b", "m", time.Hour),
+		pullVerifyProbeKey(pullVerifyKeyPrefix+"n1-m-1", "sk-p", "m"),
+	} {
+		if err := s.persistKey(k); err != nil {
+			t.Fatalf("persistKey(%s): %v", k.Name, err)
+		}
 	}
-	pv := pullVerifyProbeKey(pullVerifyKeyPrefix+"n1-m-1", "sk-p", "m")
-	if !IsEphemeralProbeKey(recordFromConfig(pv)) {
-		t.Errorf("pull-verify probe key %+v not matched by IsEphemeralProbeKey", pv)
+	rows, err := fs.AllKeys()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("stored %d rows, want 2", len(rows))
+	}
+	for _, r := range rows {
+		if !IsEphemeralProbeKey(r) {
+			t.Errorf("stored probe key %+v not matched by IsEphemeralProbeKey", r)
+		}
 	}
 }

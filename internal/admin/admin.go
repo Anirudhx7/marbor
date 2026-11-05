@@ -5035,7 +5035,11 @@ func (s *Server) handleApproveUser(w http.ResponseWriter, r *http.Request) {
 		// Checked on the resolved name so a username-derived default is
 		// covered too. Nothing has been written yet, so the user stays pending.
 		if hasReservedProbePrefix(keyName) {
-			writeJSONError(w, http.StatusBadRequest, reservedProbePrefixMessage)
+			msg := reservedProbePrefixMessage
+			if req.CreateKey.Name == "" {
+				msg += " (the default key name is derived from the username; set create_key.name to choose another)"
+			}
+			writeJSONError(w, http.StatusBadRequest, msg)
 			return
 		}
 		var err error
