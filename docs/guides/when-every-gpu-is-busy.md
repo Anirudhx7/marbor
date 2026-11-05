@@ -82,7 +82,7 @@ See them with `marbor requests` (WAIT MS and CLOUD MS columns, REASON), `marbor 
 ## Make busy less likely
 
 - Spread models across nodes so a hot model has more than one place to run: `marbor models fleet` shows where each one is warm.
-- Turn on session affinity if your clients send an `X-Session-ID` header, so a conversation keeps hitting the node that already holds its cache (**Settings > Advanced Routing**).
+- Turn on session affinity if your clients send an `X-Session-ID` header, so a conversation keeps hitting the node that already holds its cache (**Settings > Routing & Reliability**).
 - Check capacity before you add the next model: `marbor fit` says whether a model fits a node's VRAM.
 
 ## What to set up next
