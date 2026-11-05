@@ -251,9 +251,10 @@ section,#install{scroll-margin-top:96px}
 </div>
 <div class="doc-shell two-col">
 <nav class="doc-sidebar" aria-label="Documentation navigation" data-reveal>
-<div class="doc-side-head">Docs · <b>24 pages</b></div>
+<div class="doc-side-head">Docs · <b>27 pages</b></div>
 <div class="doc-side-body">
 
+    <div class="nav-group"><p class="nav-group-title">Runtimes</p><a class="doc-nav-link" href="ollama.html">Ollama</a><a class="doc-nav-link" href="vllm.html">vLLM without Kubernetes</a><a class="doc-nav-link" href="mlx.html">MLX on Mac</a></div>
     <div class="nav-group"><p class="nav-group-title">Guides</p><a class="doc-nav-link" href="INTEGRATIONS.html">Integrations</a><a class="doc-nav-link" href="LIMITATIONS.html">Known limitations</a><a class="doc-nav-link" href="SAVINGS-MATH.html">Savings math</a><a class="doc-nav-link" href="USE-CASES.html">Ollama alternatives & use cases</a><a class="doc-nav-link" href="REVERSE-PROXY.html">vLLM/Ollama reverse proxy</a><a class="doc-nav-link" href="backup.html">Backup & Restore</a></div>
     <div class="nav-group"><p class="nav-group-title">How-to guides</p><a class="doc-nav-link" href="guides/load-balance-vllm-servers.html">Load balance multiple vLLM servers</a><a class="doc-nav-link" href="guides/one-endpoint-for-several-ollama-machines.html">One endpoint for several Ollama machines</a><a class="doc-nav-link" href="guides/several-llama-cpp-servers-one-endpoint.html">Several llama.cpp servers, one endpoint</a><a class="doc-nav-link" href="guides/mac-fleet-mlx-one-endpoint.html">Several Macs as one MLX endpoint</a><a class="doc-nav-link" href="guides/per-key-quotas-self-hosted-llm.html">Per-key quotas and rate limits</a><a class="doc-nav-link" href="guides/when-every-gpu-is-busy.html">When every GPU is busy</a><a class="doc-nav-link" href="guides/monitor-llm-fleet-prometheus-grafana.html">Monitor the fleet with Prometheus</a><a class="doc-nav-link" href="guides/drain-gpu-node-without-downtime.html">Drain a GPU node without downtime</a></div>
     <div class="nav-group"><p class="nav-group-title">Deployment</p><a class="doc-nav-link" href="PRODUCTION.html">Production</a><a class="doc-nav-link" href="deploy/aws-ec2.html">AWS EC2</a><a class="doc-nav-link" href="deploy/gpu-node-registration.html">GPU node registration</a><a class="doc-nav-link" href="deploy/marbor-agent-enrollment.html">marbor agent enrollment</a></div>
@@ -263,6 +264,12 @@ section,#install{scroll-margin-top:96px}
 </nav>
 <div class="doc-main">
   
+    <section class="doc-card" data-reveal>
+      <div class="doc-card-head"><h2 class="t">Runtimes · <b>3 pages</b></h2></div>
+      <div class="doc-card-body"><div class="index-grid">
+        <a class="index-card" href="ollama.html"><div class="index-card-top"><span class="index-card-count">Runtimes</span></div><h3>Ollama</h3><p>One endpoint, no per-box SSH loops, and no Kubernetes.</p><span class="arrow">Read →</span></a><a class="index-card" href="vllm.html"><div class="index-card-top"><span class="index-card-count">Runtimes</span></div><h3>vLLM without Kubernetes</h3><p>One OpenAI-compatible endpoint, health-aware routing, and drain without downtime across your vLLM servers.</p><span class="arrow">Read →</span></a><a class="index-card" href="mlx.html"><div class="index-card-top"><span class="index-card-count">Runtimes</span></div><h3>MLX on Mac</h3><p>Run an Apple Silicon cluster with unified memory behind one OpenAI-compatible endpoint. No per-Mac SSH loops, and no...</p><span class="arrow">Read →</span></a>
+      </div></div>
+    </section>
     <section class="doc-card" data-reveal>
       <div class="doc-card-head"><h2 class="t">Guides · <b>6 pages</b></h2></div>
       <div class="doc-card-body"><div class="index-grid">

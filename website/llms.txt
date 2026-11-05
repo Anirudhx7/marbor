@@ -66,6 +66,12 @@ export OPENAI_API_KEY=<a key created in the dashboard>
 
 marbor and LiteLLM solve different problems and can be used together. LiteLLM is a provider-abstraction gateway (unify many LLM provider APIs behind one interface); marbor is a fleet-operations control plane for your own GPU hardware (warm-state routing, VRAM-aware placement, safe fleet change across nodes). marbor can sit in front of a LiteLLM deployment as its own upstream, or replace it for the on-prem-fleet use case. They are not competitors for the same job.
 
+## Runtime entry paths
+
+- [For Ollama Users](https://marbor.in/docs/ollama.html): One endpoint across several Ollama machines, no per-box SSH loops, remote model ops, Open WebUI integration, and warm-first routing.
+- [Production vLLM Without Kubernetes](https://marbor.in/docs/vllm.html): One OpenAI-compatible endpoint across vLLM servers, native /health checks, graceful drain without downtime, and LiteLLM coexistence.
+- [Your Macs as One MLX Endpoint](https://marbor.in/docs/mlx.html): Apple Silicon Mac clusters running mlx_lm.server behind one endpoint, unified memory fit guidance, and native darwin-arm64 binary.
+
 ## How-to guides
 
 - [Load Balance Multiple vLLM Servers](https://marbor.in/docs/guides/load-balance-vllm-servers.html): Load balance multiple vLLM servers behind one OpenAI-compatible endpoint with Marbor. Register nodes, route by model, no nginx. Working commands.

@@ -803,6 +803,7 @@ See [ROADMAP.md](ROADMAP.md) for the full open-core strategy.
 
 ## Documentation
 
+- Runtime guides: [Ollama](docs/ollama.md), [vLLM without Kubernetes](docs/vllm.md), [MLX on Mac](docs/mlx.md)
 - [Production Deployment Guide](docs/PRODUCTION.md)
 - [Savings Math](docs/SAVINGS-MATH.md) - how every dollar figure is computed
 - [Ollama Alternatives & Use Cases](docs/USE-CASES.md)
