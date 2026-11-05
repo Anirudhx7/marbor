@@ -210,6 +210,9 @@ const DESCRIPTIONS = {
   "guides/monitor-llm-fleet-prometheus-grafana": "Monitor a self-hosted LLM fleet from one Prometheus endpoint: enable Marbor metrics, scrape config, Grafana dashboard, PromQL queries and alert rules.",
   "guides/drain-gpu-node-without-downtime": "Take a vLLM, Ollama or llama.cpp GPU node out of rotation safely: dry-run the drain, wait for idle, restart or upgrade, then undrain. Exact commands.",
   "cli": "Full reference for the marbor CLI, generated directly from the command registry so it never drifts from the real commands.",
+  "ollama": "Put several Ollama machines behind one OpenAI-compatible endpoint. Route to warm models, manage models without SSH, and connect Open WebUI in one line.",
+  "vllm": "Production vLLM without Kubernetes. One endpoint across vLLM nodes, drain and restart without downtime, and multi-factor placement.",
+  "mlx": "Your Apple Silicon Macs as one AI endpoint. Single-binary control plane for mlx_lm.server clusters with unified memory fit guidance and no per-Mac SSH.",
 };
 
 // Search-result <title> overrides (60 chars max, no suffix). Pages without an
@@ -223,6 +226,9 @@ const TITLE_OVERRIDES = {
   "guides/when-every-gpu-is-busy": "What Happens When Every GPU Is Busy | Marbor",
   "guides/monitor-llm-fleet-prometheus-grafana": "Monitor a Self-Hosted LLM Fleet with Prometheus | Marbor",
   "guides/drain-gpu-node-without-downtime": "Drain a GPU Node Without Downtime | Marbor",
+  "ollama": "For Ollama Users | Marbor",
+  "vllm": "Production vLLM Without Kubernetes | Marbor",
+  "mlx": "Your Macs as One MLX Endpoint | Marbor",
 };
 
 // Publication dates for how-to guides (ISO). dateModified defaults to the
@@ -232,6 +238,11 @@ const GUIDE_MODIFIED = {};
 
 // All docs in nav order, grouped.
 const DOC_GROUPS = [
+  { title: "Runtimes", items: [
+    { slug: "ollama", label: "Ollama" },
+    { slug: "vllm", label: "vLLM without Kubernetes" },
+    { slug: "mlx", label: "MLX on Mac" },
+  ]},
   { title: "Guides", items: [
     { slug: "INTEGRATIONS", label: "Integrations" },
     { slug: "LIMITATIONS", label: "Known limitations" },

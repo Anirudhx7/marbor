@@ -266,6 +266,10 @@ section,#install{scroll-margin-top:96px}
     <a class="doc-nav-link home" href="../docs/index.html">← Docs home</a>
     
     <div class="nav-group">
+      <div class="nav-group-title">Runtimes</div>
+      <a class="doc-nav-link" href="../docs/ollama.html">Ollama</a><a class="doc-nav-link" href="../docs/vllm.html">vLLM without Kubernetes</a><a class="doc-nav-link" href="../docs/mlx.html">MLX on Mac</a>
+    </div>
+    <div class="nav-group">
       <div class="nav-group-title">Guides</div>
       <a class="doc-nav-link active" aria-current="page" href="../docs/INTEGRATIONS.html">Integrations</a><a class="doc-nav-link" href="../docs/LIMITATIONS.html">Known limitations</a><a class="doc-nav-link" href="../docs/SAVINGS-MATH.html">Savings math</a><a class="doc-nav-link" href="../docs/USE-CASES.html">Ollama alternatives & use cases</a><a class="doc-nav-link" href="../docs/REVERSE-PROXY.html">vLLM/Ollama reverse proxy</a><a class="doc-nav-link" href="../docs/backup.html">Backup & Restore</a>
     </div>
@@ -502,7 +506,7 @@ marbor models alias list"><svg viewBox="0 0 24 24" fill="none" stroke="currentCo
 <ul><li>Your <code>sk-marbor-...</code> key never leaves the marbor. The client <code>Authorization</code> header is stripped before forwarding to a local Ollama node, and replaced with the cloud provider's own configured <code>api_key</code> when a request overflows to cloud. Provider credentials live only in the database (encrypted).</li><li>If your key has a <code>models:</code> allow-list configured, requests for any other model return <code>403 Forbidden</code>.</li><li>Rate limit headers (<code>X-RateLimit-Limit</code>, <code>X-RateLimit-Remaining</code>, <code>X-RateLimit-Reset</code>) are present on every response and follow the same conventions as the OpenAI API.</li><li><code>GET /v1/models</code> returns the union of models loaded or downloaded across all healthy nodes.</li></ul>
 
       <div class="doc-foot-edit">
-        <nav class="pager" aria-label="Documentation pages"><span class="page-card missing" aria-hidden="true"></span><a class="page-card next" rel="next" href="../docs/LIMITATIONS.html"><span class="dir">Next →</span><span class="lbl">Known limitations</span></a></nav>
+        <nav class="pager" aria-label="Documentation pages"><a class="page-card prev" rel="prev" href="../docs/mlx.html"><span class="dir">← Previous</span><span class="lbl">MLX on Mac</span></a><a class="page-card next" rel="next" href="../docs/LIMITATIONS.html"><span class="dir">Next →</span><span class="lbl">Known limitations</span></a></nav>
       <div class="edit-link"><a href="https://github.com/Anirudhx7/marbor/blob/main/docs/INTEGRATIONS.md" target="_blank" rel="noopener">View on GitHub →</a></div>
       </div>
     </div></article>
