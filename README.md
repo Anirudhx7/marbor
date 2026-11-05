@@ -90,7 +90,7 @@ Experience the complete gateway and monitoring stack locally in 5 minutes using 
     ```bash
     curl -fsSL raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | START=1 sh
     ```
-    Installs the binary, starts the gateway in the background against a fresh `marbor.db`, and prints operational access details. Before starting, it scans the local physical network subnet (and localhost) for active GPU backends (Ollama, vLLM, TGI, and llama.cpp) and interactively prompts you to pick which discovered nodes to seed into `marbor.db` (comma-separated numbers, `all`, or `skip`) - there's no config file to hand-edit. This starts a plain background process (`nohup`) - it won't survive a reboot, so treat this as a way to try marbor, not run it long-term. After starting, the installer verifies the proxy, admin dashboard, and metrics endpoints are actually responding (not just that the process exists) and prints diagnostics if anything's off. Re-running this command while an instance is already running won't spawn a duplicate - it detects the existing process and re-verifies its health instead.
+    Installs the binary, starts the gateway in the background against a fresh `marbor.db`, and prints operational access details. Before starting, it scans the local physical network subnet (and localhost) for active GPU backends (Ollama, vLLM, TGI, and llama.cpp; MLX on Apple Silicon is registered manually) and interactively prompts you to pick which discovered nodes to seed into `marbor.db` (comma-separated numbers, `all`, or `skip`) - there's no config file to hand-edit. This starts a plain background process (`nohup`) - it won't survive a reboot, so treat this as a way to try marbor, not run it long-term. After starting, the installer verifies the proxy, admin dashboard, and metrics endpoints are actually responding (not just that the process exists) and prints diagnostics if anything's off. Re-running this command while an instance is already running won't spawn a duplicate - it detects the existing process and re-verifies its health instead.
 
 *   **Production - Auto-Discover & Run as a managed service (recommended for real deployments)**
     ```bash
@@ -116,7 +116,7 @@ To get the interactive `Keep SQLite database? [Y/n]` prompt instead of relying o
 
 ### Docker Compose (Production Deployment)
 
-Run a production-ready gateway, optionally with the metrics stack scraping the proxy:
+Deploy the gateway via Docker Compose, optionally with the metrics stack scraping the proxy:
 ```bash
 git clone https://github.com/Anirudhx7/marbor && cd marbor
 docker compose up -d                                                        # gateway only
@@ -163,7 +163,7 @@ Client Application (Agent / RAG / Copilot)
 │    ├── Warm in VRAM? ──► Route to warm node           │
 │    │   (least-connections among warm candidates)      │
 │    ├── VRAM-fit placement ──► Node with most headroom │
-│    ├── Session affinity (X-Session-ID) ──► KV-cache   │
+│    ├── Session affinity (X-Session-ID, when enabled) ─► KV-cache │
 │    └── All busy/down? ──► Cloud fallback              │
 │         (OpenAI/Anthropic, format-translated)         │
 │                                                       │
@@ -185,18 +185,18 @@ Client Application (Agent / RAG / Copilot)
 
 | Category | Feature | Detail |
 |----------|---------|--------|
-| **GPU-Aware Routing** | Warm-first model routing | Polls `/api/ps` on every node every 2s. Routes to the node where the model is already resident in VRAM. Eliminates cold-start latency. |
+| **GPU-Aware Routing** | Warm-first model routing | Polls `/api/ps` on every node every 2s. Routes to the node where the model is already resident in VRAM. Minimizes cold-start latency on warm hits. |
 | | VRAM-fit placement | Cold requests route to the node with the most free VRAM. Prevents OOM under concurrent multi-model traffic. |
 | | Deployment-aware GPU-count placement | Nodes declare tensor/pipeline/expert/data-parallel width (or one-click "Adopt" what the marbor agent auto-detects; a detection only steers placement on its own when the agent confirmed it against the NVIDIA GPU process list, which needs the agent's opt-in `--read-runtime-env`; that flag does not gate the docker socket path, which separately reads a container's configured environment via `docker inspect` with the same allowlist). A model needing 8 GPUs for tensor-parallel inference can no longer be routed to a 4-GPU node - the scheduler gates on GPU count, not just VRAM. |
 | | Multi-host replica scheduling | Declare which nodes together form one tensor/pipeline-parallel deployment spanning more than one physical machine. The head node is the only one ever routed to; worker nodes stay visible in the fleet but are automatically excluded from routing and session-affinity revalidation. Conflicting or one-sided declarations show a clear "Unresolved replica" state instead of routing to a broken deployment. Agents also report how a multi-host launch was started, and marbor turns that into a suggestion in the Replica groups tab on the GPU nodes page (and `marbor nodes suggestions`) that you review and confirm in one step; nothing is applied on its own. This needs a current agent on each host, covers vLLM multiprocessing and llama.cpp RPC launches only, and is separate from the agent's opt-in environment reading. |
-| | Session affinity (KV-cache) | `X-Session-ID` header pins a conversation to a node. KV-cache stays hot - subsequent turns skip re-prefill. TTL-based eviction. |
+| | Session affinity (KV-cache, opt-in) | When enabled, `X-Session-ID` header pins a conversation to a node so KV-cache stays hot and subsequent turns skip re-prefill. Disabled by default; TTL-based eviction. |
 | | Model aliases | Keep existing client model names: map `gpt-4` to a real fleet model like `llama3.2:8b` and OpenWebUI, Cursor, or app configs keep working unchanged. Routed, rate-limited, and recorded under the real model; takes effect without a restart. |
 | | Proactive model warmup | `keep_alive` pings on a configurable schedule keep priority models resident between requests. |
 | **Financial Controls** | Real-time savings tracking | Every locally-served token valued against your cloud reference rate. Dashboard shows exact dollar savings vs pure-cloud baseline. |
 | | Per-key cost attribution | Token totals and estimated cost per API key per month. Attribute inference spend to teams, projects, or agents. |
 | | Cloud spend metering | Overflow tokens priced at provider-configured rates. Full local-vs-cloud cost breakdown. |
 | | Per-key quotas | Hard `daily_limit`/`monthly_limit` per key. 429 when exceeded. Persisted across restarts. |
-| **Multi-Tenant Auth** | Per-key rate limiting | Token-bucket rate limiter per API key. `X-RateLimit-Limit/Remaining/Reset` headers on every response. |
+| **API Key Auth & Limits** | Per-key rate limiting | Token-bucket rate limiter per API key. `X-RateLimit-Limit/Remaining/Reset` headers on every response. |
 | | Model allow-lists | Per-key model restrictions. 403 on unauthorized model access - enforced at the control plane, not advisory. |
 | | Key expiration | `expires_at` per key. Automatic invalidation. No manual rotation under pressure. |
 | **Observability** | Prometheus metrics | 21 production metrics: request throughput and TTFT, latency percentiles, active connections, token counts, cache hit/miss, retry rates, cloud fallback frequency, local model degradation, quota rejections, request queue depth/timeouts, warmup pings and residency, schedule fires, model evictions, prewarming accuracy, panic recovery, dropped audit entries, node health. |
@@ -257,7 +257,7 @@ This is the dashboard screenshot that sells itself: Marbor tracks every token yo
 
 The math uses real parsed token counts from each response (`eval_count` from Ollama, `usage.total_tokens` from cloud), valued at your configured reference rate. When token data is unavailable, the dashboard shows "-" rather than a fabricated number. No fake math.
 
-Platform engineers with a team routing through local GPU hardware typically see $200-$3,000+/month in avoided cloud spend visible in the dashboard within the first week. Full financial model: [SAVINGS-MATH.md](docs/SAVINGS-MATH.md).
+Platform engineers routing steady token volume through local GPU hardware can see $200-$3,000+/month in avoided cloud API spend (depending on volume and reference rate; excludes hardware/power) visible in the dashboard within the first week. Full financial model: [SAVINGS-MATH.md](docs/SAVINGS-MATH.md).
 
 ---
 
@@ -332,7 +332,7 @@ There is no config file. Marbor is DB-first: everything lives in `marbor.db` (SQ
 ```
 The binary opens (or creates) `marbor.db`, starts blank-slate, and prints a banner pointing you at the dashboard. Sign in at `http://localhost:8080` as `admin` / `admin`. You are required to set a new password immediately, and that first-login change cannot be skipped. Until you do, the dashboard (plain HTTP) accepts the default login from anyone who can reach it, so do this right after install.
 
-**Secrets at rest:** cloud provider API keys, marbor-issued API keys, the LiteLLM key, HuggingFace token, and webhook secret are encrypted in `marbor.db` with AES-256-GCM. The encryption key lives in `marbor.db.key`, generated next to the database on first boot (0600 permissions) - back it up alongside `marbor.db`, since losing it means re-entering those secrets. To supply your own key instead (e.g. from a secrets manager), set `MARBOR_ENCRYPTION_KEY` to a base64-encoded 32-byte value before starting the binary; `marbor.db.key` is not created when this is set. Upgrading from an older version that stored these fields as plaintext encrypts them automatically on first boot - no manual migration step.
+**Secrets at rest:** cloud provider API keys, marbor-issued API keys, the LiteLLM key, HuggingFace token, and webhook secret are encrypted in `marbor.db` with AES-256-GCM. The encryption key lives in `marbor.db.key`, generated next to the database on first boot (0600 permissions) - back it up alongside `marbor.db`. Losing or deleting this key while `marbor.db` exists causes marbor to generate a new key on boot, orphaning previously encrypted secrets (which drop silently from active key/provider lists until re-entered). To supply your own key instead (e.g. from a secrets manager), set `MARBOR_ENCRYPTION_KEY` to a base64-encoded 32-byte value before starting the binary; `marbor.db.key` is not created when this is set. Upgrading from an older version that stored these fields as plaintext encrypts them automatically on first boot - no manual migration step.
 
 From there, everything is a dashboard page or an `/admin/v1/...` API call:
 
@@ -771,7 +771,7 @@ Import [`grafana/marbor.json`](grafana/marbor.json) into Grafana and point its P
 | **Warm-model routing** | ✅ Routes to node with model in VRAM | ❌ | ❌ | ❌ |
 | **VRAM-fit placement** | ✅ Cold requests → most free VRAM | ❌ | ❌ | ❌ |
 | **KV-cache session affinity** | ✅ X-Session-ID sticky routing | ❌ | ❌ | ❌ |
-| **Cloud overflow (consent-first)** | ✅ Off by default, explicit opt-in | ✅ (default on) | ❌ | ✅ (cloud-native) |
+| **Cloud overflow (consent-first)** | ✅ Off by default, explicit opt-in | Configurable / cloud-centric | ❌ | ✅ (cloud-native) |
 | **Savings tracking** | ✅ Real parsed token math | ❌ | ❌ | Partial |
 | **Per-key cost attribution** | ✅ Tokens + USD per key per month | ✅ | ❌ | ✅ |
 | **Single binary, zero deps** | ✅ Go static binary | ❌ Python + deps | ✅ | ❌ SaaS |
@@ -783,7 +783,7 @@ Import [`grafana/marbor.json`](grafana/marbor.json) into Grafana and point its P
 
 - You have on-premises GPU hardware running Ollama, vLLM, TGI, llama.cpp, or MLX (Apple Silicon) and want to maximize utilization before paying for cloud tokens.
 - You need per-key auth, rate limiting, cost attribution, and a usage dashboard without standing up a Python service.
-- You need GPU-warm-first routing to eliminate cold-start latency in multi-agent workflows.
+- You need GPU-warm-first routing to avoid cold-start latency in multi-agent workflows.
 - You want cloud overflow that is explicitly opt-in - not a default that silently generates bills.
 - You need a single static binary that ops teams can deploy and manage like any other Go service.
 
@@ -816,4 +816,4 @@ See [ROADMAP.md](ROADMAP.md) for the full open-core strategy.
 
 ## License
 
-Apache-2.0 - see [LICENSE](LICENSE) and [NOTICE](NOTICE). The open-source core is free for any use, including commercial. Enterprise governance/compliance features are offered separately under a commercial license (see [ROADMAP.md](ROADMAP.md)).
+Apache-2.0 - see [LICENSE](LICENSE) and [NOTICE](NOTICE). The open-source core is free for any use, including commercial.

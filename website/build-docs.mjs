@@ -190,7 +190,7 @@ const DESCRIPTIONS = {
   "INTEGRATIONS": "How marbor exposes Ollama's OpenAI-compatible API on port 11434, so existing tools and SDKs connect with zero code changes.",
   "LIMITATIONS": "What marbor does not yet do, what has been validated against real hardware, and what to plan around before production.",
   "SAVINGS-MATH": "The financial model behind marbor's savings tracking: how local GPU inference costs are measured against cloud API spend.",
-  "USE-CASES": "Looking for an Ollama alternative for a multi-GPU fleet? Compare marbor's warm-aware routing, LiteLLM fit, and real use cases for secure multi-tenant access.",
+  "USE-CASES": "Looking for an Ollama alternative for a multi-GPU fleet? Compare marbor's warm-aware routing, LiteLLM fit, and real use cases for secure per-key access.",
   "REVERSE-PROXY": "How to replace a hand-rolled nginx or HAProxy load balancer in front of vLLM and Ollama nodes with one warm-aware binary.",
   "backup": "How to back up and restore marbor's SQLite database, which holds every node, API key, routing rule, and warm-state record.",
   "PRODUCTION": "Deploy marbor in production: no config file, SQLite-backed DB-first setup, and how to configure nodes, keys, and routing via the admin API.",
@@ -349,7 +349,7 @@ const FAQ_SCHEMAS = {
   "USE-CASES": [
     {
       q: "Who is marbor for?",
-      a: "marbor is the infrastructure control plane neither Ollama nor a bare vLLM deployment ships: secure multi-tenant access, hardware-aware load balancing, cost-aware cloud overflow, and real-time GPU telemetry, plus a marbor agent for remote telemetry, model operations, and node-side maintenance. vLLM+marbor is the primary stack this is built around; Ollama support is real and works the same way, not an afterthought.",
+      a: "marbor is the infrastructure control plane neither Ollama nor a bare vLLM deployment ships: secure per-key access, hardware-aware load balancing, cost-aware cloud overflow, and real-time GPU telemetry, plus a marbor agent for remote telemetry, model operations, and node-side maintenance. vLLM+marbor is the primary stack this is built around; Ollama support is real and works the same way, not an afterthought.",
     },
     {
       q: "Where does LiteLLM fit?",
