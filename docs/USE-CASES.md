@@ -1,6 +1,6 @@
 # Ollama Alternatives: Who Is marbor For?
 
-Looking for an alternative to Ollama once you outgrow a single GPU box? marbor is the infrastructure control plane neither Ollama nor a bare vLLM deployment ships: secure multi-tenant access, hardware-aware load balancing, cost-aware cloud overflow, and real-time GPU telemetry -- plus a marbor agent for remote telemetry, model operations, and node-side maintenance. vLLM+marbor is the primary stack this is built around; Ollama support is real and works the same way, not an afterthought.
+Looking for an alternative to Ollama once you outgrow a single GPU box? marbor is the infrastructure control plane neither Ollama nor a bare vLLM deployment ships: secure per-key access, hardware-aware load balancing, cost-aware cloud overflow, and real-time GPU telemetry -- plus a marbor agent for remote telemetry, model operations, and node-side maintenance. vLLM+marbor is the primary stack this is built around; Ollama support is real and works the same way, not an afterthought.
 
 You point your apps at marbor instead of your inference backend directly. Everything else stays the same: it exposes an OpenAI-compatible `/v1` API (and Ollama's own API too), so existing clients work unchanged.
 
@@ -88,5 +88,5 @@ This stack offers the best of both worlds:
 ## Honest limitations (current state)
 
 - GPU metrics (VRAM/temperature/power) for the local node come from `nvidia-smi` on the marbor host directly. Remote nodes get real GPU telemetry only if the optional marbor agent is installed on them (opt-in, not auto-deployed) - without it, remote GPU metrics fall back to operator-declared `vram_total_mb` or show "-". Warm-model detection (which node has which model currently loaded) works live for both runtimes regardless of agent installation - Ollama via its own `/api/ps`, vLLM via its own `/v1/models` (vLLM's API doesn't report VRAM usage, so VRAM-aware placement for vLLM nodes always depends on the agent or an operator-declared value).
-- Analytics and the request log are in-memory and reset on restart. Prometheus metrics persist, and the audit log persists to the `audit_log` table in `marbor.db` with configurable retention.
+- Hourly analytics traffic history persists to SQLite and is restored across restarts; the live request log and per-model local/cloud breakdown reset on restart. Prometheus metrics persist in your monitoring stack, and the audit log persists to the `audit_log` table in `marbor.db` with configurable retention.
 - Cost savings are computed from real token counts parsed from responses. When a response carries no token data, the dashboard shows "-", never an estimate.

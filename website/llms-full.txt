@@ -10,7 +10,7 @@
 - Raw install: https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh
 
 ## One-Liner
-Marbor routes every LLM request to the GPU node that already holds the model warm in VRAM, eliminating cold-start latency and turning own hardware into a high-availability alternative to cloud LLM APIs.
+Marbor routes every LLM request to the GPU node that already holds the model warm in VRAM, avoiding cold-start latency on warm hits and turning own hardware into a node-failover-protected fleet.
 
 ## What it does
 - Warm-first routing: polls /api/ps every 2s, least-connections among warm nodes
@@ -45,7 +45,7 @@ Peer clients, none talks to agent directly. Every capability exists in Admin API
 ## Pricing
 - Price: $0/month, Apache-2.0 for the open-source core
 - Limits: unlimited nodes/keys/requests, self-hosted
-- Enterprise: separate commercial license for governance/SSO features, trigger is inbound "can we pay", benchmark LiteLLM ~$250/mo
+- Commercial: Apache-2.0 open-source core is free permanently; no separate license required.
 
 ## Who It's For
 - For: infra/MLOps engineers running a 4-20 GPU on-prem fleet without Kubernetes, currently juggling SSH/systemctl/Docker/scripts to route requests and manage models across boxes
@@ -81,7 +81,7 @@ Different problems, usable together. LiteLLM: provider-abstraction gateway (unif
 
 ## Content Digest
 ### The Control Plane for Self-Hosted AI Inference
-Marbor eliminates three compounding costs: cold-start latency tax (15-45s per miss), invisible cloud egress at $0.15-$60/M tokens, and no GPU utilization visibility. Turn your own GPUs into HA.
+Marbor addresses three compounding costs: cold-start latency tax (15-45s per cold miss), invisible cloud egress at $0.15-$60/M tokens, and no GPU utilization visibility. Turn your own GPUs into a node-failover-protected fleet.
 
 ### Why Self-Hosted LLM Inference Is Operationally Hard
 VRAM thrashing without scheduling coordination, unbalanced queue hotspots (deep reasoning = short completion to naive LB), saturated failures.

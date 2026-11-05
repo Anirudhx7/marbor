@@ -12,7 +12,7 @@ An engineering organization running multi-agent LLM workflows at scale - coding 
 
 marbor enables organizations to route this traffic to owned GPU hardware first, falling back to cloud APIs only when local capacity is exhausted. The savings dashboard tracks every token served locally and values it against the cloud rate the organization would otherwise pay.
 
-**Typical result:** Platform teams running 2-4 GPU nodes with marbor report 60-85% reduction in cloud API spend within the first billing cycle, with the reduction visible in the dashboard from day one.
+**Illustrative projection:** In scenarios where local GPU capacity absorbs the majority of prompt/eval volume, organizations modeling 2-4 GPU nodes can see an illustrative 60-85% reduction in direct cloud API spend (excluding hardware and power costs), with token-by-token avoided spend tracked in the dashboard.
 
 ---
 
