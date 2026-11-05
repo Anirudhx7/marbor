@@ -89,19 +89,42 @@ const (
 
 // IsEphemeralProbeKey reports whether rec looks like a leftover benchmark or
 // pull-verify probe key: a reserved name prefix, not revoked, local-only, an
-// expiry, a single-model scope and no usage limits (the shape every probe key
-// is created with). The boot-time sweep deletes these, since no probe can be
-// running at startup. Creating an operator key with a reserved prefix is
-// rejected by the admin API, and the shape checks are a second line of
-// defence; a hand-crafted record matching every field is indistinguishable
-// from a probe key.
+// expiry, a single-model scope, no usage limits and no local degradation (the
+// shape every probe key is created with). The boot-time sweep deletes these,
+// since no probe can be running at startup. Creating an operator key with a
+// reserved prefix, directly or by approving a user with a new key, is rejected
+// by the admin API, and the shape checks are a second line of defence; a
+// hand-crafted record matching every field is indistinguishable from a probe
+// key.
 func IsEphemeralProbeKey(rec store.KeyRecord) bool {
 	if !hasReservedProbePrefix(rec.Name) {
 		return false
 	}
 	return !rec.Revoked && rec.LocalOnly && rec.ExpiresAt != "" && len(rec.Models) == 1 &&
 		rec.RateLimit == 0 && rec.DailyLimit == 0 && rec.MonthlyLimit == 0 &&
-		rec.DailyUsdCap == 0 && rec.MonthlyUsdCap == 0
+		rec.DailyUsdCap == 0 && rec.MonthlyUsdCap == 0 && !rec.AllowLocalDegradation
+}
+
+// reservedProbePrefixMessage is the error returned whenever a caller tries to
+// give an operator key a name starting with a reserved probe prefix.
+const reservedProbePrefixMessage = `key names starting with "` + benchmarkKeyPrefix + `" or "` + pullVerifyKeyPrefix + `" are reserved for internal probe keys`
+
+// probeKey builds a short-lived, local-only, single-model key. Local-only
+// because a probe measures or checks the node itself: a cloud spill would bill
+// the cloud and answer for the node.
+func probeKey(name, value, model string, ttl time.Duration) config.KeyConfig {
+	return config.KeyConfig{
+		Name:      name,
+		Key:       value,
+		Models:    []string{model},
+		LocalOnly: true,
+		ExpiresAt: time.Now().Add(ttl).Format(time.RFC3339),
+	}
+}
+
+// pullVerifyProbeKey builds the key the post-pull load check authenticates with.
+func pullVerifyProbeKey(name, value, model string) config.KeyConfig {
+	return probeKey(name, value, model, pullVerifyKeyTTL)
 }
 
 // hasReservedProbePrefix reports whether name starts with a prefix reserved
@@ -406,15 +429,7 @@ func (s *Server) handleRunBenchmark(w http.ResponseWriter, r *http.Request) {
 		writeServerError(w, r, err)
 		return
 	}
-	k := config.KeyConfig{
-		Name:   keyName,
-		Key:    keyValue,
-		Models: []string{body.Model},
-		// A benchmark measures the node's own hardware: a cloud spill would
-		// bill the cloud and report numbers that are not the node's.
-		LocalOnly: true,
-		ExpiresAt: time.Now().Add(benchmarkKeyTTLFor(body.N, benchmarkSampleTimeout, nodeUnloadModelTimeout)).Format(time.RFC3339),
-	}
+	k := probeKey(keyName, keyValue, body.Model, benchmarkKeyTTLFor(body.N, benchmarkSampleTimeout, nodeUnloadModelTimeout))
 	if err := s.persistKey(k); err != nil {
 		s.benchMu.Lock()
 		delete(s.benchJobs, jobID)

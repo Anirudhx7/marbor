@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Anirudhx7/marbor/internal/config"
 	"github.com/Anirudhx7/marbor/internal/store"
 )
 
@@ -68,32 +69,80 @@ func TestBenchmarkKeyTTLFor_FloorAndCeiling(t *testing.T) {
 	}
 }
 
+// probeShape returns a record with every field of a genuine probe key, so each
+// negative case below changes exactly one field and fails only on that field.
+func probeShape() store.KeyRecord {
+	return store.KeyRecord{
+		Name:      benchmarkKeyPrefix + "n-m-1-2",
+		Models:    []string{"m"},
+		ExpiresAt: time.Now().Add(time.Hour).Format(time.RFC3339),
+		LocalOnly: true,
+	}
+}
+
 func TestIsEphemeralProbeKey(t *testing.T) {
-	exp := time.Now().Add(time.Hour).Format(time.RFC3339)
-	probe := store.KeyRecord{Name: "benchmark-n-m-1-2", Models: []string{"m"}, ExpiresAt: exp, LocalOnly: true}
-	if !IsEphemeralProbeKey(probe) {
-		t.Error("benchmark probe key not recognised")
-	}
-	pv := probe
-	pv.Name = pullVerifyKeyPrefix + "n-m-1"
-	if !IsEphemeralProbeKey(pv) {
-		t.Error("pull-verify probe key not recognised")
-	}
-	for name, rec := range map[string]store.KeyRecord{
-		"other name":    {Name: "team", Models: []string{"m"}, ExpiresAt: exp, LocalOnly: true},
-		"not local":     {Name: "benchmark-x", Models: []string{"m"}, ExpiresAt: exp},
-		"revoked":       {Name: "benchmark-x", Models: []string{"m"}, ExpiresAt: exp, LocalOnly: true, Revoked: true},
-		"no expiry":     {Name: "benchmark-x", Models: []string{"m"}},
-		"no models":     {Name: "benchmark-x", ExpiresAt: exp, LocalOnly: true},
-		"two models":    {Name: "benchmark-x", Models: []string{"a", "b"}, ExpiresAt: exp},
-		"rate limited":  {Name: "benchmark-x", Models: []string{"m"}, ExpiresAt: exp, RateLimit: 5},
-		"daily usd cap": {Name: "benchmark-x", Models: []string{"m"}, ExpiresAt: exp, DailyUsdCap: 1},
-	} {
-		if IsEphemeralProbeKey(rec) {
-			t.Errorf("%s: operator key treated as probe key", name)
+	for _, prefix := range []string{benchmarkKeyPrefix, pullVerifyKeyPrefix} {
+		rec := probeShape()
+		rec.Name = prefix + "n-m-1"
+		if !IsEphemeralProbeKey(rec) {
+			t.Errorf("probe key with prefix %q not recognised", prefix)
 		}
 	}
-	if !strings.HasPrefix(probe.Name, benchmarkKeyPrefix) {
-		t.Error("prefix constant drifted")
+	for _, tc := range []struct {
+		name   string
+		mutate func(*store.KeyRecord)
+	}{
+		{"other name", func(r *store.KeyRecord) { r.Name = "team" }},
+		{"prefix not at start", func(r *store.KeyRecord) { r.Name = "my-benchmark-x" }},
+		{"pull-verify prefix not at start", func(r *store.KeyRecord) { r.Name = "my-pull-verify-x" }},
+		{"not local", func(r *store.KeyRecord) { r.LocalOnly = false }},
+		{"revoked", func(r *store.KeyRecord) { r.Revoked = true }},
+		{"no expiry", func(r *store.KeyRecord) { r.ExpiresAt = "" }},
+		{"no models", func(r *store.KeyRecord) { r.Models = nil }},
+		{"two models", func(r *store.KeyRecord) { r.Models = []string{"a", "b"} }},
+		{"rate limited", func(r *store.KeyRecord) { r.RateLimit = 5 }},
+		{"daily limit", func(r *store.KeyRecord) { r.DailyLimit = 5 }},
+		{"monthly limit", func(r *store.KeyRecord) { r.MonthlyLimit = 5 }},
+		{"daily usd cap", func(r *store.KeyRecord) { r.DailyUsdCap = 1 }},
+		{"monthly usd cap", func(r *store.KeyRecord) { r.MonthlyUsdCap = 1 }},
+		{"allow local degradation", func(r *store.KeyRecord) { r.AllowLocalDegradation = true }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := probeShape()
+			tc.mutate(&rec)
+			if IsEphemeralProbeKey(rec) {
+				t.Errorf("operator key treated as probe key: %+v", rec)
+			}
+		})
+	}
+	if !strings.HasPrefix(probeShape().Name, "benchmark-") {
+		t.Error("probeShape no longer starts with the literal benchmark- prefix")
+	}
+}
+
+// The predicate must match the keys the two probe creation sites really
+// build, or the boot-time sweep silently stops cleaning up after a crash. The
+// keys go through the real persistKey and are read back from the store.
+func TestIsEphemeralProbeKey_MatchesKeysBuiltByProbeSites(t *testing.T) {
+	s, _, fs := newFlakyKeyServer(t)
+	for _, k := range []config.KeyConfig{
+		probeKey(benchmarkKeyPrefix+"n1-m-1-1", "sk-b", "m", time.Hour),
+		pullVerifyProbeKey(pullVerifyKeyPrefix+"n1-m-1", "sk-p", "m"),
+	} {
+		if err := s.persistKey(k); err != nil {
+			t.Fatalf("persistKey(%s): %v", k.Name, err)
+		}
+	}
+	rows, err := fs.AllKeys()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("stored %d rows, want 2", len(rows))
+	}
+	for _, r := range rows {
+		if !IsEphemeralProbeKey(r) {
+			t.Errorf("stored probe key %+v not matched by IsEphemeralProbeKey", r)
+		}
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -211,5 +212,51 @@ func TestRun_UsersDelete_NoTTYAborts(t *testing.T) {
 	code := Run([]string{"users", "delete", "11", "--server", "http://x"}, &stdout, &stderr)
 	if code != ExitUserError {
 		t.Fatalf("expected abort %d %q", code, stderr.String())
+	}
+}
+
+// A 400 from the server on approve-with-new-key (for example a reserved key
+// name) must reach the operator verbatim and exit non-zero.
+func TestRun_UsersApprove_CreateKeyRejectedSurfacesServerMessage(t *testing.T) {
+	const msg = `key names starting with "benchmark-" or "pull-verify-" are reserved for internal probe keys`
+	var mu sync.Mutex
+	var gotMethod, gotPath string
+	var gotBody struct {
+		CreateKey struct {
+			Name string `json:"name"`
+		} `json:"create_key"`
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		gotMethod, gotPath = r.Method, r.URL.Path
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Errorf("decode request body: %v", err)
+		}
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": msg})
+	}))
+	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"users", "approve", "5", "--create-key", "--api-key-name", "benchmark-x", "--server", srv.URL}, &stdout, &stderr)
+	if code != ExitServerError {
+		t.Fatalf("exit %d, want %d", code, ExitServerError)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if gotMethod != http.MethodPost || gotPath != "/admin/v1/users/5/approve" {
+		t.Errorf("request = %s %s, want POST /admin/v1/users/5/approve", gotMethod, gotPath)
+	}
+	if gotBody.CreateKey.Name != "benchmark-x" {
+		t.Errorf("create_key.name = %q, want benchmark-x", gotBody.CreateKey.Name)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("stdout = %q, want empty", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), msg) {
+		t.Errorf("stderr %q does not contain server message", stderr.String())
 	}
 }

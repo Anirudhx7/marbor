@@ -5032,6 +5032,16 @@ func (s *Server) handleApproveUser(w http.ResponseWriter, r *http.Request) {
 		if keyName == "" {
 			keyName = user.Username + "-key"
 		}
+		// Checked on the resolved name so a username-derived default is
+		// covered too. Nothing has been written yet, so the user stays pending.
+		if hasReservedProbePrefix(keyName) {
+			msg := reservedProbePrefixMessage
+			if req.CreateKey.Name == "" {
+				msg += " (the default key name is derived from the username; set create_key.name to choose another)"
+			}
+			writeJSONError(w, http.StatusBadRequest, msg)
+			return
+		}
 		var err error
 		newKeyValue, err = generateAPIKey(keyName)
 		if err != nil {
@@ -5591,7 +5601,7 @@ func (s *Server) handleAddKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if hasReservedProbePrefix(k.Name) {
-		writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("key names starting with %q or %q are reserved for internal probe keys", benchmarkKeyPrefix, pullVerifyKeyPrefix))
+		writeJSONError(w, http.StatusBadRequest, reservedProbePrefixMessage)
 		return
 	}
 	if k.RateLimit < 0 || k.DailyLimit < 0 || k.MonthlyLimit < 0 || k.DailyUsdCap < 0 || k.MonthlyUsdCap < 0 {
@@ -7621,14 +7631,7 @@ func (s *Server) verifyModelLoads(ctx context.Context, nodeName, model string) e
 	if err != nil {
 		return fmt.Errorf("generate verification key: %w", err)
 	}
-	k := config.KeyConfig{
-		Name:   keyName,
-		Key:    keyValue,
-		Models: []string{model},
-		// The probe checks the node can load the model; cloud must not answer.
-		LocalOnly: true,
-		ExpiresAt: time.Now().Add(pullVerifyKeyTTL).Format(time.RFC3339),
-	}
+	k := pullVerifyProbeKey(keyName, keyValue, model)
 	if err := s.persistKey(k); err != nil {
 		return fmt.Errorf("persist verification key: %w", err)
 	}
