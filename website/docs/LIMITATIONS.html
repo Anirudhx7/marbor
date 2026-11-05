@@ -283,7 +283,7 @@ section,#install{scroll-margin-top:96px}
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Reference</div>
-      <a class="doc-nav-link" href="../docs/cli.html">CLI reference</a>
+      <a class="doc-nav-link" href="../docs/cli.html">CLI reference</a><a class="doc-nav-link" href="../docs/COMPATIBILITY.html">Compatibility & Guarantees</a>
     </div>
 </div>
 </nav>
@@ -323,6 +323,7 @@ section,#install{scroll-margin-top:96px}
 <p><strong>Fallback to <code>127.0.0.1</code></strong> still applies when a container has no network IP to report - the <code>--network host</code> case, where the container shares the host's network namespace and has no private IP of its own. In that case the discovered address is only reachable if marbor is also running with host networking (or directly on bare metal).</p>
 <p>Workarounds if a discovered node is unreachable:</p>
 <ul><li>Run marbor on the host directly (bare-metal or VM), not inside a container.</li><li>Run marbor in Docker with <code>network_mode: host</code>, matching the discovered node's networking mode.</li><li>Disable auto-discovery and add the node manually from the dashboard's <strong>GPU Nodes</strong> page, using the correct container IP or hostname.</li></ul>
+<p><strong>Zero-result discovery:</strong> If a Docker or network subnet probe reports zero nodes, it indicates that no reachable backends were discovered from this host and network mode. It does not mean no GPUs or backends exist. Check that firewall rules allow traffic on the target runtime port (e.g., 11434 for Ollama, 8000 for vLLM, 8080 for llama.cpp), or register the node manually.</p>
 <hr/>
 <h2 id="gpu-telemetry">GPU Telemetry<a class="anchor" href="#gpu-telemetry" aria-label="Link to section">#</a></h2>
 <h3 id="vram-usage">VRAM usage<a class="anchor" href="#vram-usage" aria-label="Link to section">#</a></h3>
@@ -361,7 +362,7 @@ section,#install{scroll-margin-top:96px}
 <h2 id="data-persistence">Data Persistence<a class="anchor" href="#data-persistence" aria-label="Link to section">#</a></h2>
 <h3 id="analytics-dashboard-traffic-history-restored-per-model-breakdown-still-gaps-after-restart">Analytics dashboard: traffic history restored, per-model breakdown still gaps after restart<a class="anchor" href="#analytics-dashboard-traffic-history-restored-per-model-breakdown-still-gaps-after-restart" aria-label="Link to section">#</a></h3>
 <p>Hourly traffic buckets (requests, tokens, local/cloud split, cost) are persisted to SQLite and now restored into the in-memory analytics store on startup, so the traffic charts show continuous history immediately after a restart instead of a dip.</p>
-<p>The "By Model" table's Local/Cloud breakdown is not backfilled the same way. Per-model stats are persisted as an aggregate request count with no local/cloud split, but the dashboard needs that split - attributing the aggregate to either side on restart would fabricate a false 100%-local or 100%-cloud number, which violates the project's no-fake-data rule. So the by-model view still shows a gap that fills back in as new traffic arrives. No data is lost in either case - the SQLite records are intact.</p>
+<p>The "By Model" table's Local/Cloud breakdown is not backfilled the same way. Per-model stats are persisted as an aggregate request count with no local/cloud split, but the dashboard needs that split - attributing the aggregate to either side on restart would fabricate a false 100%-local or 100%-cloud number, which violates the project's no-fake-data rule. So the by-model table counts only requests since the last restart (the page shows the restart time) and starts over each time marbor restarts, while the summary cards above it are all time and the charts cover the last 24 hours. No data is lost in either case - the SQLite records are intact.</p>
 <h3 id="routing-rules-persist-to-sqlite">Routing rules persist to SQLite<a class="anchor" href="#routing-rules-persist-to-sqlite" aria-label="Link to section">#</a></h3>
 <p>Routing rules added via the admin API (the UI or <code>POST /admin/v1/routing/rules</code>) are written to SQLite and survive restarts.</p>
 <hr/>

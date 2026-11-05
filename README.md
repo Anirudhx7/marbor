@@ -127,6 +127,9 @@ This starts:
 * **Prometheus** (with the monitoring overlay): configured to scrape the Marbor metrics endpoint. Metrics are off by default, so the dashboard stays empty until you enable them: `echo '{"metrics":{"enabled":true}}' > metrics.json && marbor settings set --file metrics.json`, then restart Marbor (see [Monitor a fleet with Prometheus and Grafana](docs/guides/monitor-llm-fleet-prometheus-grafana.md)).
 * **Grafana** (with the monitoring overlay, [http://localhost:3000](http://localhost:3000)): Pre-provisioned with the official [Marbor dashboard](grafana/marbor.json).
 
+> [!NOTE]
+> **Docker Networking & Auto-Discovery:** Containers on Docker's default bridge network cannot scan or reach local subnet backends via network auto-discovery. To allow network discovery to reach host-networked backends, use `network_mode: host` in your compose file or add remote GPU nodes manually from the dashboard (**GPU Nodes** page) using their reachable LAN IP. If discovery finds 0 backends, it indicates no reachable backends from this container's network mode, not that no GPUs exist.
+
 ---
 
 ## The Problem: Uncontrolled LLM Cloud Spend at Scale
