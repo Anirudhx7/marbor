@@ -283,7 +283,7 @@ section,#install{scroll-margin-top:96px}
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Reference</div>
-      <a class="doc-nav-link active" aria-current="page" href="../docs/cli.html">CLI reference</a>
+      <a class="doc-nav-link active" aria-current="page" href="../docs/cli.html">CLI reference</a><a class="doc-nav-link" href="../docs/COMPATIBILITY.html">Compatibility & Guarantees</a>
     </div>
 </div>
 </nav>
@@ -458,6 +458,7 @@ marbor nodes --signal pressure --search a100"><svg viewBox="0 0 24 24" fill="non
 <p>"start|stop|restart" requires the target node to have an operator-accepted control driver (see "node control accept") - a node with none configured returns an error rather than guessing one.</p>
 <p>"stop|restart" on the head, a worker, or an unresolved member of a multi-host replica is rejected unless --acknowledge-replica is passed: stopping any member breaks the replica, and marbor does not restart the other members. "drain" on a replica member is allowed and prints what it does: draining a worker has no routing effect, draining the head drains the replica.</p>
 <p>"drain" and "restart" first check whether the node is the only server of any model it holds. If it is, they ask for confirmation on a terminal, or exit 1 without a terminal unless --force is passed. Models that only an Ollama node could load on demand, and places where other nodes cannot be verified, are printed but never block. --dry-run prints the check and changes nothing. The check covers drains and restarts made through marbor only.</p>
+<p>The interactive confirm is scoped to the list it printed: marbor sends that list with the request, and the server changes nothing, prints the new list and exits 1 if another model has lost its last server since. --force skips the prompt and does not check the list. A script can get the same scoping from the Admin API: GET /admin/nodes/{name}/sole-replica, then POST the drain or restart with force=true and one acknowledge_sole=&lt;model&gt; per model listed, and on a 409 review the new list and repeat. Models match by name, so one entry covers that model on every runtime. The list is sent in the URL, so a very long one can hit a proxy's request-line limit: the CLI refuses above 6000 encoded bytes and --force is the way past it.</p>
 <p>"logs" is a point-in-time snapshot, not a live tail. A node whose control driver has no real log source (e.g. a bare PID-file process with no supervisor) returns a clear "not supported" error.</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <p>requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).</p>
@@ -473,7 +474,7 @@ marbor nodes --signal pressure --search a100"><svg viewBox="0 0 24 24" fill="non
 <p>restart the node's inference runtime process</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <p>Flags:</p>
-<ul><li><code>--acknowledge-replica</code> - proceed when the node is part of a multi-host replica (stopping any member breaks the replica)</li><li><code>--force</code> - proceed without asking when the node is the only server of a model it holds</li><li><code>--dry-run</code> - show which models only this node can serve and exit without changing anything</li></ul>
+<ul><li><code>--acknowledge-replica</code> - proceed when the node is part of a multi-host replica (stopping any member breaks the replica)</li><li><code>--force</code> - proceed without asking when the node is the only server of a model it holds; does not check the list of models</li><li><code>--dry-run</code> - show which models only this node can serve and exit without changing anything</li></ul>
 <h4 id="logs-node"><code>logs &lt;node&gt;</code><a class="anchor" href="#logs-node" aria-label="Link to section">#</a></h4>
 <p>fetch recent log lines from the node's runtime process</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
@@ -483,7 +484,7 @@ marbor nodes --signal pressure --search a100"><svg viewBox="0 0 24 24" fill="non
 <p>mark the node draining (stop routing new requests to it)</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <p>Flags:</p>
-<ul><li><code>--reason string</code> - reason recorded for the drain (default "manual")</li><li><code>--grace-period int</code> - bounded-drain window in seconds (omit for infinite - no enforcement engine reads this yet)</li><li><code>--force</code> - proceed without asking when the node is the only server of a model it holds</li><li><code>--dry-run</code> - show which models only this node can serve and exit without changing anything</li></ul>
+<ul><li><code>--reason string</code> - reason recorded for the drain (default "manual")</li><li><code>--grace-period int</code> - bounded-drain window in seconds (omit for infinite - no enforcement engine reads this yet)</li><li><code>--force</code> - proceed without asking when the node is the only server of a model it holds; does not check the list of models</li><li><code>--dry-run</code> - show which models only this node can serve and exit without changing anything</li></ul>
 <h4 id="undrain-node"><code>undrain &lt;node&gt;</code><a class="anchor" href="#undrain-node" aria-label="Link to section">#</a></h4>
 <p>reverse "runtime drain"</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
@@ -707,23 +708,38 @@ marbor fit unsloth/Qwen3-8B-GGUF --node gpu-1 --ctx 16384"><svg viewBox="0 0 24 
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <p>requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).</p>
 <h4 id="now"><code>now</code><a class="anchor" href="#now" aria-label="Link to section">#</a></h4>
-<p>trigger an on-demand backup and download it</p>
+<p>trigger an on-demand backup and download it (gzip, .db.gz)</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <p>Flags:</p>
-<ul><li><code>--output string</code> - local file path to save to (default: server-suggested filename)</li></ul>
+<ul><li><code>--output string</code> - local file path to save to (default: server-suggested filename)</li><li><code>--force</code> - replace the output file if it already exists (default: refuse)</li></ul>
 <h4 id="list-7"><code>list</code><a class="anchor" href="#list-7" aria-label="Link to section">#</a></h4>
-<p>list backup files on the server</p>
+<p>list backup files on the server, with the last backup result</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<p>Flags:</p>
+<ul><li><code>--check</code> - exit 3, with the reasons on stderr, when something needs attention: no backups or no directory, a scheduled backup that never succeeded or is overdue, a failed, refused or cancelled backup, a damaged or unverified file, a note or notice, entries that could not be listed, a backup running over an hour, a retention problem, leftover files, or a restore that failed or finished with a note (for cron and monitoring)</li></ul>
+<h4 id="ack-restore"><code>ack-restore</code><a class="anchor" href="#ack-restore" aria-label="Link to section">#</a></h4>
+<p>clear the remembered result of the last restore</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<h4 id="download-name"><code>download &lt;name&gt;</code><a class="anchor" href="#download-name" aria-label="Link to section">#</a></h4>
+<p>download a stored backup file from the server</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<p>Flags:</p>
+<ul><li><code>--output string</code> - local file path to save to (default: the backup's own name)</li><li><code>--force</code> - replace the output file if it already exists (default: refuse)</li></ul>
 <h4 id="restore-filename"><code>restore &lt;filename&gt;</code><a class="anchor" href="#restore-filename" aria-label="Link to section">#</a></h4>
 <p>restore marbor.db from a backup file (marbor restarts)</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <p>Flags:</p>
-<ul><li><code>--yes</code> - confirm restore without prompting</li></ul>
-<h4 id="upload"><code>upload</code><a class="anchor" href="#upload" aria-label="Link to section">#</a></h4>
-<p>upload a local .db file as a restorable backup</p>
+<ul><li><code>--yes</code> - confirm restore without prompting</li><li><code>--wait</code> - wait for marbor to restart (up to 5 minutes) and exit nonzero unless the restore is reported as done</li></ul>
+<h4 id="delete-name-1"><code>delete &lt;name&gt;</code><a class="anchor" href="#delete-name-1" aria-label="Link to section">#</a></h4>
+<p>delete a stored backup file from the server (cannot be undone)</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <p>Flags:</p>
-<ul><li><code>--file string</code> - local .db file path (required) (required)</li></ul>
+<ul><li><code>--yes</code> - confirm deletion without prompting</li></ul>
+<h4 id="upload"><code>upload</code><a class="anchor" href="#upload" aria-label="Link to section">#</a></h4>
+<p>upload a local .db or .db.gz file as a restorable backup</p>
+<p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
+<p>Flags:</p>
+<ul><li><code>--file string</code> - local .db or .db.gz file path (required) (required)</li></ul>
 <h3 id="analytics"><code>analytics</code><a class="anchor" href="#analytics" aria-label="Link to section">#</a></h3>
 <p>hourly analytics + per-model stats</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
@@ -848,7 +864,7 @@ marbor fit unsloth/Qwen3-8B-GGUF --node gpu-1 --ctx 16384"><svg viewBox="0 0 24 
 <p>Distinct from "activity", which covers operator actions (drain/agent/runtime/node/warmup); "audit" covers individual proxied requests.</p>
 <p>Requires authentication - see the root README's CLI auth section, or run <code>marbor login</code>.</p>
 <p>Flags:</p>
-<ul><li><code>--limit int</code> - max entries to show (1-1000, default 100)</li><li><code>--model string</code> - filter by exact model name</li><li><code>--key string</code> - filter by exact API key name</li><li><code>--node string</code> - filter by exact node name</li><li><code>--status string</code> - filter by status category: success, client_error, or server_error</li><li><code>--cloud string</code> - filter by cloud fallback: true or false</li><li><code>--since string</code> - filter from time (RFC3339)</li><li><code>--until string</code> - filter to time (RFC3339)</li></ul>
+<ul><li><code>--limit int</code> - max entries to show (1-1000, default 100)</li><li><code>--model string</code> - filter by exact model name</li><li><code>--key string</code> - filter by exact API key name</li><li><code>--node string</code> - filter by exact node name</li><li><code>--status string</code> - filter by status category: success, client_error, or server_error</li><li><code>--cloud string</code> - filter by cloud fallback: true or false</li><li><code>--since string</code> - filter from time (RFC3339)</li><li><code>--until string</code> - filter to time (RFC3339)</li><li><code>--before-id int</code> - page back: show entries older than this row id (taken from the previous page's footer)</li><li><code>--after-id int</code> - page forward: show entries newer than this row id (cannot be combined with --before-id)</li></ul>
 <p>requires credentials: run "marbor login" once (recommended), or pass --username+--password (or MARBOR_USERNAME+MARBOR_PASSWORD).</p>
 <h3 id="users"><code>users</code><a class="anchor" href="#users" aria-label="Link to section">#</a></h3>
 <p>manage dashboard users</p>
@@ -905,7 +921,7 @@ marbor completion zsh &gt; &quot;${fpath[1]}/_marbor&quot;
 marbor completion fish &gt; ~/.config/fish/completions/marbor.fish"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 
       <div class="doc-foot-edit">
-        <nav class="pager" aria-label="Documentation pages"><a class="page-card prev" rel="prev" href="../docs/integrations/open-webui.html"><span class="dir">← Previous</span><span class="lbl">Open WebUI</span></a><span class="page-card missing" aria-hidden="true"></span></nav>
+        <nav class="pager" aria-label="Documentation pages"><a class="page-card prev" rel="prev" href="../docs/integrations/open-webui.html"><span class="dir">← Previous</span><span class="lbl">Open WebUI</span></a><a class="page-card next" rel="next" href="../docs/COMPATIBILITY.html"><span class="dir">Next →</span><span class="lbl">Compatibility &amp; Guarantees</span></a></nav>
       <div class="edit-link"><a href="https://github.com/Anirudhx7/marbor/blob/main/docs/cli.md" target="_blank" rel="noopener">View on GitHub →</a></div>
       </div>
     </div></article>

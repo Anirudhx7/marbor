@@ -264,6 +264,7 @@ const DOC_GROUPS = [
   ]},
   { title: "Reference", items: [
     { slug: "cli", label: "CLI reference" },
+    { slug: "COMPATIBILITY", label: "Compatibility & Guarantees" },
   ]},
 ];
 

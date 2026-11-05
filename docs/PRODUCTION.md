@@ -93,6 +93,14 @@ The `marbor-data` volume mount is important: without it, nodes, API keys, quota 
 
 `marbor-backups` is a **separate** volume from `marbor-data`, on purpose: enable scheduled backups from the dashboard's Settings > Backup & Restore card (interval + retention count are configurable there), and a `docker volume rm marbor-data` or `docker-compose down -v` that wipes the live database still leaves every backup intact, and vice versa. For real protection against losing the whole Docker host (not just a container or a single volume), point `marbor-backups` at storage that lives elsewhere - a different physical disk, an NFS/SMB mount, or a bind mount synced off-host - rather than leaving it as a second volume on the same disk as `marbor-data`. A manual "Download Backup Now" button on the same Settings card streams a gzip-compressed on-demand copy to your browser at any time (scheduled backups are compressed `.db.gz` files too). The same card also lists scheduled backups and can restore one with a click - which stops and restarts the marbor process, so it requires `restart: unless-stopped` (already set above) or an equivalent supervisor. See [`backup.md`](backup.md) for the full restore flow, the supervisor requirement, and the fully-manual fallback (not limited to files under `/backups` - any `.db` file works, or a `.db.gz` after `gunzip`, on Docker or bare metal alike).
 
+### Docker Networking and Node Discovery
+
+By default, the container runs on Docker's default bridge network. In this mode, port forwarding exposes Marbor to the host, but the container cannot scan or reach local subnet backends via network auto-discovery unless they are routable from inside the bridge network.
+
+- **Subnet scanning / auto-discovery:** If you want Marbor's installer scan or Docker discovery to reach LAN backends, set `network_mode: host` in `docker-compose.yml` (on Linux hosts). Note that port mappings are omitted when using host networking.
+- **Manual node addition (recommended for bridge mode):** Leave bridge networking enabled and add backend GPU nodes explicitly by IP/port or DNS name from the dashboard (**GPU Nodes** page) or CLI (`marbor nodes add <name> <url>`).
+- **Discovery zero-result rule:** If a network probe returns zero results, it means no backends were reachable from this host or network mode - it does not indicate that no GPUs exist on the network.
+
 ---
 
 ## Kubernetes

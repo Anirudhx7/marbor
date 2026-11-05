@@ -79,6 +79,8 @@ Workarounds if a discovered node is unreachable:
 - Run marbor in Docker with `network_mode: host`, matching the discovered node's networking mode.
 - Disable auto-discovery and add the node manually from the dashboard's **GPU Nodes** page, using the correct container IP or hostname.
 
+**Zero-result discovery:** If a Docker or network subnet probe reports zero nodes, it indicates that no reachable backends were discovered from this host and network mode. It does not mean no GPUs or backends exist. Check that firewall rules allow traffic on the target runtime port (e.g., 11434 for Ollama, 8000 for vLLM, 8080 for llama.cpp), or register the node manually.
+
 ---
 
 ## GPU Telemetry

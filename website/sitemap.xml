@@ -14,19 +14,19 @@
   </url>
   <url>
     <loc>https://marbor.in/docs/INTEGRATIONS.html</loc>
-    <lastmod>2026-06-24</lastmod>
+    <lastmod>2026-11-05</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://marbor.in/docs/PRODUCTION.html</loc>
-    <lastmod>2026-06-24</lastmod>
+    <lastmod>2026-11-05</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://marbor.in/docs/SAVINGS-MATH.html</loc>
-    <lastmod>2026-06-24</lastmod>
+    <lastmod>2026-11-05</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -50,25 +50,25 @@
   </url>
   <url>
     <loc>https://marbor.in/docs/deploy/aws-ec2.html</loc>
-    <lastmod>2026-06-24</lastmod>
+    <lastmod>2026-11-05</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://marbor.in/docs/integrations/continue.html</loc>
-    <lastmod>2026-06-24</lastmod>
+    <lastmod>2026-11-05</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://marbor.in/docs/integrations/librechat.html</loc>
-    <lastmod>2026-06-24</lastmod>
+    <lastmod>2026-11-05</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://marbor.in/docs/integrations/open-webui.html</loc>
-    <lastmod>2026-06-24</lastmod>
+    <lastmod>2026-11-05</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -161,5 +161,11 @@
     <lastmod>2026-08-29</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://marbor.in/docs/COMPATIBILITY.html</loc>
+    <lastmod>2026-11-05</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
   </url>
 </urlset>

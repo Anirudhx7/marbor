@@ -837,7 +837,7 @@ if [ ! -f "$DB_PATH" ] || [ "$FORCE_PROBE" = true ]; then
   FOUND_IPS=$(probe_network)
 
   if [ -z "$FOUND_IPS" ]; then
-    echo "  [!] No active LLM nodes found on the local subnet."
+    echo "  [!] No reachable backends found from this host/network mode on the local subnet."
     echo "      Add one later from the dashboard (Nodes tab) or re-run with FORCE_PROBE=1."
   else
     echo ""
