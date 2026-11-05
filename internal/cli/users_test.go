@@ -213,3 +213,25 @@ func TestRun_UsersDelete_NoTTYAborts(t *testing.T) {
 		t.Fatalf("expected abort %d %q", code, stderr.String())
 	}
 }
+
+// A 400 from the server on approve-with-new-key (for example a reserved key
+// name) must reach the operator verbatim and exit non-zero.
+func TestRun_UsersApprove_CreateKeyRejectedSurfacesServerMessage(t *testing.T) {
+	const msg = `key names starting with "benchmark-" or "pull-verify-" are reserved for internal probe keys`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": msg})
+	}))
+	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"users", "approve", "5", "--create-key", "--api-key-name", "benchmark-x", "--server", srv.URL}, &stdout, &stderr)
+	if code == ExitOK {
+		t.Fatalf("exit %d, want non-zero", code)
+	}
+	if !strings.Contains(stderr.String(), msg) {
+		t.Errorf("stderr %q does not contain server message", stderr.String())
+	}
+}
