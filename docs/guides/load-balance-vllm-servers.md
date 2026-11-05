@@ -25,6 +25,10 @@ Check it from another machine: `curl http://10.0.1.20:8000/health` should return
 
 vLLM serves one model per process. To serve a second model on the same host, start a second vLLM on another port and register it as its own node (below).
 
+### Faster weight loading with Run:ai Model Streamer
+
+When serving safetensors weights from local storage or cloud object storage (S3, GCS, Azure Blob), vLLM supports streaming tensors directly into GPU memory using the Run:ai Model Streamer (`pip install vllm[runai]`, Apache-2.0). Adding `--load-format runai_streamer` enables concurrent weight reading on plain bare-metal hosts without Kubernetes. Other runtimes supported by Marbor (Ollama, llama.cpp, MLX) do not use this loader.
+
 ## 2. Install Marbor on one machine
 
 Pick any host that can reach your GPU hosts. Install it as a service:
