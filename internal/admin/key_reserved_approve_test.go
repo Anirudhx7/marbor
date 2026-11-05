@@ -40,6 +40,7 @@ func TestHandleApproveUser_RejectsReservedProbePrefixes(t *testing.T) {
 		{"pull-verify prefix", "carol", `{"create_key":{"name":"pull-verify-x"}}`, false},
 		{"bare benchmark prefix", "carol", `{"create_key":{"name":"benchmark-"}}`, false},
 		{"bare pull-verify prefix", "carol", `{"create_key":{"name":"pull-verify-"}}`, false},
+		{"reserved username with explicit reserved name", "benchmark-bob", `{"create_key":{"name":"benchmark-team"}}`, false},
 		{"default name from username", "benchmark-bob", `{"create_key":{}}`, true},
 		{"default pull-verify name from username", "pull-verify-x", `{"create_key":{}}`, true},
 	}

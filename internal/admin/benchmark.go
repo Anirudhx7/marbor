@@ -122,11 +122,6 @@ func probeKey(name, value, model string, ttl time.Duration) config.KeyConfig {
 	}
 }
 
-// benchmarkProbeKey builds the key a benchmark run authenticates with.
-func benchmarkProbeKey(name, value, model string, ttl time.Duration) config.KeyConfig {
-	return probeKey(name, value, model, ttl)
-}
-
 // pullVerifyProbeKey builds the key the post-pull load check authenticates with.
 func pullVerifyProbeKey(name, value, model string) config.KeyConfig {
 	return probeKey(name, value, model, pullVerifyKeyTTL)
@@ -434,7 +429,7 @@ func (s *Server) handleRunBenchmark(w http.ResponseWriter, r *http.Request) {
 		writeServerError(w, r, err)
 		return
 	}
-	k := benchmarkProbeKey(keyName, keyValue, body.Model, benchmarkKeyTTLFor(body.N, benchmarkSampleTimeout, nodeUnloadModelTimeout))
+	k := probeKey(keyName, keyValue, body.Model, benchmarkKeyTTLFor(body.N, benchmarkSampleTimeout, nodeUnloadModelTimeout))
 	if err := s.persistKey(k); err != nil {
 		s.benchMu.Lock()
 		delete(s.benchJobs, jobID)

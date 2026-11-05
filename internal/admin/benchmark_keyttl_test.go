@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -93,6 +94,7 @@ func TestIsEphemeralProbeKey(t *testing.T) {
 	}{
 		{"other name", func(r *store.KeyRecord) { r.Name = "team" }},
 		{"prefix not at start", func(r *store.KeyRecord) { r.Name = "my-benchmark-x" }},
+		{"pull-verify prefix not at start", func(r *store.KeyRecord) { r.Name = "my-pull-verify-x" }},
 		{"not local", func(r *store.KeyRecord) { r.LocalOnly = false }},
 		{"revoked", func(r *store.KeyRecord) { r.Revoked = true }},
 		{"no expiry", func(r *store.KeyRecord) { r.ExpiresAt = "" }},
@@ -113,7 +115,7 @@ func TestIsEphemeralProbeKey(t *testing.T) {
 			}
 		})
 	}
-	if probeShape().Name[:len("benchmark-")] != "benchmark-" {
+	if !strings.HasPrefix(probeShape().Name, "benchmark-") {
 		t.Error("probeShape no longer starts with the literal benchmark- prefix")
 	}
 }
@@ -124,7 +126,7 @@ func TestIsEphemeralProbeKey(t *testing.T) {
 func TestIsEphemeralProbeKey_MatchesKeysBuiltByProbeSites(t *testing.T) {
 	s, _, fs := newFlakyKeyServer(t)
 	for _, k := range []config.KeyConfig{
-		benchmarkProbeKey(benchmarkKeyPrefix+"n1-m-1-1", "sk-b", "m", time.Hour),
+		probeKey(benchmarkKeyPrefix+"n1-m-1-1", "sk-b", "m", time.Hour),
 		pullVerifyProbeKey(pullVerifyKeyPrefix+"n1-m-1", "sk-p", "m"),
 	} {
 		if err := s.persistKey(k); err != nil {
