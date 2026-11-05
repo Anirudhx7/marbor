@@ -425,7 +425,7 @@ volumes:
 <p><strong>403 Forbidden on a specific model</strong></p>
 <p>The key you are using has a model allow-list set (edit it from the <strong>API Keys</strong> page) that does not include the requested model. Either add the model to the key's allow-list or use a key with no allow-list ("All models" - allow all).</p>
 <p><strong>Slow model list on startup</strong></p>
-<p>If a marbor node is unreachable, Open WebUI may wait for a timeout before the model list loads. Tune the marbor's upstream timeout in <strong>Settings &gt; Advanced Routing &gt; Upstream Timeout</strong>, or in Open WebUI set <code>AIOHTTP_CLIENT_TIMEOUT_MODEL_LIST=3</code> (seconds) to fail fast on unreachable endpoints.</p>
+<p>If a marbor node is unreachable, Open WebUI may wait for a timeout before the model list loads. Tune the marbor's upstream timeout in <strong>Settings &gt; Routing &amp; Reliability &gt; Upstream Timeout</strong>, or in Open WebUI set <code>AIOHTTP_CLIENT_TIMEOUT_MODEL_LIST=3</code> (seconds) to fail fast on unreachable endpoints.</p>
 
       <div class="doc-foot-edit">
         <nav class="pager" aria-label="Documentation pages"><a class="page-card prev" rel="prev" href="../../docs/integrations/litellm.html"><span class="dir">← Previous</span><span class="lbl">LiteLLM</span></a><a class="page-card next" rel="next" href="../../docs/cli.html"><span class="dir">Next →</span><span class="lbl">CLI reference</span></a></nav>

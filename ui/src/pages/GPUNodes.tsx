@@ -2876,7 +2876,7 @@ export function GPUNodes() {
               className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
             />
             <p className="text-xs text-muted-foreground mt-1">
-              A node at or above this many in-flight requests is shed immediately (failover/cloud/503) instead of queued. Leave blank to use Settings &rarr; Routing's global Max In-Flight Per Node.
+              A node at or above this many in-flight requests is shed immediately (failover/cloud/503) instead of queued. Leave blank to use Settings &rarr; Routing &amp; Reliability's global Max In-Flight Per Node.
             </p>
           </div>
           <div>

@@ -337,7 +337,7 @@ From there, everything is a dashboard page or an `/admin/v1/...` API call:
 |---|---|
 | GPU nodes | **GPU Nodes** page, or `install.sh`'s network-discovery wizard (`--seed-node` under the hood) |
 | API keys, rate limits, model allow-lists, quotas | **API Keys** page |
-| Routing strategy, timeouts, retries, session affinity, queueing, thermal watchdog | **Settings → Advanced Routing** |
+| Routing strategy, timeouts, retries, session affinity, queueing, thermal watchdog | **Settings → Routing & Reliability** |
 | Cloud overflow providers (OpenAI/Anthropic), cost-per-1k, spend caps | **Settings → Cloud Providers** / **Cloud Spend Cap** |
 | Docker auto-discovery, webhooks | **Settings** (dedicated cards for each) |
 | Model warmup schedule | **Settings → Global Warmup**, or per-node in the **Warmup** page |

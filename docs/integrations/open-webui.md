@@ -173,4 +173,4 @@ The key you are using has a model allow-list set (edit it from the **API Keys** 
 
 **Slow model list on startup**
 
-If a marbor node is unreachable, Open WebUI may wait for a timeout before the model list loads. Tune the marbor's upstream timeout in **Settings > Advanced Routing > Upstream Timeout**, or in Open WebUI set `AIOHTTP_CLIENT_TIMEOUT_MODEL_LIST=3` (seconds) to fail fast on unreachable endpoints.
+If a marbor node is unreachable, Open WebUI may wait for a timeout before the model list loads. Tune the marbor's upstream timeout in **Settings > Routing & Reliability > Upstream Timeout**, or in Open WebUI set `AIOHTTP_CLIENT_TIMEOUT_MODEL_LIST=3` (seconds) to fail fast on unreachable endpoints.
