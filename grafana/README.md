@@ -16,6 +16,23 @@ scrape_configs:
       - targets: ["localhost:9090"]
 ```
 
+### Node Agent Metrics (marbor-agent)
+
+To scrape hardware and host metrics directly from each GPU node's `marbor-agent` instance (HTTPS, bearer token, CA trust):
+
+```yaml
+  - job_name: "marbor-agent"
+    scheme: https
+    authorization:
+      credentials_file: /etc/prometheus/secrets/agent.token
+    tls_config:
+      ca_file: /etc/prometheus/certs/agent.crt
+    static_configs:
+      - targets: ["gpu-node-1.internal:9200"]
+```
+
+See the complete setup in [Monitor a fleet with Prometheus and Grafana](../docs/guides/monitor-llm-fleet-prometheus-grafana.md) for CA trust configuration, token extraction, certificate rotation (`regen-cert`), and exported GPU/host series.
+
 > Shortcuts: the repo's Docker monitoring overlay (`docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d`) provisions the datasource and this dashboard automatically - no manual import needed (Prometheus UI on host port 9091, Grafana on 3000).
 
 ## Import Instructions

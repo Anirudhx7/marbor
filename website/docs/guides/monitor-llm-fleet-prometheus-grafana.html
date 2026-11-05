@@ -334,7 +334,71 @@ scrape_configs:
 docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="git clone https://github.com/Anirudhx7/marbor &amp;&amp; cd marbor
 docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>Grafana comes up on <code>127.0.0.1:3000</code> (login <code>admin</code> / <code>admin</code>; change it before exposing the port) with the Marbor dashboard from <code>grafana/marbor.json</code>. If the dashboard is empty, metrics are not enabled yet: go back to step 1 and restart Marbor.</p>
-<h2 id="3-the-metrics-worth-graphing">3. The metrics worth graphing<a class="anchor" href="#3-the-metrics-worth-graphing" aria-label="Link to section">#</a></h2>
+<h2 id="3-scrape-marbor-agent-on-gpu-nodes-https-bearer-token-ca-trust">3. Scrape marbor-agent on GPU nodes (HTTPS, Bearer Token &amp; CA Trust)<a class="anchor" href="#3-scrape-marbor-agent-on-gpu-nodes-https-bearer-token-ca-trust" aria-label="Link to section">#</a></h2>
+<p>The control plane's <code>:9090</code> metrics cover gateway routing, queues, latencies, and quotas. To monitor the physical GPU nodes directly - core compute utilization, per-GPU VRAM usage, temperature, power draw, fan speed, host RAM, CPU, and disk space - Prometheus can scrape the companion <code>marbor-agent</code> binary running on each GPU host.</p>
+<p>The agent serves Prometheus-format text metrics on <code>GET /metrics</code> (default port <code>:9200</code>). Because the agent controls model execution and host resources, its HTTP server enforces transport security and authentication by default.</p>
+<h3 id="prometheus-scrape-configuration">Prometheus scrape configuration<a class="anchor" href="#prometheus-scrape-configuration" aria-label="Link to section">#</a></h3>
+<div class="code-wrap"><pre class="code" data-lang="yaml"><code># prometheus.yml
+scrape_configs:
+  - job_name: marbor
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['&lt;marbor-host&gt;:9090']
+
+  - job_name: marbor-agent
+    scheme: https
+    scrape_interval: 15s
+    authorization:
+      credentials_file: /etc/prometheus/secrets/agent.token
+    tls_config:
+      ca_file: /etc/prometheus/certs/agent.crt
+    static_configs:
+      - targets:
+          - 'gpu-node-1.internal:9200'
+          - 'gpu-node-2.internal:9200'</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="# prometheus.yml
+scrape_configs:
+  - job_name: marbor
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['&lt;marbor-host&gt;:9090']
+
+  - job_name: marbor-agent
+    scheme: https
+    scrape_interval: 15s
+    authorization:
+      credentials_file: /etc/prometheus/secrets/agent.token
+    tls_config:
+      ca_file: /etc/prometheus/certs/agent.crt
+    static_configs:
+      - targets:
+          - 'gpu-node-1.internal:9200'
+          - 'gpu-node-2.internal:9200'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+<h3 id="transport-authentication-and-trust-details">Transport, authentication, and trust details<a class="anchor" href="#transport-authentication-and-trust-details" aria-label="Link to section">#</a></h3>
+<ul><li><strong>HTTPS by default:</strong> A service installed via <code>marbor-agent service install</code> generates a self-signed ECDSA P-256 certificate and key pair on first install, serving HTTPS. Scraping an HTTPS agent over plain HTTP triggers an immediate error:</li></ul>
+<p>  ``<code>text   server returned HTTP status 400 Bad Request: Client sent an HTTP request to an HTTPS server   </code>`<code>   Set </code>scheme: https` in the scrape job whenever the agent serves TLS.</p>
+<ul><li><strong>Bearer token authentication:</strong> Every request to <code>GET /metrics</code> requires an exact-match bearer token:</li></ul>
+<p>  ``<code>http   Authorization: Bearer &lt;token&gt;   </code>`<code>   Scraping without a token or with a mismatched secret returns </code>HTTP 401 Unauthorized<code>. The agent secret is configured via the </code>MARBOR_AGENT_SECRET<code> environment variable (persisted on Linux services in </code>/etc/marbor-agent.env<code> with </code>0600<code> permissions).   Extract the token value into a dedicated credentials file (</code>authorization.credentials_file`) readable by the Prometheus process user. Avoid sharing readable permissions across untrusted local users.</p>
+<ul><li><strong>CA trust and SAN matching:</strong> The agent's self-signed certificate is valid for 10 years and embeds Subject Alternative Names (SANs) for <code>localhost</code>, the machine's primary hostname, and its local IPv4/IPv6 addresses. Prometheus must trust this certificate as a root CA by setting <code>tls_config.ca_file</code> to point to a copy of the agent's certificate:</li><li>Linux: <code>/etc/marbor-agent.crt</code></li><li>macOS: <code>/Library/Application Support/marbor-agent/agent.crt</code></li><li>Windows: <code>%ProgramData%\marbor-agent\agent.crt</code></li></ul>
+<p>  The host name or IP address in <code>static_configs</code> targets must match one of the SAN entries on the certificate. If Prometheus targets an unlisted CNAME, DNS alias, or external NAT address, the TLS handshake fails with a certificate validation error.   &gt; Do not set <code>insecure_skip_verify: true</code> in production. Disabling verification forfeits man-in-the-middle protections; trust the agent's certificate explicitly via <code>ca_file</code>.</p>
+<ul><li><strong>Certificate renewal and rotation:</strong> Running <code>marbor-agent service regen-cert</code> forces generation of a new certificate/key pair and restarts the agent service. When rotated, the new certificate must be copied to Prometheus's <code>ca_file</code> path and Prometheus reloaded (<code>curl -X POST http://localhost:9090/-/reload</code> or <code>kill -HUP &lt;prometheus-pid&gt;</code>). Until Prometheus trusts the new certificate, scraping fails with:</li></ul>
+<p>  ``<code>text   x509: certificate signed by unknown authority   </code>``</p>
+<ul><li><strong>Plaintext HTTP on loopback or isolated networks:</strong> Running <code>marbor-agent</code> in the foreground without <code>--cert</code>/<code>--key</code> on a loopback bind (<code>--bind=127.0.0.1</code>) serves plaintext HTTP. On non-loopback binds, serving plaintext requires the explicit <code>--allow-insecure-plaintext</code> flag, which emits a startup warning since bearer credentials traverse the network unencrypted.</li></ul>
+<h3 id="agent-metrics-exported">Agent metrics exported<a class="anchor" href="#agent-metrics-exported" aria-label="Link to section">#</a></h3>
+<div class="table-scroll" tabindex="0" role="region" aria-label="Data table: scroll horizontally on small screens"><table>
+<thead><tr><th>Metric</th><th>Use it for</th></tr></thead>
+<tbody><tr><td><code>marboragent_gpu_core_percent{gpu}</code></td><td>GPU compute core utilization percentage (0-100)</td></tr>
+<tr><td><code>marboragent_gpu_temperature_celsius{gpu}</code></td><td>GPU thermal monitoring; pair with alerts before thermal throttling</td></tr>
+<tr><td><code>marboragent_gpu_vram_used_mb{gpu}</code></td><td>Active VRAM consumed on the device in MB</td></tr>
+<tr><td><code>marboragent_gpu_vram_total_mb{gpu}</code></td><td>Total physical VRAM capacity in MB</td></tr>
+<tr><td><code>marboragent_gpu_power_watts{gpu}</code></td><td>Real-time power draw in watts</td></tr>
+<tr><td><code>marboragent_gpu_fan_percent{gpu}</code></td><td>Cooling fan speed percentage</td></tr>
+<tr><td><code>marboragent_gpu_count</code></td><td>Total number of detected GPU devices on the node</td></tr>
+<tr><td><code>marboragent_host_cpu_percent</code></td><td>Host CPU utilization percentage</td></tr>
+<tr><td><code>marboragent_host_ram_used_mb</code> / <code>_total_mb</code></td><td>Host system memory consumption</td></tr>
+<tr><td><code>marboragent_host_disk_free_gb</code> / <code>_total_gb</code></td><td>Disk storage headroom for model weights</td></tr>
+<tr><td><code>marboragent_info{node_id, agent_version, platform, architecture, gpu_vendor, runtime, capabilities}</code></td><td>Metadata series with constant value 1; filter/group fleets by GPU vendor, runtime, or OS</td></tr></tbody>
+</table></div>
+<h2 id="4-the-metrics-worth-graphing">4. The metrics worth graphing<a class="anchor" href="#4-the-metrics-worth-graphing" aria-label="Link to section">#</a></h2>
 <div class="table-scroll" tabindex="0" role="region" aria-label="Data table: scroll horizontally on small screens"><table>
 <thead><tr><th>Metric</th><th>Use it for</th></tr></thead>
 <tbody><tr><td><code>marbor_node_healthy{node}</code></td><td>1 or 0 per node; alert when a node drops</td></tr>
@@ -363,7 +427,7 @@ histogram_quantile(0.95, sum by (le) (rate(marbor_request_ttft_seconds_bucket[5m
 
 # traffic per API key
 sum by (key_name) (rate(marbor_requests_total[5m]))"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-<h2 id="4-alert-on-the-things-that-hurt">4. Alert on the things that hurt<a class="anchor" href="#4-alert-on-the-things-that-hurt" aria-label="Link to section">#</a></h2>
+<h2 id="5-alert-on-the-things-that-hurt">5. Alert on the things that hurt<a class="anchor" href="#5-alert-on-the-things-that-hurt" aria-label="Link to section">#</a></h2>
 <div class="code-wrap"><pre class="code" data-lang="yaml"><code>groups:
   - name: marbor
     rules:
@@ -402,7 +466,7 @@ sum by (key_name) (rate(marbor_requests_total[5m]))"><svg viewBox="0 0 24 24" fi
 
   <div class="doc-toc-wrap"><aside class="toc-card" aria-label="On this page">
     <p class="toc-title">On this page</p>
-    <ul class="toc"><li class="lvl-2"><a href="#1-turn-metrics-on">1. Turn metrics on</a></li><li class="lvl-2"><a href="#2-scrape-it">2. Scrape it</a></li><li class="lvl-2"><a href="#3-the-metrics-worth-graphing">3. The metrics worth graphing</a></li><li class="lvl-2"><a href="#4-alert-on-the-things-that-hurt">4. Alert on the things that hurt</a></li><li class="lvl-2"><a href="#without-prometheus">Without Prometheus</a></li><li class="lvl-2"><a href="#what-to-set-up-next">What to set up next</a></li></ul>
+    <ul class="toc"><li class="lvl-2"><a href="#1-turn-metrics-on">1. Turn metrics on</a></li><li class="lvl-2"><a href="#2-scrape-it">2. Scrape it</a></li><li class="lvl-2"><a href="#3-scrape-marbor-agent-on-gpu-nodes-https-bearer-token-ca-trust">3. Scrape marbor-agent on GPU nodes (HTTPS, Bearer Token &amp; CA Trust)</a></li><li class="lvl-3"><a href="#prometheus-scrape-configuration">Prometheus scrape configuration</a></li><li class="lvl-3"><a href="#transport-authentication-and-trust-details">Transport, authentication, and trust details</a></li><li class="lvl-3"><a href="#agent-metrics-exported">Agent metrics exported</a></li><li class="lvl-2"><a href="#4-the-metrics-worth-graphing">4. The metrics worth graphing</a></li><li class="lvl-2"><a href="#5-alert-on-the-things-that-hurt">5. Alert on the things that hurt</a></li><li class="lvl-2"><a href="#without-prometheus">Without Prometheus</a></li><li class="lvl-2"><a href="#what-to-set-up-next">What to set up next</a></li></ul>
   </aside></div>
 </div>
 

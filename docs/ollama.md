@@ -4,7 +4,7 @@ One endpoint, no per-box SSH loops, and no Kubernetes.
 
 If you run Ollama on multiple machines, every box quickly becomes its own snowflake. You SSH into individual hosts to check `nvidia-smi`, remember which model was pulled where, set up blind reverse proxies with nginx, and write ad-hoc bash loops whenever a model updates. Ollama runs models cleanly; managing multiple instances as unified infrastructure is where operators hit friction.
 
-Marbor sits in front of your Ollama instances and exposes a single endpoint on port 11434. You can pull, unload, or delete models, restart runtimes, and drain nodes for maintenance from one dashboard, CLI, or API - without SSHing into individual hosts. Behind the scenes, requests route to whichever node already has the model warm in VRAM.
+Marbor sits in front of your Ollama instances and exposes a single endpoint on port 11434. You can pull, unload, or delete models, restart runtimes, and drain nodes ahead of maintenance from one dashboard, CLI, or API - without SSHing into individual hosts. Behind the scenes, requests route to whichever node already has the model warm in VRAM.
 
 ## Quick start for Ollama fleets
 
@@ -40,7 +40,7 @@ docker run -d --restart=unless-stopped \
 ## Three operational outcomes shipped today
 
 1. **One endpoint across your fleet**: Exposes both the native Ollama API (`/api/*`) and the OpenAI-compatible API (`/v1/*`) on port 11434. Apps and SDKs send requests to one address, and Marbor sends each request to a node that already holds the model in memory.
-2. **Remote operations without SSH**: Pull, unload, and delete models across nodes via the admin dashboard or CLI (`marbor models pull <model> --node <node>`). Gracefully drain a node (`marbor nodes drain <node>`) before system updates so in-flight requests finish without errors.
+2. **Remote operations without SSH**: Pull, unload, and delete models across nodes via the admin dashboard or CLI (`marbor models pull <model> --node <node>`). Drain a node (`marbor runtime drain <node>`) before system updates so it stops receiving new requests; wait for its active requests to reach zero before you stop it.
 3. **Fleet-wide visibility**: View live per-model replicas, active requests, queue depth, and time-to-first-token (TTFT) across every host. Pre-flight disk fit checks hard-block pulls (HTTP 507) before dispatching to a node without enough disk space. Per-key rate limits and token quotas enforce usage limits (HTTP 429).
 
 ## Roadmap

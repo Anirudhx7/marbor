@@ -70,7 +70,7 @@ curl http://<marbor-host>:11434/v1/chat/completions \
 
 1. **Unified OpenAI endpoint**: Connect any OpenAI-compatible tool, coding assistant (Continue, Cursor), or chat UI to `http://<marbor-host>:11434/v1`. Marbor routes requests to whichever Mac hosts the requested model, translating endpoints and validating model availability.
 2. **Memory-aware capacity guidance**: Apple Silicon shares unified memory between CPU and GPU. Marbor accounts for host RAM telemetry alongside model weight estimates to give operators realistic fit advice before dispatching workloads.
-3. **Multi-host fleet management**: Manage all Mac nodes from the web dashboard or CLI. Drain a Mac before rebooting or updating macOS, inspect real-time response latency, and monitor error rates across nodes.
+3. **Multi-host fleet management**: Manage all Mac nodes from the web dashboard or CLI. Drain a Mac so it stops receiving new requests before you reboot or update macOS, inspect real-time response latency, and monitor error rates across nodes.
 
 ## Hardware verification status
 

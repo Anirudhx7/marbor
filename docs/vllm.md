@@ -1,10 +1,10 @@
 # Production vLLM without Kubernetes
 
-One OpenAI-compatible endpoint, health-aware routing, and drain without downtime across your vLLM servers.
+One OpenAI-compatible endpoint, health-aware routing, and node drain for planned maintenance across your vLLM servers.
 
 vLLM provides fast throughput, PagedAttention, and continuous batching. However, moving from a single vLLM server to multiple GPU instances often pushes operators toward complex Kubernetes deployments, custom operators, and distributed ingress stacks. If you have 4 to 20 GPUs on dedicated bare-metal or cloud instances, you need high availability and model placement without the operational burden of Kubernetes.
 
-Marbor provides the missing operational layer. It sits in front of your vLLM instances as a single Go binary, health-checks each engine using native `/health` endpoints, routes requests based on live model residency and VRAM headroom, and lets you drain nodes for upgrades without dropping client traffic.
+Marbor provides the missing operational layer. It sits in front of your vLLM instances as a single Go binary, health-checks each engine using native `/health` endpoints, routes requests based on live model residency and VRAM headroom, and lets you drain a node so it stops receiving new requests before you take it down for upgrades.
 
 ## Quick start for vLLM clusters
 
@@ -59,7 +59,7 @@ LiteLLM handles organization-level cloud billing and multi-provider abstraction;
 ## Three operational outcomes shipped today
 
 1. **Inference-aware placement vs. blind round-robin**: Traditional reverse proxies (nginx, HAProxy) route TCP connections or HTTP requests round-robin, unaware of whether an instance is saturated or evicting cache. Marbor polls each node every 2 seconds, tracks live in-flight requests, and prefers nodes with warm model residency and available VRAM headroom.
-2. **Graceful drain without dropped requests**: Taking a vLLM node down for driver updates, weight reloads, or host maintenance no longer causes 502 errors. Call `marbor nodes drain <node>`, and Marbor diverts new requests to alternate nodes while allowing existing generation streams to finish.
+2. **Drain before maintenance**: Call `marbor runtime drain <node>` and Marbor stops sending new requests to that node while the rest of the fleet keeps serving. The drain does not cut existing streams, but it does not wait for them either: watch the node's active requests fall to zero before you stop the engine, because a stream still running on a node you stop is dropped. Marbor refuses by default to drain the only node that serves a model.
 3. **Runtime-aware health checks**: Marbor continuously probes the native `/health` endpoint of each vLLM instance rather than relying on shallow TCP port checks, ensuring that an engine undergoing initialization or memory recovery is never routed live traffic.
 
 ## Roadmap
@@ -77,5 +77,5 @@ LiteLLM handles organization-level cloud billing and multi-provider abstraction;
 ## Next steps
 
 - Step-by-step tutorial: [Load balance multiple vLLM servers](guides/load-balance-vllm-servers.md)
-- Zero-downtime maintenance: [Drain a GPU node without downtime](guides/drain-gpu-node-without-downtime.md)
+- Planned maintenance: [Drain a GPU node without downtime](guides/drain-gpu-node-without-downtime.md)
 - Prometheus metrics: [Monitor a fleet with Prometheus and Grafana](guides/monitor-llm-fleet-prometheus-grafana.md)
