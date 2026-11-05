@@ -12,7 +12,10 @@ func parseRFC3339(s string) (time.Time, error) {
 }
 
 // activityKind maps a system_audit action to its fleet-operations kind bucket.
-// Taxonomy is locked, mirrors ui/src/lib/activityKind.ts.
+// Matches internal/store/sqlite.go:systemAuditKind. Note that while the CLI
+// and server bucket all auth, access, user, and key operations under "config",
+// the web UI (ui/src/lib/activityKind.ts) splits the server's "config" kind
+// into client-side "access", "keys", "users", and "config" sub-categories.
 func activityKind(action string) string {
 	switch action {
 	case "drain_node", "undrain_node", "set_node_prewarm":

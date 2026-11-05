@@ -2867,8 +2867,12 @@ func (s *sqliteStore) QuerySystemAuditLog(limit int) ([]SystemAuditEntry, error)
 	return entries, nil
 }
 
-// systemAuditKind maps an action to its fleet-operations kind bucket, mirroring
-// ui/src/lib/activityKind.ts:7 and internal/cli/activity.go:activityKind.
+// systemAuditKind maps an action to its fleet-operations kind bucket on the
+// server and in internal/cli/activity.go:activityKind. Note that while the Go
+// server and CLI bucket all access, keys, users, and settings actions under the
+// single "config" kind, the web UI (ui/src/lib/activityKind.ts) splits the
+// server's "config" kind into client-side "access", "keys", "users", and "config"
+// (settings) sub-categories for display and filtering.
 func systemAuditKind(action string) string {
 	switch action {
 	case "drain_node", "undrain_node", "set_node_prewarm":
