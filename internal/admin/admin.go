@@ -3729,6 +3729,10 @@ func (s *Server) handleDeleteSchedule(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// notSavedAuditNote marks a drain or undrain audit entry whose change is live
+// in the router but could not be saved to the store.
+const notSavedAuditNote = "(not saved: persistence failed)"
+
 func (s *Server) handleDrainNode(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	name := r.PathValue("name")
@@ -3777,7 +3781,7 @@ func (s *Server) handleDrainNode(w http.ResponseWriter, r *http.Request) {
 	if persistErr != nil {
 		// The drain is live in the router but was not saved, so it ends at
 		// the next restart. The change happened, so it is still audited.
-		s.logSystemChange(r, "drain_node", name, detail+" (not saved: persistence failed)")
+		s.logSystemChange(r, "drain_node", name, detail+" "+notSavedAuditNote)
 		writeCorrelatedError(w, r, http.StatusInternalServerError,
 			"Drain is active on the node but could not be saved and will be lost on restart; retry the request", persistErr)
 		return
@@ -3803,7 +3807,7 @@ func (s *Server) handleUndrainNode(w http.ResponseWriter, r *http.Request) {
 	if err := s.st.SetNodeDrain(name, false, "", 0); err != nil {
 		// The undrain is live in the router but was not saved, so the node is
 		// drained again at the next restart. Still audited, then reported.
-		s.logSystemChange(r, "undrain_node", name, "(not saved: persistence failed)")
+		s.logSystemChange(r, "undrain_node", name, notSavedAuditNote)
 		writeCorrelatedError(w, r, http.StatusInternalServerError,
 			"Undrain is active on the node but could not be saved and the node will be drained again on restart; retry the request", err)
 		return
