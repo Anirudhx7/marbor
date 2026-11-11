@@ -3755,9 +3755,10 @@ func (s *Server) handleDrainNode(w http.ResponseWriter, r *http.Request) {
 	// The sole-replica check and the drain itself run under one lock, so two
 	// drains of mutual peers cannot both pass.
 	drained := false
+	var persistErr error
 	sole := s.checkSoleReplica(name, soleConsentFrom(r), func() {
 		if drained = s.router.DrainNode(name, reason, grace); drained {
-			_ = s.st.SetNodeDrain(name, true, reason, grace)
+			persistErr = s.st.SetNodeDrain(name, true, reason, grace)
 		}
 	})
 	if writeSoleRefusal(w, name, soleActionDrain, sole) {
@@ -3773,6 +3774,14 @@ func (s *Server) handleDrainNode(w http.ResponseWriter, r *http.Request) {
 	// not change.
 	replica := s.replicaInfoFor(name, replicaActionDrain)
 	detail := soleReplicaAuditDetail(replicaAuditDetail(reason, replica, false), sole.impact, sole.forced(), sole.reviewed)
+	if persistErr != nil {
+		// The drain is live in the router but was not saved, so it ends at
+		// the next restart. The change happened, so it is still audited.
+		s.logSystemChange(r, "drain_node", name, detail+" (not saved: persistence failed)")
+		writeCorrelatedError(w, r, http.StatusInternalServerError,
+			"Drain is active on the node but could not be saved and will be lost on restart; retry the request", persistErr)
+		return
+	}
 	s.logSystemChange(r, "drain_node", name, detail)
 	resp := map[string]any{"node": name, "draining": true, "reason": reason, "grace_period_seconds": grace}
 	if replica != nil {
@@ -3791,7 +3800,14 @@ func (s *Server) handleUndrainNode(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusNotFound, fmt.Sprintf("node %q not found", name))
 		return
 	}
-	_ = s.st.SetNodeDrain(name, false, "", 0)
+	if err := s.st.SetNodeDrain(name, false, "", 0); err != nil {
+		// The undrain is live in the router but was not saved, so the node is
+		// drained again at the next restart. Still audited, then reported.
+		s.logSystemChange(r, "undrain_node", name, "(not saved: persistence failed)")
+		writeCorrelatedError(w, r, http.StatusInternalServerError,
+			"Undrain is active on the node but could not be saved and the node will be drained again on restart; retry the request", err)
+		return
+	}
 	s.logSystemChange(r, "undrain_node", name, "")
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"node": name, "draining": false})
