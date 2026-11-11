@@ -73,12 +73,17 @@ type target struct {
 
 // sendChat issues one streaming chat request and measures it.
 func sendChat(hc *http.Client, t target, model string, msgs []chatMessage, maxTokens int) reqRecord {
+	return sendChatCtx(context.Background(), hc, t, model, msgs, maxTokens)
+}
+
+// sendChatCtx is sendChat that stops when ctx is cancelled.
+func sendChatCtx(ctx context.Context, hc *http.Client, t target, model string, msgs []chatMessage, maxTokens int) reqRecord {
 	rec := reqRecord{TTFTMs: -1, MeanITLMs: -1, PromptTokens: -1, CachedTokens: -1}
 	body, _ := json.Marshal(map[string]any{
 		"model": model, "messages": msgs, "stream": true, "max_tokens": maxTokens,
 		"stream_options": map[string]any{"include_usage": true},
 	})
-	req, err := http.NewRequest(http.MethodPost, t.baseURL+"/v1/chat/completions", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, t.baseURL+"/v1/chat/completions", bytes.NewReader(body))
 	if err != nil {
 		rec.Error = err.Error()
 		return rec

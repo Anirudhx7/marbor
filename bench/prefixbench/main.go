@@ -12,6 +12,8 @@
 //	run       execute the schedule and write raw results and a summary
 //	summarize rebuild summary.md and summary.json from an existing output dir
 //	capture   save raw engine responses (to see which usage fields exist)
+//	probe     single-engine residency probe: cached vs uncached TTFT, then how
+//	          many conversations stay resident (the only mode that accepts one engine)
 //
 // The tool reports measurements and their variability. It states a verdict
 // only when given a criteria file written before the run (see verdict.go).
@@ -43,6 +45,8 @@ func main() {
 		err = cmdSummarize(os.Args[2:])
 	case "capture":
 		err = cmdCapture(os.Args[2:])
+	case "probe":
+		err = cmdProbe(os.Args[2:])
 	default:
 		usage()
 		os.Exit(2)
@@ -54,7 +58,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: prefixbench plan|run|summarize|capture [flags]   (each subcommand accepts -h)")
+	fmt.Fprintln(os.Stderr, "usage: prefixbench plan|run|summarize|capture|probe [flags]   (each subcommand accepts -h)")
 }
 
 // buildSchedule lays out every run. For each repetition, workloads are taken
