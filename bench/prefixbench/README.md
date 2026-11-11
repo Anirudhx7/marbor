@@ -67,6 +67,54 @@ no-effect control. Its numbers are never measurements, and the summary says so.
 
 `--smoke` allows fewer than ten repetitions for harness checks.
 
+## Single-engine probe
+
+`plan` and `run` compare routing arms and need two or more engines. `probe` is the one mode that
+measures a single engine, with no router: how much faster a request whose prefix is cached is than
+one whose prefix is not, whether that gap holds under load, and how many distinct conversations
+the engine keeps resident before revisits stop hitting its prefix cache.
+
+```bash
+./prefixbench probe --engine e=http://HOST:8000 --model MODEL --out out/probe
+```
+
+Steps (`--steps size,idle,load,residency`, all by default):
+
+- `size`: one 5-turn conversation, recording `prompt_tokens` at turn 1 and the last turn and whether
+  the last turn plus `--max-tokens` fits `--max-model-len` (default 8192; set it to the engine's value).
+- `idle`: `--probes` conversations (30), each sent as turn 1 (prefix never seen) then turn 2 on the same
+  prefix, nothing else running. Reports `ttft_u_*` (uncached) and `ttft_c_*` (cached) p50 and mean,
+  and `g = (ttft_u - ttft_c) / ttft_u` on the mean (`g_p50` on the median). Only complete pairs
+  count: if a conversation's turn 1 fails it is not continued and not scored.
+- `load`: the same pairs while a closed loop of unique single-turn requests holds each `--levels`
+  concurrency (12, 24, 48), so `--levels 12` has 12 background requests plus the probe request in
+  flight. Probing starts once every background worker has completed a successful request; if that
+  does not happen within 60 seconds the cell gets `load_warm: false` and a warning.
+  Levels with `g >= 0.10` are listed as `load_levels_g_ge_gain_line`. Background requests are counted
+  (`load_requests`, `load_errors`, `load_first_error`) but not written to `requests.jsonl`.
+- `residency`: for each N in `--residency` (8 to 256), N distinct first turns, then all N revisited
+  in the same order. `engine_cached_frac` is the engine's own hit fraction over the revisit phase
+  only, next to the share of revisits whose reported `cached_tokens` covers at least half the prompt.
+  `revisits` counts scored revisits (successful and reporting usage). `k` is the last N before the first
+  level whose engine hit fraction falls below 0.90: for example `16`, `>256` when every requested level
+  passes, `<8` when the first level already fails, `-` when any requested level lacks engine counters
+  or the run was interrupted. A level that passes after a lower one failed is reported as a warning,
+  not as capacity. `revisit_ceiling` is the highest fraction a perfect cache could report (first-turn tokens
+  over revisit-turn tokens); a warning is printed when it is below 0.90, because `k` then reflects the
+  prompt shape rather than residency.
+
+A statistic that could not be observed (no complete pairs, no usage in the response, no engine
+counters) is `null` in `probe.json` and `-` in `probe.md`; it is never estimated. Each conversation's
+first message starts with a conversation-specific token and every prompt carries a per-invocation
+`--nonce`, so neither another conversation nor an earlier run of the same engine can pre-warm a prefix.
+`--label` records free text such as the memory setting under test. Ctrl-C or SIGTERM stops
+promptly, still writes what was measured, and marks it `interrupted`.
+
+Output: `probe.json`, `probe.md` and `requests.jsonl`; an `--out` that already holds a `probe.json` is
+refused. With `--engine-kind sim` or `--smoke` the
+output is marked not a measurement. The probe talks to the engine directly and sends no API key, so it
+cannot probe an engine that requires one.
+
 ## Output directory
 
 `config.json` (arguments, host, binary hashes, criteria hash), `runs.jsonl` (per-run metadata,
