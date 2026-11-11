@@ -620,7 +620,10 @@ func handleOpenAIChatCompletion(w http.ResponseWriter, r *http.Request, nodeName
 			Role    string `json:"role"`
 			Content string `json:"content"`
 		} `json:"messages"`
-		Stream *bool `json:"stream"`
+		Stream        *bool `json:"stream"`
+		StreamOptions *struct {
+			IncludeUsage bool `json:"include_usage"`
+		} `json:"stream_options"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
@@ -725,6 +728,18 @@ func handleOpenAIChatCompletion(w http.ResponseWriter, r *http.Request, nodeName
 		time.Sleep(15 * time.Millisecond)
 	}
 	writeChunk(map[string]interface{}{}, "stop")
+	if req.StreamOptions != nil && req.StreamOptions.IncludeUsage {
+		// OpenAI semantics: one extra chunk with empty choices carrying usage.
+		usage := map[string]interface{}{"prompt_tokens": promptTokens, "completion_tokens": len(tokens), "total_tokens": promptTokens + len(tokens)}
+		if run != nil {
+			usage["prompt_tokens_details"] = map[string]int{"cached_tokens": cachedTokens}
+		}
+		b, _ := json.Marshal(map[string]interface{}{
+			"id": id, "object": "chat.completion.chunk", "created": created, "model": req.Model,
+			"choices": []map[string]interface{}{}, "usage": usage,
+		})
+		fmt.Fprintf(bw, "data: %s\n\n", b)
+	}
 	fmt.Fprint(bw, "data: [DONE]\n\n")
 	bw.Flush()
 	flusher.Flush()
