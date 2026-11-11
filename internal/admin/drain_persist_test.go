@@ -67,6 +67,8 @@ func drainPersistFixture(t *testing.T) (*Server, *drainFailStore) {
 	s, cleanup := newSoleReplicaServer(t, okHandler(&hits))
 	t.Cleanup(cleanup)
 	orig := s.st
+	// The helper opens this store and does not close it; the fixture replaces
+	// it below, so close it here (a store is closed once, only by this test).
 	t.Cleanup(func() { _ = orig.Close() })
 	fs := &drainFailStore{Store: orig}
 	s.SetStore(fs)
