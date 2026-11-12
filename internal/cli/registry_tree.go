@@ -1338,7 +1338,9 @@ func buildRoot() *Command {
 							"empty by default and changes take effect immediately, with no restart. The\n" +
 							"list is saved first: if the save fails the server answers 500 and changes\n" +
 							"nothing. If the stored list cannot be read at startup, requests that name a\n" +
-							"model are refused with a 503 until the list is saved again.",
+							"model are refused with a 503 until the list is saved again. While that\n" +
+							"is the case, settings get shows routing.cloud_only_list_unreadable: true;\n" +
+							"that field is read-only and ignored on save.",
 						NeedsAuth: true,
 						Flags: []FlagSpec{
 							{Name: "file", Kind: FlagString, Usage: "local JSON file with the (partial) settings payload (required)", Required: true, RequiredMsg: "error: --file is required"},

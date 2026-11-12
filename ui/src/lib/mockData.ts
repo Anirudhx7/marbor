@@ -1048,9 +1048,13 @@ export const mockRequests: RequestEntry[] = [
   { id: 'req-3d4e5f0a1b2c', time: secs(56), key_name: 'Engineering Team',  model: 'deepseek-r1:7b',   node: '',            status: 200, latency_ms: 689,  cloud: true, routingReason: 'all_nodes_unavailable', queueWaitMs: 0, cloudMs: 684 },
   { id: 'req-4e5f0a1b2c3d', time: secs(57), key_name: 'Data Platform',     model: 'llama3.3:8b',      node: '',            status: 200, latency_ms: 910,  cloud: true, routingReason: 'local_upstream_failed', queueWaitMs: 410, cloudMs: 492 },
   { id: 'req-5f0a1b2c3d4e', time: secs(58), key_name: 'Local-only Batch',  model: 'llama3.3:70b',     node: 'none',        status: 503, latency_ms: 4,    cloud: false, routingReason: 'local_only_blocked', queueWaitMs: 2 },
+  { id: 'req-6a1b2c3d4e5f', time: secs(59), key_name: 'Engineering Team',  model: 'llama3.3:70b',     node: '',            status: 200, latency_ms: 1210, cloud: true, routingReason: 'cloud_only_policy', queueWaitMs: 0, cloudMs: 1205 },
+  { id: 'req-7b2c3d4e5f6a', time: secs(59), key_name: 'Data Platform',     model: 'deepseek-r1:70b',  node: 'none',        status: 503, latency_ms: 3,    cloud: false, routingReason: 'cloud_only_policy', queueWaitMs: 0 },
+  { id: 'req-8c3d4e5f6a7b', time: secs(59.5), key_name: 'Support Bot',       model: 'llama3.3:8b',      node: 'none',        status: 503, latency_ms: 2,    cloud: false, routingReason: 'cloud_only_list_unreadable', queueWaitMs: 0 },
+  { id: 'req-9d4e5f6a7b8c', time: secs(59.5), key_name: 'Local-only Batch',  model: 'llama3.3:70b',     node: 'none',        status: 503, latency_ms: 2,    cloud: false, routingReason: 'local_only_blocked', queueWaitMs: 0 },
   { id: 'req-e5f6a1b2c3d4', time: mins(1),   key_name: 'CI/CD Pipeline',    model: 'qwen2.5-coder:14b',   node: 'gpu-node-01', status: 200, latency_ms: 29,   cloud: false },
   { id: 'req-f6a1b2c3d4e5', time: mins(2),   key_name: 'Engineering Team',  model: 'qwen3:8b',         node: 'gpu-node-03', status: 200, latency_ms: 67,   cloud: false, routingReason: 'score_based' },
-  { id: 'req-a7b8c9d0e1f2', time: mins(3),   key_name: 'Data Platform',     model: 'llama3.3:70b',    node: 'gpu-node-01', status: 200, latency_ms: 183,  cloud: false },
+  { id: 'req-a7b8c9d0e1f2', time: mins(3),   key_name: 'Data Platform',     model: 'llama3.3:8b',     node: 'gpu-node-01', status: 200, latency_ms: 183,  cloud: false },
   { id: 'req-b8c9d0e1f2a7', time: mins(5),   key_name: 'Support Bot',       model: 'deepseek-r1:7b',  node: 'gpu-node-02', status: 200, latency_ms: 55,   cloud: false },
   { id: 'req-c9d0e1f2a7b8', time: mins(6),   key_name: 'Engineering Team',  model: 'claude-sonnet-4', node: '',            status: 200, latency_ms: 521,  cloud: true  },
   { id: 'req-d0e1f2a7b8c9', time: mins(8),   key_name: 'CI/CD Pipeline',    model: 'qwen2.5-coder:14b',   node: 'gpu-node-01', status: 200, latency_ms: 24,   cloud: false },
@@ -1256,6 +1260,26 @@ const mockRoutingDecisions: Record<string, RoutingDecision> = {
     detail: 'This key is local_only and no local node could serve the request, so it was refused and never sent to cloud.',
     noRoute: 'at_capacity_healthy',
     excluded: [{ node: 'gpu-node-01', reason: 'over_capacity' }],
+  },
+  'req-6a1b2c3d4e5f': {
+    node: 'cloud:openai',
+    reason: 'cloud_only_policy',
+    detail: 'This model is on the cloud-only list, so local routing was skipped.',
+  },
+  'req-7b2c3d4e5f6a': {
+    node: 'none',
+    reason: 'cloud_only_policy',
+    detail: 'The model is on the cloud-only list and the cloud spend cap is reached, so the request was refused and never run on a local node.',
+  },
+  'req-8c3d4e5f6a7b': {
+    node: 'none',
+    reason: 'cloud_only_list_unreadable',
+    detail: 'The stored cloud-only models list could not be read, so this request was refused instead of risking a cloud-only model running on a local node.',
+  },
+  'req-9d4e5f6a7b8c': {
+    node: 'none',
+    reason: 'local_only_blocked',
+    detail: 'The model is on the cloud-only list and this key is local_only, so the request was refused and never sent to cloud or a local node.',
   },
   'req-f6a1b2c3d4e5': {
     node: 'gpu-node-03',
@@ -2245,6 +2269,21 @@ export function setMockModelAlias(alias: string, target: string): ModelAlias {
 
 export function deleteMockModelAlias(alias: string): void {
   demoModelAliasStore().delete(alias);
+}
+
+// Demo cloud-only models list: one exact name and one prefix, so both forms are
+// visible. Held in memory, resets on reload, same lifecycle as the aliases.
+const mockCloudOnlySeed: string[] = ['llama3.3:70b', 'deepseek-r1*'];
+let demoCloudOnly: string[] | null = null;
+
+export function getMockCloudOnly(): string[] {
+  if (!demoCloudOnly) demoCloudOnly = [...mockCloudOnlySeed];
+  return [...demoCloudOnly];
+}
+
+export function setMockCloudOnly(list: string[]): string[] {
+  demoCloudOnly = [...list];
+  return [...demoCloudOnly];
 }
 
 // mockReplicaSuggestions is the demo data for the GPU nodes Replica groups tab:

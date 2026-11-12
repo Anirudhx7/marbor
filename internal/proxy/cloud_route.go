@@ -14,15 +14,20 @@ import (
 // because its key is local_only). They are a fixed set so the request log,
 // the Admin API, the CLI, the UI and the metric label all agree.
 const (
-	CloudReasonNoNodeServesModel    = "no_node_serves_model"
-	CloudReasonAllNodesUnavailable  = "all_nodes_unavailable"
-	CloudReasonSaturatedSLAExpired  = "saturated_sla_expired"
-	CloudReasonQueueTimeout         = "queue_timeout_cloud"
-	CloudReasonQueueFull            = "queue_full_cloud"
-	CloudReasonLocalUpstreamFailed  = "local_upstream_failed"
-	CloudReasonLocalOnlyBlocked     = "local_only_blocked"
-	CloudReasonCloudOnlyPolicy      = "cloud_only_policy"
-	cloudReasonUnclassifiedFallback = CloudReasonQueueTimeout
+	CloudReasonNoNodeServesModel   = "no_node_serves_model"
+	CloudReasonAllNodesUnavailable = "all_nodes_unavailable"
+	CloudReasonSaturatedSLAExpired = "saturated_sla_expired"
+	CloudReasonQueueTimeout        = "queue_timeout_cloud"
+	CloudReasonQueueFull           = "queue_full_cloud"
+	CloudReasonLocalUpstreamFailed = "local_upstream_failed"
+	CloudReasonLocalOnlyBlocked    = "local_only_blocked"
+	CloudReasonCloudOnlyPolicy     = "cloud_only_policy"
+	// CloudReasonCloudOnlyListUnreadable is the reason for a refusal caused by a
+	// stored cloud-only list that could not be read. It is the same string as
+	// the API error code on that refusal, on purpose: one name for this outage
+	// class across the response, the metric, the request log and the audit log.
+	CloudReasonCloudOnlyListUnreadable = "cloud_only_list_unreadable"
+	cloudReasonUnclassifiedFallback    = CloudReasonQueueTimeout
 )
 
 // cloudRoute carries why a request is going to cloud and the measured time it
@@ -103,6 +108,8 @@ func (c *cloudRoute) sentence() string {
 		return "The local node failed this request, so it went to cloud."
 	case CloudReasonCloudOnlyPolicy:
 		return "This model is on the cloud-only list, so local routing was skipped."
+	case CloudReasonCloudOnlyListUnreadable:
+		return "The stored cloud-only models list could not be read, so this request was refused instead of risking a cloud-only model running on a local node."
 	case CloudReasonLocalOnlyBlocked:
 		return "This key is local_only and no local node could serve the request, so it was refused and never sent to cloud."
 	default:

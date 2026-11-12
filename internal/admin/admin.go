@@ -6073,6 +6073,11 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	// every backup attempt via recordBackupResult).
 	s.overlayBackupSettings(&cfg.Backup)
 
+	// Read-only state: the live router decides whether the stored cloud-only
+	// list is unreadable, so a client sees an empty list as "unknown" rather
+	// than "nothing is cloud-only". Present only while true.
+	cfg.Routing.CloudOnlyListUnreadable = s.router.CloudOnlyUnreadable()
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(cfg)
 }
@@ -6145,6 +6150,10 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	// deliberate attempt to bypass per-alias validation) is discarded here,
 	// before validation, and the live value is restored under s.mu below.
 	incoming.Routing.ModelAliases = nil
+	// The unreadable flag is read-only state shown by GET. Whatever the body
+	// (or the snapshot) carried is dropped so s.cfg never holds a client's
+	// value; the router stays the only source of truth.
+	incoming.Routing.CloudOnlyListUnreadable = false
 
 	if incoming.Routing.QueueTimeoutMs < 0 || incoming.Routing.QueueMaxDepth < 0 || incoming.Routing.OverflowSLAMs < 0 {
 		writeJSONError(w, http.StatusBadRequest, "validation failed: queue_timeout_ms, queue_max_depth and overflow_sla_ms must not be negative")
