@@ -220,7 +220,7 @@ func (r *Router) RunPredictionCycle(ctx context.Context, now time.Time) {
 			// on Ollama the predicted models "b" and "b:latest" are merged into
 			// one candidate (counted under the canonical key, named by the
 			// form sorting first, so the bare name an operator typed wins).
-			foldBare := normalizeRuntime(nodeRuntime) == runtimeOllama
+			// Non-Ollama nodes are skipped above, so every node here folds.
 			var nextCounts map[string]int
 			var nextNames map[string]string
 			for from, counts := range transitions {
@@ -232,10 +232,7 @@ func (r *Router) RunPredictionCycle(ctx context.Context, now time.Time) {
 					nextNames = make(map[string]string)
 				}
 				for to, c := range counts {
-					key := to
-					if foldBare {
-						key = canonicalModelName(to)
-					}
+					key := canonicalModelName(to)
 					nextCounts[key] += c
 					if name, seen := nextNames[key]; !seen || to < name {
 						nextNames[key] = to

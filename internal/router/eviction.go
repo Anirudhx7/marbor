@@ -449,12 +449,29 @@ func (r *Router) suppressWarmup(node, model, reason string) {
 	r.warmupSuppressed[node][model] = suppressedInfo{Reason: enumReason, Since: time.Now()}
 }
 
-// isWarmupSuppressed reports whether (node, model) is currently suppressed.
+// isWarmupSuppressed reports whether (node, model) is currently suppressed. On
+// an Ollama node (or one with an unset runtime) the bare name and its ":latest"
+// form are one model, so suppressing either suppresses both; on any other
+// runtime, or a node the router does not know, names match exactly.
 func (r *Router) isWarmupSuppressed(node, model string) bool {
+	// Resolved before suppressMu: FindNode takes the router and node locks.
+	n := r.FindNode(node)
+	fold := n != nil && normalizeRuntime(n.GetRuntime()) == runtimeOllama
 	r.suppressMu.Lock()
 	defer r.suppressMu.Unlock()
-	_, ok := r.warmupSuppressed[node][model]
-	return ok
+	suppressed := r.warmupSuppressed[node]
+	if _, ok := suppressed[model]; ok {
+		return true
+	}
+	if !fold {
+		return false
+	}
+	for m := range suppressed {
+		if ModelNamesEquivalent(model, m) {
+			return true
+		}
+	}
+	return false
 }
 
 // SuppressedWarmupInfo returns a copy of node's suppressed-model set (model ->
