@@ -1105,13 +1105,13 @@ func (r *Router) evictForHeadroom(ctx context.Context, nodeName, forModel string
 }
 
 // inFlightFor sums the in-flight counts recorded under any name that matches
-// model on a node running runtime (see modelNamesMatchOnRuntime): requests are
+// model on a node running runtime (see ModelNamesMatchOnRuntime): requests are
 // counted under the raw requested name while Ollama
 // reports residents in their tagged form. Other runtimes match exactly.
 func inFlightFor(counts map[string]int32, model, runtime string) int32 {
 	var total int32
 	for name, n := range counts {
-		if modelNamesMatchOnRuntime(runtime, name, model) {
+		if ModelNamesMatchOnRuntime(runtime, name, model) {
 			total += n
 		}
 	}
@@ -1526,6 +1526,7 @@ func (r *Router) pendingPrewarmBytes(node string, includePlaceholders bool) int6
 // predictive cycle. Read-only: unlike reserveWarmBytes, this never writes a
 // reservation or drops expired entries itself.
 func (r *Router) hasActiveWarmReservation(node, model string) bool {
+	// Lock order: the key is resolved before evictMu; callers must not hold r.mu or n.mu.
 	model = r.reservationModelKey(node, model)
 	r.evictMu.Lock()
 	defer r.evictMu.Unlock()
@@ -1545,6 +1546,7 @@ func (r *Router) hasActiveWarmReservation(node, model string) bool {
 // reservation can't keep double-counting against the now-real usedBytes on
 // later headroom checks. Guarded by evictMu.
 func (r *Router) clearWarmReservation(node, model string) {
+	// Lock order: the key is resolved before evictMu; callers must not hold r.mu or n.mu.
 	model = r.reservationModelKey(node, model)
 	r.evictMu.Lock()
 	if byModel := r.warmReserved[node]; byModel != nil {
