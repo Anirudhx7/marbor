@@ -958,6 +958,19 @@ func (c *Client) NodeTLSProbe(name string) (string, error) {
 // maxListBodyBytes caps how much of a list response the CLI buffers.
 const maxListBodyBytes = 64 << 20
 
+// readListBody reads a list response, failing clearly when it exceeds the cap
+// instead of truncating it into a misleading parse error.
+func readListBody(r io.Reader) ([]byte, error) {
+	body, err := io.ReadAll(io.LimitReader(r, maxListBodyBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(body) > maxListBodyBytes {
+		return nil, fmt.Errorf("response is larger than %d MiB", maxListBodyBytes>>20)
+	}
+	return body, nil
+}
+
 // Nodes calls GET /admin/v1/nodes (session-authed).
 func (c *Client) Nodes() ([]NodeResp, error) {
 	return c.NodesFiltered("", "")
@@ -994,7 +1007,7 @@ func (c *Client) NodesFilteredRaw(signals, search string) ([]NodeResp, json.RawM
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxListBodyBytes))
+	body, err := readListBody(resp.Body)
 	if err != nil {
 		return nil, nil, serverErrorf("could not read /admin/v1/nodes response: %v", err)
 	}
@@ -1183,7 +1196,7 @@ func (c *Client) ListKeys() ([]KeyResp, json.RawMessage, error) {
 		return nil, nil, err
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxListBodyBytes))
+	body, err := readListBody(resp.Body)
 	if err != nil {
 		return nil, nil, serverErrorf("could not read keys response: %v", err)
 	}

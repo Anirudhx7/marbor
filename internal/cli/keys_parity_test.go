@@ -78,11 +78,11 @@ func TestRun_KeyList_JSON_EmptyStaysArray(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte(body))
 		}))
+		t.Cleanup(srv.Close)
 		withTempConfigDir(t)
 		mustSaveSession(t, srv.URL, "tok")
 		var stdout, stderr bytes.Buffer
 		code := Run([]string{"key", "list", "--server", srv.URL, "--json"}, &stdout, &stderr)
-		srv.Close()
 		if code != ExitOK {
 			t.Fatalf("body %s: got %d %q", body, code, stderr.String())
 		}
