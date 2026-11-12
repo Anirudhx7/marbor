@@ -179,6 +179,10 @@ marbor fit unsloth/Qwen3-8B\-GGUF \-\-node gpu-1 \-\-ctx 16384
 .fi
 .PP
 .nf
+echo '{"routing":{"cloud_only_models":["llama3","qwen*"]}}' > cloud\-only.json && marbor settings set \-\-file cloud\-only.json
+.fi
+.PP
+.nf
 source <(marbor completion bash)
 .fi
 .PP

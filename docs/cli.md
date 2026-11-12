@@ -1153,11 +1153,37 @@ Requires authentication - see the root README's CLI auth section, or run `marbor
 
 apply a settings payload from a local JSON file
 
+Fields left out of the file keep their current value. A list field is replaced
+as a whole, never merged: a payload that carries routing.cloud_only_models
+overwrites the entire list, so read it with 'settings get' first and send the
+full list you want.
+
+routing.cloud_only_models names models that must never run on a local node.
+A request for a listed model skips local routing and the queue and goes to your
+cloud provider; if no provider is available the request fails with a 503 and
+is never run locally. Each entry is an exact model name (llama3 also matches
+llama3:latest, but not llama3:8b) or a name ending in one * that matches a
+prefix (qwen*), compared against the name as sent, tag included, so llama3*
+does match llama3:8b because that name starts with llama3. Names are compared
+ignoring case, a bare * is not allowed, and spellings such as library/llama3
+or a digest form are not matched, so list the name your clients send. Keys
+marked local-only receive a 503 for a listed model. The list is
+empty by default and changes take effect immediately, with no restart. The
+list is saved first: if the save fails the server answers 500 and changes
+nothing. If the stored list cannot be read at startup, requests that name a
+model are refused with a 503 until the list is saved again.
+
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
 Flags:
 
 - `--file string` - local JSON file with the (partial) settings payload (required) (required)
+
+Examples:
+
+```bash
+echo '{"routing":{"cloud_only_models":["llama3","qwen*"]}}' > cloud-only.json && marbor settings set --file cloud-only.json
+```
 
 ### `benchmark`
 
