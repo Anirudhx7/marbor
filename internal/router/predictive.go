@@ -213,8 +213,20 @@ func (r *Router) RunPredictionCycle(ctx context.Context, now time.Time) {
 		n.mu.RUnlock()
 
 		for _, W := range warmModels {
-			nextCounts, ok := transitions[W]
-			if !ok {
+			// Transitions are keyed by the name clients asked for, while a
+			// node reports the form its runtime uses, so on Ollama a bare
+			// "llama3" history and a resident "llama3:latest" are the same
+			// trigger. Counts from every equivalent key are merged.
+			nextCounts := make(map[string]int)
+			for from, counts := range transitions {
+				if !modelNamesMatchOnRuntime(nodeRuntime, W, from) {
+					continue
+				}
+				for to, c := range counts {
+					nextCounts[to] += c
+				}
+			}
+			if len(nextCounts) == 0 {
 				continue
 			}
 

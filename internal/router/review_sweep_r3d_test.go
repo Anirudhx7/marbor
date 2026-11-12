@@ -207,6 +207,7 @@ func TestLooksLikeAgentReportAcceptsEachOldSignal(t *testing.T) {
 
 // A flood of made-up model names (placeholder reservations) must not push out a
 // real reservation, even when the real one is the oldest.
+// Stored keys are the canonical ":latest" form on an Ollama node.
 func TestWarmReservationCapEvictsPlaceholdersBeforeRealOnes(t *testing.T) {
 	r := New(config.RoutingConfig{}, []config.NodeConfig{{Name: "n", URL: "http://example.test:11434"}}, nil)
 	r.reserveWarmBytesAs("n", "real", 5*gibBytes, false)
@@ -214,7 +215,7 @@ func TestWarmReservationCapEvictsPlaceholdersBeforeRealOnes(t *testing.T) {
 		r.reserveWarmBytesAs("n", fmt.Sprintf("made-up-%d", i), 1, true)
 	}
 	r.evictMu.Lock()
-	res, ok := r.warmReserved["n"]["real"]
+	res, ok := r.warmReserved["n"]["real:latest"]
 	size := len(r.warmReserved["n"])
 	r.evictMu.Unlock()
 	if !ok || res.bytes != 5*gibBytes {
@@ -234,8 +235,8 @@ func TestWarmReservationCapFallsBackToOldestOverall(t *testing.T) {
 	}
 	r.reserveWarmBytesAs("n", "newest", 1, false)
 	r.evictMu.Lock()
-	_, oldestKept := r.warmReserved["n"]["m-0"]
-	_, newestKept := r.warmReserved["n"]["newest"]
+	_, oldestKept := r.warmReserved["n"]["m-0:latest"]
+	_, newestKept := r.warmReserved["n"]["newest:latest"]
 	r.evictMu.Unlock()
 	if oldestKept || !newestKept {
 		t.Fatalf("oldest kept=%v newest kept=%v, want the oldest real reservation dropped", oldestKept, newestKept)

@@ -27,6 +27,7 @@ import (
 
 	"github.com/Anirudhx7/marbor/internal/bench"
 	"github.com/Anirudhx7/marbor/internal/config"
+	"github.com/Anirudhx7/marbor/internal/router"
 	"github.com/Anirudhx7/marbor/internal/store"
 )
 
@@ -456,15 +457,20 @@ func (s *Server) handleRunBenchmark(w http.ResponseWriter, r *http.Request) {
 // LoadedModels view (covers nodes without an agent, or an agent build
 // predating models.list) - the same fallback order preflight.sh uses.
 func (s *Server) nodeHasModel(ctx context.Context, nodeName, model string) bool {
+	runtime := ""
 	for _, n := range s.router.Nodes() {
 		if n.Name != nodeName {
 			continue
 		}
+		runtime = n.GetRuntime()
+		n.RLock()
 		for _, m := range n.LoadedModels {
-			if m.Name == model {
+			if router.ModelNamesMatchOnRuntime(runtime, m.Name, model) {
+				n.RUnlock()
 				return true
 			}
 		}
+		n.RUnlock()
 		break
 	}
 
@@ -483,7 +489,7 @@ func (s *Server) nodeHasModel(ctx context.Context, nodeName, model string) bool 
 		return false
 	}
 	for _, m := range models {
-		if m.Name == model {
+		if router.ModelNamesMatchOnRuntime(runtime, m.Name, model) {
 			return true
 		}
 	}

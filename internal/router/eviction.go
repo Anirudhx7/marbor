@@ -1273,6 +1273,8 @@ func (r *Router) reserveWarmBytes(node, model string, estBytes int64) int64 {
 // reserveWarmBytesAs is reserveWarmBytes with the reservation's source stated:
 // placeholder is true when estBytes is the unknown-size guard rather than a size.
 func (r *Router) reserveWarmBytesAs(node, model string, estBytes int64, placeholder bool) int64 {
+	// Resolved before evictMu: it takes the router and node locks.
+	model = r.reservationModelKey(node, model)
 	r.evictMu.Lock()
 	defer r.evictMu.Unlock()
 	if r.warmReserved == nil {
@@ -1524,6 +1526,7 @@ func (r *Router) pendingPrewarmBytes(node string, includePlaceholders bool) int6
 // predictive cycle. Read-only: unlike reserveWarmBytes, this never writes a
 // reservation or drops expired entries itself.
 func (r *Router) hasActiveWarmReservation(node, model string) bool {
+	model = r.reservationModelKey(node, model)
 	r.evictMu.Lock()
 	defer r.evictMu.Unlock()
 	byModel := r.warmReserved[node]
@@ -1542,6 +1545,7 @@ func (r *Router) hasActiveWarmReservation(node, model string) bool {
 // reservation can't keep double-counting against the now-real usedBytes on
 // later headroom checks. Guarded by evictMu.
 func (r *Router) clearWarmReservation(node, model string) {
+	model = r.reservationModelKey(node, model)
 	r.evictMu.Lock()
 	if byModel := r.warmReserved[node]; byModel != nil {
 		delete(byModel, model)
