@@ -2324,13 +2324,19 @@ func (c *Client) ModelFit() ([]NodeFitEntry, json.RawMessage, error) {
 	if err != nil {
 		return nil, nil, serverErrorf("could not read model fit response from /admin/nodes/model-fit: %v", err)
 	}
-	var out struct {
-		Nodes []NodeFitEntry `json:"nodes"`
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return nil, nil, serverErrorf("could not parse model fit response from /admin/nodes/model-fit: %v", err)
 	}
-	if err := json.Unmarshal(body, &out); err != nil {
-		return nil, nil, serverErrorf("could not parse model fit response: %v", err)
+	rawNodes, ok := envelope["nodes"]
+	if !ok {
+		return nil, nil, serverErrorf("could not parse model fit response from /admin/nodes/model-fit: missing nodes")
 	}
-	return out.Nodes, body, nil
+	var nodes []NodeFitEntry
+	if err := json.Unmarshal(rawNodes, &nodes); err != nil {
+		return nil, nil, serverErrorf("could not parse model fit response from /admin/nodes/model-fit: %v", err)
+	}
+	return nodes, body, nil
 }
 
 // ModelCatalog calls GET /admin/models/catalog, returning the raw JSON body

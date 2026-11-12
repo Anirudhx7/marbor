@@ -52,16 +52,28 @@ func TestRun_NodesFit_JSONPrintsEnvelope(t *testing.T) {
 }
 
 func TestRun_NodesFit_JSONKeepsUnknownFields(t *testing.T) {
-	_, out, _ := runNodesFitCmd(t, nodesFitServer(t, nodesFitBody), "--json")
-	for _, want := range []string{`"future_top"`, `"future_node"`} {
-		if !strings.Contains(out, want) {
-			t.Errorf("output dropped %s:\n%s", want, out)
-		}
+	code, out, errOut := runNodesFitCmd(t, nodesFitServer(t, nodesFitBody), "--json")
+	if code != ExitOK {
+		t.Fatalf("exit %d, stderr %s", code, errOut)
+	}
+	var got map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("output is not a JSON object: %v\n%s", err, out)
+	}
+	if string(got["future_top"]) != "7" {
+		t.Errorf("top-level future_top dropped: %s", out)
+	}
+	var nodes []map[string]any
+	if err := json.Unmarshal(got["nodes"], &nodes); err != nil || len(nodes) != 1 || nodes[0]["future_node"] != "x" {
+		t.Errorf("future_node dropped: %v %s", err, got["nodes"])
 	}
 }
 
 func TestRun_NodesFit_JSONEmptyStaysObject(t *testing.T) {
-	_, out, _ := runNodesFitCmd(t, nodesFitServer(t, `{"nodes":[]}`), "--json")
+	code, out, errOut := runNodesFitCmd(t, nodesFitServer(t, `{"nodes":[]}`), "--json")
+	if code != ExitOK {
+		t.Fatalf("exit %d, stderr %s", code, errOut)
+	}
 	var got map[string][]any
 	if err := json.Unmarshal([]byte(out), &got); err != nil || got["nodes"] == nil || len(got["nodes"]) != 0 {
 		t.Errorf("want {\"nodes\":[]}, got %q (%v)", out, err)
@@ -84,8 +96,39 @@ func TestRun_NodesFit_TableHeaderUnchanged(t *testing.T) {
 	if code != ExitOK {
 		t.Fatalf("exit %d, stderr %s", code, errOut)
 	}
-	if !strings.HasPrefix(out, "NODE") || !strings.Contains(out, "VRAM FREE/TOTAL") || !strings.Contains(out, "LOADED") || !strings.Contains(out, "gpu-a") {
+	if !strings.HasPrefix(out, "NODE") || !strings.Contains(out, "VRAM FREE/TOTAL") || !strings.Contains(out, "LOADED") || !strings.Contains(out, "gpu-a") || !strings.Contains(out, "m1") || !strings.Contains(out, "green") {
 		t.Errorf("table changed:\n%s", out)
+	}
+}
+
+func TestRun_NodesFit_JSONRejectsBodyWithoutNodes(t *testing.T) {
+	for _, body := range []string{`null`, `{}`, `[]`, ``, `{"error":"x"}`} {
+		code, out, errOut := runNodesFitCmd(t, nodesFitServer(t, body), "--json")
+		if code != ExitServerError || out != "" || !strings.Contains(errOut, "/admin/nodes/model-fit") {
+			t.Errorf("body %q: code=%d stdout=%q stderr=%q, want server error, empty stdout", body, code, out, errOut)
+		}
+	}
+}
+
+func TestRun_NodesFit_UndecodableBodyWithoutJSONFlag(t *testing.T) {
+	code, out, errOut := runNodesFitCmd(t, nodesFitServer(t, `not json`))
+	if code != ExitServerError || out != "" || !strings.Contains(errOut, "could not parse model fit response") {
+		t.Errorf("code=%d stdout=%q stderr=%q", code, out, errOut)
+	}
+}
+
+func TestRun_NodesFit_HTTPErrorsWithJSON(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusInternalServerError} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "nope", status)
+		}))
+		withTempConfigDir(t)
+		mustSaveSession(t, srv.URL, "tok")
+		code, out, _ := runNodesFitCmd(t, srv, "--json")
+		srv.Close()
+		if code == ExitOK || out != "" {
+			t.Errorf("status %d: code=%d stdout=%q, want non-zero and empty stdout", status, code, out)
+		}
 	}
 }
 

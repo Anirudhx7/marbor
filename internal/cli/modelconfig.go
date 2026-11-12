@@ -132,7 +132,7 @@ func runNodesFit(flags *globalFlags, stdout, stderr io.Writer) int {
 	if err != nil {
 		return reportError(err, stderr)
 	}
-	if handled, code := emitRawJSONList(stdout, stderr, flags.jsonOutput, raw); handled {
+	if handled, code := emitRawJSON(stdout, stderr, flags.jsonOutput, raw); handled {
 		return code
 	}
 	tw := newTabWriter(stdout)
