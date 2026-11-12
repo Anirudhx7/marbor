@@ -128,11 +128,11 @@ func runNodesFit(flags *globalFlags, stdout, stderr io.Writer) int {
 	if err != nil {
 		return reportError(err, stderr)
 	}
-	nodes, err := client.ModelFit()
+	nodes, raw, err := client.ModelFit()
 	if err != nil {
 		return reportError(err, stderr)
 	}
-	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, nodes); handled {
+	if handled, code := emitRawJSONList(stdout, stderr, flags.jsonOutput, raw); handled {
 		return code
 	}
 	tw := newTabWriter(stdout)
