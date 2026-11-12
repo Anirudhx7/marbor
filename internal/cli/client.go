@@ -965,6 +965,15 @@ func (c *Client) Nodes() ([]NodeResp, error) {
 // a case-insensitive substring of the node name or GPU model. Empty values
 // are not sent, so an unfiltered call is the plain list request.
 func (c *Client) NodesFiltered(signals, search string) ([]NodeResp, error) {
+	nodes, _, err := c.NodesFilteredRaw(signals, search)
+	return nodes, err
+}
+
+// NodesFilteredRaw is NodesFiltered that also returns the response body as
+// received. The typed slice drives the human table; the raw body is what
+// --json prints, so every field the server sends reaches scripts, including
+// ones this package's NodeResp does not mirror.
+func (c *Client) NodesFilteredRaw(signals, search string) ([]NodeResp, json.RawMessage, error) {
 	path := "/admin/v1/nodes"
 	q := url.Values{}
 	if signals != "" {
@@ -978,15 +987,19 @@ func (c *Client) NodesFiltered(signals, search string) ([]NodeResp, error) {
 	}
 	resp, err := c.doRequest(http.MethodGet, path, true)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer resp.Body.Close()
 
-	var out []NodeResp
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, serverErrorf("could not parse /admin/v1/nodes response: %v", err)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil, serverErrorf("could not read /admin/v1/nodes response: %v", err)
 	}
-	return out, nil
+	var out []NodeResp
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, nil, serverErrorf("could not parse /admin/v1/nodes response: %v", err)
+	}
+	return out, body, nil
 }
 
 // NodeAddRequest mirrors config.NodeConfig's JSON shape for POST
@@ -1160,19 +1173,30 @@ type KeyResp struct {
 
 // ListKeys calls GET /admin/v1/keys (session-authed).
 func (c *Client) ListKeys() ([]KeyResp, error) {
+	keys, _, err := c.ListKeysRaw()
+	return keys, err
+}
+
+// ListKeysRaw is ListKeys that also returns the response body as received,
+// which is what --json prints.
+func (c *Client) ListKeysRaw() ([]KeyResp, json.RawMessage, error) {
 	resp, err := c.doRequest(http.MethodGet, "/admin/v1/keys", true)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil, serverErrorf("could not read keys response: %v", err)
+	}
 	var out []KeyResp
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, serverErrorf("could not parse keys response: %v", err)
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, nil, serverErrorf("could not parse keys response: %v", err)
 	}
 	if out == nil {
 		out = []KeyResp{}
 	}
-	return out, nil
+	return out, body, nil
 }
 
 // KeyCreateRequest mirrors config.KeyConfig JSON shape for POST /admin/v1/keys.

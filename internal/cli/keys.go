@@ -64,11 +64,11 @@ func runKeyList(flags *globalFlags, stdout, stderr io.Writer) int {
 	if err != nil {
 		return reportError(err, stderr)
 	}
-	keys, err := client.ListKeys()
+	keys, rawKeys, err := client.ListKeysRaw()
 	if err != nil {
 		return reportError(err, stderr)
 	}
-	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, keys); handled {
+	if handled, code := emitRawJSON(stdout, stderr, flags.jsonOutput, rawKeys); handled {
 		return code
 	}
 	tw := newTabWriter(stdout)

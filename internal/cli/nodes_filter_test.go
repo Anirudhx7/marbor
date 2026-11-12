@@ -276,3 +276,61 @@ func TestRun_NodesUnauthorizedExitsNonZeroWithMessage(t *testing.T) {
 		t.Errorf("stdout = %q, want empty", stdout.String())
 	}
 }
+
+// nodesPassthroughBody carries fields the CLI's typed NodeResp does not
+// mirror (temperature, powerDrawW, healthHistory) plus a field no client
+// knows about yet. A non-NVIDIA node reports temperature as null.
+const nodesPassthroughBody = `[
+	{"name":"gpu-0","host":"h0","port":11434,"runtime":"vllm","health":"healthy","gpuModel":"H100","temperature":61,"powerDrawW":312.5,"healthHistory":["healthy","healthy"],"futureField":{"a":1}},
+	{"name":"mac-0","host":"h1","port":11434,"runtime":"mlx","health":"healthy","gpuModel":"M3 Max","temperature":null,"powerDrawW":null,"healthHistory":[]}
+]`
+
+func TestRun_NodesJSON_PassesServerFieldsThrough(t *testing.T) {
+	var queries []string
+	srv := nodesFilterServer(t, http.StatusOK, nodesPassthroughBody, &queries)
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"nodes", "--server", srv.URL, "--json"}, &stdout, &stderr); code != ExitOK {
+		t.Fatalf("exit %d, stderr %q", code, stderr.String())
+	}
+	var got, want []map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("output is not a JSON array: %v\n%s", err, stdout.String())
+	}
+	if err := json.Unmarshal([]byte(nodesPassthroughBody), &want); err != nil {
+		t.Fatal(err)
+	}
+	gotB, _ := json.Marshal(got)
+	wantB, _ := json.Marshal(want)
+	if string(gotB) != string(wantB) {
+		t.Fatalf("--json differs from the server response\n got: %s\nwant: %s", gotB, wantB)
+	}
+	if got[1]["temperature"] != nil {
+		t.Fatalf("null temperature must stay null, got %v", got[1]["temperature"])
+	}
+}
+
+func TestRun_NodesJSON_EmptyFleetStaysArray(t *testing.T) {
+	for _, body := range []string{`[]`, `null`} {
+		var queries []string
+		srv := nodesFilterServer(t, http.StatusOK, body, &queries)
+		var stdout, stderr bytes.Buffer
+		if code := Run([]string{"nodes", "--server", srv.URL, "--json"}, &stdout, &stderr); code != ExitOK {
+			t.Fatalf("body %s: exit %d, stderr %q", body, code, stderr.String())
+		}
+		if strings.TrimSpace(stdout.String()) != "[]" {
+			t.Fatalf("body %s: got %q, want []", body, stdout.String())
+		}
+	}
+}
+
+func TestRun_NodesJSON_FilteredKeepsExtraFields(t *testing.T) {
+	var queries []string
+	srv := nodesFilterServer(t, http.StatusOK, `[{"name":"gpu-0","signals":["down"],"temperature":70}]`, &queries)
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"nodes", "--server", srv.URL, "--signal", "down", "--json"}, &stdout, &stderr); code != ExitOK {
+		t.Fatalf("exit %d, stderr %q", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), `"temperature": 70`) {
+		t.Fatalf("temperature dropped from filtered output: %s", stdout.String())
+	}
+}

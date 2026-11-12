@@ -35,10 +35,14 @@ func TestRun_KeyList_Table(t *testing.T) {
 	}
 }
 
+// keyListBody includes dailyLimit/monthlyLimit and a field the CLI does not
+// mirror, so a re-encoded typed copy would visibly differ.
+const keyListBody = `[{"name":"k1","key":"sk-...abcd","rateLimit":10,"dailyLimit":0,"monthlyLimit":500,"futureField":true}]`
+
 func TestRun_KeyList_JSON(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`[]`))
+		w.Write([]byte(keyListBody))
 	}))
 	defer srv.Close()
 	withTempConfigDir(t)
@@ -48,8 +52,15 @@ func TestRun_KeyList_JSON(t *testing.T) {
 	if code != ExitOK {
 		t.Fatalf("got %d %q", code, stderr.String())
 	}
-	if !json.Valid(stdout.Bytes()) {
-		t.Fatalf("not json %q", stdout.String())
+	var got, want []map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("not a json array %q: %v", stdout.String(), err)
+	}
+	json.Unmarshal([]byte(keyListBody), &want)
+	gotB, _ := json.Marshal(got)
+	wantB, _ := json.Marshal(want)
+	if string(gotB) != string(wantB) {
+		t.Fatalf("--json differs from server response\n got: %s\nwant: %s", gotB, wantB)
 	}
 }
 
