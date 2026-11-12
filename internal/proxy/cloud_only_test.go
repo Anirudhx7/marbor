@@ -699,8 +699,8 @@ func TestProxy_CloudOnly_UnreadableList_FailsClosed(t *testing.T) {
 		t.Fatalf("local=%d cloud=%d, want no request sent anywhere", e.localHits.Load(), e.cloudHits.Load())
 	}
 	row := e.lastRow(t)
-	if row.RoutingReason != CloudReasonCloudOnlyPolicy || row.StatusCode != 503 || row.NodeName != "none" {
-		t.Errorf("row reason=%q status=%d node=%q, want cloud_only_policy/503/none", row.RoutingReason, row.StatusCode, row.NodeName)
+	if row.RoutingReason != CloudReasonCloudOnlyListUnreadable || row.StatusCode != 503 || row.NodeName != "none" {
+		t.Errorf("row reason=%q status=%d node=%q, want cloud_only_list_unreadable/503/none", row.RoutingReason, row.StatusCode, row.NodeName)
 	}
 	// A request naming no model is not affected.
 	if rec := e.serve("POST", "/v1/chat/completions", `{"messages":[]}`); strings.Contains(rec.Body.String(), "cloud_only_list_unreadable") {

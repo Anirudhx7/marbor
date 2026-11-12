@@ -63,6 +63,29 @@ marbor spill        # per-key counts of requests served locally vs cloud vs bloc
 
 Cap what cloud overflow can cost with a key's `--daily-usd-cap` and `--monthly-usd-cap` (see [Per-key quotas](per-key-quotas-self-hosted-llm.html)) and the global caps under **Settings > Cloud Spend Cap**.
 
+## Keep a model on cloud only
+
+Some models should never run on your GPUs: a licence that forbids it, a model you rent capacity for, or a size you want to keep off reserved hardware. List them as cloud-only and marbor skips local routing and the queue for them and sends them straight to your cloud provider. If cloud cannot take the request (no provider, the spend cap is reached, or an endpoint a cloud provider cannot serve) it gets a `503` and is never run on a local node. A key marked `local_only` also gets a `503` for a listed model, because the two policies contradict.
+
+Set it on the **Routing** page (the **Cloud-only models** card), or through the settings API and CLI. The list is `routing.cloud_only_models`:
+
+```bash
+echo '{"routing":{"cloud_only_models":["llama3.3:70b","deepseek-r1*"]}}' > cloud-only.json
+marbor settings set --file cloud-only.json
+marbor settings get     # shows the list under routing
+```
+
+- **Exact names and prefixes.** An entry is an exact model name or a name ending in one `*`. Matching ignores case. An exact `llama3` also matches `llama3:latest` but not `llama3:8b`; a prefix `llama3*` matches `llama3:8b` because that name starts with `llama3`. A bare `*` is not allowed. The name is compared as your client sends it, so `library/llama3` is a different name.
+- **The first usable cloud provider is used.** There is no per-model provider choice. With LiteLLM enabled and a URL set, LiteLLM is the whole cloud path; otherwise your enabled cloud providers are used.
+- **A save replaces the whole list.** The dashboard and the CLI both write the full list, so the last save wins: if you change the list from two places at the same moment, one change can overwrite the other. Both read the list again right before they write.
+- **Saved before it takes effect.** If the save fails the server answers `500` and nothing changes. Changes apply to the next request, with no restart.
+- **Empty by default.** With no entries nothing changes for anyone.
+- **Automatic warm-ups skip listed models**, so marbor never loads one onto a node on its own.
+- **If the stored list cannot be read**, marbor cannot tell which models are listed, so every request that names a model is refused with a `503` (code and routing reason `cloud_only_list_unreadable`) until a list is saved again. The Routing page shows a banner, and `marbor settings get` shows `routing.cloud_only_list_unreadable: true`; that field is read-only and ignored on save. Saving replaces the stored list with exactly what you send, so include every model that must stay cloud-only.
+- **Downgrading** to a release that has no cloud-only list ignores the setting.
+
+Requests for a listed model show `cloud_only_policy` in the request log; the refusal caused by an unreadable list shows `cloud_only_list_unreadable`, so an outage reads differently from a deliberate policy refusal.
+
 ## Seeing why a request went to cloud
 
 Every request that overflowed to cloud is logged with a reason and two separate timings: how long it waited for a local node, and how long the cloud call took. The values are measured, and show `-` when they were not.
@@ -76,6 +99,8 @@ Every request that overflowed to cloud is logged with a reason and two separate 
 | `queue_full_cloud` | The queue was full or disabled |
 | `local_upstream_failed` | A local node took the request and failed it, so it was retried on cloud |
 | `local_only_blocked` | The key is `local_only`, so the request got a 503 and never left your network; it records the time it waited but no cloud time |
+| `cloud_only_policy` | The model is on the cloud-only list: it went straight to cloud, or got a 503 because cloud could not take it, and never ran on a local node |
+| `cloud_only_list_unreadable` | The stored cloud-only list could not be read, so a request naming a model was refused with a 503 until a list is saved again |
 
 See them with `marbor requests` (WAIT MS and CLOUD MS columns, REASON), `marbor requests explain <id>` for the sentence, the Requests page in the dashboard, or the `marbor_cloud_overflow_reason_total{reason}` metric.
 

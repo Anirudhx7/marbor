@@ -530,9 +530,11 @@ type RoutingConfig struct {
 	// CloudOnlyListUnreadable is set at startup when the stored cloud-only
 	// models row could not be read or parsed. The list is then unknown, so the
 	// router refuses requests rather than guess which models are listed, until
-	// a valid list is saved. It is runtime state, never persisted or sent over
-	// the settings API.
-	CloudOnlyListUnreadable bool `yaml:"-" json:"-"`
+	// a valid list is saved. It is runtime state, never persisted: the settings
+	// API shows it read-only (present only while true) and ignores it on save.
+	// The copy held in the running config may be stale; the router is the source
+	// of truth and the settings handlers read it from there.
+	CloudOnlyListUnreadable bool `yaml:"-" json:"cloud_only_list_unreadable,omitempty"`
 	// OverflowSLAMs, when > 0, caps how long a request waits in the local
 	// capacity queue for a busy node before falling through to cloud, when
 	// cloud can take the request (a provider is configured, the key may use

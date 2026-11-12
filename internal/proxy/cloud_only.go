@@ -82,18 +82,18 @@ func (h *Handler) serveCloudOnly(w http.ResponseWriter, r *http.Request, q cloud
 	// path) must not fall through to a local node either.
 	if !isCloudCapablePath(r.URL.Path) {
 		msg := fmt.Sprintf("model %q is on the cloud-only list and this endpoint cannot be sent to a cloud provider; the request was not run on a local node", q.clientModelName)
-		h.refuseCloudOnly(w, r, q, msg, "cloud_only_unsupported_path")
+		h.refuseCloudOnly(w, r, q, msg, "cloud_only_unsupported_path", CloudReasonCloudOnlyPolicy)
 		return
 	}
 	clouds := h.router.CloudChain()
 	if len(clouds) == 0 {
 		msg := fmt.Sprintf("model %q is on the cloud-only list and no cloud provider is enabled; enable one on the Routing page or remove the model from the list", q.clientModelName)
-		h.refuseCloudOnly(w, r, q, msg, "cloud_only_no_provider")
+		h.refuseCloudOnly(w, r, q, msg, "cloud_only_no_provider", CloudReasonCloudOnlyPolicy)
 		return
 	}
 	if h.admin != nil {
 		if exceeded, reason := h.admin.CloudBudgetExceeded(q.keyName); exceeded {
-			h.refuseCloudOnly(w, r, q, reason+cloudOnlyBudgetSuffix, "cloud_budget_exceeded")
+			h.refuseCloudOnly(w, r, q, reason+cloudOnlyBudgetSuffix, "cloud_budget_exceeded", CloudReasonCloudOnlyPolicy)
 			return
 		}
 	}
@@ -106,17 +106,19 @@ func (h *Handler) serveCloudOnly(w http.ResponseWriter, r *http.Request, q cloud
 // request is neither run locally nor sent to cloud.
 func (h *Handler) refuseCloudOnlyUnreadable(w http.ResponseWriter, r *http.Request, q cloudOnlyReq) {
 	msg := fmt.Sprintf("model %q cannot be routed right now because the cloud-only models policy could not be loaded; the request was not run on a local node or sent to a cloud provider", q.clientModelName)
-	h.refuseCloudOnly(w, r, q, msg, "cloud_only_list_unreadable")
+	h.refuseCloudOnly(w, r, q, msg, "cloud_only_list_unreadable", CloudReasonCloudOnlyListUnreadable)
 }
 
 // refuseCloudOnly writes the 503 for a cloud-only request that cannot be sent
-// to cloud, with its metric and request-log row (reason cloud_only_policy, no
-// node, no cloud time).
-func (h *Handler) refuseCloudOnly(w http.ResponseWriter, r *http.Request, q cloudOnlyReq, msg, code string) {
+// to cloud, with its metric and request-log row (no node, no cloud time). code
+// is the API error code; reason is the routing reason recorded on the metric,
+// the row and the audit entry - the two are separate so an error code can never
+// become a metric label by accident.
+func (h *Handler) refuseCloudOnly(w http.ResponseWriter, r *http.Request, q cloudOnlyReq, msg, code, reason string) {
 	writeAPIError(w, http.StatusServiceUnavailable, msg, "server_error", code)
 	metrics.RequestsTotal(q.keyName, q.label(q.modelName), "none", "503")
-	metrics.CloudOverflowReason(CloudReasonCloudOnlyPolicy)
-	h.logCloudOnlyRefusal(r, q.keyName, q.clientModelName, q.requestID, q.start, CloudReasonCloudOnlyPolicy, msg)
+	metrics.CloudOverflowReason(reason)
+	h.logCloudOnlyRefusal(r, q.keyName, q.clientModelName, q.requestID, q.start, reason, msg)
 }
 
 // logCloudOnlyRefusal records the request-log and audit rows for a refused

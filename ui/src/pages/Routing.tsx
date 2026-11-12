@@ -23,6 +23,7 @@ import { CustomSelect, CustomCombobox, CustomTagCombobox } from '../components/S
 import { SavingsCard } from '../components/SavingsCard';
 import { Toggle } from '../components/Toggle';
 import { ModelAliasesSection } from '../components/ModelAliasesSection';
+import { CloudOnlyModelsSection } from '../components/CloudOnlyModelsSection';
 import { mockGPUNodes, mockSavings, mockCloudProviders, mockModelCatalog } from '../lib/mockData';
 import {
   fetchRoutingRules,
@@ -141,6 +142,9 @@ export function Routing() {
   // traffic), not general app config, so it lives on the Routing page now.
   // Same endpoints, same behavior - only the owning page changed.
   const [cloudProviders, setCloudProviders] = useState<CloudProvider[]>(demoMode ? mockCloudProviders : []);
+  // True only while the provider list is known good: false while it loads or
+  // reloads and after a failed load, so no warning is raised from missing data.
+  const [providersReady, setProvidersReady] = useState(demoMode);
   const [cloudLoading, setCloudLoading] = useState(!demoMode);
   const [cloudModalOpen, setCloudModalOpen] = useState(false);
   const [editingProvider, setEditingProvider] = useState<CloudProviderInput | null>(null);
@@ -164,6 +168,9 @@ export function Routing() {
   // LiteLLM flag only gates the Cloud providers card subtitle/Add button,
   // exactly as Settings.tsx did. Read-only here, owned by Settings.
   const [liteLLMEnabled, setLiteLLMEnabled] = useState(false);
+  // LiteLLM routes cloud traffic only with a URL; null until the settings load
+  // and after a failed read.
+  const [liteLLMUsable, setLiteLLMUsable] = useState<boolean | null>(demoMode ? false : null);
   // Known model names for the searchable fallback-chain comboboxes -
   // suggestions only, never enforced. Relocated from Settings.tsx;
   // Settings keeps its own copy for the context-windows combobox.
@@ -237,18 +244,20 @@ export function Routing() {
     if (demoMode) {
       if (!mountedRef.current) return;
       setCloudProviders(mockCloudProviders);
+      setProvidersReady(true);
       setCloudLoading(false);
       return;
     }
     let active = true;
-    if (mountedRef.current) setCloudLoading(true);
+    if (mountedRef.current) { setCloudLoading(true); setProvidersReady(false); }
     fetchCloudProviders()
       .then(providers => {
         if (!active || !mountedRef.current) return;
         setCloudProviders(providers || []);
+        setProvidersReady(true);
       })
       .catch(() => {
-        if (active && mountedRef.current) setCloudProviders([]);
+        if (active && mountedRef.current) { setCloudProviders([]); setProvidersReady(false); }
       })
       .finally(() => {
         if (active && mountedRef.current) setCloudLoading(false);
@@ -280,22 +289,25 @@ export function Routing() {
       if (mountedRef.current) {
         setLocalDegradationChains({});
         setLiteLLMEnabled(false);
+        setLiteLLMUsable(false);
         setChainsLoading(false);
       }
       return;
     }
     let active = true;
-    if (mountedRef.current) setChainsLoading(true);
+    if (mountedRef.current) { setChainsLoading(true); setLiteLLMUsable(null); }
     fetchSettings()
       .then(settingsData => {
         if (!active || !mountedRef.current) return;
         setLocalDegradationChains(settingsData.routing?.local_degradation_chains || {});
         setLiteLLMEnabled(settingsData.litellm?.enabled || false);
+        setLiteLLMUsable(Boolean(settingsData.litellm?.enabled && settingsData.litellm?.url));
       })
       .catch(() => {
         if (active && mountedRef.current) {
           setLocalDegradationChains({});
           setLiteLLMEnabled(false);
+          setLiteLLMUsable(null);
         }
       })
       .finally(() => {
@@ -314,8 +326,9 @@ export function Routing() {
           if (!mountedRef.current) return;
           setLocalDegradationChains(settingsData.routing?.local_degradation_chains || {});
           setLiteLLMEnabled(settingsData.litellm?.enabled || false);
+          setLiteLLMUsable(Boolean(settingsData.litellm?.enabled && settingsData.litellm?.url));
         })
-        .catch(() => {});
+        .catch(() => { if (mountedRef.current) setLiteLLMUsable(null); });
     };
     window.addEventListener('marbor-settings-change', onSettingsChange);
     return () => window.removeEventListener('marbor-settings-change', onSettingsChange);
@@ -455,9 +468,10 @@ export function Routing() {
   const emptyProvider: CloudProviderInput = { name: '', provider: 'openai', base_url: '', api_key: '', default_model: '', cost_per_1k_tokens: 0, enabled: false, priority: 0 };
 
   const refreshCloudProviders = async () => {
+    if (mountedRef.current) setProvidersReady(false);
     try {
       const providers = await fetchCloudProviders();
-      if (mountedRef.current) setCloudProviders(providers || []);
+      if (mountedRef.current) { setCloudProviders(providers || []); setProvidersReady(true); }
     } catch { /* keep showing the last known list on a transient fetch error */ }
   };
 
@@ -983,6 +997,14 @@ export function Routing() {
       </div>
 
       <ModelAliasesSection demoMode={demoMode} knownModelNames={knownModelNames} />
+
+      <CloudOnlyModelsSection
+        demoMode={demoMode}
+        cloudProviders={cloudProviders}
+        providersReady={providersReady}
+        liteLLMUsable={liteLLMUsable}
+        knownModelNames={knownModelNames}
+      />
 
       {/* Create rule modal */}
       <Modal

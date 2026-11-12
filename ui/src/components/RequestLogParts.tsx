@@ -38,6 +38,14 @@ const REASON_LABELS: Record<string, string> = {
   queue_full_cloud: 'Queue full',
   local_upstream_failed: 'Local node failed',
   local_only_blocked: 'Blocked: local only',
+  cloud_only_policy: 'Cloud-only model',
+  cloud_only_list_unreadable: 'Cloud list unreadable',
+};
+
+// Hover text for reasons that need more than their short label.
+const REASON_TITLES: Record<string, string> = {
+  cloud_only_policy: 'Listed as cloud-only: sent to your cloud provider, or refused with a 503 when none is available (see detail)',
+  cloud_only_list_unreadable: 'The stored cloud-only models list could not be read, so named-model requests were refused until it is saved again',
 };
 
 // ScrollableValue backs every cell that can legitimately hold a value longer
@@ -121,7 +129,7 @@ function ExplainTable({
 export function ReasonBadge({ reason }: { reason?: string }) {
   if (!reason) return <span className="text-muted-foreground/40 text-xs">-</span>;
   return (
-    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border bg-secondary text-foreground/80 border-border">
+    <span title={REASON_TITLES[reason]} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border bg-secondary text-foreground/80 border-border">
       {REASON_LABELS[reason] ?? reason}
     </span>
   );

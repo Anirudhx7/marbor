@@ -441,6 +441,8 @@ Ollama-native (`/api/*`) requests that fall back to cloud get the OpenAI respons
 
 Set `local_only: true` on an API key (`PATCH /admin/v1/keys/{name}`, or the API Keys page's edit modal) to forbid that key from ever reaching a cloud provider - a request that would otherwise fall back instead fails closed with a `503 local_only_blocked` error. Every request's local/cloud/blocked outcome is durably counted per key and per provider, readable via `GET /admin/v1/spill` or `marbor spill`, and shown on the Analytics page's Cloud Spill table.
 
+To keep chosen models off your GPUs entirely, list them under **Routing > Cloud-only models** (or `routing.cloud_only_models` via `marbor settings set`). A listed model skips local routing and goes straight to your cloud provider; if cloud cannot take it, the request fails with a `503` and never runs on a local node. See [When every GPU is busy](docs/guides/when-every-gpu-is-busy.md).
+
 ---
 
 ## Operational Topology

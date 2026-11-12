@@ -1,6 +1,8 @@
 import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, CloudProviderInput, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, QuantRecommendation, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry, ModelConfig, LocalModel, BenchmarkRun, BackupFileInfo, BackupListResponse, SpillCounterRow, RoutingDecision, ModelAlias } from '../types';
 import { readSoleReplicaImpact, runtimeActionFailureInfo, runtimeActionQuery } from './soleReplica';
-import { auditAddNodeDetails, auditRuntimeUnitDetails, mockAPIKeys, mockCloudProviders, mockGPUNodes, mockSavings, mockReplicaSuggestions, mockSoleReplicaImpact } from './mockData';
+import { auditAddNodeDetails, auditRuntimeUnitDetails, mockAPIKeys, mockCloudProviders, mockGPUNodes, mockSavings, mockReplicaSuggestions, mockSoleReplicaImpact, getMockCloudOnly, setMockCloudOnly } from './mockData';
+import { addEntry, removeEntry } from './cloudOnlyView';
+import { deepMerge, serverErrorText } from './settingsMerge';
 import { sameDeclared } from './replicaGroups';
 import { dedupeInflight } from './inflight';
 import { checkBackupFile, describeBackupError, filenameFromDisposition, isAbortError, isNetworkFailure, isNewProcess, isValidRestoreRef, looksLikeBackup, tooBigForBrowser, MAX_MEMORY_DOWNLOAD_BYTES } from './backupUi';
@@ -868,27 +870,31 @@ export async function fetchRoutingStrategy(): Promise<string> {
   return data.strategy ?? 'warm-first';
 }
 
-export async function fetchSettings() {
-  if (DEMO) {
-    const stored = localStorage.getItem('demo_settings');
-    if (stored) {
-      try {
-        return JSON.parse(stored);
-      } catch {}
-    }
-    return {
-      proxy: { port: 11434, log_level: 'info' },
-      auth: { enabled: true },
-      routing: { poll_interval_ms: 2000, allow_management_endpoints: false },
-      metrics: { enabled: true, port: 9090 },
-      litellm: { enabled: false, url: '' },
-      huggingface: { token: '' },
-      timezone: 'UTC',
-      cloud_budget: { daily_usd_cap: 100, monthly_usd_cap: 1000, soft_budget_pct: 0.8 },
-      hide_demo_banner: false,
-      hide_budget_banner: false,
-    };
+// The demo build keeps its settings in localStorage; until something is saved
+// it serves these defaults.
+function demoSettingsBase(): Record<string, unknown> {
+  const stored = localStorage.getItem('demo_settings');
+  if (stored) {
+    try {
+      return JSON.parse(stored);
+    } catch {}
   }
+  return {
+    proxy: { port: 11434, log_level: 'info' },
+    auth: { enabled: true },
+    routing: { poll_interval_ms: 2000, allow_management_endpoints: false },
+    metrics: { enabled: true, port: 9090 },
+    litellm: { enabled: false, url: '' },
+    huggingface: { token: '' },
+    timezone: 'UTC',
+    cloud_budget: { daily_usd_cap: 100, monthly_usd_cap: 1000, soft_budget_pct: 0.8 },
+    hide_demo_banner: false,
+    hide_budget_banner: false,
+  };
+}
+
+export async function fetchSettings() {
+  if (DEMO) return demoSettingsBase();
   return settingsInflight.call();
 }
 
@@ -1142,7 +1148,9 @@ export async function fetchRequestExplain(id: string): Promise<RoutingDecision> 
 
 export const updateSettings = withSettingsReset(async function updateSettings(data: Record<string, unknown>) {
   if (DEMO) {
-    localStorage.setItem('demo_settings', JSON.stringify(data));
+    // Merge, as the live server does, so a partial save keeps the settings it
+    // did not mention.
+    localStorage.setItem('demo_settings', JSON.stringify(deepMerge(demoSettingsBase(), data)));
     return;
   }
   const res = await apiFetch(`${BASE}/settings`, {
@@ -1150,7 +1158,66 @@ export const updateSettings = withSettingsReset(async function updateSettings(da
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error('Failed to update settings');
+  if (!res.ok) {
+    // Show the server's own reason (validation, an unreadable stored list, a
+    // failed write) instead of a generic message.
+    const body = await res.json().catch(() => null);
+    throw new Error(serverErrorText(body, 'Failed to update settings'));
+  }
+});
+
+// --- Cloud-only models list ---
+//
+// The list rides the settings payload as routing.cloud_only_models and a save
+// replaces the whole list. Every change reads the list fresh right before
+// writing, so a change made elsewhere (the CLI, another tab) a moment ago is
+// not overwritten by a stale copy. Two changes inside the same instant can
+// still overwrite each other: the last save wins.
+
+export interface CloudOnlySettings {
+  models: string[];
+  // True while the stored list could not be read: the empty `models` is then
+  // not the operator's list, and every named-model request is being refused.
+  unreadable: boolean;
+}
+
+export async function fetchCloudOnlySettings(): Promise<CloudOnlySettings> {
+  if (DEMO) {
+    return { models: getMockCloudOnly(), unreadable: false };
+  }
+  // A direct read, not the shared in-flight one, so the answer is never an
+  // older request.
+  const res = await apiFetch(`${BASE}/settings`, { headers: authHeaders() });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(serverErrorText(body, 'Failed to read the cloud-only models list'));
+  }
+  const s = await res.json();
+  const models = Array.isArray(s?.routing?.cloud_only_models) ? s.routing.cloud_only_models : [];
+  return { models, unreadable: s?.routing?.cloud_only_list_unreadable === true };
+}
+
+export const addCloudOnlyModel = withSettingsReset(async function addCloudOnlyModel(entry: string): Promise<string[]> {
+  if (DEMO) {
+    const next = addEntry(getMockCloudOnly(), entry);
+    if ('error' in next) throw new Error(next.error);
+    return setMockCloudOnly(next.list);
+  }
+  const current = await fetchCloudOnlySettings();
+  const next = addEntry(current.models, entry);
+  if ('error' in next) throw new Error(next.error);
+  await updateSettings({ routing: { cloud_only_models: next.list } });
+  return next.list;
+});
+
+export const removeCloudOnlyModel = withSettingsReset(async function removeCloudOnlyModel(entry: string): Promise<string[]> {
+  if (DEMO) {
+    return setMockCloudOnly(removeEntry(getMockCloudOnly(), entry));
+  }
+  const current = await fetchCloudOnlySettings();
+  const next = removeEntry(current.models, entry);
+  await updateSettings({ routing: { cloud_only_models: next } });
+  return next;
 });
 
 export async function fetchAnalytics(): Promise<Analytics> {

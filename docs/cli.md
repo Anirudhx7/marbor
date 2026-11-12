@@ -1171,7 +1171,9 @@ marked local-only receive a 503 for a listed model. The list is
 empty by default and changes take effect immediately, with no restart. The
 list is saved first: if the save fails the server answers 500 and changes
 nothing. If the stored list cannot be read at startup, requests that name a
-model are refused with a 503 until the list is saved again.
+model are refused with a 503 until the list is saved again. While that
+is the case, settings get shows routing.cloud_only_list_unreadable: true;
+that field is read-only and ignored on save.
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 
