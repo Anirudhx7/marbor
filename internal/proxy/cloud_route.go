@@ -21,6 +21,7 @@ const (
 	CloudReasonQueueFull            = "queue_full_cloud"
 	CloudReasonLocalUpstreamFailed  = "local_upstream_failed"
 	CloudReasonLocalOnlyBlocked     = "local_only_blocked"
+	CloudReasonCloudOnlyPolicy      = "cloud_only_policy"
 	cloudReasonUnclassifiedFallback = CloudReasonQueueTimeout
 )
 
@@ -38,6 +39,21 @@ type cloudRoute struct {
 	waited     time.Duration
 	base       *router.RoutingDecision
 	cloudStart time.Time
+}
+
+// isCloudOnly is true when the request named a model on the cloud-only list.
+// Such a request is intended cloud traffic, not overflow, so it is kept out of
+// the per-key spill counts, and a cloud failure is explained as never retried
+// locally.
+func (c *cloudRoute) isCloudOnly() bool {
+	return c.reason == CloudReasonCloudOnlyPolicy
+}
+
+// newCloudOnlyRoute builds the route record for a request whose model is on
+// the cloud-only list. Nothing waited and no local filter ran, so the wait is
+// a real zero and there is no exclusion list.
+func newCloudOnlyRoute() *cloudRoute {
+	return &cloudRoute{reason: CloudReasonCloudOnlyPolicy, cloudStart: time.Now()}
 }
 
 // newCloudRoute builds the route record for a request that waitRes could not
@@ -85,6 +101,8 @@ func (c *cloudRoute) sentence() string {
 		return "The local queue was full or disabled, so it went to cloud."
 	case CloudReasonLocalUpstreamFailed:
 		return "The local node failed this request, so it went to cloud."
+	case CloudReasonCloudOnlyPolicy:
+		return "This model is on the cloud-only list, so local routing was skipped."
 	case CloudReasonLocalOnlyBlocked:
 		return "This key is local_only and no local node could serve the request, so it was refused and never sent to cloud."
 	default:

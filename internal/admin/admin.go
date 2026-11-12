@@ -1977,8 +1977,22 @@ func (s *Server) ReloadFromStore() (nodesAdded, nodesRemoved, authKeys, cloudPro
 		nodeCfgs[i] = config.NodeConfig{Name: n.Name, URL: n.URL, Runtime: rt, VRAMTotalMB: vram}
 	}
 
-	// Every load above succeeded - apply all three stages. Nothing past this
-	// point can fail.
+	// The cloud-only list is read under settingsMu, held until the apply below,
+	// so the reload cannot interleave with a settings PUT between that PUT's
+	// live update and its persist step (which would put the older stored list
+	// back on the router while the API shows the newer one). Lock order: keysMu
+	// (held), then settingsMu, then s.mu; the settings PUT takes settingsMu then
+	// s.mu and never keysMu, so there is no inversion. A read or parse failure
+	// returns here, before anything is applied, and keeps the current list.
+	s.settingsMu.Lock()
+	defer s.settingsMu.Unlock()
+	cloudOnlyList, coErr := s.loadCloudOnlyModels()
+	if coErr != nil {
+		return 0, 0, 0, 0, coErr
+	}
+
+	// Every load above succeeded - apply all stages. Nothing past this point can
+	// fail.
 	s.mu.RLock()
 	authEnabled := s.cfg.Auth.Enabled
 	s.mu.RUnlock()
@@ -1993,14 +2007,33 @@ func (s *Server) ReloadFromStore() (nodesAdded, nodesRemoved, authKeys, cloudPro
 	s.router.SetQueueTimeout(queueTimeoutMs)
 	s.router.SetQueueMaxDepth(queueMaxDepth)
 	s.router.SetOverflowSLA(overflowSLAMs)
+	s.router.SetCloudOnlyModels(cloudOnlyList)
 
 	s.mu.Lock()
+	s.cfg.Routing.CloudOnlyModels = cloudOnlyList
+	s.cfg.Routing.CloudOnlyListUnreadable = false
 	s.cfg.Auth.Keys = keys
 	s.cfg.CloudProviders = cloudCfgs
 	s.cfg.Nodes = nodeCfgs
 	s.mu.Unlock()
 
 	return added, removed, len(keys), len(cloudCfgs), nil
+}
+
+// loadCloudOnlyModels reads and sanitizes the persisted cloud-only models list
+// without touching any live state. An absent or empty row is an empty list, as
+// at boot; a row that cannot be read or parsed is an error, so the caller can
+// keep the current list and report it.
+func (s *Server) loadCloudOnlyModels() ([]string, error) {
+	var stored []string
+	if err := store.ReadJSONSetting(s.st, "routing_cloud_only_models", &stored); err != nil {
+		return nil, fmt.Errorf("load cloud-only models: %w", err)
+	}
+	sanitized := config.SanitizeCloudOnlyModels(stored)
+	for _, reason := range sanitized.Dropped {
+		log.Printf("admin: reload: dropping invalid cloud-only model entry: %s", reason)
+	}
+	return sanitized.Kept, nil
 }
 
 // handleConfigReload re-syncs live state from SQLite without restarting.
@@ -6122,6 +6155,27 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// While the stored list is unreadable the running config shows an empty list
+	// that is not the operator's. A save that carries an empty list (an echo of
+	// that view) would overwrite the real, unreadable row and lift the refusal
+	// state, silently allowing every listed model to run locally. Only a save
+	// that names a list explicitly is accepted until the list is restored.
+	if s.router.CloudOnlyUnreadable() && len(incoming.Routing.CloudOnlyModels) == 0 {
+		writeJSONError(w, http.StatusConflict, "the stored cloud-only models list could not be read, so a save with an empty routing.cloud_only_models is refused; include the full list you want in this save, or repair the stored row and reload the configuration")
+		return
+	}
+
+	// The cloud-only models list is saved before anything is applied, and a
+	// failed write answers 500 with nothing changed, so the running list never
+	// gets ahead of what a restart would load (a restart that lost a listed
+	// model would route it locally). Every other setting keeps the log-only
+	// persist below.
+	if err := store.SetJSONSetting(s.st, "routing_cloud_only_models", incoming.Routing.CloudOnlyModels); err != nil {
+		log.Printf("admin: failed to persist routing_cloud_only_models setting: %v", err)
+		writeJSONError(w, http.StatusInternalServerError, "could not save the cloud-only models list; no settings were changed")
+		return
+	}
+
 	s.mu.Lock()
 	// Auth.Keys/CloudProviders/Nodes are never part of the Settings page's
 	// payload (see the comment above incoming's construction) - they're
@@ -6158,6 +6212,7 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	s.router.SetTimezone(incoming.Timezone)
 	s.router.SetLiteLLM(incoming.LiteLLM)
 	s.router.SetContextWindows(incoming.ContextWindows)
+	s.router.SetCloudOnlyModels(incoming.Routing.CloudOnlyModels)
 	s.router.SetPrefixLocality(incoming.Routing.PrefixLocalityEnabled, incoming.Routing.PrefixLocalityWeight)
 	// Queue wait knobs take effect on the next request that enters the queue.
 	s.router.SetQueueTimeout(incoming.Routing.QueueTimeoutMs)
@@ -6549,6 +6604,18 @@ func (s *Server) LocalTokens() int64 {
 // tokens is the real token count parsed from the provider response; 0 means
 // the count was unavailable and no cost is recorded for the request.
 func (s *Server) TrackCloudCostModel(keyName, provider, model string, costPer1K float64, tokens int64) {
+	s.trackCloudCostModel(keyName, provider, model, costPer1K, tokens, true)
+}
+
+// TrackCloudCostModelNoSpill records cloud cost and tokens exactly as
+// TrackCloudCostModel does, but leaves the per-key spill counter alone. It is
+// for traffic that is meant to go to cloud (a cloud-only model), which is not
+// overflow from a local node.
+func (s *Server) TrackCloudCostModelNoSpill(keyName, provider, model string, costPer1K float64, tokens int64) {
+	s.trackCloudCostModel(keyName, provider, model, costPer1K, tokens, false)
+}
+
+func (s *Server) trackCloudCostModel(keyName, provider, model string, costPer1K float64, tokens int64, countSpill bool) {
 	atomic.AddInt64(&s.cloudCount, 1)
 	atomic.AddInt64(&s.cloudTokens, tokens)
 	cost := costPer1K * float64(tokens) / 1000.0
@@ -6556,7 +6623,9 @@ func (s *Server) TrackCloudCostModel(keyName, provider, model string, costPer1K 
 	s.cloudSpentUSD += cost
 	s.mu.Unlock()
 	s.analytics.recordCloud(model, costPer1K, tokens)
-	s.IncrSpill(keyName, provider)
+	if countSpill {
+		s.IncrSpill(keyName, provider)
+	}
 	// Persist hourly bucket and model stat for this request. Kept SYNCHRONOUS
 	// (unlike TrackLocalRequestModel above) because cloudSpendSince() reads
 	// this exact hourly_buckets row to enforce the daily/monthly cloud spend

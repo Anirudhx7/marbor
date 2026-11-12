@@ -117,7 +117,11 @@ func (r *Router) fireSchedule(ctx context.Context, s Schedule) {
 	var warning string
 	switch s.Action {
 	case "warmup":
-		asyncErr = r.WarmModels(ctx, s.Node, s.Models)
+		var warnings []string
+		warnings, asyncErr = r.WarmModelsWithWarnings(ctx, s.Node, s.Models)
+		if len(warnings) > 0 {
+			warning = "warning: " + strings.Join(warnings, "; ")
+		}
 	case "unload":
 		var warnings []string
 		warnings, asyncErr = r.UnloadModelsWithWarnings(ctx, s.Node, s.Models)
@@ -221,16 +225,26 @@ func (r *Router) recordScheduleRun(id, status, errMsg string) {
 	}
 }
 
-// WarmModels preloads the given models on a single node immediately via a real
-// /api/generate keep_alive (used by scheduled warmup). A replica worker is
-// retargeted to its head; unresolved, unknown, non-Ollama, draining,
-// unhealthy and GPU-short nodes return an error before any headroom is
-// made. Waits for every model's ping to finish and
-// returns a non-nil error listing any that failed (also recorded into
-// NodeState.WarmupErrors, same as the periodic keep-warm pinger in warmer.go)
-// so the caller's schedule status reflects the real outcome, not just that
-// dispatch started.
+// WarmModels is WarmModelsWithWarnings without the warnings.
 func (r *Router) WarmModels(ctx context.Context, nodeName string, models []string) error {
+	_, err := r.WarmModelsWithWarnings(ctx, nodeName, models)
+	return err
+}
+
+// WarmModelsWithWarnings is WarmModels that also returns what it skipped on
+// purpose: a model on the cloud-only list is never loaded locally, which is not
+// a failure, so the skip comes back as a warning next to a nil error rather
+// than being counted as a plain success.
+//
+// WarmModelsWithWarnings preloads the given models on a single node
+// immediately via a real /api/generate keep_alive (used by scheduled warmup).
+// A replica worker is retargeted to its head; unresolved, unknown, non-Ollama,
+// draining, unhealthy and GPU-short nodes return an error before any headroom
+// is made. It waits for every model's ping to finish and returns a non-nil
+// error listing any that failed (also recorded into NodeState.WarmupErrors,
+// same as the periodic keep-warm pinger in warmer.go) so the caller's schedule
+// status reflects the real outcome, not just that dispatch started.
+func (r *Router) WarmModelsWithWarnings(ctx context.Context, nodeName string, models []string) (warnings []string, err error) {
 	r.mu.RLock()
 	cfg := r.warmupCfg
 	nodes := make([]*NodeState, len(r.nodes))
@@ -243,12 +257,12 @@ func (r *Router) WarmModels(ctx context.Context, nodeName string, models []strin
 	switch roles[nodeName] {
 	case RoleUnresolved:
 		log.Printf("scheduled warmup skipped: node %q has an unresolved replica declaration", nodeName)
-		return fmt.Errorf("node %q has an unresolved replica declaration - reconcile replica_peers", nodeName)
+		return nil, fmt.Errorf("node %q has an unresolved replica declaration - reconcile replica_peers", nodeName)
 	case RoleWorker:
 		head := heads[nodeName]
 		if head == "" {
 			log.Printf("scheduled warmup skipped: replica worker %q has no resolved head", nodeName)
-			return fmt.Errorf("node %q is a replica worker with no resolved head - reconcile replica_peers", nodeName)
+			return nil, fmt.Errorf("node %q is a replica worker with no resolved head - reconcile replica_peers", nodeName)
 		}
 		log.Printf("scheduled warmup: node %q is a replica worker, warming its head %q instead", nodeName, head)
 		nodeName = head
@@ -262,11 +276,11 @@ func (r *Router) WarmModels(ctx context.Context, nodeName string, models []strin
 	}
 	if target == nil {
 		log.Printf("scheduled warmup skipped: node %q not found", nodeName)
-		return fmt.Errorf("node %q not found", nodeName)
+		return nil, fmt.Errorf("node %q not found", nodeName)
 	}
 	if rt := target.GetRuntime(); !WarmupSupportedForRuntime(rt) {
 		log.Printf("scheduled warmup skipped: node %q runtime %q does not support keep_alive warmup", nodeName, rt)
-		return fmt.Errorf("node %q runtime %q does not support keep_alive warmup", nodeName, rt)
+		return nil, fmt.Errorf("node %q runtime %q does not support keep_alive warmup", nodeName, rt)
 	}
 	target.mu.RLock()
 	draining := target.Draining
@@ -274,17 +288,17 @@ func (r *Router) WarmModels(ctx context.Context, nodeName string, models []strin
 	target.mu.RUnlock()
 	if draining {
 		log.Printf("scheduled warmup skipped: node %q is draining", nodeName)
-		return fmt.Errorf("node %q is draining", nodeName)
+		return nil, fmt.Errorf("node %q is draining", nodeName)
 	}
 	// Checked before ensureHeadroom so an unhealthy node never has models
 	// evicted to make room for a ping that is guaranteed to fail.
 	if !healthy {
 		log.Printf("scheduled warmup skipped: node %q is unhealthy", nodeName)
-		return fmt.Errorf("node %q is unhealthy", nodeName)
+		return nil, fmt.Errorf("node %q is unhealthy", nodeName)
 	}
 	if !r.isGPUGroupSufficient(target) {
 		log.Printf("scheduled warmup skipped: node %q has fewer GPUs available than its declared parallelism requires", nodeName)
-		return fmt.Errorf("node %q has fewer GPUs available than its declared parallelism requires", nodeName)
+		return nil, fmt.Errorf("node %q has fewer GPUs available than its declared parallelism requires", nodeName)
 	}
 	keepAlive := effectiveKeepAlive(cfg.KeepAlive, time.Duration(cfg.IntervalMs)*time.Millisecond)
 	// A scheduled warmup is an explicit "be warm again" request - it must
@@ -299,6 +313,11 @@ func (r *Router) WarmModels(ctx context.Context, nodeName string, models []strin
 	var failures []string
 	for _, m := range models {
 		if m == "" {
+			continue
+		}
+		// A model on the cloud-only list is never loaded locally.
+		if r.skipCloudOnlyPrewarm(target.Name, m) {
+			warnings = append(warnings, fmt.Sprintf("%s skipped: the model is on the cloud-only list and is never loaded locally", m))
 			continue
 		}
 		// Digest drift is logged, never acted on: the model is still warmed
@@ -333,9 +352,9 @@ func (r *Router) WarmModels(ctx context.Context, nodeName string, models []strin
 		metrics.WarmupPing(m, target.Name, status)
 	}
 	if len(failures) > 0 {
-		return fmt.Errorf("%d model(s) failed to warm: %s", len(failures), strings.Join(failures, "; "))
+		return warnings, fmt.Errorf("%d model(s) failed to warm: %s", len(failures), strings.Join(failures, "; "))
 	}
-	return nil
+	return warnings, nil
 }
 
 func containsInt(xs []int, v int) bool {

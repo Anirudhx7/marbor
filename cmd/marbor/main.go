@@ -241,6 +241,23 @@ func applyPersistedSettings(cfg *config.Config, st store.Store) {
 	for _, reason := range droppedAliases {
 		log.Printf("settings: dropping invalid model alias: %s", reason)
 	}
+	// The cloud-only models list follows the same rule: a stored entry that no
+	// longer passes validation is dropped and logged, never fatal at startup.
+	// A row that cannot be read or parsed does not stop startup, but the list is
+	// then unknown, so the router fails closed (refuses requests) rather than
+	// starting with an empty list that would let listed models run locally.
+	var storedCloudOnly []string
+	if err := store.ReadJSONSetting(st, "routing_cloud_only_models", &storedCloudOnly); err != nil {
+		log.Printf("settings: the stored cloud-only models list is unreadable (%v); requests that name a model are refused until the list is restored: save a valid list in settings, or repair the stored row and reload the configuration", err)
+		cfg.Routing.CloudOnlyListUnreadable = true
+	} else {
+		cfg.Routing.CloudOnlyModels = storedCloudOnly
+	}
+	cloudOnly := config.SanitizeCloudOnlyModels(cfg.Routing.CloudOnlyModels)
+	cfg.Routing.CloudOnlyModels = cloudOnly.Kept
+	for _, reason := range cloudOnly.Dropped {
+		log.Printf("settings: dropping invalid cloud-only model entry: %s", reason)
+	}
 
 	cfg.Metrics.Enabled = store.GetBoolSetting(st, "metrics_enabled", cfg.Metrics.Enabled)
 	cfg.Metrics.Port = store.GetIntSetting(st, "metrics_port", cfg.Metrics.Port)
