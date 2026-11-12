@@ -96,13 +96,40 @@ func TestRun_NodesFit_TableHeaderUnchanged(t *testing.T) {
 	if code != ExitOK {
 		t.Fatalf("exit %d, stderr %s", code, errOut)
 	}
-	if !strings.HasPrefix(out, "NODE") || !strings.Contains(out, "VRAM FREE/TOTAL") || !strings.Contains(out, "LOADED") || !strings.Contains(out, "gpu-a") || !strings.Contains(out, "m1") || !strings.Contains(out, "green") {
-		t.Errorf("table changed:\n%s", out)
+	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("want header and one row, got:\n%s", out)
+	}
+	if !strings.HasPrefix(lines[0], "NODE") || !strings.Contains(lines[0], "VRAM FREE/TOTAL") || !strings.HasSuffix(lines[0], "LOADED") {
+		t.Errorf("header changed: %q", lines[0])
+	}
+	f := strings.Fields(lines[1])
+	if len(f) < 5 || f[0] != "gpu-a" || strings.Join(f[len(f)-4:], " ") != "nvidia-smi m1 green true" {
+		t.Errorf("row wrong: %q", lines[1])
+	}
+}
+
+func TestRun_NodesFit_TableNullNodesPrintsHeaderOnly(t *testing.T) {
+	code, out, errOut := runNodesFitCmd(t, nodesFitServer(t, `{"nodes":null}`))
+	if code != ExitOK {
+		t.Fatalf("exit %d, stderr %s", code, errOut)
+	}
+	if strings.Count(strings.TrimRight(out, "\n"), "\n") != 0 || !strings.HasPrefix(out, "NODE") {
+		t.Errorf("want header line only, got %q", out)
+	}
+}
+
+func TestRun_NodesFit_TableWrongTypedNodesIsServerError(t *testing.T) {
+	for _, body := range []string{`{"nodes":{}}`, `{"nodes":"x"}`} {
+		code, out, errOut := runNodesFitCmd(t, nodesFitServer(t, body))
+		if code != ExitServerError || out != "" || !strings.Contains(errOut, "/admin/nodes/model-fit") {
+			t.Errorf("body %q: code=%d stdout=%q stderr=%q", body, code, out, errOut)
+		}
 	}
 }
 
 func TestRun_NodesFit_JSONRejectsBodyWithoutNodes(t *testing.T) {
-	for _, body := range []string{`null`, `{}`, `[]`, ``, `{"error":"x"}`} {
+	for _, body := range []string{`null`, `{}`, `[]`, ``, `{"error":"x"}`, `not json`} {
 		code, out, errOut := runNodesFitCmd(t, nodesFitServer(t, body), "--json")
 		if code != ExitServerError || out != "" || !strings.Contains(errOut, "/admin/nodes/model-fit") {
 			t.Errorf("body %q: code=%d stdout=%q stderr=%q, want server error, empty stdout", body, code, out, errOut)
@@ -118,7 +145,8 @@ func TestRun_NodesFit_UndecodableBodyWithoutJSONFlag(t *testing.T) {
 }
 
 func TestRun_NodesFit_HTTPErrorsWithJSON(t *testing.T) {
-	for _, status := range []int{http.StatusUnauthorized, http.StatusInternalServerError} {
+	want := map[int]int{http.StatusUnauthorized: ExitAuthError, http.StatusInternalServerError: ExitServerError}
+	for status := range want {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "nope", status)
 		}))
@@ -126,15 +154,8 @@ func TestRun_NodesFit_HTTPErrorsWithJSON(t *testing.T) {
 		mustSaveSession(t, srv.URL, "tok")
 		code, out, _ := runNodesFitCmd(t, srv, "--json")
 		srv.Close()
-		if code == ExitOK || out != "" {
-			t.Errorf("status %d: code=%d stdout=%q, want non-zero and empty stdout", status, code, out)
+		if code != want[status] || out != "" {
+			t.Errorf("status %d: code=%d stdout=%q, want exit %d and empty stdout", status, code, out, want[status])
 		}
-	}
-}
-
-func TestRun_NodesFit_UndecodableBodyIsServerError(t *testing.T) {
-	code, _, errOut := runNodesFitCmd(t, nodesFitServer(t, `not json`), "--json")
-	if code != ExitServerError || !strings.Contains(errOut, "could not parse model fit response") {
-		t.Errorf("code=%d stderr=%s, want server error", code, errOut)
 	}
 }

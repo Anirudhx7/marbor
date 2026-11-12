@@ -35,9 +35,11 @@ func emitJSON(stdout, stderr io.Writer, jsonOutput bool, v interface{}) (bool, i
 
 // emitRawJSON is emitJSON for a JSON response body (list or object) the CLI
 // passes through as received, re-indented, instead of re-encoding a typed
-// copy that would drop any field the CLI does not mirror. For a list body, a
-// null prints as [] so the command keeps its array shape; an envelope object
-// is printed as sent. The body must already be valid JSON.
+// copy that would drop any field the CLI does not mirror. The null-to-[] rule
+// is for list bodies, so the command keeps its array shape. A command whose
+// body is an envelope object must reject null before calling this (nodes fit
+// does in ModelFit); an envelope object is printed as sent. The body must
+// already be valid JSON.
 func emitRawJSON(stdout, stderr io.Writer, jsonOutput bool, raw json.RawMessage) (bool, int) {
 	if !jsonOutput {
 		return false, 0
