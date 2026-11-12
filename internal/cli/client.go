@@ -955,6 +955,9 @@ func (c *Client) NodeTLSProbe(name string) (string, error) {
 	return out.Fingerprint, nil
 }
 
+// maxListBodyBytes caps how much of a list response the CLI buffers.
+const maxListBodyBytes = 64 << 20
+
 // Nodes calls GET /admin/v1/nodes (session-authed).
 func (c *Client) Nodes() ([]NodeResp, error) {
 	return c.NodesFiltered("", "")
@@ -991,7 +994,7 @@ func (c *Client) NodesFilteredRaw(signals, search string) ([]NodeResp, json.RawM
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxListBodyBytes))
 	if err != nil {
 		return nil, nil, serverErrorf("could not read /admin/v1/nodes response: %v", err)
 	}
@@ -1171,21 +1174,16 @@ type KeyResp struct {
 	AllowLocalDegradation bool     `json:"allowLocalDegradation,omitempty"`
 }
 
-// ListKeys calls GET /admin/v1/keys (session-authed).
-func (c *Client) ListKeys() ([]KeyResp, error) {
-	keys, _, err := c.ListKeysRaw()
-	return keys, err
-}
-
-// ListKeysRaw is ListKeys that also returns the response body as received,
-// which is what --json prints.
-func (c *Client) ListKeysRaw() ([]KeyResp, json.RawMessage, error) {
+// ListKeys calls GET /admin/v1/keys (session-authed). It returns the typed
+// list for the human table and the response body as received, which is what
+// --json prints.
+func (c *Client) ListKeys() ([]KeyResp, json.RawMessage, error) {
 	resp, err := c.doRequest(http.MethodGet, "/admin/v1/keys", true)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxListBodyBytes))
 	if err != nil {
 		return nil, nil, serverErrorf("could not read keys response: %v", err)
 	}

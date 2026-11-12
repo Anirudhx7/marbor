@@ -56,11 +56,39 @@ func TestRun_KeyList_JSON(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 		t.Fatalf("not a json array %q: %v", stdout.String(), err)
 	}
-	json.Unmarshal([]byte(keyListBody), &want)
-	gotB, _ := json.Marshal(got)
-	wantB, _ := json.Marshal(want)
+	if err := json.Unmarshal([]byte(keyListBody), &want); err != nil {
+		t.Fatal(err)
+	}
+	gotB, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantB, err := json.Marshal(want)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if string(gotB) != string(wantB) {
 		t.Fatalf("--json differs from server response\n got: %s\nwant: %s", gotB, wantB)
+	}
+}
+
+func TestRun_KeyList_JSON_EmptyStaysArray(t *testing.T) {
+	for _, body := range []string{`[]`, `null`} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(body))
+		}))
+		withTempConfigDir(t)
+		mustSaveSession(t, srv.URL, "tok")
+		var stdout, stderr bytes.Buffer
+		code := Run([]string{"key", "list", "--server", srv.URL, "--json"}, &stdout, &stderr)
+		srv.Close()
+		if code != ExitOK {
+			t.Fatalf("body %s: got %d %q", body, code, stderr.String())
+		}
+		if strings.TrimSpace(stdout.String()) != "[]" {
+			t.Fatalf("body %s: got %q, want []", body, stdout.String())
+		}
 	}
 }
 

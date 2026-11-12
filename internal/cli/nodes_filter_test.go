@@ -299,13 +299,16 @@ func TestRun_NodesJSON_PassesServerFieldsThrough(t *testing.T) {
 	if err := json.Unmarshal([]byte(nodesPassthroughBody), &want); err != nil {
 		t.Fatal(err)
 	}
-	gotB, _ := json.Marshal(got)
-	wantB, _ := json.Marshal(want)
+	gotB, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantB, err := json.Marshal(want)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if string(gotB) != string(wantB) {
 		t.Fatalf("--json differs from the server response\n got: %s\nwant: %s", gotB, wantB)
-	}
-	if got[1]["temperature"] != nil {
-		t.Fatalf("null temperature must stay null, got %v", got[1]["temperature"])
 	}
 }
 
@@ -330,7 +333,26 @@ func TestRun_NodesJSON_FilteredKeepsExtraFields(t *testing.T) {
 	if code := Run([]string{"nodes", "--server", srv.URL, "--signal", "down", "--json"}, &stdout, &stderr); code != ExitOK {
 		t.Fatalf("exit %d, stderr %q", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), `"temperature": 70`) {
-		t.Fatalf("temperature dropped from filtered output: %s", stdout.String())
+	if len(queries) != 1 || parseQuery(t, queries[0]).Get("signal") != "down" {
+		t.Fatalf("signal filter did not reach the server: %v", queries)
+	}
+	var got []map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil || len(got) != 1 {
+		t.Fatalf("bad output %q: %v", stdout.String(), err)
+	}
+	if got[0]["temperature"] != float64(70) || got[0]["name"] != "gpu-0" || got[0]["signals"] == nil {
+		t.Fatalf("filtered node lost fields: %v", got[0])
+	}
+}
+
+func TestRun_NodesJSON_FilteredNoMatchIsEmptyArray(t *testing.T) {
+	var queries []string
+	srv := nodesFilterServer(t, http.StatusOK, `[]`, &queries)
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"nodes", "--server", srv.URL, "--search", "nothing", "--json"}, &stdout, &stderr); code != ExitOK {
+		t.Fatalf("exit %d, stderr %q", code, stderr.String())
+	}
+	if strings.TrimSpace(stdout.String()) != "[]" {
+		t.Fatalf("got %q, want []", stdout.String())
 	}
 }
