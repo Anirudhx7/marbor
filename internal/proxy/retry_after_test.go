@@ -310,8 +310,9 @@ var retryAfterExempt = map[string]string{
 
 // TestEveryRetryableRefusalHasRetryAfter scans the non-test sources and
 // requires each writeAPIError call answering 429 or 503 to follow a
-// setRetryAfter / setNoNodesRetryAfter call in an enclosing block, or to be on
-// the exempt list above.
+// setRetryAfter / setNoNodesRetryAfter call in an enclosing block of the same
+// function (as a preceding statement or inside a preceding if body), or to be
+// on the exempt list above.
 func TestEveryRetryableRefusalHasRetryAfter(t *testing.T) {
 	files, err := filepath.Glob("*.go")
 	if err != nil {
@@ -377,35 +378,50 @@ func TestEveryRetryableRefusalHasRetryAfter(t *testing.T) {
 	}
 }
 
-// hasRetryAfterSetterBefore reports whether a setRetryAfter or
-// setNoNodesRetryAfter call expression appears in a statement that precedes
-// call in any block enclosing it.
+// hasRetryAfterSetterBefore reports whether a block enclosing call, within the
+// same function body (a func literal is its own boundary), has before call a
+// sibling statement that is a setRetryAfter or setNoNodesRetryAfter call, or an
+// if statement whose body directly contains one. Only direct sibling statements
+// count, not calls buried anywhere in an earlier statement, and a setter in an
+// outer function never covers a closure: otherwise one setter early in
+// ServeHTTP would satisfy every later refusal in it.
 func hasRetryAfterSetterBefore(stack []ast.Node, call *ast.CallExpr) bool {
-	for _, a := range stack {
-		blk, ok := a.(*ast.BlockStmt)
+	isSetter := func(st ast.Stmt) bool {
+		es, ok := st.(*ast.ExprStmt)
 		if !ok {
-			continue
+			return false
 		}
-		for _, st := range blk.List {
-			if st.End() > call.Pos() {
-				break
-			}
-			found := false
-			ast.Inspect(st, func(n ast.Node) bool {
-				c, ok := n.(*ast.CallExpr)
-				if !ok {
-					return !found
+		c, ok := es.X.(*ast.CallExpr)
+		if !ok {
+			return false
+		}
+		switch fun := c.Fun.(type) {
+		case *ast.Ident:
+			return fun.Name == "setRetryAfter" || fun.Name == "setNoNodesRetryAfter"
+		case *ast.SelectorExpr:
+			return fun.Sel.Name == "setNoNodesRetryAfter"
+		}
+		return false
+	}
+	for i := len(stack) - 1; i >= 0; i-- {
+		switch a := stack[i].(type) {
+		case *ast.FuncLit, *ast.FuncDecl:
+			return false
+		case *ast.BlockStmt:
+			for _, st := range a.List {
+				if st.End() > call.Pos() {
+					break
 				}
-				switch fun := c.Fun.(type) {
-				case *ast.Ident:
-					found = found || fun.Name == "setRetryAfter" || fun.Name == "setNoNodesRetryAfter"
-				case *ast.SelectorExpr:
-					found = found || fun.Sel.Name == "setNoNodesRetryAfter"
+				if isSetter(st) {
+					return true
 				}
-				return !found
-			})
-			if found {
-				return true
+				if is, ok := st.(*ast.IfStmt); ok {
+					for _, inner := range is.Body.List {
+						if isSetter(inner) {
+							return true
+						}
+					}
+				}
 			}
 		}
 	}
