@@ -71,18 +71,21 @@ func writeAPIError(w http.ResponseWriter, status int, message, errType, code str
 // section 10.2.3): the duration rounded up to whole seconds, never below 1.
 // Call it before writeAPIError, which writes the status line.
 func setRetryAfter(w http.ResponseWriter, d time.Duration) {
-	secs := int64((d + time.Second - 1) / time.Second)
-	if secs < 1 {
-		secs = 1
+	secs := int64(1)
+	if d > 0 {
+		// (d-1)/second+1 is the ceiling without the d+second overflow.
+		secs = int64((d-1)/time.Second) + 1
 	}
 	w.Header().Set("Retry-After", strconv.FormatInt(secs, 10))
 }
 
 // setNoNodesRetryAfter sets Retry-After on a no-node-available refusal when
-// there is an honest value: the configured queue timeout, after a request
-// really waited (or was turned away from) the queue. It is a conservative
-// floor, not a prediction of when capacity frees. Nothing is set when the
-// queue is disabled, the client went away, or no wait happened at all.
+// the request went through the queue stage and was turned away: after the
+// full wait (queue_timeout), because the queue was full (queue_full), or
+// because the overflow SLA ran out (sla_expired). The value is the configured
+// queue timeout, a conservative floor on how long to wait before retrying,
+// not a prediction of when capacity frees. Nothing is set when the queue is
+// disabled, the client went away, or no queue wait applies (skip_hard, routed).
 func (h *Handler) setNoNodesRetryAfter(w http.ResponseWriter, res router.WaitResult) {
 	switch res.Outcome {
 	case router.WaitQueueTimeout, router.WaitQueueFull, router.WaitSLAExpired:
