@@ -519,6 +519,20 @@ type RoutingConfig struct {
 	// settings PUT never writes it) and hot-reloaded into the router. Default
 	// nil/empty (no behavior change).
 	ModelAliases map[string]string `yaml:"model_aliases" json:"model_aliases"`
+	// CloudOnlyModels lists models that must never run on a local node. A
+	// request naming one skips local routing, the queue, fallback chains and
+	// the context-window check and goes to the cloud provider; when cloud
+	// cannot take it the request is refused with a 503, never run locally.
+	// Each entry is an exact model name or a name ending in one "*" (prefix).
+	// Travels through the settings API as a whole list. Default nil/empty (no
+	// behavior change).
+	CloudOnlyModels []string `yaml:"cloud_only_models" json:"cloud_only_models"`
+	// CloudOnlyListUnreadable is set at startup when the stored cloud-only
+	// models row could not be read or parsed. The list is then unknown, so the
+	// router refuses requests rather than guess which models are listed, until
+	// a valid list is saved. It is runtime state, never persisted or sent over
+	// the settings API.
+	CloudOnlyListUnreadable bool `yaml:"-" json:"-"`
 	// OverflowSLAMs, when > 0, caps how long a request waits in the local
 	// capacity queue for a busy node before falling through to cloud, when
 	// cloud can take the request (a provider is configured, the key may use
@@ -741,6 +755,9 @@ func (c *Config) Validate() error {
 		}
 	}
 	if err := ValidateModelAliases(c.Routing.ModelAliases); err != nil {
+		return err
+	}
+	if err := ValidateCloudOnlyModels(c.Routing.CloudOnlyModels); err != nil {
 		return err
 	}
 	// No "== 0 means unset, default to 10" coercion here on purpose: 0 is a

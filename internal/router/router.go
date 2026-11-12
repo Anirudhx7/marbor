@@ -554,6 +554,14 @@ type Router struct {
 	// (config.RoutingConfig.ModelAliases). Swapped as a whole, never mutated
 	// in place, so the per-request resolve path takes no lock. See aliases.go.
 	modelAliases atomic.Pointer[map[string]string]
+	// cloudOnlyModels holds the operator-declared list of models that must
+	// never run on a local node (config.RoutingConfig.CloudOnlyModels).
+	// Swapped as a whole, never mutated in place. See cloudonly.go.
+	cloudOnlyModels atomic.Pointer[cloudOnlySnapshot]
+	// cloudOnlyUnreadable is set when the stored list could not be read at
+	// startup; every model is then treated as possibly listed. Cleared by the
+	// next SetCloudOnlyModels. See cloudonly.go.
+	cloudOnlyUnreadable atomic.Bool
 	// overflowSLAMs, when > 0, caps how long WaitForNode waits in the local
 	// capacity queue before returning nil (triggering cloud fallback or 503)
 	// - see config.RoutingConfig.OverflowSLAMs. It never affects Route()'s
@@ -941,6 +949,10 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 	r.prefixLocalityEnabled.Store(cfg.PrefixLocalityEnabled)
 	r.prefixLocalityWeight.Store(math.Float64bits(cfg.PrefixLocalityWeight))
 	r.SetModelAliases(cfg.ModelAliases)
+	r.SetCloudOnlyModels(cfg.CloudOnlyModels)
+	if cfg.CloudOnlyListUnreadable {
+		r.SetCloudOnlyUnreadable()
+	}
 	r.queueTimeoutMs.Store(queueTimeout.Milliseconds())
 	r.SetQueueMaxDepth(queueMaxDepth)
 	r.overflowSLAMs.Store(int64(cfg.OverflowSLAMs))

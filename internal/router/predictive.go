@@ -268,7 +268,7 @@ func (r *Router) RunPredictionCycle(ctx context.Context, now time.Time) {
 				// reservation for this (node, model) - otherwise a slow load
 				// gets re-triggered every 5-minute cycle, re-running
 				// ensureHeadroom against stale pre-load free VRAM.
-				if !wasAlreadyWarm && !alreadyPlanned && !r.isWarmupSuppressed(n.Name, P) && !r.hasActiveWarmReservation(n.Name, P) {
+				if !wasAlreadyWarm && !alreadyPlanned && !r.skipCloudOnlyPrewarm(n.Name, P) && !r.isWarmupSuppressed(n.Name, P) && !r.hasActiveWarmReservation(n.Name, P) {
 					// Check VRAM headroom
 					estSize := r.estimateModelSizeBytes(n.URL, P, true, 0)
 					n.mu.RLock()
@@ -363,7 +363,7 @@ func (r *Router) runTimeOfDayPrewarm(ctx context.Context, targetHour int, health
 				// for this (node, model) from a still-in-flight prewarm -
 				// n.LoadedModels reflects only the last /api/ps poll, so a
 				// slow load would otherwise be re-triggered every cycle.
-				if !loaded && !r.isWarmupSuppressed(n.Name, model) && !r.hasActiveWarmReservation(n.Name, model) {
+				if !loaded && !r.skipCloudOnlyPrewarm(n.Name, model) && !r.isWarmupSuppressed(n.Name, model) && !r.hasActiveWarmReservation(n.Name, model) {
 					// Check VRAM headroom
 					estSize := r.estimateModelSizeBytes(n.URL, model, true, 0)
 					n.mu.RLock()

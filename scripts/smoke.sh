@@ -8,20 +8,23 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 COMPOSE="docker compose -f demo/docker-compose.yml"
 ADMIN_TOKEN="demo-admin-token"
 BAD_KEY="not-a-real-key"
+DEMO_KEY="demo-api-key"
 
 check_bin=""
 check_db=""
 cli_bin=""
+co_file=""
+co_body=""
 cleanup() {
   echo "=== Tearing down demo stack ==="
   $COMPOSE down -v >/dev/null 2>&1 || true
-  rm -f "$check_bin" "$check_db" "${check_db:+$check_db.key}" "$cli_bin"
+  rm -f "$check_bin" "$check_db" "${check_db:+$check_db.key}" "$cli_bin" "$co_file" "$co_body"
 }
 trap cleanup EXIT
 
 fail() { echo ""; echo "SMOKE FAILED: $*" >&2; exit 1; }
 
-echo "=== [0/7] marbor.demo.db drift check (schema vs live migrate() + seed_demo.sql) ==="
+echo "=== [0/8] marbor.demo.db drift check (schema vs live migrate() + seed_demo.sql) ==="
 if ! command -v sqlite3 &>/dev/null; then
   echo "sqlite3 not found on PATH, skipping drift check" >&2
 elif ! command -v go &>/dev/null; then
@@ -47,7 +50,7 @@ else
   fi
 fi
 
-echo "=== [1/7] Build + start demo stack (all 5 runtimes) ==="
+echo "=== [1/8] Build + start demo stack (all 5 runtimes) ==="
 $COMPOSE build || fail "demo-build failed"
 # --wait blocks until every listed service reports healthy (or the timeout
 # fails the command) - covers the 4 multi-runtime nodes' own healthchecks in
@@ -57,7 +60,7 @@ $COMPOSE up -d --wait --wait-timeout 90 \
   ollama-node-a ollama-node-b vllm-node tgi-node llamacpp-node mlx-node marbor \
   || fail "compose up failed (a node or marbor never reported healthy)"
 
-echo "=== [2/7] Wait for marbor health ==="
+echo "=== [2/8] Wait for marbor health ==="
 ok=0
 for i in $(seq 1 30); do
   if curl -fsS "http://localhost:8080/health" >/dev/null 2>&1; then
@@ -68,7 +71,7 @@ for i in $(seq 1 30); do
 done
 [ "$ok" = "1" ] || fail "marbor /health never became ready after 30s"
 
-echo "=== [3/7] UI boot check: dashboard renders (root element + non-empty JS bundle) ==="
+echo "=== [3/8] UI boot check: dashboard renders (root element + non-empty JS bundle) ==="
 # Closes the exact hole that let a dependency update ship a blank dashboard
 # while every other check (including the /health ping above) said "all
 # good" - that check only pings the data API, it never loads the page a
@@ -87,7 +90,7 @@ bundle_path=$(echo "$ui_body" | grep -oE '/assets/[^"]+\.js' | head -1)
 bundle_size=$(curl -fsS "http://localhost:8080${bundle_path}" | wc -c) || fail "JS bundle ${bundle_path} unreachable"
 [ "$bundle_size" -gt 0 ] || fail "JS bundle ${bundle_path} is empty"
 
-echo "=== [4/7] Auth check: bad API key must be rejected ==="
+echo "=== [4/8] Auth check: bad API key must be rejected ==="
 status=$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:11434/api/generate" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $BAD_KEY" \
@@ -97,10 +100,10 @@ case "$status" in
   *) fail "expected 401/403 for bad API key, got $status" ;;
 esac
 
-echo "=== [5/7] Routing + streaming check: run demotraffic ==="
+echo "=== [5/8] Routing + streaming check: run demotraffic ==="
 $COMPOSE run --rm demotraffic || fail "demotraffic reported failed requests"
 
-echo "=== [6/7] Admin + metrics check ==="
+echo "=== [6/8] Admin + metrics check ==="
 summary_status=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8080/admin/metrics/summary" \
   -H "Authorization: Bearer $ADMIN_TOKEN")
 [ "$summary_status" = "200" ] || fail "expected 200 from /admin/metrics/summary, got $summary_status"
@@ -108,7 +111,7 @@ summary_status=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8080/a
 metrics_body=$(curl -fsS "http://localhost:9090/metrics") || fail "metrics endpoint on :9090 unreachable"
 echo "$metrics_body" | grep -q "marbor_" || fail "metrics body missing marbor_ prefix"
 
-echo "=== [7/7] marbor CLI check: version/status/nodes/models against the live demo stack ==="
+echo "=== [7/8] marbor CLI check: version/status/nodes/models against the live demo stack ==="
 if ! command -v go &>/dev/null; then
   echo "go not found on PATH, skipping marbor CLI check" >&2
 else
@@ -130,6 +133,34 @@ else
     echo "jq not found on PATH, skipping marbor --json validation" >&2
     [ -n "$nodes_json" ] || fail "marbor nodes --json returned empty output"
   fi
+fi
+
+echo "=== [8/8] cloud-only models check: a listed model is refused, never run on a demo node; removing it restores local serving ==="
+if [ -z "$cli_bin" ]; then
+  echo "marbor CLI was not built (go not found on PATH), skipping cloud-only models check" >&2
+else
+  # The demo stack has no cloud provider, so a listed model that is loaded on
+  # several demo nodes must fail with a 503 instead of being served locally.
+  co_file="$(mktemp)" || fail "mktemp failed while creating the cloud-only settings file"
+  co_body="$(mktemp)" || fail "mktemp failed while creating the cloud-only response file"
+  cloud_only_request() {
+    curl -s -o "$co_body" -w "%{http_code}" -X POST "http://localhost:11434/api/generate" \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer $DEMO_KEY" \
+      -d '{"model":"llama3.2:3b","prompt":"hi","stream":false}'
+  }
+  echo '{"routing":{"cloud_only_models":["llama3.2:3b"]}}' > "$co_file"
+  "$cli_bin" settings set --file "$co_file" --server "http://localhost:8080" --username admin --password admin >/dev/null \
+    || fail "marbor settings set (cloud-only list) failed"
+  co_status=$(cloud_only_request)
+  [ "$co_status" = "503" ] || fail "expected 503 for a cloud-only model with no cloud provider, got $co_status"
+  grep -q "cloud_only_no_provider" "$co_body" || fail "cloud-only refusal missing the cloud_only_no_provider code"
+
+  echo '{"routing":{"cloud_only_models":[]}}' > "$co_file"
+  "$cli_bin" settings set --file "$co_file" --server "http://localhost:8080" --username admin --password admin >/dev/null \
+    || fail "marbor settings set (clearing the cloud-only list) failed"
+  co_status=$(cloud_only_request)
+  [ "$co_status" = "200" ] || fail "expected 200 once the model is removed from the cloud-only list, got $co_status"
 fi
 
 echo ""

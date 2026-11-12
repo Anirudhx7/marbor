@@ -303,6 +303,11 @@ func (r *Router) pingWarmupModels(ctx context.Context) {
 			// and avoids the runtime evicting one warmed model to satisfy the
 			// other.
 			for _, model := range nodeModels {
+				// A model on the cloud-only list is never loaded locally, even
+				// when an operator also put it in a warmup list.
+				if r.skipCloudOnlyPrewarm(n.Name, model) {
+					continue
+				}
 				// A manual/scheduled unload suppressed this model - skip it so
 				// this tick doesn't silently reload what the operator just took
 				// cold (see suppressWarmup in eviction.go).

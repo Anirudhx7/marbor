@@ -402,6 +402,33 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// Cloud-only models policy. A model on the operator list never runs on a
+	// local node: the request skips routing, the queue, the fallback chains
+	// and the context-window check and goes to cloud, or is refused with a
+	// 503. It sits after the allow-list so a model the key may not use still
+	// gets its 403, and is skipped for management paths, which name a model on
+	// disk and must never reach a cloud provider. A few read-only paths that
+	// name a model but run none keep local routing, and never reach cloud.
+	cloudOnlyExempt := false
+	// Read the unreadable state before the list check, so a list saved between
+	// the two reads can only turn a refusal into a correct answer, never the
+	// other way round.
+	listUnreadable := h.router.CloudOnlyUnreadable()
+	if !isBlockedManagementPath(r.URL.Path) && h.router.IsCloudOnly(clientModelName, modelName) {
+		if !isCloudOnlyExemptPath(r.URL.Path) {
+			q := cloudOnlyReq{
+				body: body, modelName: modelName, clientModelName: clientModelName, aliased: aliased,
+				keyName: keyName, requestID: requestID, start: start, label: label,
+			}
+			if listUnreadable {
+				h.refuseCloudOnlyUnreadable(w, r, q)
+				return
+			}
+			h.serveCloudOnly(w, r, q)
+			return
+		}
+		cloudOnlyExempt = true
+	}
 	// The resolution header is set only once the key is known to be allowed,
 	// so a rejected request never learns what the alias points to.
 	if aliased {
@@ -430,6 +457,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// counts: an alias names what the client asked for, and an
 			// alternate is a real model chosen by marbor with no alias.
 			if len(allowedModels) > 0 && !slices.Contains(allowedModels, alt) {
+				continue
+			}
+			// A listed model is never a substitute: it must not run locally.
+			if h.router.IsCloudOnly(alt) {
 				continue
 			}
 			if h.router.ModelDownloadedAnyNode(alt) && h.router.ModelFitsAnyHealthyNode(alt, requestedCtxTokens) {
@@ -531,6 +562,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// It is evaluated lazily, only when no local node was found, with the cheap
 	// checks first and the budget query last.
 	cloudUsable := func() bool {
+		if cloudOnlyExempt {
+			return false
+		}
 		if len(h.router.CloudChain()) == 0 {
 			return false
 		}
@@ -582,6 +616,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// the translating transport, so Ollama-native clients can still reach
 		// cloud when no local Ollama node is available.
 		clouds := h.router.CloudChain()
+		if cloudOnlyExempt {
+			// A read-only path for a cloud-only model is never sent to the paid
+			// provider, even when no local node can answer it.
+			clouds = nil
+		}
 		if len(clouds) > 0 {
 			if h.admin != nil {
 				if exceeded, reason := h.admin.CloudBudgetExceeded(keyName); exceeded {
@@ -860,6 +899,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			clouds := h.router.CloudChain()
+			if cloudOnlyExempt {
+				clouds = nil
+			}
 			if len(clouds) > 0 {
 				if h.admin != nil {
 					if exceeded, reason := h.admin.CloudBudgetExceeded(keyName); exceeded {
@@ -1124,6 +1166,10 @@ func (h *Handler) tryLocalDegradationChain(modelName, runtimeFilter string, allo
 		if len(allowedModels) > 0 && !slices.Contains(allowedModels, candidate) {
 			continue
 		}
+		// A listed model is never a substitute: it must not run locally.
+		if h.router.IsCloudOnly(candidate) {
+			continue
+		}
 		if n, w, d := h.router.RouteExcluding(candidate, runtimeFilter, nil); n != nil {
 			if accept != nil && !accept(n, candidate) {
 				continue
@@ -1357,8 +1403,11 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 			h.proxyToCloud(w, r, body, modelName, keyName, requestID, start, clouds, idx+1, route)
 			return
 		}
-		writeAPIError(w, http.StatusNotImplemented,
-			"the Anthropic cloud provider does not support "+path+" through marbor; use an OpenAI-compatible overflow provider for this endpoint",
+		msg := "the Anthropic cloud provider does not support " + path + " through marbor; use an OpenAI-compatible overflow provider for this endpoint"
+		if route.isCloudOnly() {
+			msg += cloudOnlyFailureSuffix
+		}
+		writeAPIError(w, http.StatusNotImplemented, msg,
 			"invalid_request_error", "unsupported_cloud_endpoint")
 		metrics.RequestsTotal(keyName, h.metricModel(modelName), "cloud:"+cloud.Name, "501")
 		return
@@ -1468,7 +1517,11 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 			h.proxyToCloud(w, r, body, modelName, keyName, requestID, start, clouds, idx+1, route)
 			return
 		}
-		writeAPIError(w, http.StatusBadGateway, "upstream unavailable", "server_error", "upstream_error")
+		msg := "upstream unavailable"
+		if route.isCloudOnly() {
+			msg += cloudOnlyFailureSuffix
+		}
+		writeAPIError(w, http.StatusBadGateway, msg, "server_error", "upstream_error")
 	}
 
 	rec := &statusRecorder{ResponseWriter: w, start: start}
@@ -1506,7 +1559,13 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 		clientIP := h.clientIP(r)
 		h.admin.LogRequestTimed(requestID, keyName, clientIP, loggedModel, nodeName, status, rec.statusCode, latencyMs, tokens, 0, route.decision(nodeName), admin.RequestTiming{QueueWaitMs: &queueWait, CloudMs: &cloudTime})
 		if tokens >= 0 {
-			h.admin.TrackCloudCostModel(keyName, cloud.Name, modelName, cloud.CostPer1KTokens, tokens)
+			if route.isCloudOnly() {
+				// Intended cloud traffic is not overflow: cost and budget are
+				// recorded, the per-key spill count is not bumped.
+				h.admin.TrackCloudCostModelNoSpill(keyName, cloud.Name, modelName, cloud.CostPer1KTokens, tokens)
+			} else {
+				h.admin.TrackCloudCostModel(keyName, cloud.Name, modelName, cloud.CostPer1KTokens, tokens)
+			}
 			// Model-config rpm/tpm caps are keyed to a specific local marbor
 			// node's profile and don't apply to cloud dispatch - cloud spend
 			// already has its own governance via CloudBudgetExceeded and the
@@ -2151,6 +2210,11 @@ func (h *Handler) metricModel(name string) string {
 	}
 	if h.router.HasCachedInstalledModel(name) {
 		return name
+	}
+	// A name the operator listed verbatim as cloud-only is declared, not
+	// client-chosen, so it keeps its own label (the list is capped).
+	if entry := h.router.CloudOnlyLabel(name); entry != "" {
+		return entry
 	}
 	return "unknown"
 }

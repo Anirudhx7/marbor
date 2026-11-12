@@ -2,8 +2,11 @@ package store
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log"
 	"strconv"
+	"strings"
 )
 
 // This file provides small typed helpers over the generic Store.GetSetting/
@@ -53,6 +56,30 @@ func GetFloatSetting(st Store, key string, def float64) float64 {
 		}
 	}
 	return def
+}
+
+// ReadJSONSetting unmarshals the stored JSON value for key into dst and, unlike
+// GetJSONSetting, reports a failure instead of hiding it. A missing or empty
+// row is not an error and leaves dst untouched; a read error or invalid JSON is
+// returned, with dst untouched, so a caller that must fail closed can tell
+// "no list" from "list unreadable".
+func ReadJSONSetting[T any](st Store, key string, dst *T) error {
+	v, err := st.GetSetting(key)
+	if errors.Is(err, ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read setting %q: %w", key, err)
+	}
+	if strings.TrimSpace(v) == "" {
+		return nil
+	}
+	var tmp T
+	if err := json.Unmarshal([]byte(v), &tmp); err != nil {
+		return fmt.Errorf("setting %q is not valid JSON: %w", key, err)
+	}
+	*dst = tmp
+	return nil
 }
 
 // GetJSONSetting unmarshals the stored JSON value for key into dst, leaving
