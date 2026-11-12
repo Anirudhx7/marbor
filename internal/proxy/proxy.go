@@ -86,6 +86,8 @@ func setRetryAfter(w http.ResponseWriter, d time.Duration) {
 // queue timeout, a conservative floor on how long to wait before retrying,
 // not a prediction of when capacity frees. Nothing is set when the queue is
 // disabled, the client went away, or no queue wait applies (skip_hard, routed).
+// The timeout is read at response time, not when the wait began; a live
+// settings change in between is negligible for a floor value.
 func (h *Handler) setNoNodesRetryAfter(w http.ResponseWriter, res router.WaitResult) {
 	switch res.Outcome {
 	case router.WaitQueueTimeout, router.WaitQueueFull, router.WaitSLAExpired:
@@ -760,6 +762,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.auth.Refund(keyName)
 		}
 		rw.Header().Del("X-Marbor-Model-Fallback")
+		// The limiter is read separately from the allow check; if the window
+		// rolled over in between, the header is omitted rather than invented.
 		if d, ok := h.modelLimiter.retryAfter(model, n.Name); ok {
 			setRetryAfter(rw, d)
 		}
@@ -929,7 +933,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			}
-			// No alternate nodes - try cloud fallback.
+			// No alternate nodes - try cloud fallback. Retry-After is deliberately
+			// omitted here: the request was routed and then a node failed, so no
+			// queue wait is being reported (waitRes is the initial wait result).
 			if h.localOnlyBlocked(rw, origReq, keyName, modelName, requestID, start, waitRes) {
 				retryErr = errCloudHandled
 				return

@@ -172,6 +172,19 @@ func TestProxy_LocalOnly_Never_Cloud(t *testing.T) {
 	}
 }
 
+// A local_only key turned away by the queue stage carries Retry-After equal to
+// the queue timeout rounded up, like the plain no-nodes 503.
+func TestProxy_LocalOnlyBlocked_RetryAfter(t *testing.T) {
+	e := newFastPathEnv(t, fastPathOpts{state: "saturated", timeoutMs: 1100, slaMs: 50, localOnly: true})
+	rec, _ := e.do()
+	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "local_only_blocked") {
+		t.Fatalf("status=%d body=%s, want 503 local_only_blocked", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Retry-After"); got != "2" {
+		t.Errorf("Retry-After = %q, want 2 (1100ms queue timeout rounded up)", got)
+	}
+}
+
 // With the cloud budget exhausted, cloud is not usable: the request keeps the
 // full wait and ends in the budget 503, never reaching the provider.
 func TestProxy_BudgetExceeded_KeepsFullWait(t *testing.T) {
