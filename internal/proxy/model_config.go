@@ -411,6 +411,25 @@ func (l *modelRateLimiter) statsLocked(key string) *modelMinuteStats {
 	return st
 }
 
+// retryAfter reports how long until the current fixed one-minute window for
+// (model, node) ends and its counters reset. It only reads: it never consumes
+// a request slot. ok is false when there is no live window to measure (no
+// traffic recorded yet, or the window has already lapsed), so the caller can
+// omit the header instead of inventing a value.
+func (l *modelRateLimiter) retryAfter(model, node string) (time.Duration, bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	st, ok := l.stats[limiterKey(model, node)]
+	if !ok {
+		return 0, false
+	}
+	remaining := time.Minute - time.Since(st.windowStart)
+	if remaining <= 0 {
+		return 0, false
+	}
+	return remaining, true
+}
+
 // allow reports whether a new request for (model, node) may proceed given
 // rpm/tpm caps (nil = unlimited), and increments the request counter if so.
 func (l *modelRateLimiter) allow(model, node string, rpm, tpm *int) bool {
