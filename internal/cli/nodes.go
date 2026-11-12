@@ -112,7 +112,7 @@ func runNodes(ctx *RunCtx) int {
 		return reportError(err, stderr)
 	}
 
-	nodes, err := client.NodesFiltered(signals, search)
+	nodes, rawNodes, err := client.NodesFilteredRaw(signals, search)
 	if err != nil {
 		return reportError(err, stderr)
 	}
@@ -120,7 +120,7 @@ func runNodes(ctx *RunCtx) int {
 		return reportError(serverErrorf("this server is too old for filtering nodes; upgrade marbor on the server, or run marbor nodes without --signal/--search"), stderr)
 	}
 
-	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, nodes); handled {
+	if handled, code := emitRawJSONList(stdout, stderr, flags.jsonOutput, rawNodes); handled {
 		return code
 	}
 

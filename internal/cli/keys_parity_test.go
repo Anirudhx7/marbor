@@ -35,10 +35,14 @@ func TestRun_KeyList_Table(t *testing.T) {
 	}
 }
 
+// keyListBody includes dailyLimit/monthlyLimit and a field the CLI does not
+// mirror, so a re-encoded typed copy would visibly differ.
+const keyListBody = `[{"name":"k1","key":"sk-...abcd","rateLimit":10,"dailyLimit":0,"monthlyLimit":500,"futureField":true}]`
+
 func TestRun_KeyList_JSON(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`[]`))
+		w.Write([]byte(keyListBody))
 	}))
 	defer srv.Close()
 	withTempConfigDir(t)
@@ -48,8 +52,43 @@ func TestRun_KeyList_JSON(t *testing.T) {
 	if code != ExitOK {
 		t.Fatalf("got %d %q", code, stderr.String())
 	}
-	if !json.Valid(stdout.Bytes()) {
-		t.Fatalf("not json %q", stdout.String())
+	var got, want []map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("not a json array %q: %v", stdout.String(), err)
+	}
+	if err := json.Unmarshal([]byte(keyListBody), &want); err != nil {
+		t.Fatal(err)
+	}
+	gotB, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantB, err := json.Marshal(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(gotB) != string(wantB) {
+		t.Fatalf("--json differs from server response\n got: %s\nwant: %s", gotB, wantB)
+	}
+}
+
+func TestRun_KeyList_JSON_EmptyStaysArray(t *testing.T) {
+	for _, body := range []string{`[]`, `null`} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(body))
+		}))
+		t.Cleanup(srv.Close)
+		withTempConfigDir(t)
+		mustSaveSession(t, srv.URL, "tok")
+		var stdout, stderr bytes.Buffer
+		code := Run([]string{"key", "list", "--server", srv.URL, "--json"}, &stdout, &stderr)
+		if code != ExitOK {
+			t.Fatalf("body %s: got %d %q", body, code, stderr.String())
+		}
+		if strings.TrimSpace(stdout.String()) != "[]" {
+			t.Fatalf("body %s: got %q, want []", body, stdout.String())
+		}
 	}
 }
 

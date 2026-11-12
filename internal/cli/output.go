@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -26,6 +27,31 @@ func emitJSON(stdout, stderr io.Writer, jsonOutput bool, v interface{}) (bool, i
 		return false, 0
 	}
 	if err := writeJSON(stdout, v); err != nil {
+		fmt.Fprintln(stderr, err)
+		return true, ExitServerError
+	}
+	return true, ExitOK
+}
+
+// emitRawJSONList is emitJSON for a list response body the CLI passes through
+// as received, re-indented, instead of re-encoding a typed copy that would
+// drop any field the CLI does not mirror. A null body prints as [] so a list
+// command keeps its array shape. The body must already be valid JSON.
+func emitRawJSONList(stdout, stderr io.Writer, jsonOutput bool, raw json.RawMessage) (bool, int) {
+	if !jsonOutput {
+		return false, 0
+	}
+	trimmed := bytes.TrimSpace(raw)
+	if string(trimmed) == "null" {
+		trimmed = []byte("[]")
+	}
+	var buf bytes.Buffer
+	if err := json.Indent(&buf, trimmed, "", "  "); err != nil {
+		fmt.Fprintf(stderr, "could not format the server response: %v\n", err)
+		return true, ExitServerError
+	}
+	buf.WriteByte('\n')
+	if _, err := stdout.Write(buf.Bytes()); err != nil {
 		fmt.Fprintln(stderr, err)
 		return true, ExitServerError
 	}

@@ -64,11 +64,14 @@ func runKeyList(flags *globalFlags, stdout, stderr io.Writer) int {
 	if err != nil {
 		return reportError(err, stderr)
 	}
-	keys, err := client.ListKeys()
+	// --json prints the server body as received. The server masks every key in
+	// this list, so no plaintext secret is in it; a new secret-bearing field on
+	// that response must be masked there, not filtered here.
+	keys, rawKeys, err := client.ListKeys()
 	if err != nil {
 		return reportError(err, stderr)
 	}
-	if handled, code := emitJSON(stdout, stderr, flags.jsonOutput, keys); handled {
+	if handled, code := emitRawJSONList(stdout, stderr, flags.jsonOutput, rawKeys); handled {
 		return code
 	}
 	tw := newTabWriter(stdout)
