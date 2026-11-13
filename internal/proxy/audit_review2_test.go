@@ -265,9 +265,17 @@ func TestDegradationTriesLaterChainEntryWhenFirstIsCapped(t *testing.T) {
 		var b map[string]interface{}
 		json.NewDecoder(r.Body).Decode(&b)
 		if b["model"] == "model-a" {
-			if conn, _, err := w.(http.Hijacker).Hijack(); err == nil {
-				conn.Close()
+			hj, ok := w.(http.Hijacker)
+			if !ok {
+				t.Error("upstream ResponseWriter is not a Hijacker")
+				return
 			}
+			conn, _, err := hj.Hijack()
+			if err != nil {
+				t.Errorf("hijack: %v", err)
+				return
+			}
+			conn.Close()
 			return
 		}
 		gotModel.Store(b["model"])
@@ -321,5 +329,54 @@ func TestMemoLabelerComputesOncePerDistinctName(t *testing.T) {
 	}
 	if label("a") != "L:a" || calls != 3 {
 		t.Errorf("returning to an earlier name recomputes: calls = %d, want 3", calls)
+	}
+}
+
+// A local degradation chain set on the router after construction applies to
+// the next request.
+func TestDegradationChainSetAfterConstructionApplies(t *testing.T) {
+	var gotModel atomic.Value
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var b map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&b)
+		if b["model"] == "model-a" {
+			hj, ok := w.(http.Hijacker)
+			if !ok {
+				t.Error("upstream ResponseWriter is not a Hijacker")
+				return
+			}
+			conn, _, err := hj.Hijack()
+			if err != nil {
+				t.Errorf("hijack: %v", err)
+				return
+			}
+			conn.Close()
+			return
+		}
+		gotModel.Store(b["model"])
+		w.Write([]byte(`{"done":true}`))
+	}))
+	defer upstream.Close()
+	r := router.New(config.RoutingConfig{},
+		[]config.NodeConfig{{Name: "gpu-0", URL: upstream.URL, Runtime: "ollama"}}, nil)
+	for _, n := range r.Nodes() {
+		n.Lock()
+		n.Healthy = true
+		n.Unlock()
+	}
+	a := admin.NewServer(r, nil, config.Config{})
+	defer a.Shutdown()
+	h := NewHandler(r, a, nil)
+	r.SetLocalDegradationChains(map[string][]string{"model-a": {"model-b"}})
+
+	req := httptest.NewRequest("POST", "/api/generate", strings.NewReader(`{"model":"model-a","prompt":"hi"}`))
+	req = withKeyName(h, req, "k", []config.KeyConfig{{Name: "k", Key: "k", AllowLocalDegradation: true}})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if g, _ := gotModel.Load().(string); g != "model-b" {
+		t.Errorf("served model %q, want model-b", g)
+	}
+	if rec.Code != 200 {
+		t.Errorf("status %d, want 200", rec.Code)
 	}
 }

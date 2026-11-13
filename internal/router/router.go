@@ -542,14 +542,15 @@ type Router struct {
 	healthFailureThreshold int
 	healthSuccessThreshold int
 	// fallbackChains maps a model to an ordered list of already-downloaded
-	// alternates to try when the primary model doesn't fit anywhere. Opt-in,
-	// immutable after construction (config-only, not runtime-toggleable).
-	fallbackChains map[string][]string
+	// alternates to try when the primary model doesn't fit anywhere. Opt-in.
+	// Swapped as a whole, never mutated in place, so the per-request lookup
+	// takes no lock. See chains.go.
+	fallbackChains atomic.Pointer[map[string][]string]
 	// localDegradationChains maps a model to an ordered list of local
 	// alternates to try when no node can serve it at all, gated by a
 	// per-request opt-in header (see config.RoutingConfig.LocalDegradationChains).
-	// Opt-in, immutable after construction (config-only, not runtime-toggleable).
-	localDegradationChains map[string][]string
+	// Opt-in. Swapped as a whole, never mutated in place. See chains.go.
+	localDegradationChains atomic.Pointer[map[string][]string]
 	// modelAliases holds the operator-declared client-name -> real-model map
 	// (config.RoutingConfig.ModelAliases). Swapped as a whole, never mutated
 	// in place, so the per-request resolve path takes no lock. See aliases.go.
@@ -924,8 +925,6 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 		maxRetries:               maxRetries,
 		healthFailureThreshold:   healthFailureThreshold,
 		healthSuccessThreshold:   healthSuccessThreshold,
-		fallbackChains:           cfg.FallbackChains,
-		localDegradationChains:   cfg.LocalDegradationChains,
 		thermalWatchdog:          thermalWatchdog,
 		affinity:                 make(map[string]*affinityEntry),
 		affinityTTL:              affinityTTL,
@@ -949,6 +948,8 @@ func New(cfg config.RoutingConfig, nodesCfg []config.NodeConfig, clouds []config
 	r.prefixLocalityEnabled.Store(cfg.PrefixLocalityEnabled)
 	r.prefixLocalityWeight.Store(math.Float64bits(cfg.PrefixLocalityWeight))
 	r.SetModelAliases(cfg.ModelAliases)
+	r.SetFallbackChains(cfg.FallbackChains)
+	r.SetLocalDegradationChains(cfg.LocalDegradationChains)
 	r.SetCloudOnlyModels(cfg.CloudOnlyModels)
 	if cfg.CloudOnlyListUnreadable {
 		r.SetCloudOnlyUnreadable()

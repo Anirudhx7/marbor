@@ -1006,8 +1006,8 @@ func TestModelDownloadedAnyNode(t *testing.T) {
 	}
 }
 
-// TestFallbackChainFor verifies the config-only, immutable-after-construction
-// accessor: declared models return their chain, undeclared models return nil.
+// TestFallbackChainFor verifies the fallback chain accessor: declared models
+// return their chain, undeclared models return nil.
 func TestFallbackChainFor(t *testing.T) {
 	r := New(config.RoutingConfig{
 		Strategy:       "warm-first",
@@ -1022,9 +1022,8 @@ func TestFallbackChainFor(t *testing.T) {
 	}
 }
 
-// TestLocalDegradationChainFor verifies the config-only, immutable-after-
-// construction accessor for the local degradation chain: declared models
-// return their chain, undeclared models return nil.
+// TestLocalDegradationChainFor verifies the local degradation chain accessor:
+// declared models return their chain, undeclared models return nil.
 func TestLocalDegradationChainFor(t *testing.T) {
 	r := New(config.RoutingConfig{
 		Strategy:               "warm-first",

@@ -637,3 +637,28 @@ func TestRecoverMiddlewareNonCanonicalProxyPathUsesEnvelope(t *testing.T) {
 		t.Errorf("want OpenAI envelope for //v1/x, got %q", rec.Body.String())
 	}
 }
+
+// A chain set on the router after construction applies to the next request,
+// without rebuilding the router or the handler.
+func TestFallbackChainSetAfterConstructionApplies(t *testing.T) {
+	srv, got, h := fallbackRig(t, nil, []config.KeyConfig{{Name: "k", Key: "sk-k", RateLimit: 1000}})
+	send := func() {
+		req := httptest.NewRequest("POST", "/api/generate", strings.NewReader(`{"model":"big","prompt":"x"}`))
+		req.Header.Set("Authorization", "Bearer sk-k")
+		srv.ServeHTTP(httptest.NewRecorder(), req)
+	}
+	send()
+	if g, _ := got.Load().(string); g != "big" {
+		t.Fatalf("backend received %q before any chain was set, want big", g)
+	}
+	h.router.SetFallbackChains(map[string][]string{"big": {"alt1"}})
+	send()
+	if g, _ := got.Load().(string); g != "alt1" {
+		t.Errorf("backend received %q after SetFallbackChains, want alt1", g)
+	}
+	h.router.SetFallbackChains(nil)
+	send()
+	if g, _ := got.Load().(string); g != "big" {
+		t.Errorf("backend received %q after chains were cleared, want big", g)
+	}
+}
