@@ -41,6 +41,12 @@ import (
 	"github.com/Anirudhx7/marbor/internal/store"
 )
 
+// Setting keys for the two chain maps.
+const (
+	settingFallbackChains         = "routing_fallback_chains"
+	settingLocalDegradationChains = "routing_local_degradation_chains"
+)
+
 //go:embed web/dist
 var webFS embed.FS
 
@@ -2072,12 +2078,6 @@ func (s *Server) loadRoutingChains() (fallback, degradation map[string][]string,
 	return fallback, degradation, nil
 }
 
-// Setting keys for the two chain maps.
-const (
-	settingFallbackChains         = "routing_fallback_chains"
-	settingLocalDegradationChains = "routing_local_degradation_chains"
-)
-
 // logKeptChains logs a diagnostic when the stored row for key is absent or
 // blank while live chains exist, because the reload keeps the live chains
 // instead of replacing them from the store.
@@ -2085,8 +2085,13 @@ func (s *Server) logKeptChains(key string, live map[string][]string) {
 	if len(live) == 0 {
 		return
 	}
+	// Re-reads the key only for diagnostics, runs under the settings lock, and
+	// logs on every reload while the row stays absent.
 	v, err := s.st.GetSetting(key)
-	if errors.Is(err, store.ErrNotFound) || (err == nil && strings.TrimSpace(v) == "") {
+	switch {
+	case err != nil && !errors.Is(err, store.ErrNotFound):
+		log.Printf("admin: reload: reading stored %s row for diagnostics: %v", key, err)
+	case errors.Is(err, store.ErrNotFound) || strings.TrimSpace(v) == "":
 		log.Printf("admin: reload: no stored %s row, keeping the current chains (%d models)", key, len(live))
 	}
 }

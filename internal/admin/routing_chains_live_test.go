@@ -5,16 +5,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/Anirudhx7/marbor/internal/store"
-)
-
-const (
-	fallbackChainsKey    = settingFallbackChains
-	degradationChainsKey = settingLocalDegradationChains
 )
 
 func putRawSettings(t *testing.T, s *Server, body string) *httptest.ResponseRecorder {
@@ -110,10 +106,10 @@ func TestUpdateSettings_RejectedPutLeavesRouterChains(t *testing.T) {
 
 func TestReloadFromStore_AppliesStoredChains(t *testing.T) {
 	s := chainsServer(t)
-	if err := store.SetJSONSetting(s.st, fallbackChainsKey, map[string][]string{"a": {"b", "c"}}); err != nil {
+	if err := store.SetJSONSetting(s.st, "routing_fallback_chains", map[string][]string{"a": {"b", "c"}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.SetJSONSetting(s.st, degradationChainsKey, map[string][]string{"a": {"d"}}); err != nil {
+	if err := store.SetJSONSetting(s.st, "routing_local_degradation_chains", map[string][]string{"a": {"d"}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, _, _, err := s.ReloadFromStore(); err != nil {
@@ -166,7 +162,7 @@ func TestReloadFromStore_NullRowClearsChain(t *testing.T) {
 	if got := s.router.FallbackChainFor("a"); !reflect.DeepEqual(got, []string{"b"}) {
 		t.Fatalf("fallback chain before null row = %v, want [b]", got)
 	}
-	if err := s.st.SetSetting(fallbackChainsKey, "null"); err != nil {
+	if err := s.st.SetSetting("routing_fallback_chains", "null"); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, _, _, err := s.ReloadFromStore(); err != nil {
@@ -191,7 +187,7 @@ func TestReloadFromStore_OnePresentRowKeepsTheAbsentOne(t *testing.T) {
 	s.mu.Lock()
 	s.cfg.Routing.LocalDegradationChains = map[string][]string{"a": {"c"}}
 	s.mu.Unlock()
-	if err := store.SetJSONSetting(s.st, fallbackChainsKey, map[string][]string{"a": {"new"}}); err != nil {
+	if err := store.SetJSONSetting(s.st, "routing_fallback_chains", map[string][]string{"a": {"new"}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, _, _, err := s.ReloadFromStore(); err != nil {
@@ -225,14 +221,14 @@ func TestUpdateSettings_MutatingCfgAfterPutDoesNotLeakToRouter(t *testing.T) {
 }
 
 func TestReloadFromStore_CorruptChainRowAppliesNothing(t *testing.T) {
-	for _, corruptKey := range []string{fallbackChainsKey, degradationChainsKey} {
+	for _, corruptKey := range []string{"routing_fallback_chains", "routing_local_degradation_chains"} {
 		t.Run(corruptKey, func(t *testing.T) {
 			s := chainsServer(t)
 			mustPut(t, s, `{"routing":{"fallback_chains":{"a":["b"]},"local_degradation_chains":{"a":["c"]},"cloud_only_models":["x"]}}`)
 			// A valid new value in one row and garbage in the other.
-			good, bad := degradationChainsKey, fallbackChainsKey
-			if corruptKey == degradationChainsKey {
-				good, bad = fallbackChainsKey, degradationChainsKey
+			good, bad := "routing_local_degradation_chains", "routing_fallback_chains"
+			if corruptKey == "routing_local_degradation_chains" {
+				good, bad = "routing_fallback_chains", "routing_local_degradation_chains"
 			}
 			if err := store.SetJSONSetting(s.st, good, map[string][]string{"a": {"new"}}); err != nil {
 				t.Fatal(err)
@@ -320,6 +316,34 @@ func TestChains_ReloadRacingPutStaysConsistent(t *testing.T) {
 	if !reflect.DeepEqual(got, []string{"p"}) && !reflect.DeepEqual(got, []string{"q"}) {
 		t.Errorf("final chain %v is not one of the written values", got)
 	}
+}
+
+// routerNodeNames returns the sorted names of the live router nodes.
+func routerNodeNames(s *Server) []string {
+	var names []string
+	for _, n := range s.router.Nodes() {
+		names = append(names, n.Name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// cfgIdentities returns the sorted node, cloud provider and key names in
+// s.cfg. The caller holds s.mu.
+func cfgIdentities(s *Server) (nodes, clouds, keys []string) {
+	for _, n := range s.cfg.Nodes {
+		nodes = append(nodes, n.Name)
+	}
+	for _, c := range s.cfg.CloudProviders {
+		clouds = append(clouds, c.Name)
+	}
+	for _, k := range s.cfg.Auth.Keys {
+		keys = append(keys, k.Name)
+	}
+	sort.Strings(nodes)
+	sort.Strings(clouds)
+	sort.Strings(keys)
+	return nodes, clouds, keys
 }
 
 // chainsServer is a real-store server with an auth middleware, so

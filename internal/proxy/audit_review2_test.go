@@ -265,9 +265,17 @@ func TestDegradationTriesLaterChainEntryWhenFirstIsCapped(t *testing.T) {
 		var b map[string]interface{}
 		json.NewDecoder(r.Body).Decode(&b)
 		if b["model"] == "model-a" {
-			if conn, _, err := w.(http.Hijacker).Hijack(); err == nil {
-				conn.Close()
+			hj, ok := w.(http.Hijacker)
+			if !ok {
+				t.Error("upstream ResponseWriter is not a Hijacker")
+				return
 			}
+			conn, _, err := hj.Hijack()
+			if err != nil {
+				t.Errorf("hijack: %v", err)
+				return
+			}
+			conn.Close()
 			return
 		}
 		gotModel.Store(b["model"])
@@ -332,9 +340,17 @@ func TestDegradationChainSetAfterConstructionApplies(t *testing.T) {
 		var b map[string]interface{}
 		json.NewDecoder(r.Body).Decode(&b)
 		if b["model"] == "model-a" {
-			if conn, _, err := w.(http.Hijacker).Hijack(); err == nil {
-				conn.Close()
+			hj, ok := w.(http.Hijacker)
+			if !ok {
+				t.Error("upstream ResponseWriter is not a Hijacker")
+				return
 			}
+			conn, _, err := hj.Hijack()
+			if err != nil {
+				t.Errorf("hijack: %v", err)
+				return
+			}
+			conn.Close()
 			return
 		}
 		gotModel.Store(b["model"])
@@ -357,7 +373,10 @@ func TestDegradationChainSetAfterConstructionApplies(t *testing.T) {
 	req = withKeyName(h, req, "k", []config.KeyConfig{{Name: "k", Key: "k", AllowLocalDegradation: true}})
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
-	if g, _ := gotModel.Load().(string); g != "model-b" || rec.Code != 200 {
-		t.Errorf("served model %q status %d, want model-b 200", g, rec.Code)
+	if g, _ := gotModel.Load().(string); g != "model-b" {
+		t.Errorf("served model %q, want model-b", g)
+	}
+	if rec.Code != 200 {
+		t.Errorf("status %d, want 200", rec.Code)
 	}
 }

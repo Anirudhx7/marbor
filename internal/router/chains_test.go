@@ -151,7 +151,6 @@ func TestChains_ConcurrentReadersAndWriters(t *testing.T) {
 		r.SetLocalDegradationChains(map[string][]string{"a": {"c"}})
 		r.SetFallbackChains(nil)
 		r.SetLocalDegradationChains(nil)
-		runtime.Gosched()
 	}
 }
 
@@ -170,7 +169,7 @@ func TestChains_EmptySliceKeepsNoChainBehavior(t *testing.T) {
 // Callers must treat the returned slice as read-only; this pins that the data
 // they see is stable: later input mutation does not change it, and repeated
 // reads return equal contents.
-func TestChains_ReturnedSliceIsSharedSnapshot(t *testing.T) {
+func TestChains_StoredChainIsolatedFromInputMutation(t *testing.T) {
 	in := map[string][]string{"a": {"b", "c"}}
 	r := newChainRouter(t, config.RoutingConfig{})
 	r.SetFallbackChains(in)
