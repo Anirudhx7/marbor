@@ -1,6 +1,8 @@
 package router
 
 import (
+	"reflect"
+	"runtime"
 	"sync"
 	"testing"
 
@@ -117,6 +119,11 @@ func TestChains_ConcurrentReadersAndWriters(t *testing.T) {
 	r := newChainRouter(t, config.RoutingConfig{})
 	var wg sync.WaitGroup
 	stop := make(chan struct{})
+	defer func() {
+		close(stop)
+		wg.Wait()
+	}()
+	wantFallback, wantDegradation := []string{"b"}, []string{"c"}
 	for i := 0; i < 4; i++ {
 		wg.Add(1)
 		go func() {
@@ -126,9 +133,16 @@ func TestChains_ConcurrentReadersAndWriters(t *testing.T) {
 				case <-stop:
 					return
 				default:
-					_ = r.FallbackChainFor("a")
-					_ = r.LocalDegradationChainFor("a")
 				}
+				if got := r.FallbackChainFor("a"); got != nil && !reflect.DeepEqual(got, wantFallback) {
+					t.Errorf("fallback chain = %v, want nil or %v", got, wantFallback)
+					return
+				}
+				if got := r.LocalDegradationChainFor("a"); got != nil && !reflect.DeepEqual(got, wantDegradation) {
+					t.Errorf("degradation chain = %v, want nil or %v", got, wantDegradation)
+					return
+				}
+				runtime.Gosched()
 			}
 		}()
 	}
@@ -137,7 +151,34 @@ func TestChains_ConcurrentReadersAndWriters(t *testing.T) {
 		r.SetLocalDegradationChains(map[string][]string{"a": {"c"}})
 		r.SetFallbackChains(nil)
 		r.SetLocalDegradationChains(nil)
+		runtime.Gosched()
 	}
-	close(stop)
-	wg.Wait()
+}
+
+func TestChains_EmptySliceKeepsNoChainBehavior(t *testing.T) {
+	r := newChainRouter(t, config.RoutingConfig{})
+	r.SetFallbackChains(map[string][]string{"a": {}})
+	r.SetLocalDegradationChains(map[string][]string{"a": nil})
+	if got := r.FallbackChainFor("a"); len(got) != 0 {
+		t.Errorf("empty fallback slice yielded %v, want no alternates", got)
+	}
+	if got := r.LocalDegradationChainFor("a"); len(got) != 0 {
+		t.Errorf("nil degradation slice yielded %v, want no alternates", got)
+	}
+}
+
+// Callers must treat the returned slice as read-only; this pins that the data
+// they see is stable: later input mutation does not change it, and repeated
+// reads return equal contents.
+func TestChains_ReturnedSliceIsSharedSnapshot(t *testing.T) {
+	in := map[string][]string{"a": {"b", "c"}}
+	r := newChainRouter(t, config.RoutingConfig{})
+	r.SetFallbackChains(in)
+	first := r.FallbackChainFor("a")
+	in["a"][0] = "mutated"
+	second := r.FallbackChainFor("a")
+	want := []string{"b", "c"}
+	if !reflect.DeepEqual(first, want) || !reflect.DeepEqual(second, want) {
+		t.Errorf("stored chain changed: first %v, second %v, want %v", first, second, want)
+	}
 }

@@ -323,3 +323,41 @@ func TestMemoLabelerComputesOncePerDistinctName(t *testing.T) {
 		t.Errorf("returning to an earlier name recomputes: calls = %d, want 3", calls)
 	}
 }
+
+// A local degradation chain set on the router after construction applies to
+// the next request.
+func TestDegradationChainSetAfterConstructionApplies(t *testing.T) {
+	var gotModel atomic.Value
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var b map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&b)
+		if b["model"] == "model-a" {
+			if conn, _, err := w.(http.Hijacker).Hijack(); err == nil {
+				conn.Close()
+			}
+			return
+		}
+		gotModel.Store(b["model"])
+		w.Write([]byte(`{"done":true}`))
+	}))
+	defer upstream.Close()
+	r := router.New(config.RoutingConfig{},
+		[]config.NodeConfig{{Name: "gpu-0", URL: upstream.URL, Runtime: "ollama"}}, nil)
+	for _, n := range r.Nodes() {
+		n.Lock()
+		n.Healthy = true
+		n.Unlock()
+	}
+	a := admin.NewServer(r, nil, config.Config{})
+	defer a.Shutdown()
+	h := NewHandler(r, a, nil)
+	r.SetLocalDegradationChains(map[string][]string{"model-a": {"model-b"}})
+
+	req := httptest.NewRequest("POST", "/api/generate", strings.NewReader(`{"model":"model-a","prompt":"hi"}`))
+	req = withKeyName(h, req, "k", []config.KeyConfig{{Name: "k", Key: "k", AllowLocalDegradation: true}})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if g, _ := gotModel.Load().(string); g != "model-b" || rec.Code != 200 {
+		t.Errorf("served model %q status %d, want model-b 200", g, rec.Code)
+	}
+}

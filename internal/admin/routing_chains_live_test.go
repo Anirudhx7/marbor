@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	fallbackChainsKey    = "routing_fallback_chains"
-	degradationChainsKey = "routing_local_degradation_chains"
+	fallbackChainsKey    = settingFallbackChains
+	degradationChainsKey = settingLocalDegradationChains
 )
 
 func putRawSettings(t *testing.T, s *Server, body string) *httptest.ResponseRecorder {
@@ -81,6 +81,9 @@ func TestUpdateSettings_PutOmittingChainsLeavesRouterChains(t *testing.T) {
 func TestUpdateSettings_NullClearsChains(t *testing.T) {
 	s := chainsServer(t)
 	mustPut(t, s, `{"routing":{"fallback_chains":{"a":["b"]},"local_degradation_chains":{"a":["c"]}}}`)
+	if s.router.FallbackChainFor("a") == nil || s.router.LocalDegradationChainFor("a") == nil {
+		t.Fatal("chains were not set before the null PUT")
+	}
 	mustPut(t, s, `{"routing":{"fallback_chains":null,"local_degradation_chains":null}}`)
 	if got := s.router.FallbackChainFor("a"); got != nil {
 		t.Errorf("fallback chain after null = %v, want nil", got)
@@ -160,6 +163,9 @@ func TestReloadFromStore_AbsentRowsKeepCurrentChains(t *testing.T) {
 func TestReloadFromStore_NullRowClearsChain(t *testing.T) {
 	s := chainsServer(t)
 	mustPut(t, s, `{"routing":{"fallback_chains":{"a":["b"]},"local_degradation_chains":{"a":["c"]}}}`)
+	if got := s.router.FallbackChainFor("a"); !reflect.DeepEqual(got, []string{"b"}) {
+		t.Fatalf("fallback chain before null row = %v, want [b]", got)
+	}
 	if err := s.st.SetSetting(fallbackChainsKey, "null"); err != nil {
 		t.Fatal(err)
 	}
@@ -171,6 +177,50 @@ func TestReloadFromStore_NullRowClearsChain(t *testing.T) {
 	}
 	if got := s.router.LocalDegradationChainFor("a"); !reflect.DeepEqual(got, []string{"c"}) {
 		t.Errorf("degradation chain changed by a fallback null row: %v", got)
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if len(s.cfg.Routing.FallbackChains) != 0 {
+		t.Errorf("s.cfg fallback chains not cleared by a null row: %v", s.cfg.Routing.FallbackChains)
+	}
+}
+
+func TestReloadFromStore_OnePresentRowKeepsTheAbsentOne(t *testing.T) {
+	s := chainsServer(t)
+	s.router.SetLocalDegradationChains(map[string][]string{"a": {"c"}})
+	s.mu.Lock()
+	s.cfg.Routing.LocalDegradationChains = map[string][]string{"a": {"c"}}
+	s.mu.Unlock()
+	if err := store.SetJSONSetting(s.st, fallbackChainsKey, map[string][]string{"a": {"new"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, _, err := s.ReloadFromStore(); err != nil {
+		t.Fatalf("ReloadFromStore: %v", err)
+	}
+	if got := s.router.FallbackChainFor("a"); !reflect.DeepEqual(got, []string{"new"}) {
+		t.Errorf("present fallback row not applied: %v", got)
+	}
+	if got := s.router.LocalDegradationChainFor("a"); !reflect.DeepEqual(got, []string{"c"}) {
+		t.Errorf("absent degradation row cleared the chain: %v", got)
+	}
+}
+
+func TestUpdateSettings_MutatingCfgAfterPutDoesNotLeakToRouter(t *testing.T) {
+	s := chainsServer(t)
+	mustPut(t, s, `{"routing":{"fallback_chains":{"a":["b"]},"local_degradation_chains":{"a":["c"]}}}`)
+	s.mu.Lock()
+	s.cfg.Routing.FallbackChains["a"][0] = "mutated"
+	s.cfg.Routing.FallbackChains["z"] = []string{"new"}
+	s.cfg.Routing.LocalDegradationChains["a"][0] = "mutated"
+	s.mu.Unlock()
+	if got := s.router.FallbackChainFor("a"); !reflect.DeepEqual(got, []string{"b"}) {
+		t.Errorf("router fallback chain follows s.cfg mutation: %v", got)
+	}
+	if got := s.router.LocalDegradationChainFor("a"); !reflect.DeepEqual(got, []string{"c"}) {
+		t.Errorf("router degradation chain follows s.cfg mutation: %v", got)
+	}
+	if s.router.FallbackChainFor("z") != nil {
+		t.Error("key added to s.cfg after PUT is visible on the router")
 	}
 }
 
@@ -193,6 +243,18 @@ func TestReloadFromStore_CorruptChainRowAppliesNothing(t *testing.T) {
 			if err := s.st.SetSetting("routing_cloud_only_models", `["changed"]`); err != nil {
 				t.Fatal(err)
 			}
+			// Rows that a successful reload would apply: a new node and cloud.
+			if err := s.st.UpsertNode(store.NodeRecord{Name: "extra", URL: "http://localhost:11999", Runtime: "ollama"}); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.st.UpsertCloudProvider(store.CloudProviderRecord{Name: "cp-extra", Provider: "openai", BaseURL: "https://example.invalid", Enabled: true}); err != nil {
+				t.Fatal(err)
+			}
+			nodeCount := len(s.router.Nodes())
+			s.mu.RLock()
+			cfgNodes, cfgClouds, cfgKeys := len(s.cfg.Nodes), len(s.cfg.CloudProviders), len(s.cfg.Auth.Keys)
+			s.mu.RUnlock()
+
 			_, _, _, _, err := s.ReloadFromStore()
 			if err == nil || !strings.Contains(err.Error(), "chain") {
 				t.Fatalf("ReloadFromStore error = %v, want a chains error", err)
@@ -206,10 +268,22 @@ func TestReloadFromStore_CorruptChainRowAppliesNothing(t *testing.T) {
 			if got := s.router.CloudOnlyModels(); !reflect.DeepEqual(got, []string{"x"}) {
 				t.Errorf("cloud-only list changed by a failed reload: %v", got)
 			}
+			if got := len(s.router.Nodes()); got != nodeCount {
+				t.Errorf("router nodes changed by a failed reload: %d, want %d", got, nodeCount)
+			}
 			s.mu.RLock()
 			defer s.mu.RUnlock()
 			if !reflect.DeepEqual(s.cfg.Routing.FallbackChains["a"], []string{"b"}) {
 				t.Errorf("s.cfg fallback chains changed by a failed reload: %v", s.cfg.Routing.FallbackChains)
+			}
+			if !reflect.DeepEqual(s.cfg.Routing.LocalDegradationChains["a"], []string{"c"}) {
+				t.Errorf("s.cfg degradation chains changed by a failed reload: %v", s.cfg.Routing.LocalDegradationChains)
+			}
+			if !reflect.DeepEqual(s.cfg.Routing.CloudOnlyModels, []string{"x"}) {
+				t.Errorf("s.cfg cloud-only changed by a failed reload: %v", s.cfg.Routing.CloudOnlyModels)
+			}
+			if len(s.cfg.Nodes) != cfgNodes || len(s.cfg.CloudProviders) != cfgClouds || len(s.cfg.Auth.Keys) != cfgKeys {
+				t.Errorf("s.cfg nodes/clouds/keys changed by a failed reload: %d/%d/%d", len(s.cfg.Nodes), len(s.cfg.CloudProviders), len(s.cfg.Auth.Keys))
 			}
 		})
 	}
@@ -217,24 +291,34 @@ func TestReloadFromStore_CorruptChainRowAppliesNothing(t *testing.T) {
 
 func TestChains_ReloadRacingPutStaysConsistent(t *testing.T) {
 	s := chainsServer(t)
+	values := []string{"p", "q"}
 	var wg sync.WaitGroup
-	for i := 0; i < 20; i++ {
+	for i := 0; i < 100; i++ {
+		v := values[i%2]
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			putRawSettings(t, s, `{"routing":{"fallback_chains":{"a":["p"]}}}`)
+			if rec := putRawSettings(t, s, `{"routing":{"fallback_chains":{"a":["`+v+`"]}}}`); rec.Code != http.StatusOK {
+				t.Errorf("PUT = %d, want 200; body: %s", rec.Code, rec.Body.String())
+			}
 		}()
 		go func() {
 			defer wg.Done()
-			_, _, _, _, _ = s.ReloadFromStore()
+			if _, _, _, _, err := s.ReloadFromStore(); err != nil {
+				t.Errorf("ReloadFromStore: %v", err)
+			}
 		}()
 	}
 	wg.Wait()
 	s.mu.RLock()
 	want := s.cfg.Routing.FallbackChains["a"]
 	s.mu.RUnlock()
-	if got := s.router.FallbackChainFor("a"); !reflect.DeepEqual(got, want) {
+	got := s.router.FallbackChainFor("a")
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("router chain %v diverged from s.cfg chain %v", got, want)
+	}
+	if !reflect.DeepEqual(got, []string{"p"}) && !reflect.DeepEqual(got, []string{"q"}) {
+		t.Errorf("final chain %v is not one of the written values", got)
 	}
 }
 

@@ -1408,6 +1408,7 @@ func chainFor(chains *atomic.Pointer[map[string][]string], model string) []strin
 // FallbackChainFor returns the operator-declared, ordered list of alternate
 // models to try for model, or nil if none is configured. Opt-in only - a
 // model absent from routing.fallback_chains has no substitution behavior.
+// The returned slice is shared with the live map and must not be modified.
 func (r *Router) FallbackChainFor(model string) []string {
 	return chainFor(&r.fallbackChains, model)
 }
@@ -1417,7 +1418,8 @@ func (r *Router) FallbackChainFor(model string) []string {
 // or nil if none is configured. Opt-in only - a model absent from
 // routing.local_degradation_chains has no substitution behavior. Single-hop
 // only: callers must not recursively resolve a chain for the returned
-// alternates.
+// alternates. The returned slice is shared with the live map and must not be
+// modified.
 func (r *Router) LocalDegradationChainFor(model string) []string {
 	return chainFor(&r.localDegradationChains, model)
 }

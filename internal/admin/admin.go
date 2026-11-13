@@ -1993,8 +1993,9 @@ func (s *Server) ReloadFromStore() (nodesAdded, nodesRemoved, authKeys, cloudPro
 	// Both chain rows are read before either is applied. Unlike the cloud-only
 	// list, an absent or blank row keeps the current chains (the decode
 	// targets start as copies of what is live), so a store that never held a
-	// chain row cannot silently clear chains set in memory. Only a stored null
-	// clears. A row that cannot be read or parsed fails the whole reload.
+	// chain row cannot silently clear chains set in memory. A present row
+	// replaces the current chains entirely, and a stored null clears them. A
+	// row that cannot be read or parsed fails the whole reload.
 	fallbackChains, degradationChains, chErr := s.loadRoutingChains()
 	if chErr != nil {
 		return 0, 0, 0, 0, chErr
@@ -2051,24 +2052,47 @@ func (s *Server) loadCloudOnlyModels() ([]string, error) {
 
 // loadRoutingChains reads the persisted fallback and local degradation chains
 // without touching any live state. The decode targets start as deep copies of
-// the current chains, so an absent or blank row leaves them unchanged and a
-// stored null clears them. A row that cannot be read or parsed is an error and
-// nothing is returned for either chain. The caller holds settingsMu.
+// the current chains, so an absent or blank row keeps the current chains, a
+// present row replaces them entirely, and a stored null clears them. A row
+// that cannot be read or parsed is an error and nothing is returned for either
+// chain. The caller holds settingsMu.
 func (s *Server) loadRoutingChains() (fallback, degradation map[string][]string, err error) {
 	s.mu.RLock()
 	fallback = cloneChains(s.cfg.Routing.FallbackChains)
 	degradation = cloneChains(s.cfg.Routing.LocalDegradationChains)
 	s.mu.RUnlock()
-	if err := store.ReadJSONSetting(s.st, "routing_fallback_chains", &fallback); err != nil {
+	if err := store.ReadJSONSetting(s.st, settingFallbackChains, &fallback); err != nil {
 		return nil, nil, fmt.Errorf("load fallback chains: %w", err)
 	}
-	if err := store.ReadJSONSetting(s.st, "routing_local_degradation_chains", &degradation); err != nil {
+	if err := store.ReadJSONSetting(s.st, settingLocalDegradationChains, &degradation); err != nil {
 		return nil, nil, fmt.Errorf("load local degradation chains: %w", err)
 	}
+	s.logKeptChains(settingFallbackChains, fallback)
+	s.logKeptChains(settingLocalDegradationChains, degradation)
 	return fallback, degradation, nil
 }
 
-// cloneChains deep copies a chain map; nil stays nil.
+// Setting keys for the two chain maps.
+const (
+	settingFallbackChains         = "routing_fallback_chains"
+	settingLocalDegradationChains = "routing_local_degradation_chains"
+)
+
+// logKeptChains logs a diagnostic when the stored row for key is absent or
+// blank while live chains exist, because the reload keeps the live chains
+// instead of replacing them from the store.
+func (s *Server) logKeptChains(key string, live map[string][]string) {
+	if len(live) == 0 {
+		return
+	}
+	v, err := s.st.GetSetting(key)
+	if errors.Is(err, store.ErrNotFound) || (err == nil && strings.TrimSpace(v) == "") {
+		log.Printf("admin: reload: no stored %s row, keeping the current chains (%d models)", key, len(live))
+	}
+}
+
+// cloneChains deep copies a chain map; nil stays nil. An empty or nil result
+// is normalized to "no chains" by the router setter.
 func cloneChains(chains map[string][]string) map[string][]string {
 	if chains == nil {
 		return nil
@@ -6372,10 +6396,10 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	// List/map-typed fields: JSON-encoded, not representable as a single
 	// scalar settings value.
 	jsonSettings := map[string]any{
-		"warmup_models":                    incoming.Warmup.Models,
-		"routing_fallback_chains":          incoming.Routing.FallbackChains,
-		"routing_local_degradation_chains": incoming.Routing.LocalDegradationChains,
-		"context_windows":                  incoming.ContextWindows,
+		"warmup_models":               incoming.Warmup.Models,
+		settingFallbackChains:         incoming.Routing.FallbackChains,
+		settingLocalDegradationChains: incoming.Routing.LocalDegradationChains,
+		"context_windows":             incoming.ContextWindows,
 	}
 	for key, val := range jsonSettings {
 		if err := store.SetJSONSetting(s.st, key, val); err != nil {
