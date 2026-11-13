@@ -213,8 +213,33 @@ func (r *Router) RunPredictionCycle(ctx context.Context, now time.Time) {
 		n.mu.RUnlock()
 
 		for _, W := range warmModels {
-			nextCounts, ok := transitions[W]
-			if !ok {
+			// Transitions are keyed by the name clients asked for, while a
+			// node reports the form its runtime uses, so on Ollama a bare
+			// "llama3" history and a resident "llama3:latest" are the same
+			// trigger. Counts from every equivalent trigger key are merged, and
+			// on Ollama the predicted models "b" and "b:latest" are merged into
+			// one candidate (counted under the canonical key, named by the
+			// form sorting first, so the bare name an operator typed wins).
+			// Non-Ollama nodes are skipped above, so every node here folds.
+			var nextCounts map[string]int
+			var nextNames map[string]string
+			for from, counts := range transitions {
+				if !ModelNamesMatchOnRuntime(nodeRuntime, W, from) {
+					continue
+				}
+				if nextCounts == nil {
+					nextCounts = make(map[string]int)
+					nextNames = make(map[string]string)
+				}
+				for to, c := range counts {
+					key := canonicalModelName(to)
+					nextCounts[key] += c
+					if name, seen := nextNames[key]; !seen || to < name {
+						nextNames[key] = to
+					}
+				}
+			}
+			if len(nextCounts) == 0 {
 				continue
 			}
 
@@ -225,7 +250,7 @@ func (r *Router) RunPredictionCycle(ctx context.Context, now time.Time) {
 			}
 			var freqs []modelFreq
 			for m, count := range nextCounts {
-				freqs = append(freqs, modelFreq{m, count})
+				freqs = append(freqs, modelFreq{nextNames[m], count})
 			}
 			sort.Slice(freqs, func(i, j int) bool {
 				if freqs[i].count == freqs[j].count {
@@ -246,7 +271,7 @@ func (r *Router) RunPredictionCycle(ctx context.Context, now time.Time) {
 
 				wasAlreadyWarm := false
 				for _, lm := range warmModels {
-					if modelNamesMatchOnRuntime(nodeRuntime, lm, P) {
+					if ModelNamesMatchOnRuntime(nodeRuntime, lm, P) {
 						wasAlreadyWarm = true
 						break
 					}
@@ -349,7 +374,7 @@ func (r *Router) runTimeOfDayPrewarm(ctx context.Context, targetHour int, health
 				n.mu.RLock()
 				loaded := false
 				for _, m := range n.LoadedModels {
-					if modelNamesMatchOnRuntime(n.Runtime, m.Name, model) {
+					if ModelNamesMatchOnRuntime(n.Runtime, m.Name, model) {
 						loaded = true
 						break
 					}

@@ -85,14 +85,32 @@ func (r *Router) driftedResidentDigest(n *NodeState, model string) bool {
 	return r.digestMismatch(entry.Name, entry.Digest)
 }
 
-// modelNamesMatchOnRuntime reports whether a and b name the same model on a
+// ModelNamesMatchOnRuntime reports whether a and b name the same model on a
 // node running runtime. The bare-name ":latest" shorthand is an Ollama
 // convention, so equivalence applies only to Ollama (or an unset runtime,
 // which routing treats as Ollama); every other runtime serves exact ids and
 // matches exactly.
-func modelNamesMatchOnRuntime(runtime, a, b string) bool {
+func ModelNamesMatchOnRuntime(runtime, a, b string) bool {
 	if a == b {
 		return true
 	}
 	return normalizeRuntime(runtime) == runtimeOllama && ModelNamesEquivalent(a, b)
+}
+
+// reservationModelKey returns the key a warm reservation for model on node is
+// stored under. On an Ollama node (or one with an unset runtime) the bare name
+// and its ":latest" form share one key, so a reservation made under one is seen
+// and cleared under the other. On any other runtime, or a node the router does
+// not know, the name is used exactly; the unknown-node case is deliberate, as
+// there is no runtime to judge by. It takes the router and node locks, so
+// callers must not hold r.mu or n.mu, and must resolve it before taking
+// evictMu. The key is derived from the runtime at call time: if the node's
+// runtime changes between a reserve and its clear, the old key stays until the
+// reservation TTL expires it.
+func (r *Router) reservationModelKey(node, model string) string {
+	n := r.FindNode(node)
+	if n == nil || normalizeRuntime(n.GetRuntime()) != runtimeOllama {
+		return model
+	}
+	return canonicalModelName(model)
 }

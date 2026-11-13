@@ -207,14 +207,16 @@ func TestLooksLikeAgentReportAcceptsEachOldSignal(t *testing.T) {
 
 // A flood of made-up model names (placeholder reservations) must not push out a
 // real reservation, even when the real one is the oldest.
+// Keys are derived through reservationModelKey, the form the router stores them under.
 func TestWarmReservationCapEvictsPlaceholdersBeforeRealOnes(t *testing.T) {
 	r := New(config.RoutingConfig{}, []config.NodeConfig{{Name: "n", URL: "http://example.test:11434"}}, nil)
 	r.reserveWarmBytesAs("n", "real", 5*gibBytes, false)
 	for i := 0; i < 3*maxWarmReservationsPerNode; i++ {
 		r.reserveWarmBytesAs("n", fmt.Sprintf("made-up-%d", i), 1, true)
 	}
+	realKey := r.reservationModelKey("n", "real")
 	r.evictMu.Lock()
-	res, ok := r.warmReserved["n"]["real"]
+	res, ok := r.warmReserved["n"][realKey]
 	size := len(r.warmReserved["n"])
 	r.evictMu.Unlock()
 	if !ok || res.bytes != 5*gibBytes {
@@ -233,9 +235,10 @@ func TestWarmReservationCapFallsBackToOldestOverall(t *testing.T) {
 		time.Sleep(time.Microsecond)
 	}
 	r.reserveWarmBytesAs("n", "newest", 1, false)
+	oldestKey, newestKey := r.reservationModelKey("n", "m-0"), r.reservationModelKey("n", "newest")
 	r.evictMu.Lock()
-	_, oldestKept := r.warmReserved["n"]["m-0"]
-	_, newestKept := r.warmReserved["n"]["newest"]
+	_, oldestKept := r.warmReserved["n"][oldestKey]
+	_, newestKept := r.warmReserved["n"][newestKey]
 	r.evictMu.Unlock()
 	if oldestKept || !newestKept {
 		t.Fatalf("oldest kept=%v newest kept=%v, want the oldest real reservation dropped", oldestKept, newestKept)

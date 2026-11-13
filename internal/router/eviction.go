@@ -449,12 +449,29 @@ func (r *Router) suppressWarmup(node, model, reason string) {
 	r.warmupSuppressed[node][model] = suppressedInfo{Reason: enumReason, Since: time.Now()}
 }
 
-// isWarmupSuppressed reports whether (node, model) is currently suppressed.
+// isWarmupSuppressed reports whether (node, model) is currently suppressed. On
+// an Ollama node (or one with an unset runtime) the bare name and its ":latest"
+// form are one model, so suppressing either suppresses both; on any other
+// runtime, or a node the router does not know, names match exactly.
 func (r *Router) isWarmupSuppressed(node, model string) bool {
+	// Resolved before suppressMu: FindNode takes the router and node locks.
+	n := r.FindNode(node)
+	fold := n != nil && normalizeRuntime(n.GetRuntime()) == runtimeOllama
 	r.suppressMu.Lock()
 	defer r.suppressMu.Unlock()
-	_, ok := r.warmupSuppressed[node][model]
-	return ok
+	suppressed := r.warmupSuppressed[node]
+	if _, ok := suppressed[model]; ok {
+		return true
+	}
+	if !fold {
+		return false
+	}
+	for m := range suppressed {
+		if ModelNamesEquivalent(model, m) {
+			return true
+		}
+	}
+	return false
 }
 
 // SuppressedWarmupInfo returns a copy of node's suppressed-model set (model ->
@@ -474,11 +491,27 @@ func (r *Router) SuppressedWarmupInfo(node string) map[string]suppressedInfo {
 // clearWarmupSuppress re-arms warmup for the given models on node - called
 // when a "warmup" schedule/WarmModels explicitly asks for them to be warm
 // again, overriding any earlier unload suppression.
+//
+// Name matching follows isWarmupSuppressed: on an Ollama node the bare name and
+// its ":latest" form are one model (an unset runtime counts as Ollama, an
+// unknown node matches exactly), so re-arming either clears both.
 func (r *Router) clearWarmupSuppress(node string, models ...string) {
+	// Resolved before suppressMu: FindNode takes the router and node locks.
+	n := r.FindNode(node)
+	fold := n != nil && normalizeRuntime(n.GetRuntime()) == runtimeOllama
 	r.suppressMu.Lock()
 	defer r.suppressMu.Unlock()
+	suppressed := r.warmupSuppressed[node]
 	for _, m := range models {
-		delete(r.warmupSuppressed[node], m)
+		delete(suppressed, m)
+		if !fold {
+			continue
+		}
+		for s := range suppressed {
+			if ModelNamesEquivalent(m, s) {
+				delete(suppressed, s)
+			}
+		}
 	}
 }
 
@@ -1105,13 +1138,13 @@ func (r *Router) evictForHeadroom(ctx context.Context, nodeName, forModel string
 }
 
 // inFlightFor sums the in-flight counts recorded under any name that matches
-// model on a node running runtime (see modelNamesMatchOnRuntime): requests are
+// model on a node running runtime (see ModelNamesMatchOnRuntime): requests are
 // counted under the raw requested name while Ollama
 // reports residents in their tagged form. Other runtimes match exactly.
 func inFlightFor(counts map[string]int32, model, runtime string) int32 {
 	var total int32
 	for name, n := range counts {
-		if modelNamesMatchOnRuntime(runtime, name, model) {
+		if ModelNamesMatchOnRuntime(runtime, name, model) {
 			total += n
 		}
 	}
@@ -1273,6 +1306,8 @@ func (r *Router) reserveWarmBytes(node, model string, estBytes int64) int64 {
 // reserveWarmBytesAs is reserveWarmBytes with the reservation's source stated:
 // placeholder is true when estBytes is the unknown-size guard rather than a size.
 func (r *Router) reserveWarmBytesAs(node, model string, estBytes int64, placeholder bool) int64 {
+	// Resolved before evictMu: it takes the router and node locks.
+	model = r.reservationModelKey(node, model)
 	r.evictMu.Lock()
 	defer r.evictMu.Unlock()
 	if r.warmReserved == nil {
@@ -1524,6 +1559,8 @@ func (r *Router) pendingPrewarmBytes(node string, includePlaceholders bool) int6
 // predictive cycle. Read-only: unlike reserveWarmBytes, this never writes a
 // reservation or drops expired entries itself.
 func (r *Router) hasActiveWarmReservation(node, model string) bool {
+	// Lock order: the key is resolved before evictMu; callers must not hold r.mu or n.mu.
+	model = r.reservationModelKey(node, model)
 	r.evictMu.Lock()
 	defer r.evictMu.Unlock()
 	byModel := r.warmReserved[node]
@@ -1542,6 +1579,8 @@ func (r *Router) hasActiveWarmReservation(node, model string) bool {
 // reservation can't keep double-counting against the now-real usedBytes on
 // later headroom checks. Guarded by evictMu.
 func (r *Router) clearWarmReservation(node, model string) {
+	// Lock order: the key is resolved before evictMu; callers must not hold r.mu or n.mu.
+	model = r.reservationModelKey(node, model)
 	r.evictMu.Lock()
 	if byModel := r.warmReserved[node]; byModel != nil {
 		delete(byModel, model)

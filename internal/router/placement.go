@@ -123,7 +123,7 @@ func (r *Router) isModelWarm(n *NodeState, modelName string) bool {
 	n.mu.RLock()
 	defer n.mu.RUnlock()
 	for _, m := range n.LoadedModels {
-		if modelNamesMatchOnRuntime(n.Runtime, m.Name, modelName) && !r.digestMismatch(m.Name, m.Digest) {
+		if ModelNamesMatchOnRuntime(n.Runtime, m.Name, modelName) && !r.digestMismatch(m.Name, m.Digest) {
 			return true
 		}
 	}
@@ -546,7 +546,7 @@ func (r *Router) scoreComponents(n *NodeState, model, preferredNode string) []Sc
 		// node's copy under the same name - crediting it as an
 		// interchangeable warm hit would silently mix variants. See
 		// isModelWarm's doc comment.
-		if modelNamesMatchOnRuntime(n.Runtime, m.Name, model) && !r.digestMismatch(m.Name, m.Digest) {
+		if ModelNamesMatchOnRuntime(n.Runtime, m.Name, model) && !r.digestMismatch(m.Name, m.Digest) {
 			warm = 1.0
 			break
 		}
