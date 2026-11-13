@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -246,9 +247,12 @@ func TestReloadFromStore_CorruptChainRowAppliesNothing(t *testing.T) {
 			if err := s.st.UpsertCloudProvider(store.CloudProviderRecord{Name: "cp-extra", Provider: "openai", BaseURL: "https://example.invalid", Enabled: true}); err != nil {
 				t.Fatal(err)
 			}
-			nodeCount := len(s.router.Nodes())
+			if err := s.st.UpsertKey(store.KeyRecord{Name: "key-extra", Key: "sk-extra-token"}); err != nil {
+				t.Fatal(err)
+			}
+			routerBefore := routerNodeNames(s)
 			s.mu.RLock()
-			cfgNodes, cfgClouds, cfgKeys := len(s.cfg.Nodes), len(s.cfg.CloudProviders), len(s.cfg.Auth.Keys)
+			nodesBefore, cloudsBefore, keysBefore := cfgIdentities(s)
 			s.mu.RUnlock()
 
 			_, _, _, _, err := s.ReloadFromStore()
@@ -264,8 +268,8 @@ func TestReloadFromStore_CorruptChainRowAppliesNothing(t *testing.T) {
 			if got := s.router.CloudOnlyModels(); !reflect.DeepEqual(got, []string{"x"}) {
 				t.Errorf("cloud-only list changed by a failed reload: %v", got)
 			}
-			if got := len(s.router.Nodes()); got != nodeCount {
-				t.Errorf("router nodes changed by a failed reload: %d, want %d", got, nodeCount)
+			if got := routerNodeNames(s); !reflect.DeepEqual(got, routerBefore) || slices.Contains(got, "extra") {
+				t.Errorf("router nodes changed by a failed reload: %v, want %v", got, routerBefore)
 			}
 			s.mu.RLock()
 			defer s.mu.RUnlock()
@@ -278,8 +282,15 @@ func TestReloadFromStore_CorruptChainRowAppliesNothing(t *testing.T) {
 			if !reflect.DeepEqual(s.cfg.Routing.CloudOnlyModels, []string{"x"}) {
 				t.Errorf("s.cfg cloud-only changed by a failed reload: %v", s.cfg.Routing.CloudOnlyModels)
 			}
-			if len(s.cfg.Nodes) != cfgNodes || len(s.cfg.CloudProviders) != cfgClouds || len(s.cfg.Auth.Keys) != cfgKeys {
-				t.Errorf("s.cfg nodes/clouds/keys changed by a failed reload: %d/%d/%d", len(s.cfg.Nodes), len(s.cfg.CloudProviders), len(s.cfg.Auth.Keys))
+			nodesAfter, cloudsAfter, keysAfter := cfgIdentities(s)
+			if !reflect.DeepEqual(nodesAfter, nodesBefore) || slices.Contains(nodesAfter, "extra") {
+				t.Errorf("s.cfg nodes changed by a failed reload: %v, want %v", nodesAfter, nodesBefore)
+			}
+			if !reflect.DeepEqual(cloudsAfter, cloudsBefore) || slices.Contains(cloudsAfter, "cp-extra") {
+				t.Errorf("s.cfg cloud providers changed by a failed reload: %v, want %v", cloudsAfter, cloudsBefore)
+			}
+			if !reflect.DeepEqual(keysAfter, keysBefore) || slices.Contains(keysAfter, "key-extra") {
+				t.Errorf("s.cfg keys changed by a failed reload: %v, want %v", keysAfter, keysBefore)
 			}
 		})
 	}
