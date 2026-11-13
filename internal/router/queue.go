@@ -5,6 +5,7 @@ package router
 import (
 	"math"
 	"sync/atomic"
+	"time"
 
 	"github.com/Anirudhx7/marbor/internal/metrics"
 )
@@ -79,6 +80,12 @@ func (r *Router) QueueDepth() int {
 // timer they started with.
 func (r *Router) SetQueueTimeout(ms int) {
 	r.queueTimeoutMs.Store(int64(max(ms, 0)))
+}
+
+// QueueTimeout returns how long a queued request waits for a node before it
+// is turned away. Zero means the queue is disabled.
+func (r *Router) QueueTimeout() time.Duration {
+	return time.Duration(r.queueTimeoutMs.Load()) * time.Millisecond
 }
 
 // SetQueueMaxDepth changes how many requests may wait at once. Zero or

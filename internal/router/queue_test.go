@@ -443,3 +443,20 @@ func TestSetQueueMaxDepthClampsOversizedValue(t *testing.T) {
 		t.Fatalf("depth = %d after a negative value, want 0", got)
 	}
 }
+
+func TestQueueTimeout_ReflectsSetting(t *testing.T) {
+	r := newQueueRouter("http://127.0.0.1:1", 4, 0)
+	for _, c := range []struct {
+		ms   int
+		want time.Duration
+	}{
+		{1500, 1500 * time.Millisecond},
+		{0, 0},
+		{-5, 0},
+	} {
+		r.SetQueueTimeout(c.ms)
+		if got := r.QueueTimeout(); got != c.want {
+			t.Errorf("SetQueueTimeout(%d): QueueTimeout() = %v, want %v", c.ms, got, c.want)
+		}
+	}
+}

@@ -436,6 +436,9 @@ func TestProxy_CloudOnly_LocalOnlyKey_503NoCloud(t *testing.T) {
 			if rec.Code != http.StatusServiceUnavailable || errCode(t, rec) != CloudReasonLocalOnlyBlocked {
 				t.Fatalf("status=%d body=%s, want 503 local_only_blocked", rec.Code, rec.Body.String())
 			}
+			if got := rec.Header().Get("Retry-After"); got != "" {
+				t.Errorf("Retry-After = %q, want none on a permanent policy refusal", got)
+			}
 			if !strings.Contains(rec.Body.String(), "cloud-only list and this key is local_only") {
 				t.Errorf("message = %s, want the cloud-only specific wording", rec.Body.String())
 			}
@@ -462,6 +465,9 @@ func TestProxy_CloudOnly_NoCloudChain_503NoLocal(t *testing.T) {
 	if rec.Code != http.StatusServiceUnavailable || errCode(t, rec) != "cloud_only_no_provider" {
 		t.Fatalf("status=%d body=%s, want 503 cloud_only_no_provider", rec.Code, rec.Body.String())
 	}
+	if got := rec.Header().Get("Retry-After"); got != "" {
+		t.Errorf("Retry-After = %q, want none", got)
+	}
 	if !strings.Contains(rec.Body.String(), "no cloud provider is enabled") {
 		t.Errorf("message = %s, want the no-provider sentence", rec.Body.String())
 	}
@@ -485,6 +491,9 @@ func TestProxy_CloudOnly_BudgetExceeded_503NoLocal(t *testing.T) {
 	rec := e.chat("paid-model")
 	if rec.Code != http.StatusServiceUnavailable || errCode(t, rec) != "cloud_budget_exceeded" {
 		t.Fatalf("status=%d body=%s, want 503 cloud_budget_exceeded", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Retry-After"); got != "" {
+		t.Errorf("Retry-After = %q, want none", got)
 	}
 	if !strings.Contains(rec.Body.String(), "the model is cloud-only and is not run locally") {
 		t.Errorf("body = %s, want the cloud-only suffix", rec.Body.String())

@@ -16,6 +16,7 @@ import (
 	"path"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -66,6 +67,38 @@ func writeAPIError(w http.ResponseWriter, status int, message, errType, code str
 	}})
 }
 
+// setRetryAfter sets a Retry-After header in delay-seconds form (RFC 9110
+// section 10.2.3): the duration rounded up to whole seconds, never below 1.
+// Call it before writeAPIError, which writes the status line.
+func setRetryAfter(w http.ResponseWriter, d time.Duration) {
+	secs := int64(1)
+	if d > 0 {
+		// (d-1)/second+1 is the ceiling without the d+second overflow.
+		secs = int64((d-1)/time.Second) + 1
+	}
+	w.Header().Set("Retry-After", strconv.FormatInt(secs, 10))
+}
+
+// setNoNodesRetryAfter sets Retry-After on a no-node-available refusal when
+// the request went through the queue stage and was turned away: after the
+// full wait (queue_timeout), because the queue was full (queue_full), or
+// because the overflow SLA ran out (sla_expired). The value is the configured
+// queue timeout, a conservative floor on how long to wait before retrying,
+// not a prediction of when capacity frees. Nothing is set when the queue is
+// disabled, the client went away, or no queue wait applies (skip_hard, routed).
+// The timeout is read at response time, not when the wait began; a live
+// settings change in between is negligible for a floor value.
+func (h *Handler) setNoNodesRetryAfter(w http.ResponseWriter, res router.WaitResult) {
+	switch res.Outcome {
+	case router.WaitQueueTimeout, router.WaitQueueFull, router.WaitSLAExpired:
+	default:
+		return
+	}
+	if d := h.router.QueueTimeout(); d > 0 {
+		setRetryAfter(w, d)
+	}
+}
+
 // localOnlyBlocked checks whether keyName is configured local_only and, if
 // so, fails the request closed instead of letting the caller proceed to
 // CloudChain()/proxyToCloud - a local_only key's traffic must never leave
@@ -79,6 +112,7 @@ func (h *Handler) localOnlyBlocked(w http.ResponseWriter, r *http.Request, keyNa
 	if h.auth == nil || !h.auth.IsLocalOnly(keyName) {
 		return false
 	}
+	h.setNoNodesRetryAfter(w, res)
 	writeAPIError(w, http.StatusServiceUnavailable,
 		"key is configured local_only and no local node is available; request was not sent to any cloud provider",
 		"server_error", "local_only_blocked")
@@ -640,6 +674,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// No local node and no cloud. If this was an Ollama-native path, return
 		// a clear actionable message so the caller knows to use /v1/ for
 		// non-Ollama backends rather than getting a generic 503.
+		h.setNoNodesRetryAfter(w, waitRes)
 		if runtimeFilter == "ollama" {
 			writeAPIError(w, http.StatusServiceUnavailable, "no Ollama nodes available; use /v1/ endpoint for non-Ollama backends", "server_error", "no_nodes_available")
 			metrics.RequestsTotal(keyName, label(modelName), "none", "503")
@@ -727,6 +762,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.auth.Refund(keyName)
 		}
 		rw.Header().Del("X-Marbor-Model-Fallback")
+		// The limiter is read separately from the allow check; if the window
+		// rolled over in between, the header is omitted rather than invented.
+		if d, ok := h.modelLimiter.retryAfter(model, n.Name); ok {
+			setRetryAfter(rw, d)
+		}
 		writeAPIError(rw, http.StatusTooManyRequests,
 			"model rate limit exceeded (rpm/tpm cap)",
 			"server_error", "model_rate_limited")
@@ -893,7 +933,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			}
-			// No alternate nodes - try cloud fallback.
+			// No alternate nodes - try cloud fallback. Retry-After is deliberately
+			// omitted here: the request was routed and then a node failed, so no
+			// queue wait is being reported (waitRes is the initial wait result).
 			if h.localOnlyBlocked(rw, origReq, keyName, modelName, requestID, start, waitRes) {
 				retryErr = errCloudHandled
 				return
