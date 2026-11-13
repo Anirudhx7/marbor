@@ -3,7 +3,6 @@ package router
 import (
 	"context"
 	"fmt"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -14,7 +13,7 @@ import (
 func newReservationRouter(t *testing.T, runtime string) *Router {
 	t.Helper()
 	r := New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
-		{Name: "n1", URL: "http://localhost:11434", VRAMTotalMB: 16384},
+		{Name: "n1", URL: "http://127.0.0.1:1", VRAMTotalMB: 16384},
 	}, nil)
 	r.nodes[0].Runtime = runtime
 	return r
@@ -171,7 +170,7 @@ func TestWarmReservation_UnknownNodeStaysExact(t *testing.T) {
 // must still be recognised when the node holds the :latest copy.
 func TestPredictiveCycle_BareTriggerMatchesLatestResident(t *testing.T) {
 	r := New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
-		{Name: "node-a", URL: "http://localhost:11434", VRAMTotalMB: 16384},
+		{Name: "node-a", URL: "http://127.0.0.1:1", VRAMTotalMB: 16384},
 	}, nil)
 	r.SetWarmupConfig(config.WarmupConfig{Enabled: true, IntervalMs: 300000})
 	r.nodes[0].LoadedModels = []ModelInfo{{Name: "llama3:latest", SizeVRAM: 2000 * 1024 * 1024}}
@@ -196,7 +195,7 @@ func TestPredictiveCycle_BareTriggerMatchesLatestResident(t *testing.T) {
 func newPredictiveRouter(runtime, resident string) *Router {
 	// The router's fields are set here before any goroutine touches it.
 	r := New(config.RoutingConfig{Strategy: "warm-first"}, []config.NodeConfig{
-		{Name: "node-a", URL: "http://localhost:11434", VRAMTotalMB: 16384},
+		{Name: "node-a", URL: "http://127.0.0.1:1", VRAMTotalMB: 16384},
 	}, nil)
 	r.SetWarmupConfig(config.WarmupConfig{Enabled: true, IntervalMs: 300000})
 	r.nodes[0].Runtime = runtime
@@ -442,11 +441,16 @@ func TestPredictiveCycle_SuppressedFormCoversBothNames(t *testing.T) {
 	}
 }
 
-// prewarmCounter counts predictive prewarm dispatches.
-func prewarmCounter(r *Router) *int32 {
-	var n int32
-	r.prewarmHook = func() { atomic.AddInt32(&n, 1) }
-	return &n
+// prewarmSignal reports each predictive prewarm dispatch on a buffered channel.
+func prewarmSignal(r *Router) <-chan struct{} {
+	ch := make(chan struct{}, 8)
+	r.prewarmHook = func() {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
+	}
+	return ch
 }
 
 func timeOfDayRouter(t *testing.T, history ...string) *Router {
@@ -459,36 +463,46 @@ func timeOfDayRouter(t *testing.T, history ...string) *Router {
 	return r
 }
 
+// runTimeOfDay runs the prewarm decision, which dispatches any prewarm
+// goroutine before it returns.
 func runTimeOfDay(r *Router) {
 	r.runTimeOfDayPrewarm(context.Background(), 15, []*NodeState{r.nodes[0]}, r.warmupCfg, "10m")
-	time.Sleep(300 * time.Millisecond)
 }
 
 // The time-of-day prewarm defers to an operator unload under the other name
 // form, and to an in-flight reservation under the other form.
 func TestTimeOfDayPrewarm_DefersAcrossForms(t *testing.T) {
 	control := timeOfDayRouter(t, "b", "b", "b")
-	hits := prewarmCounter(control)
+	sig := prewarmSignal(control)
 	runTimeOfDay(control)
-	if atomic.LoadInt32(hits) == 0 {
+	select {
+	case <-sig:
+	case <-time.After(5 * time.Second):
 		t.Fatal("control: an unsuppressed, unreserved model should be prewarmed")
 	}
 
-	suppressed := timeOfDayRouter(t, "b", "b", "b")
-	hits = prewarmCounter(suppressed)
-	suppressed.suppressWarmup("node-a", "b:latest", "manual")
-	runTimeOfDay(suppressed)
-	if got := atomic.LoadInt32(hits); got != 0 {
-		t.Errorf("prewarmed a model unloaded under its :latest form %d time(s)", got)
+	// The dispatch decision is made synchronously, so a prewarm that was going
+	// to happen has already been started; the short wait only lets it report.
+	assertNoPrewarm := func(t *testing.T, sig <-chan struct{}, what string) {
+		t.Helper()
+		select {
+		case <-sig:
+			t.Errorf("prewarmed a model %s", what)
+		case <-time.After(300 * time.Millisecond):
+		}
 	}
 
+	suppressed := timeOfDayRouter(t, "b", "b", "b")
+	sig = prewarmSignal(suppressed)
+	suppressed.suppressWarmup("node-a", "b:latest", "manual")
+	runTimeOfDay(suppressed)
+	assertNoPrewarm(t, sig, "unloaded under its :latest form")
+
 	reserved := timeOfDayRouter(t, "b", "b", "b")
-	hits = prewarmCounter(reserved)
+	sig = prewarmSignal(reserved)
 	reserved.reserveWarmBytes("node-a", "b:latest", 10*mib)
 	runTimeOfDay(reserved)
-	if got := atomic.LoadInt32(hits); got != 0 {
-		t.Errorf("prewarmed a model already reserved under its :latest form %d time(s)", got)
-	}
+	assertNoPrewarm(t, sig, "already reserved under its :latest form")
 }
 
 // A failed predictive prewarm releases a reservation held under the other form.
@@ -543,5 +557,79 @@ func TestPingWarmupModels_FailureClearsOtherFormReservation(t *testing.T) {
 	}
 	if r.hasActiveWarmReservation("node-a", "m") {
 		t.Error("failed keep-warm ping of m:latest left the reservation made under m")
+	}
+}
+
+// A keep-warm tick skips a model unloaded under its other name form, and still
+// attempts the models after it (the later model's failure proves the tick ran).
+func TestPingWarmupModels_SkipsSuppressedOtherForm(t *testing.T) {
+	r := newPredictiveRouter("ollama", "w")
+	r.nodes[0].URL = "http://127.0.0.1:1"
+	r.nodes[0].VRAMTotalMB = 0
+	r.nodes[0].Healthy = true
+	r.warmupCfg = config.WarmupConfig{Enabled: true, KeepAlive: "5m", Models: []config.WarmupEntry{{Model: "m:latest"}, {Model: "ctl"}}}
+	r.suppressWarmup("node-a", "m", "manual")
+
+	r.pingWarmupModels(context.Background())
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		r.nodes[0].mu.RLock()
+		ctlFailed := r.nodes[0].WarmupErrors["ctl"] != ""
+		skippedAttempted := r.nodes[0].WarmupErrors["m:latest"] != ""
+		r.nodes[0].mu.RUnlock()
+		if ctlFailed {
+			if skippedAttempted {
+				t.Error("keep-warm tick attempted m:latest although m was unloaded by an operator")
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("control model was never attempted")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func TestIsWarmupSuppressed_UnknownNodeStaysExact(t *testing.T) {
+	r := &Router{}
+	r.suppressWarmup("ghost", "m:latest", "manual")
+	if r.isWarmupSuppressed("ghost", "m") {
+		t.Error("unknown node: bare m must not match a suppressed m:latest")
+	}
+	if !r.isWarmupSuppressed("ghost", "m:latest") {
+		t.Error("unknown node: exact name should stay suppressed")
+	}
+}
+
+// Re-arming warmup under either name form clears the suppression made under the
+// other, on Ollama; other runtimes clear exactly.
+func TestClearWarmupSuppress_EquivalentForms(t *testing.T) {
+	r := newReservationRouter(t, "ollama")
+	r.suppressWarmup("n1", "llama3:latest", "manual")
+	r.clearWarmupSuppress("n1", "llama3")
+	for _, name := range []string{"llama3", "llama3:latest"} {
+		if r.isWarmupSuppressed("n1", name) {
+			t.Errorf("%q still suppressed after re-arming llama3", name)
+		}
+	}
+
+	r.suppressWarmup("n1", "llama3:latest", "manual")
+	r.suppressWarmup("n1", "llama3:8b", "manual")
+	r.clearWarmupSuppress("n1", "llama3")
+	if !r.isWarmupSuppressed("n1", "llama3:8b") {
+		t.Error("clearing llama3 must not clear a different tag")
+	}
+}
+
+func TestClearWarmupSuppress_NonOllamaStaysExact(t *testing.T) {
+	v := newReservationRouter(t, "vllm")
+	v.suppressWarmup("n1", "m:latest", "manual")
+	v.clearWarmupSuppress("n1", "m")
+	if !v.isWarmupSuppressed("n1", "m:latest") {
+		t.Error("vllm: clearing m must not clear m:latest")
+	}
+	v.clearWarmupSuppress("n1", "m:latest")
+	if v.isWarmupSuppressed("n1", "m:latest") {
+		t.Error("vllm: exact clear should work")
 	}
 }
