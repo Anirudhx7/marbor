@@ -416,6 +416,7 @@ func TestPredictiveCycle_SuppressedFormCoversBothNames(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			r := newPredictiveRouter("ollama", "w")
 			seedBothFormSizes(r, r.nodes[0].URL, "b")
+			prewarmSignal(r) // keeps the control case's prewarm off the network
 			if tc.suppress != "" {
 				r.suppressWarmup("node-a", tc.suppress, "manual")
 			}
@@ -481,8 +482,9 @@ func TestTimeOfDayPrewarm_DefersAcrossForms(t *testing.T) {
 		t.Fatal("control: an unsuppressed, unreserved model should be prewarmed")
 	}
 
-	// The dispatch decision is made synchronously, so a prewarm that was going
-	// to happen has already been started; the short wait only lets it report.
+	// The prewarm goroutine is started before runTimeOfDay returns and reports
+	// at once, so a short wait is enough; a very slow goroutine could only make
+	// a negative case pass falsely, never fail.
 	assertNoPrewarm := func(t *testing.T, sig <-chan struct{}, what string) {
 		t.Helper()
 		select {
@@ -550,8 +552,11 @@ func TestPingWarmupModels_FailureClearsOtherFormReservation(t *testing.T) {
 		r.nodes[0].mu.RLock()
 		failed := r.nodes[0].WarmupErrors["m:latest"] != ""
 		r.nodes[0].mu.RUnlock()
-		if failed || time.Now().After(deadline) {
+		if failed {
 			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("keep-warm ping never reported failure")
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
@@ -618,6 +623,24 @@ func TestClearWarmupSuppress_EquivalentForms(t *testing.T) {
 	r.clearWarmupSuppress("n1", "llama3")
 	if !r.isWarmupSuppressed("n1", "llama3:8b") {
 		t.Error("clearing llama3 must not clear a different tag")
+	}
+
+	r.suppressWarmup("n1", "qwen", "manual")
+	r.clearWarmupSuppress("n1", "qwen:latest")
+	for _, name := range []string{"qwen", "qwen:latest"} {
+		if r.isWarmupSuppressed("n1", name) {
+			t.Errorf("%q still suppressed after re-arming qwen:latest", name)
+		}
+	}
+}
+
+// An unknown node clears exactly, like isWarmupSuppressed matches exactly.
+func TestClearWarmupSuppress_UnknownNodeStaysExact(t *testing.T) {
+	r := &Router{}
+	r.suppressWarmup("ghost", "m:latest", "manual")
+	r.clearWarmupSuppress("ghost", "m")
+	if !r.isWarmupSuppressed("ghost", "m:latest") {
+		t.Error("unknown node: clearing m must not clear m:latest")
 	}
 }
 

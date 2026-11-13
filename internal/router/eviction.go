@@ -493,7 +493,8 @@ func (r *Router) SuppressedWarmupInfo(node string) map[string]suppressedInfo {
 // again, overriding any earlier unload suppression.
 //
 // Name matching follows isWarmupSuppressed: on an Ollama node the bare name and
-// its ":latest" form are one model, so re-arming either clears both.
+// its ":latest" form are one model (an unset runtime counts as Ollama, an
+// unknown node matches exactly), so re-arming either clears both.
 func (r *Router) clearWarmupSuppress(node string, models ...string) {
 	// Resolved before suppressMu: FindNode takes the router and node locks.
 	n := r.FindNode(node)
