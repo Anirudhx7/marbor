@@ -152,10 +152,10 @@ func TestRun_NodesFit_HTTPErrorsWithJSON(t *testing.T) {
 		}))
 		withTempConfigDir(t)
 		mustSaveSession(t, srv.URL, "tok")
-		code, out, _ := runNodesFitCmd(t, srv, "--json")
+		code, out, errOut := runNodesFitCmd(t, srv, "--json")
 		srv.Close()
-		if code != want[status] || out != "" {
-			t.Errorf("status %d: code=%d stdout=%q, want exit %d and empty stdout", status, code, out, want[status])
+		if code != want[status] || out != "" || !strings.Contains(errOut, "nope") {
+			t.Errorf("status %d: code=%d stdout=%q stderr=%q, want exit %d, empty stdout and the server message on stderr", status, code, out, errOut, want[status])
 		}
 	}
 }
