@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Anirudhx7/marbor/internal/metrics"
@@ -1393,17 +1394,22 @@ func (r *Router) reserveColdStartBytes(nodeURL, nodeName, model string) {
 }
 
 // chainFor is the shared lookup behind FallbackChainFor and
-// LocalDegradationChainFor: both are config-only, immutable-after-
-// construction maps, so a plain read needs no locking.
-func chainFor(chains map[string][]string, model string) []string {
-	return chains[model]
+// LocalDegradationChainFor. The maps are swapped whole by the setters in
+// chains.go, so a read needs no lock. The returned slice is shared with the
+// stored map and must be treated as read-only by callers.
+func chainFor(chains *atomic.Pointer[map[string][]string], model string) []string {
+	m := chains.Load()
+	if m == nil {
+		return nil
+	}
+	return (*m)[model]
 }
 
 // FallbackChainFor returns the operator-declared, ordered list of alternate
 // models to try for model, or nil if none is configured. Opt-in only - a
 // model absent from routing.fallback_chains has no substitution behavior.
 func (r *Router) FallbackChainFor(model string) []string {
-	return chainFor(r.fallbackChains, model)
+	return chainFor(&r.fallbackChains, model)
 }
 
 // LocalDegradationChainFor returns the operator-declared, ordered list of
@@ -1413,7 +1419,7 @@ func (r *Router) FallbackChainFor(model string) []string {
 // only: callers must not recursively resolve a chain for the returned
 // alternates.
 func (r *Router) LocalDegradationChainFor(model string) []string {
-	return chainFor(r.localDegradationChains, model)
+	return chainFor(&r.localDegradationChains, model)
 }
 
 // ModelFitsAnyHealthyNode reports whether model could fit in free VRAM on at

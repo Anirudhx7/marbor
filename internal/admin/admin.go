@@ -1990,6 +1990,15 @@ func (s *Server) ReloadFromStore() (nodesAdded, nodesRemoved, authKeys, cloudPro
 	if coErr != nil {
 		return 0, 0, 0, 0, coErr
 	}
+	// Both chain rows are read before either is applied. Unlike the cloud-only
+	// list, an absent or blank row keeps the current chains (the decode
+	// targets start as copies of what is live), so a store that never held a
+	// chain row cannot silently clear chains set in memory. Only a stored null
+	// clears. A row that cannot be read or parsed fails the whole reload.
+	fallbackChains, degradationChains, chErr := s.loadRoutingChains()
+	if chErr != nil {
+		return 0, 0, 0, 0, chErr
+	}
 
 	// Every load above succeeded - apply all stages. Nothing past this point can
 	// fail.
@@ -2008,8 +2017,12 @@ func (s *Server) ReloadFromStore() (nodesAdded, nodesRemoved, authKeys, cloudPro
 	s.router.SetQueueMaxDepth(queueMaxDepth)
 	s.router.SetOverflowSLA(overflowSLAMs)
 	s.router.SetCloudOnlyModels(cloudOnlyList)
+	s.router.SetFallbackChains(fallbackChains)
+	s.router.SetLocalDegradationChains(degradationChains)
 
 	s.mu.Lock()
+	s.cfg.Routing.FallbackChains = fallbackChains
+	s.cfg.Routing.LocalDegradationChains = degradationChains
 	s.cfg.Routing.CloudOnlyModels = cloudOnlyList
 	s.cfg.Routing.CloudOnlyListUnreadable = false
 	s.cfg.Auth.Keys = keys
@@ -2034,6 +2047,37 @@ func (s *Server) loadCloudOnlyModels() ([]string, error) {
 		log.Printf("admin: reload: dropping invalid cloud-only model entry: %s", reason)
 	}
 	return sanitized.Kept, nil
+}
+
+// loadRoutingChains reads the persisted fallback and local degradation chains
+// without touching any live state. The decode targets start as deep copies of
+// the current chains, so an absent or blank row leaves them unchanged and a
+// stored null clears them. A row that cannot be read or parsed is an error and
+// nothing is returned for either chain. The caller holds settingsMu.
+func (s *Server) loadRoutingChains() (fallback, degradation map[string][]string, err error) {
+	s.mu.RLock()
+	fallback = cloneChains(s.cfg.Routing.FallbackChains)
+	degradation = cloneChains(s.cfg.Routing.LocalDegradationChains)
+	s.mu.RUnlock()
+	if err := store.ReadJSONSetting(s.st, "routing_fallback_chains", &fallback); err != nil {
+		return nil, nil, fmt.Errorf("load fallback chains: %w", err)
+	}
+	if err := store.ReadJSONSetting(s.st, "routing_local_degradation_chains", &degradation); err != nil {
+		return nil, nil, fmt.Errorf("load local degradation chains: %w", err)
+	}
+	return fallback, degradation, nil
+}
+
+// cloneChains deep copies a chain map; nil stays nil.
+func cloneChains(chains map[string][]string) map[string][]string {
+	if chains == nil {
+		return nil
+	}
+	cp := make(map[string][]string, len(chains))
+	for model, alts := range chains {
+		cp[model] = append([]string(nil), alts...)
+	}
+	return cp
 }
 
 // handleConfigReload re-syncs live state from SQLite without restarting.
@@ -6222,6 +6266,8 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 	s.router.SetLiteLLM(incoming.LiteLLM)
 	s.router.SetContextWindows(incoming.ContextWindows)
 	s.router.SetCloudOnlyModels(incoming.Routing.CloudOnlyModels)
+	s.router.SetFallbackChains(incoming.Routing.FallbackChains)
+	s.router.SetLocalDegradationChains(incoming.Routing.LocalDegradationChains)
 	s.router.SetPrefixLocality(incoming.Routing.PrefixLocalityEnabled, incoming.Routing.PrefixLocalityWeight)
 	// Queue wait knobs take effect on the next request that enters the queue.
 	s.router.SetQueueTimeout(incoming.Routing.QueueTimeoutMs)
