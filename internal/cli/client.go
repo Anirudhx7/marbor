@@ -2311,20 +2311,32 @@ type NodeFitEntry struct {
 }
 
 // ModelFit calls GET /admin/nodes/model-fit - per-node VRAM fit analysis
-// for models.
-func (c *Client) ModelFit() ([]NodeFitEntry, error) {
+// for models. It returns the typed list for the human table and the
+// response body as received (the {"nodes":[...]} object), which is what
+// --json prints.
+func (c *Client) ModelFit() ([]NodeFitEntry, json.RawMessage, error) {
 	resp, err := c.doRequest(http.MethodGet, "/admin/nodes/model-fit", true)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer resp.Body.Close()
-	var out struct {
-		Nodes []NodeFitEntry `json:"nodes"`
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, nil, serverErrorf("could not read model fit response from /admin/nodes/model-fit: %v", err)
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, serverErrorf("could not parse model fit response: %v", err)
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return nil, nil, serverErrorf("could not parse model fit response from /admin/nodes/model-fit: %v", err)
 	}
-	return out.Nodes, nil
+	rawNodes, ok := envelope["nodes"]
+	if !ok {
+		return nil, nil, serverErrorf("could not parse model fit response from /admin/nodes/model-fit: missing nodes")
+	}
+	var nodes []NodeFitEntry
+	if err := json.Unmarshal(rawNodes, &nodes); err != nil {
+		return nil, nil, serverErrorf("could not parse model fit response from /admin/nodes/model-fit: %v", err)
+	}
+	return nodes, body, nil
 }
 
 // ModelCatalog calls GET /admin/models/catalog, returning the raw JSON body
