@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"encoding/csv"
 	"flag"
 	"fmt"
 	"io"
@@ -87,53 +89,8 @@ func runUninstall(args []string) {
 		}
 	}
 
-	if pid, ok := readRunningPidfile(marborPidfile); ok {
-		// PID-reuse hazard: readRunningPidfile only confirms pid is
-		// alive, not that it's still the marbor process the pidfile
-		// originally named - on a long-lived host, PID recycling can point
-		// a stale pidfile at an unrelated process. Verify identity via
-		// /proc/<pid>/cmdline before signaling; skip the signal (with a
-		// warning) if identity can't be confirmed, rather than SIGTERMing
-		// whatever currently owns that PID. Only implemented on Linux -
-		// other platforms have no /proc to check, matching the older
-		// signal-unconditionally behavior there.
-		identityConfirmed := true
-		if runtime.GOOS == "linux" {
-			matches, err := pidCmdlineNamesMarbor(pid)
-			identityConfirmed = err == nil && matches
-		}
-		if identityConfirmed {
-			fmt.Printf("Stopping background marbor process (PID %d)...\n", pid)
-			terminated := false
-			proc, err := os.FindProcess(pid)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "  [!] could not find process PID %d: %v\n", pid, err)
-			} else if sigErr := proc.Signal(syscall.SIGTERM); sigErr == nil {
-				terminated = true
-			} else if runtime.GOOS == "windows" {
-				// syscall.SIGTERM is unsupported on Windows and always
-				// errors - fall back to a hard Kill() so a stop actually
-				// happens instead of silently reporting success while the
-				// process stays alive.
-				if killErr := proc.Kill(); killErr == nil {
-					terminated = true
-				} else {
-					fmt.Fprintf(os.Stderr, "  [!] could not stop PID %d: %v\n", pid, killErr)
-				}
-			} else {
-				fmt.Fprintf(os.Stderr, "  [!] could not signal PID %d: %v\n", pid, sigErr)
-			}
-			if terminated {
-				if !waitForProcessExit(pid, 5*time.Second) {
-					fmt.Fprintf(os.Stderr, "  [!] PID %d did not exit within 5s of being stopped - it may still be running\n", pid)
-				}
-				_ = os.Remove(marborPidfile)
-				didSomething = true
-			}
-		} else {
-			fmt.Fprintf(os.Stderr, "  [!] %s names PID %d, but its identity could not be confirmed as marbor (stale pidfile + PID reuse?) - skipping signal to avoid killing an unrelated process.\n", marborPidfile, pid)
-		}
-	}
+	serviceRemoved := didSomething
+	outcome := stopPidfileProcess(marborPidfile, runtime.GOOS, runCommandOutput, os.Stdout, os.Stderr)
 
 	if *purge {
 		if binPath, err := os.Executable(); err == nil {
@@ -146,11 +103,7 @@ func runUninstall(args []string) {
 	}
 
 	fmt.Println()
-	if didSomething {
-		fmt.Println("marbor has been uninstalled from this host.")
-	} else {
-		fmt.Println("Nothing to uninstall on this host: no marbor service and no background marbor process were found.")
-	}
+	fmt.Println(uninstallSummary(serviceRemoved, outcome))
 	fmt.Println("marbor.db was left untouched - remove it yourself if you also want the database gone.")
 }
 
@@ -188,18 +141,198 @@ func waitForProcessExit(pid int, deadline time.Duration) bool {
 	return false
 }
 
-// pidCmdlineNamesMarbor reports whether pid's argv[0] (read from
-// /proc/<pid>/cmdline) names the marbor binary, guarding against a
-// stale pidfile whose PID has since been recycled by the OS for an
-// unrelated process. Linux-only - there is no /proc on other platforms.
-func pidCmdlineNamesMarbor(pid int) (bool, error) {
-	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
-	if err != nil {
-		return false, err
+// stopPidfileProcess stops the background marbor process named by the
+// pidfile at path, but only when its identity is positively confirmed.
+// readRunningPidfile only proves the PID is alive, not that it is still the
+// process the pidfile named: on a long-lived host PID recycling can point a
+// stale pidfile at an unrelated process, so anything unconfirmed (lookup
+// error, renamed binary, unknown OS) is left alone with the pidfile kept.
+// The returned outcome says what happened.
+func stopPidfileProcess(path, goos string, run commandRunner, stdout, stderr io.Writer) pidfileOutcome {
+	pid, ok := readRunningPidfile(path)
+	if !ok {
+		return pidNone
 	}
-	argv0 := string(data)
+	if confirmed, reason := pidIdentityConfirmed(goos, pid, run); !confirmed {
+		fmt.Fprintf(stderr, "  [!] %s names PID %d, but it could not be verified as marbor (%s; the process may belong to something else after PID reuse, the lookup tool may have failed, or the binary may have been renamed) - nothing was signalled and %s was kept.\n", path, pid, reason, path)
+		return pidUnverified
+	}
+	fmt.Fprintf(stdout, "Stopping background marbor process (PID %d)...\n", pid)
+	if !terminateFn(pid, goos, stderr) {
+		return pidStopFailed
+	}
+	outcome := pidStopped
+	if !waitExitFn(pid, stopWaitTimeout) {
+		fmt.Fprintf(stderr, "  [!] PID %d did not exit within %s of being stopped - it may still be running\n", pid, stopWaitTimeout)
+		outcome = pidStoppedIncomplete
+	}
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		fmt.Fprintf(stderr, "  [!] could not remove %s: %v\n", path, err)
+		outcome = pidStoppedIncomplete
+	}
+	return outcome
+}
+
+// Hooks so tests can drive the stop paths without a real process.
+var (
+	terminateFn     = terminatePid
+	waitExitFn      = waitForProcessExit
+	stopWaitTimeout = 5 * time.Second
+)
+
+// pidfileOutcome is what stopPidfileProcess did about the pidfile's process.
+type pidfileOutcome int
+
+const (
+	pidNone              pidfileOutcome = iota // no live process named by the pidfile
+	pidStopped                                 // verified as marbor and signalled
+	pidUnverified                              // live PID, could not be verified; left alone
+	pidStopFailed                              // verified as marbor but could not be signalled
+	pidStoppedIncomplete                       // signalled, but still alive after the wait or pidfile not removed
+)
+
+// uninstallSummary builds the closing message. A marbor process that may
+// still be running is always called out, whether or not a service was removed.
+func uninstallSummary(serviceRemoved bool, outcome pidfileOutcome) string {
+	var warn string
+	switch outcome {
+	case pidUnverified:
+		warn = "A background process named in " + marborPidfile + " could not be verified as marbor and was left running; a marbor process may still be running."
+	case pidStopFailed:
+		warn = "A running marbor process named in " + marborPidfile + " could not be stopped; it may still be running."
+	case pidStoppedIncomplete:
+		warn = "marbor was told to stop but is not confirmed stopped, or " + marborPidfile + " could not be removed; check that no marbor process is still running and remove the pidfile if it is left."
+	}
+	switch {
+	case outcome == pidStoppedIncomplete && !serviceRemoved:
+		return "Uninstall is incomplete. " + warn
+	case serviceRemoved || outcome == pidStopped:
+		msg := "marbor has been uninstalled from this host."
+		if warn != "" {
+			msg += "\n" + warn
+		}
+		return msg
+	case warn != "":
+		return "Nothing was uninstalled. " + warn
+	}
+	return "Nothing to uninstall on this host: no marbor service and no background marbor process were found."
+}
+
+// terminatePid sends SIGTERM to pid, falling back to a hard Kill on Windows
+// where SIGTERM is unsupported. Only called once identity is confirmed.
+func terminatePid(pid int, goos string, stderr io.Writer) bool {
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		fmt.Fprintf(stderr, "  [!] could not find process PID %d: %v\n", pid, err)
+		return false
+	}
+	sigErr := proc.Signal(syscall.SIGTERM)
+	if sigErr == nil {
+		return true
+	}
+	if goos != "windows" {
+		fmt.Fprintf(stderr, "  [!] could not signal PID %d: %v\n", pid, sigErr)
+		return false
+	}
+	if killErr := proc.Kill(); killErr != nil {
+		fmt.Fprintf(stderr, "  [!] could not stop PID %d: %v\n", pid, killErr)
+		return false
+	}
+	return true
+}
+
+// commandRunner runs an external command and returns its stdout. Injectable
+// so identity checks are testable on every OS.
+type commandRunner func(name string, args ...string) ([]byte, error)
+
+// runCommandOutput is the production commandRunner, bounded so a hung tool
+// cannot stall uninstall.
+func runCommandOutput(name string, args ...string) ([]byte, error) {
+	return runCommandWithTimeout(commandTimeout, name, args...)
+}
+
+// commandTimeout bounds each identity-lookup command.
+const commandTimeout = 5 * time.Second
+
+func runCommandWithTimeout(timeout time.Duration, name string, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	return exec.CommandContext(ctx, name, args...).Output()
+}
+
+// pidIdentityConfirmed reports whether pid is positively identified as a
+// marbor process on goos. It fails closed: any lookup error, unparseable
+// output, or unsupported OS yields false. When false, reason says why.
+func pidIdentityConfirmed(goos string, pid int, run commandRunner) (confirmed bool, reason string) {
+	switch goos {
+	case "linux":
+		data, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
+		if err != nil {
+			return false, fmt.Sprintf("could not read /proc/%d/cmdline: %v", pid, err)
+		}
+		if !cmdlineNamesMarbor(data) {
+			return false, "its command name is not marbor"
+		}
+		return true, ""
+	case "darwin":
+		out, err := run("ps", "-p", strconv.Itoa(pid), "-o", "comm=")
+		if err != nil {
+			return false, fmt.Sprintf("ps failed: %v", err)
+		}
+		if !psCommNamesMarbor(string(out)) {
+			return false, "its command name is not marbor"
+		}
+		return true, ""
+	case "windows":
+		out, err := run("tasklist", "/FI", fmt.Sprintf("PID eq %d", pid), "/FO", "CSV", "/NH")
+		if err != nil {
+			return false, fmt.Sprintf("tasklist failed: %v", err)
+		}
+		ok, perr := tasklistNamesMarbor(string(out), pid)
+		if perr != nil {
+			return false, perr.Error()
+		}
+		if !ok {
+			return false, "tasklist did not report marbor.exe for this PID"
+		}
+		return true, ""
+	}
+	return false, "process identity checks are not supported on " + goos
+}
+
+// cmdlineNamesMarbor reports whether the NUL-separated /proc cmdline bytes
+// have an argv[0] whose base name is exactly marbor (so marbor-agent does not
+// match).
+func cmdlineNamesMarbor(cmdline []byte) bool {
+	argv0 := string(cmdline)
 	if i := strings.IndexByte(argv0, 0); i >= 0 {
 		argv0 = argv0[:i]
 	}
-	return strings.Contains(filepath.Base(argv0), "marbor"), nil
+	return argv0 != "" && filepath.Base(argv0) == "marbor"
+}
+
+// psCommNamesMarbor parses "ps -o comm=" output: the base name must be
+// exactly marbor.
+func psCommNamesMarbor(out string) bool {
+	comm := strings.TrimSpace(out)
+	return comm != "" && filepath.Base(comm) == "marbor"
+}
+
+// tasklistNamesMarbor parses "tasklist /FO CSV /NH" output. Only the first
+// row is considered; its image name must be marbor.exe (case-insensitive) and
+// its PID field must equal pid. Localized "no tasks" text is not CSV and so
+// never matches.
+// A non-nil error means the output was not usable CSV.
+func tasklistNamesMarbor(out string, pid int) (bool, error) {
+	r := csv.NewReader(strings.NewReader(out))
+	r.FieldsPerRecord = -1
+	r.LazyQuotes = true
+	rec, err := r.Read()
+	if err != nil {
+		return false, fmt.Errorf("could not parse tasklist output: %w", err)
+	}
+	if len(rec) < 2 {
+		return false, fmt.Errorf("unexpected tasklist output %q", strings.TrimSpace(out))
+	}
+	return strings.EqualFold(strings.TrimSpace(rec[0]), "marbor.exe") && strings.TrimSpace(rec[1]) == strconv.Itoa(pid), nil
 }

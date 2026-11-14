@@ -25,8 +25,8 @@ type globalFlag struct {
 var globalFlags = []globalFlag{
 	{"server", `Admin API base URL (default "http://localhost:8080", env MARBOR_SERVER)`},
 	{"json", "output machine-readable JSON instead of a human table"},
-	{"username", "admin username, used to log in (env MARBOR_USERNAME)"},
-	{"password", "admin password, used to log in (env MARBOR_PASSWORD)"},
+	{"username", "admin username, used to log in (env MARBOR_USERNAME); must be given together with --password"},
+	{"password", "admin password, used to log in (env MARBOR_PASSWORD); must be given together with --username"},
 }
 
 // groupPageCommands returns, in declared order, every top-level command that

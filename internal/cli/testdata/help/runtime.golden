@@ -12,8 +12,8 @@ Actions:
 Flags:
   --server string    Admin API base URL (default "http://localhost:8080", env MARBOR_SERVER)
   --json             output machine-readable JSON instead of a human table
-  --username string  admin username, used to log in (env MARBOR_USERNAME)
-  --password string  admin password, used to log in (env MARBOR_PASSWORD)
+  --username string  admin username, used to log in (env MARBOR_USERNAME); must be given together with --password
+  --password string  admin password, used to log in (env MARBOR_PASSWORD); must be given together with --username
 
 "start|stop|restart" requires the target node to have an operator-accepted control driver (see "node control accept") - a node with none configured returns an error rather than guessing one.
 
