@@ -139,7 +139,7 @@ first for any node not yet registered - see [GPU node registration](gpu-node-reg
     ROLE: agent
     MARBOR_SERVER: "https://marbor.example.com"
     MARBOR_ENROLL: "{{ (agent_response.content | from_json).enrollment_code }}"
-    PORT: "11434"
+    PORT: "9200"
   no_log: true
 ```
 
