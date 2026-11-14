@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -262,6 +263,8 @@ func TestUninstallSummary(t *testing.T) {
 		{"stop failed only", false, pidStopFailed, []string{"Nothing was uninstalled", "could not be stopped"}, []string{"Nothing to uninstall"}},
 		{"service plus unverified", true, pidUnverified, []string{"has been uninstalled", "may still be running"}, []string{"Nothing"}},
 		{"service plus stop failed", true, pidStopFailed, []string{"has been uninstalled", "could not be stopped"}, []string{"Nothing"}},
+		{"incomplete only", false, pidStoppedIncomplete, []string{"Uninstall is incomplete", "not confirmed stopped", "pidfile"}, []string{"has been uninstalled", "Nothing"}},
+		{"service plus incomplete", true, pidStoppedIncomplete, []string{"has been uninstalled", "not confirmed stopped"}, []string{"Nothing"}},
 	}
 	for _, tc := range cases {
 		got := uninstallSummary(tc.service, tc.outcome)
@@ -317,6 +320,108 @@ func TestStopPidfileProcess_ConfirmedStopsChild(t *testing.T) {
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Errorf("pidfile should be removed, stat err = %v", err)
+	}
+}
+
+func stubStopHooks(t *testing.T, term func(int, string, io.Writer) bool, wait func(int, time.Duration) bool) {
+	t.Helper()
+	oldT, oldW, oldD := terminateFn, waitExitFn, stopWaitTimeout
+	terminateFn, waitExitFn, stopWaitTimeout = term, wait, time.Millisecond
+	t.Cleanup(func() { terminateFn, waitExitFn, stopWaitTimeout = oldT, oldW, oldD })
+}
+
+func marborComm(string, ...string) ([]byte, error) { return []byte("marbor\n"), nil }
+
+// On Linux the process is identified by /proc cmdline: a process whose
+// command name is not marbor (this test binary) is never signalled and the
+// pidfile is kept.
+func TestStopPidfileProcess_LinuxNonMarborNotSignalled(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		return
+	}
+	stubStopHooks(t, func(int, string, io.Writer) bool {
+		t.Error("terminate must not be called for a non-marbor process")
+		return true
+	}, func(int, time.Duration) bool { return true })
+	path := writePidfile(t, strconv.Itoa(os.Getpid()))
+	var stdout, stderr bytes.Buffer
+	if got := stopPidfileProcess(path, "linux", nil, &stdout, &stderr); got != pidUnverified {
+		t.Fatalf("outcome = %v, want pidUnverified", got)
+	}
+	if !strings.Contains(stderr.String(), "its command name is not marbor") {
+		t.Errorf("reason missing: %q", stderr.String())
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("pidfile must be kept: %v", err)
+	}
+}
+
+func TestStopPidfileProcess_TerminateFailureKeepsPidfile(t *testing.T) {
+	stubStopHooks(t, func(int, string, io.Writer) bool { return false }, func(int, time.Duration) bool { return true })
+	path := writePidfile(t, strconv.Itoa(os.Getpid()))
+	var stdout, stderr bytes.Buffer
+	if got := stopPidfileProcess(path, "darwin", marborComm, &stdout, &stderr); got != pidStopFailed {
+		t.Fatalf("outcome = %v, want pidStopFailed", got)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("pidfile must be kept when the stop failed: %v", err)
+	}
+}
+
+func TestStopPidfileProcess_StillAliveIsIncomplete(t *testing.T) {
+	stubStopHooks(t, func(int, string, io.Writer) bool { return true }, func(int, time.Duration) bool { return false })
+	path := writePidfile(t, strconv.Itoa(os.Getpid()))
+	var stdout, stderr bytes.Buffer
+	if got := stopPidfileProcess(path, "darwin", marborComm, &stdout, &stderr); got != pidStoppedIncomplete {
+		t.Fatalf("outcome = %v, want pidStoppedIncomplete", got)
+	}
+	if !strings.Contains(stderr.String(), "did not exit") {
+		t.Errorf("warning missing: %q", stderr.String())
+	}
+}
+
+func TestStopPidfileProcess_PidfileNotRemovableIsIncomplete(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		return // directory permission bits do not block removal on Windows
+	}
+	stubStopHooks(t, func(int, string, io.Writer) bool { return true }, func(int, time.Duration) bool { return true })
+	dir := t.TempDir()
+	path := filepath.Join(dir, "marbor.pid")
+	if err := os.WriteFile(path, []byte(strconv.Itoa(os.Getpid())), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+	if os.Getuid() == 0 {
+		return // root ignores directory permissions
+	}
+	var stdout, stderr bytes.Buffer
+	if got := stopPidfileProcess(path, "darwin", marborComm, &stdout, &stderr); got != pidStoppedIncomplete {
+		t.Fatalf("outcome = %v, want pidStoppedIncomplete", got)
+	}
+	if !strings.Contains(stderr.String(), "could not remove") {
+		t.Errorf("warning missing: %q", stderr.String())
+	}
+}
+
+func TestTerminatePid_FailureBranches(t *testing.T) {
+	dead := deadPid(t)
+	var stderr bytes.Buffer
+	if runtime.GOOS == "windows" {
+		// FindProcess fails for a pid that no longer exists.
+		if terminatePid(dead, "windows", &stderr) || !strings.Contains(stderr.String(), "could not") {
+			t.Errorf("windows: want false with a warning, got %q", stderr.String())
+		}
+		return
+	}
+	if terminatePid(dead, "linux", &stderr) || !strings.Contains(stderr.String(), "could not signal") {
+		t.Errorf("non-windows signal failure: got %q", stderr.String())
+	}
+	stderr.Reset()
+	if terminatePid(dead, "windows", &stderr) || !strings.Contains(stderr.String(), "could not stop") {
+		t.Errorf("kill fallback failure: got %q", stderr.String())
 	}
 }
 

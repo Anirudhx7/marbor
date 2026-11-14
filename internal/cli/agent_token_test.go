@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -40,6 +41,18 @@ func TestAgentEnableRegenerate_NeverPrintTokenValue(t *testing.T) {
 			all := out.String() + errb.String()
 			if strings.Contains(all, secret) {
 				t.Errorf("%s json=%v: output leaks the agent token: %s", name, asJSON, all)
+			}
+			if asJSON {
+				var obj map[string]any
+				if err := json.Unmarshal(out.Bytes(), &obj); err != nil {
+					t.Fatalf("%s: --json output is not valid JSON: %v\n%s", name, err, out.String())
+				}
+				if _, has := obj["token"]; has {
+					t.Errorf("%s: --json must not carry a token key: %v", name, obj)
+				}
+				if obj["install_command"] != "curl enroll-unix" || obj["install_command_windows"] != "iwr enroll-win" {
+					t.Errorf("%s: install_command fields missing: %v", name, obj)
+				}
 			}
 			if !strings.Contains(all, "curl enroll-unix") || !strings.Contains(all, "iwr enroll-win") {
 				t.Errorf("%s json=%v: install commands missing: %s", name, asJSON, all)

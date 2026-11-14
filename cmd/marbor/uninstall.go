@@ -158,26 +158,37 @@ func stopPidfileProcess(path, goos string, run commandRunner, stdout, stderr io.
 		return pidUnverified
 	}
 	fmt.Fprintf(stdout, "Stopping background marbor process (PID %d)...\n", pid)
-	if !terminatePid(pid, goos, stderr) {
+	if !terminateFn(pid, goos, stderr) {
 		return pidStopFailed
 	}
-	if !waitForProcessExit(pid, 5*time.Second) {
-		fmt.Fprintf(stderr, "  [!] PID %d did not exit within 5s of being stopped - it may still be running\n", pid)
+	outcome := pidStopped
+	if !waitExitFn(pid, stopWaitTimeout) {
+		fmt.Fprintf(stderr, "  [!] PID %d did not exit within %s of being stopped - it may still be running\n", pid, stopWaitTimeout)
+		outcome = pidStoppedIncomplete
 	}
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		fmt.Fprintf(stderr, "  [!] could not remove %s: %v\n", path, err)
+		outcome = pidStoppedIncomplete
 	}
-	return pidStopped
+	return outcome
 }
+
+// Hooks so tests can drive the stop paths without a real process.
+var (
+	terminateFn     = terminatePid
+	waitExitFn      = waitForProcessExit
+	stopWaitTimeout = 5 * time.Second
+)
 
 // pidfileOutcome is what stopPidfileProcess did about the pidfile's process.
 type pidfileOutcome int
 
 const (
-	pidNone       pidfileOutcome = iota // no live process named by the pidfile
-	pidStopped                          // verified as marbor and signalled
-	pidUnverified                       // live PID, could not be verified; left alone
-	pidStopFailed                       // verified as marbor but could not be signalled
+	pidNone              pidfileOutcome = iota // no live process named by the pidfile
+	pidStopped                                 // verified as marbor and signalled
+	pidUnverified                              // live PID, could not be verified; left alone
+	pidStopFailed                              // verified as marbor but could not be signalled
+	pidStoppedIncomplete                       // signalled, but still alive after the wait or pidfile not removed
 )
 
 // uninstallSummary builds the closing message. A marbor process that may
@@ -189,8 +200,12 @@ func uninstallSummary(serviceRemoved bool, outcome pidfileOutcome) string {
 		warn = "A background process named in " + marborPidfile + " could not be verified as marbor and was left running; a marbor process may still be running."
 	case pidStopFailed:
 		warn = "A running marbor process named in " + marborPidfile + " could not be stopped; it may still be running."
+	case pidStoppedIncomplete:
+		warn = "marbor was told to stop but is not confirmed stopped, or " + marborPidfile + " could not be removed; check that no marbor process is still running and remove the pidfile if it is left."
 	}
 	switch {
+	case outcome == pidStoppedIncomplete && !serviceRemoved:
+		return "Uninstall is incomplete. " + warn
 	case serviceRemoved || outcome == pidStopped:
 		msg := "marbor has been uninstalled from this host."
 		if warn != "" {
