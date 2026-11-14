@@ -997,7 +997,8 @@ func resolveSchedulingRolesAndHeads(nodes []*NodeState) (map[string]SchedulingRo
 
 // unreachableReplicaHeads maps each replica head name that has at least one
 // non-head member whose marbor agent is stale (enrolled but not answering) to
-// the first such member. It reads AgentStale only - never Healthy (a headless worker is
+// the lowest-named such member (so the answer does not depend on node order).
+// It reads AgentStale only - never Healthy (a headless worker is
 // permanently unhealthy by design), AgentPresent or AgentTelemetryUnknown -
 // so a worker with no agent, or one whose agent answered with an over-cap
 // reply, is unknown and never counts as down. A head's own AgentStale is not
@@ -1021,7 +1022,7 @@ func unreachableReplicaHeads(nodes []*NodeState, roles map[string]SchedulingRole
 			continue
 		}
 		head := heads[n.Name]
-		if head == "" || down[head] != nil {
+		if head == "" {
 			continue
 		}
 		n.mu.RLock()
@@ -1033,7 +1034,9 @@ func unreachableReplicaHeads(nodes []*NodeState, roles map[string]SchedulingRole
 		if down == nil {
 			down = make(map[string]*NodeState)
 		}
-		down[head] = n
+		if cur := down[head]; cur == nil || n.Name < cur.Name {
+			down[head] = n
+		}
 	}
 	return down
 }

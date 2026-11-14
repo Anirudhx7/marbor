@@ -44,6 +44,10 @@ func NodeSignalIDs() []string {
 //   - down does not exclude draining: a node that is both matches both.
 //   - agent means a live agent is reporting; a stale agent does not match.
 //   - warm means at least one model is loaded.
+//   - a replica head that routing is holding back because a member's host
+//     agent is silent (replicaBlockedBy) keeps its own signals: it is still
+//     healthy, and there is deliberately no signal or filter for the blocked
+//     state. The node list field carries it.
 //   - pressure needs a measured or declared total (never "none") and a
 //     used/total ratio at or above vramPressureThreshold.
 //

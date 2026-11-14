@@ -30,6 +30,7 @@ func TestNodeSignals_Table(t *testing.T) {
 		{"down and draining matches both", nodeResp{Health: "down", Draining: true}, []string{"draining", "down"}},
 		{"agent present", nodeResp{Health: "healthy", AgentPresent: true}, []string{"healthy", "agent"}},
 		{"stale agent is not present", nodeResp{Health: "healthy", AgentStale: true}, []string{"healthy"}},
+		{"replica head blocked by a silent member stays healthy", nodeResp{Health: "healthy", ReplicaBlockedBy: "w1"}, []string{"healthy"}},
 		{"warm", nodeResp{Health: "healthy", LoadedModels: warm}, []string{"healthy", "warm"}},
 		{"empty loaded models is not warm", nodeResp{Health: "healthy", LoadedModels: []router.ModelInfo{}}, []string{"healthy"}},
 		{"pressure at 0.89", nodeResp{Health: "healthy", VRAMSource: "nvidia", VRAMTotalMB: 10000, VRAMUsedMB: 8900}, []string{"healthy"}},

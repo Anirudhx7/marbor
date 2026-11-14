@@ -149,6 +149,7 @@ func runNodes(ctx *RunCtx) int {
 		return ExitServerError
 	}
 	printWarmupWarnings(stdout, nodes)
+	printReplicaBlockedNotes(stdout, nodes)
 	return ExitOK
 }
 
@@ -190,6 +191,29 @@ func lacksSignals(nodes []NodeResp) bool {
 		}
 	}
 	return false
+}
+
+// printReplicaBlockedNotes prints one line per replica head that routing is
+// using only as a last resort because a member's host agent is not answering.
+// Only a healthy head that is not draining gets a note: for a head that is
+// down or draining the table already says why it takes no work. The server
+// reports the fact for every head; this decides what is worth saying.
+func printReplicaBlockedNotes(w io.Writer, nodes []NodeResp) {
+	var lines []string
+	for _, n := range nodes {
+		if n.ReplicaBlockedBy == "" || n.Health != "healthy" || n.Draining {
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("note: %s is a last-resort routing target: the host agent on replica member %s is not answering", n.Name, n.ReplicaBlockedBy))
+	}
+	if len(lines) == 0 {
+		return
+	}
+	sort.Strings(lines)
+	fmt.Fprintln(w)
+	for _, l := range lines {
+		fmt.Fprintln(w, l)
+	}
 }
 
 // printWarmupWarnings lists every node's keep-warm warnings under the table,

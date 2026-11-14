@@ -500,3 +500,79 @@ func TestFormatDetectedGPUs_NothingReportedIsDash(t *testing.T) {
 		t.Fatalf("no detection at all must be -, got %q", got)
 	}
 }
+
+func runNodesAgainst(t *testing.T, body string, extra ...string) (string, string, int) {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(body))
+	}))
+	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
+	var stdout, stderr bytes.Buffer
+	args := append([]string{"nodes", "--server", srv.URL}, extra...)
+	code := Run(args, &stdout, &stderr)
+	return stdout.String(), stderr.String(), code
+}
+
+// TestRun_NodesReplicaBlockedNote: a healthy, non-draining replica head whose
+// member's host agent is silent gets one note line under the table; a head
+// that is down or draining does not, because the table already says why it is
+// not taking work. A fleet with nothing blocked prints no note.
+func TestRun_NodesReplicaBlockedNote(t *testing.T) {
+	const note = "note: head-a is a last-resort routing target: the host agent on replica member w-1 is not answering"
+	cases := []struct {
+		name     string
+		node     string
+		wantNote bool
+	}{
+		{"healthy head", `{"name":"head-a","health":"healthy","replicaBlockedBy":"w-1"}`, true},
+		{"down head", `{"name":"head-a","health":"down","replicaBlockedBy":"w-1"}`, false},
+		{"draining head", `{"name":"head-a","health":"healthy","draining":true,"replicaBlockedBy":"w-1"}`, false},
+		{"nothing blocked", `{"name":"head-a","health":"healthy"}`, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out, errOut, code := runNodesAgainst(t, "["+tc.node+"]")
+			if code != ExitOK {
+				t.Fatalf("exit %d (stderr: %s)", code, errOut)
+			}
+			if got := strings.Contains(out, note); got != tc.wantNote {
+				t.Errorf("note present = %v, want %v:\n%s", got, tc.wantNote, out)
+			}
+			if !tc.wantNote && strings.Contains(out, "note:") {
+				t.Errorf("unexpected note:\n%s", out)
+			}
+		})
+	}
+}
+
+func TestRun_NodesReplicaBlockedNote_OrderedByNode(t *testing.T) {
+	out, _, _ := runNodesAgainst(t, `[
+		{"name":"b-head","health":"healthy","replicaBlockedBy":"w-2"},
+		{"name":"a-head","health":"healthy","replicaBlockedBy":"w-1"}]`)
+	a := strings.Index(out, "note: a-head")
+	b := strings.Index(out, "note: b-head")
+	if a < 0 || b < 0 || a > b {
+		t.Errorf("notes missing or unordered:\n%s", out)
+	}
+}
+
+func TestRun_NodesJSONCarriesReplicaBlockedBy(t *testing.T) {
+	out, errOut, code := runNodesAgainst(t, `[{"name":"head-a","health":"healthy","replicaBlockedBy":"w-1"}]`, "--json")
+	if code != ExitOK {
+		t.Fatalf("exit %d (stderr: %s)", code, errOut)
+	}
+	var got []map[string]any
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out)
+	}
+	if len(got) != 1 || got[0]["replicaBlockedBy"] != "w-1" {
+		t.Errorf("json = %v, want replicaBlockedBy w-1", got)
+	}
+	var n NodeResp
+	if err := json.Unmarshal([]byte(`{"name":"h","replicaBlockedBy":"w-1"}`), &n); err != nil || n.ReplicaBlockedBy != "w-1" {
+		t.Errorf("NodeResp decode = %+v, %v", n, err)
+	}
+}
