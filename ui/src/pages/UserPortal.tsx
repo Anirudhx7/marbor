@@ -1,5 +1,6 @@
 import { useState, FormEvent } from 'react';
 import { changePassword, clearSession } from '../lib/api';
+import { useDemoMode } from '../hooks/useDemoMode';
 import type { SessionData } from '../types';
 
 interface UserPortalProps {
@@ -15,6 +16,7 @@ export function UserPortal({ session, onLogout }: UserPortalProps) {
   const [pwError, setPwError] = useState('');
   const [pwSuccess, setPwSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+  const { demoMode } = useDemoMode();
 
   function handleLogout() {
     clearSession();
@@ -34,7 +36,7 @@ export function UserPortal({ session, onLogout }: UserPortalProps) {
     setLoading(true);
     setPwError('');
     try {
-      await changePassword(currentPw, newPw);
+      if (!demoMode) await changePassword(currentPw, newPw);
       setPwSuccess(true);
       setCurrentPw('');
       setNewPw('');
