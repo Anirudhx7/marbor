@@ -531,7 +531,7 @@ export function Routing() {
         default_model: editingProvider.default_model,
         cost_per_1k_tokens: editingProvider.cost_per_1k_tokens,
         enabled: editingProvider.enabled,
-        priority: editingProvider.priority,
+        priority: isNew ? cloudProviders.reduce((m, p) => Math.max(m, p.priority ?? 0), 0) + 1 : editingProvider.priority,
       };
       setCloudProviders(prev => isNew ? [...prev, entry] : prev.map(p => p.name === entry.name ? entry : p));
       setCloudModalOpen(false);

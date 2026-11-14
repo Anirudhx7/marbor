@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-const STORAGE_KEY = 'marbor-demo-mode';
+export const STORAGE_KEY = 'marbor-demo-mode';
 const CHANGE_EVENT = 'marbor-demo-mode-change';
 
 export const forcedDemo = import.meta.env.VITE_FORCE_DEMO === 'true';
