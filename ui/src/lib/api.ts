@@ -707,7 +707,14 @@ export function applyDemoConfirmedGroups(nodes: GPUNode[]): GPUNode[] {
   return nodes.map(n => {
     const g = roles.get(n.name);
     if (!g) return n;
-    return { ...n, replicaPeers: { members: g.members, head: g.head }, schedulingRole: n.name === g.head ? 'head' : 'worker', replicaHead: g.head };
+    const isHead = n.name === g.head;
+    // Same rule as the server: a head names its lowest-named member whose
+    // agent is stale, whatever the head's own health. Unknown (agentless)
+    // members never count.
+    const silent = isHead
+      ? g.members.filter(m => nodes.find(x => x.name === m)?.agentStale).sort()[0]
+      : undefined;
+    return { ...n, replicaPeers: { members: g.members, head: g.head }, schedulingRole: isHead ? 'head' : 'worker', replicaHead: g.head, replicaBlockedBy: silent };
   });
 }
 

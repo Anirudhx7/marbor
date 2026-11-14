@@ -223,7 +223,20 @@ function ModelFitTable({ nodeFit }: { nodeFit: NodeFit }) {
   );
 }
 
-function AgentBadge({ present, version }: { present?: boolean; version?: string }) {
+function AgentBadge({ present, version, stale }: { present?: boolean; version?: string; stale?: boolean }) {
+  // An enrolled agent that stopped answering is not "no agent installed": say
+  // what is actually true and that the live figures on this card may be old.
+  if (stale) {
+    return (
+      <span
+        title="A marbor agent is enrolled for this host but has stopped answering. Live telemetry shown here may be out of date."
+        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 whitespace-nowrap"
+      >
+        <Radio className="w-3 h-3" />
+        Agent silent
+      </span>
+    );
+  }
   if (present) {
     return (
       <span
@@ -522,6 +535,18 @@ function NodeCard({ node, pinnedModels, replicaWorkers, onRemove, onDrain, onUnd
         {workerCount > 0 ? `Replica head - ${workerCount} worker${workerCount === 1 ? '' : 's'}` : 'Replica head'}
       </span>
     ) });
+    // Only for a head that is itself healthy and not draining: for a down or
+    // draining head the existing status already explains why it takes no work.
+    if (node.replicaBlockedBy && node.health === 'healthy' && !node.draining) {
+      statusPills.push({ sev: 1, key: 'replica-blocked', el: (
+        <span
+          title={`Routing skips this replica while the host agent on ${node.replicaBlockedBy} is not answering, and uses it only when nothing else can serve the request. The head itself is healthy. Clears on that agent's next good poll.`}
+          className="text-xs font-medium px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30"
+        >
+          Last resort: {node.replicaBlockedBy} agent silent
+        </span>
+      ) });
+    }
   }
   for (const chip of replicaChips ?? []) {
     statusPills.push({ sev: 1, key: `replica-chip-${chip.key}`, el: (
@@ -554,7 +579,7 @@ function NodeCard({ node, pinnedModels, replicaWorkers, onRemove, onDrain, onUnd
             <div className="flex flex-wrap items-center gap-2 mt-1">
               <p className="text-sm text-muted-foreground">{node.gpuModel || 'Unknown GPU'}</p>
               <RuntimeBadge runtime={node.runtime} />
-              <AgentBadge present={node.agentPresent} version={node.agentVersion} />
+              <AgentBadge present={node.agentPresent} version={node.agentVersion} stale={node.agentStale} />
               {node.parallelismType && node.parallelismWidth ? (
                 <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-secondary text-muted-foreground border border-border">
                   {node.parallelismType.toUpperCase()}={node.parallelismWidth} {node.effectiveRequiredGPUs ? `(${node.effectiveRequiredGPUs} GPUs)` : ''}

@@ -2368,6 +2368,29 @@ func (r *Router) SchedulingRolesWithHeads(nodes []*NodeState) (map[string]Schedu
 	return resolveSchedulingRolesAndHeads(nodes)
 }
 
+// ReplicaBlockedHeads maps each replica head whose routing is held back
+// because a member's host agent is not answering to that member's name (the
+// lowest-named one when several are silent). It is the same derivation the
+// router uses to put such a head on the last-resort path, so the node list
+// can name the cause without a request having to be routed first. nodes must
+// be the whole fleet, with roles and heads from SchedulingRolesWithHeads over
+// that same slice: a member missing from nodes is never visited, so a partial
+// list under-reports. Head health and draining are not consulted; callers
+// decide how to present a head that is itself down. Only names are returned,
+// so the result is safe to use after the caller releases every node lock.
+// Returns nil when there are no replica heads or nothing is blocked.
+func (r *Router) ReplicaBlockedHeads(nodes []*NodeState, roles map[string]SchedulingRole, heads map[string]string) map[string]string {
+	down := unreachableReplicaHeads(nodes, roles, heads)
+	if len(down) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(down))
+	for head, member := range down {
+		out[head] = member.Name
+	}
+	return out
+}
+
 // ComponentFor exposes componentFor (placement.go) to callers outside this
 // package that need the resolved head node name for a RoleHead/RoleWorker
 // node - e.g. the admin API's replicaHead response field. Only meaningful

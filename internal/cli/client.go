@@ -795,9 +795,13 @@ type NodeResp struct {
 	// worker/unresolved node is never a placement target but still appears
 	// in this list (visibility field, not a filter). ReplicaHead is the
 	// resolved head node's name, present only for "head"/"worker".
-	SchedulingRole string            `json:"schedulingRole,omitempty"`
-	ReplicaHead    string            `json:"replicaHead,omitempty"`
-	ReplicaPeers   *NodeReplicaPeers `json:"replicaPeers,omitempty"`
+	SchedulingRole string `json:"schedulingRole,omitempty"`
+	ReplicaHead    string `json:"replicaHead,omitempty"`
+	// ReplicaBlockedBy names the replica member whose host agent is not
+	// answering, on a replica head only; absent otherwise. Routing uses such a
+	// head only as a last resort.
+	ReplicaBlockedBy string            `json:"replicaBlockedBy,omitempty"`
+	ReplicaPeers     *NodeReplicaPeers `json:"replicaPeers,omitempty"`
 	// WarmupSupported reports whether keep-warm and scheduled warmup can act
 	// on this node's runtime (Ollama only today). A pointer so an older
 	// server that doesn't send the field prints "-" rather than a false "no".

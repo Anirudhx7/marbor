@@ -631,13 +631,21 @@ type nodeResp struct {
 	// SchedulingRole is "worker" or "head" (a head's own ReplicaHead is its
 	// own name). Absent for "standalone"/"unresolved", which have no
 	// meaningful head to link to.
-	ReplicaHead string   `json:"replicaHead,omitempty"`
-	VRAMTotalMB int64    `json:"vramTotalMB"`
-	VRAMUsedMB  int64    `json:"vramUsedMB"`
-	VRAMSource  string   `json:"vramSource"`
-	PowerDrawW  float64  `json:"powerDrawW"`
-	Temperature *float64 `json:"temperature"`
-	Runtime     string   `json:"runtime"`
+	ReplicaHead string `json:"replicaHead,omitempty"`
+	// ReplicaBlockedBy names the replica member whose host agent is not
+	// answering, on a replica head only. Routing uses such a head only as a
+	// last resort. It is a fact about the member, not a verdict on the head:
+	// the head's own health is unchanged, and the field is reported whether or
+	// not the head is itself down or draining. Absent (never an empty string)
+	// when no member's agent is silent. A member with no agent is unknown and
+	// never counts.
+	ReplicaBlockedBy string   `json:"replicaBlockedBy,omitempty"`
+	VRAMTotalMB      int64    `json:"vramTotalMB"`
+	VRAMUsedMB       int64    `json:"vramUsedMB"`
+	VRAMSource       string   `json:"vramSource"`
+	PowerDrawW       float64  `json:"powerDrawW"`
+	Temperature      *float64 `json:"temperature"`
+	Runtime          string   `json:"runtime"`
 	// RuntimeMismatchHint is set only when this node is currently
 	// probed as llamacpp and its /health check is failing specifically with
 	// a 404 - the real, observed signature of an MLX node auto-detected as
@@ -1323,7 +1331,12 @@ func (s *Server) adminAuth(next http.HandlerFunc) http.HandlerFunc {
 // resolution is fleet-wide (see router.SchedulingRolesWithHeads' doc
 // comment). Both may be nil (nobody in the fleet has declared
 // replica_peers), in which case every node resolves RoleStandalone.
-func (s *Server) nodeStateToResp(n *router.NodeState, id string, roles map[string]router.SchedulingRole, heads map[string]string) nodeResp {
+//
+// blocked is router.ReplicaBlockedHeads over the same fleet, also computed
+// once per request BEFORE any node lock is taken: it reads every worker node
+// under its own lock, so calling it here, under n's RLock, would nest read
+// locks across nodes.
+func (s *Server) nodeStateToResp(n *router.NodeState, id string, roles map[string]router.SchedulingRole, heads map[string]string, blocked map[string]string) nodeResp {
 	host := ""
 	port := 0
 	scheme := "http"
@@ -1359,6 +1372,10 @@ func (s *Server) nodeStateToResp(n *router.NodeState, id string, roles map[strin
 	if role == router.RoleHead || role == router.RoleWorker {
 		replicaHead = heads[n.Name]
 	}
+	var replicaBlockedBy string
+	if role == router.RoleHead {
+		replicaBlockedBy = blocked[n.Name]
+	}
 
 	resp := nodeResp{
 		ID:                              id,
@@ -1386,6 +1403,7 @@ func (s *Server) nodeStateToResp(n *router.NodeState, id string, roles map[strin
 		ReplicaPeers:                    n.ReplicaPeers,
 		SchedulingRole:                  role.String(),
 		ReplicaHead:                     replicaHead,
+		ReplicaBlockedBy:                replicaBlockedBy,
 		VRAMTotalMB:                     n.VRAMTotalMB,
 		VRAMUsedMB:                      n.VRAMUsedMB,
 		VRAMSource:                      n.VRAMSource,
@@ -1456,11 +1474,12 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	nodes := s.router.Nodes()
-	roles, heads := s.router.SchedulingRolesWithHeads(nodes) // computed once for the whole list, not per node
+	roles, heads := s.router.SchedulingRolesWithHeads(nodes)     // computed once for the whole list, not per node
+	blocked := s.router.ReplicaBlockedHeads(nodes, roles, heads) // reads worker nodes under their own locks: compute before the loop takes n.RLock
 	out := make([]nodeResp, len(nodes))
 	for i, n := range nodes {
 		n.RLock()
-		resp := s.nodeStateToResp(n, fmt.Sprintf("gpu-%d", i), roles, heads)
+		resp := s.nodeStateToResp(n, fmt.Sprintf("gpu-%d", i), roles, heads, blocked)
 
 		avgLatencyNode := 0.0
 		latCount := atomic.LoadInt64(&n.LatencyCount)
@@ -1495,13 +1514,14 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleNode(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	nodes := s.router.Nodes()
-	roles, heads := s.router.SchedulingRolesWithHeads(nodes) // fleet-wide even for a single-node lookup - role resolution is inherently fleet-wide
+	roles, heads := s.router.SchedulingRolesWithHeads(nodes)     // fleet-wide even for a single-node lookup - role resolution is inherently fleet-wide
+	blocked := s.router.ReplicaBlockedHeads(nodes, roles, heads) // before the loop: never under n.RLock
 	for i, n := range nodes {
 		if n.Name != name {
 			continue
 		}
 		n.RLock()
-		out := s.nodeStateToResp(n, fmt.Sprintf("gpu-%d", i), roles, heads)
+		out := s.nodeStateToResp(n, fmt.Sprintf("gpu-%d", i), roles, heads, blocked)
 		n.RUnlock()
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(out)

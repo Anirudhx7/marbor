@@ -144,6 +144,10 @@ export interface GPUNode {
   replicaPeers?: { members: string[]; head: string };
   schedulingRole?: 'standalone' | 'head' | 'worker' | 'unresolved';
   replicaHead?: string;
+  // Replica head only: the member whose host agent is not answering, so
+  // routing uses this head only as a last resort. A fact about the member,
+  // not a verdict on the head (its health is unchanged). Absent otherwise.
+  replicaBlockedBy?: string;
   // Operator-declared per-model VRAM size override (MB), keyed by plain
   // model name - undefined/empty means nothing declared. Feeds
   // estimateModelSizeBytes' tier-3 fallback on the router side.
