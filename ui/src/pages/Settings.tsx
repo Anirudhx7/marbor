@@ -175,7 +175,13 @@ export function SettingsPage() {
   // config entry. (Local fallback chain comboboxes moved to Routing.tsx.)
   const [knownModelNames, setKnownModelNames] = useState<string[]>([]);
 
+  const wasDemoRef = useRef(demoMode);
   useEffect(() => {
+    if (wasDemoRef.current && !demoMode) {
+      // Leaving demo mode: demo edits must not suppress the live reload.
+      dirtyRef.current = false;
+    }
+    wasDemoRef.current = demoMode;
     if (currentAppPath() !== '/settings') return;
     if (demoMode) {
       setKnownModelNames((mockModelCatalog.models || []).map((m) => m.name));
@@ -201,6 +207,8 @@ export function SettingsPage() {
   const [credSaving, setCredSaving] = useState(false);
   const [credError, setCredError] = useState<string | null>(null);
   const [credSaved, setCredSaved] = useState(false);
+  const credTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (credTimerRef.current) clearTimeout(credTimerRef.current); }, []);
 
   // Backup & restore
   const [backupDownloading, setBackupDownloading] = useState(false);
@@ -438,6 +446,12 @@ export function SettingsPage() {
   const handleAckRestore = async () => {
     setAckError(null);
     setAckingRestore(true);
+    if (demoMode) {
+      // Demo mode never reaches the server: just clear the local notice.
+      setBackupStatus(prev => (prev ? { ...prev, last_restore: undefined } : prev));
+      setAckingRestore(false);
+      return;
+    }
     try {
       await acknowledgeRestoreResult(backupStatus?.last_restore?.ref);
       if (mountedRef.current) {
@@ -538,6 +552,15 @@ export function SettingsPage() {
 
   useEffect(() => {
     if (currentAppPath() !== '/settings') return;
+    if (demoMode) {
+      // Demo mode never reads the real server: show the built-in defaults.
+      if (!dirtyRef.current) {
+        lastLoadedSettingsRef.current = defaultSettings;
+        setSettings(defaultSettings);
+      }
+      setError(null);
+      return;
+    }
     let active = true;
     fetchSettings()
       .then((settingsData) => {
@@ -700,7 +723,8 @@ export function SettingsPage() {
         },
       };
 
-      await updateSettings(payload);
+      // Demo mode keeps edits on screen only; nothing is written to the server.
+      if (!demoMode) await updateSettings(payload);
       window.dispatchEvent(new Event('marbor-settings-change'));
       // Wake TimezoneProvider instantly so Activity/etc re-render without waiting
       // for the 15s poll (instant re-render is a required behavior here).
@@ -754,13 +778,25 @@ export function SettingsPage() {
     }
     setCredSaving(true);
     setCredError(null);
+    if (demoMode) {
+      // Demo mode never changes a real password: show the success state only.
+      setCredSaved(true);
+      setCredCurrentPw('');
+      setCredNewPw('');
+      setCredConfirmPw('');
+      if (credTimerRef.current) clearTimeout(credTimerRef.current);
+      credTimerRef.current = setTimeout(() => setCredSaved(false), 3000);
+      setCredSaving(false);
+      return;
+    }
     try {
       await changePassword(credCurrentPw, credNewPw || '');
       setCredSaved(true);
       setCredCurrentPw('');
       setCredNewPw('');
       setCredConfirmPw('');
-      setTimeout(() => setCredSaved(false), 3000);
+      if (credTimerRef.current) clearTimeout(credTimerRef.current);
+      credTimerRef.current = setTimeout(() => setCredSaved(false), 3000);
     } catch (err: any) {
       setCredError(err.message || 'Failed to update credentials');
     } finally {
