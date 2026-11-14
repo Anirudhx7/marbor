@@ -41,13 +41,19 @@ default is `9200`) - not the node's runtime endpoint port:
   "enabled": true,
   "port": 9200,
   "token": "admin.<opaque-permanent-token>",
+  "enrollment_code": "<short-lived-code>",
   "install_command": "curl -fsSL https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | ROLE=agent MARBOR_SERVER=https://marbor.example.com MARBOR_ENROLL=<short-lived-code> PORT=9200 sh",
   "install_command_windows": "..."
 }
 ```
 
-Run the returned `install_command` on the target host (via Ansible, SSH, whatever
-you use) and the agent exchanges the code for its real token and registers itself.
+Run the returned `install_command` on the target host (via SSH or any script you use)
+and the agent exchanges the code for its real token and registers itself. Automation
+that would rather not run a server-supplied string through a shell can use
+`enrollment_code` instead: build the same command from fixed parts and pass
+`MARBOR_SERVER`, `MARBOR_ENROLL` and `PORT` as environment variables, as the Ansible
+playbook does. Use an `https://` marbor URL for any remote host, since the code and
+the installer download travel over it.
 
 **This endpoint is not safe to call blindly on every run.** It unconditionally mints
 a fresh token, overwrites the persisted `marbor_agent` record, and pushes the new
@@ -128,7 +134,13 @@ first for any node not yet registered - see [GPU node registration](gpu-node-reg
   delegate_to: localhost
 
 - name: Install agent on GPU node
-  shell: "{{ (agent_response.content | from_json).install_command }}"
+  shell: curl -fsSL https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | sh
+  environment:
+    ROLE: agent
+    MARBOR_SERVER: "https://marbor.example.com"
+    MARBOR_ENROLL: "{{ (agent_response.content | from_json).enrollment_code }}"
+    PORT: "11434"
+  no_log: true
 ```
 
 Run this play against a `gpu_nodes` inventory group and every host gets its own

@@ -51,6 +51,11 @@
         that:
           - marbor_url is defined
           - marbor_url | length > 0
+          # The enrollment code travels in the install command and the install
+          # fetches a binary from marbor_url, so a remote marbor_url must be https.
+          - >-
+            marbor_url is match('^https://') or
+            marbor_url is match('^http://(localhost|127\.0\.0\.1|\[::1\])([:/]|$)')
           - marbor_admin_password is defined
           - marbor_admin_password | length > 0
           - agent_nodes is defined
@@ -137,6 +142,8 @@
           port: "{{ node.agent_port | default(agent_port) }}"
         status_code: 200
         return_content: true
+      # The response holds the agent token and the enrollment code.
+      no_log: true
       loop: "{{ agent_nodes }}"
       loop_control:
         loop_var: node
@@ -145,7 +152,16 @@
       register: agent_enable_results
 
     - name: Install the Marbor Agent on each newly-enrolled GPU host
-      ansible.builtin.shell: "{{ (item.content | from_json).install_command }}"
+      # Fixed-shape install: the command text is constant and the three values
+      # go in as environment variables, so nothing from the API response is
+      # ever parsed by a shell. Same shape and variables as install_command.
+      ansible.builtin.shell: curl -fsSL https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | sh
+      environment:
+        ROLE: agent
+        MARBOR_SERVER: "{{ marbor_url | regex_replace('/+$', '') }}"
+        MARBOR_ENROLL: "{{ (item.content | from_json).enrollment_code }}"
+        PORT: "{{ item.node.agent_port | default(agent_port) }}"
+      no_log: true
       loop: "{{ agent_enable_results.results | rejectattr('skipped', 'defined') | list }}"
       loop_control:
         label: "{{ item.node.name }} ({{ item.node.host }})"

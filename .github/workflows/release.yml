@@ -21,6 +21,13 @@ jobs:
     needs: release-check
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # id-token and attestations are needed only here, for the provenance step.
+    permissions:
+      contents: write
+      packages: write
+      actions: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -53,6 +60,13 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/marbor-*
+            dist/checksums.txt
 
       - name: Detect demo image changes since last tag
         id: demo-changes

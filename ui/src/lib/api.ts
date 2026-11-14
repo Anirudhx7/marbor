@@ -2177,6 +2177,7 @@ export interface MarborAgentEnableResult {
   port: number;
   scheme: 'http' | 'https';
   token: string;
+  enrollment_code?: string; // short-lived single-use code, for building the install command by hand
   install_command: string; // Linux/macOS one-liner (install.sh, ROLE=agent)
   install_command_windows: string; // Windows PowerShell one-liner (install.ps1, ROLE=agent)
 }
