@@ -2437,6 +2437,7 @@ func (s *Server) handleEnableMarborAgent(w http.ResponseWriter, r *http.Request)
 		"port":                    body.Port,
 		"scheme":                  scheme,
 		"token":                   token,
+		"enrollment_code":         code,
 		"install_command":         unixCmd,
 		"install_command_windows": windowsCmd,
 	})
@@ -2536,6 +2537,7 @@ func (s *Server) handleRegenerateMarborAgentToken(w http.ResponseWriter, r *http
 		"port":                    rec.Port,
 		"scheme":                  rec.Scheme,
 		"token":                   token,
+		"enrollment_code":         code,
 		"install_command":         unixCmd,
 		"install_command_windows": windowsCmd,
 	})

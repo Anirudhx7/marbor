@@ -309,6 +309,7 @@ section,#install{scroll-margin-top:96px}
   "enabled": true,
   "port": 9200,
   "token": "admin.&lt;opaque-permanent-token&gt;",
+  "enrollment_code": "&lt;short-lived-code&gt;",
   "install_command": "curl -fsSL https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | ROLE=agent MARBOR_SERVER=https://marbor.example.com MARBOR_ENROLL=&lt;short-lived-code&gt; PORT=9200 sh",
   "install_command_windows": "..."
 }</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="{
@@ -316,10 +317,11 @@ section,#install{scroll-margin-top:96px}
   &quot;enabled&quot;: true,
   &quot;port&quot;: 9200,
   &quot;token&quot;: &quot;admin.&lt;opaque-permanent-token&gt;&quot;,
+  &quot;enrollment_code&quot;: &quot;&lt;short-lived-code&gt;&quot;,
   &quot;install_command&quot;: &quot;curl -fsSL https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | ROLE=agent MARBOR_SERVER=https://marbor.example.com MARBOR_ENROLL=&lt;short-lived-code&gt; PORT=9200 sh&quot;,
   &quot;install_command_windows&quot;: &quot;...&quot;
 }"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-<p>Run the returned <code>install_command</code> on the target host (via Ansible, SSH, whatever you use) and the agent exchanges the code for its real token and registers itself.</p>
+<p>Run the returned <code>install_command</code> on the target host (via SSH or any script you use) and the agent exchanges the code for its real token and registers itself. Automation that would rather not run a server-supplied string through a shell can use <code>enrollment_code</code> instead: build the same command from fixed parts and pass <code>MARBOR_SERVER</code>, <code>MARBOR_ENROLL</code> and <code>PORT</code> as environment variables, as the Ansible playbook does. Use an <code>https://</code> marbor URL for any remote host, since the code and the installer download travel over it.</p>
 <p><strong>This endpoint is not safe to call blindly on every run.</strong> It unconditionally mints a fresh token, overwrites the persisted <code>marbor_agent</code> record, and pushes the new token to the live router - a repeat call against an already-healthy node rotates its credential out from under it and could interrupt a live connection for no reason. Check <code>GET /admin/nodes</code> first and only call this for a node that isn't already reporting <code>agentPresent: true</code> and <code>health: "healthy"</code>.</p>
 <h2 id="agent-transport-tls">Agent transport (TLS)<a class="anchor" href="#agent-transport-tls" aria-label="Link to section">#</a></h2>
 <p>Agents installed this way run <code>marbor-agent service install</code>, which provisions a TLS certificate and serves HTTPS, so enrollment needs no extra flag. Only a hand-started foreground <code>marbor-agent</code> without <code>--cert</code>/<code>--key</code> is plaintext; it refuses to start on a non-loopback bind unless <code>--allow-insecure-plaintext</code> is passed (see <a href="../../SECURITY.html">SECURITY.md</a>). Do not add that flag to an enrollment playbook.</p>
@@ -388,7 +390,13 @@ done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2
   delegate_to: localhost
 
 - name: Install agent on GPU node
-  shell: "{{ (agent_response.content | from_json).install_command }}"</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="- name: Log in and capture session cookie
+  shell: curl -fsSL https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | sh
+  environment:
+    ROLE: agent
+    MARBOR_SERVER: "https://marbor.example.com"
+    MARBOR_ENROLL: "{{ (agent_response.content | from_json).enrollment_code }}"
+    PORT: "11434"
+  no_log: true</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="- name: Log in and capture session cookie
   uri:
     url: &quot;https://marbor.example.com/admin/login&quot;
     method: POST
@@ -415,7 +423,13 @@ done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2
   delegate_to: localhost
 
 - name: Install agent on GPU node
-  shell: &quot;{{ (agent_response.content | from_json).install_command }}&quot;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+  shell: curl -fsSL https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | sh
+  environment:
+    ROLE: agent
+    MARBOR_SERVER: &quot;https://marbor.example.com&quot;
+    MARBOR_ENROLL: &quot;{{ (agent_response.content | from_json).enrollment_code }}&quot;
+    PORT: &quot;11434&quot;
+  no_log: true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
 <p>Run this play against a <code>gpu_nodes</code> inventory group and every host gets its own enrollment code from the same run - no manual UI step, no shared secret.</p>
 <h2 id="rotation-and-revocation">Rotation and revocation<a class="anchor" href="#rotation-and-revocation" aria-label="Link to section">#</a></h2>
 <ul><li><code>POST /admin/nodes/{name}/agent/regenerate</code> mints a new token (and a new install</li></ul>
