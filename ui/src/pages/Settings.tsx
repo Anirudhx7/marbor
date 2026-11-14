@@ -175,8 +175,14 @@ export function SettingsPage() {
   // config entry. (Local fallback chain comboboxes moved to Routing.tsx.)
   const [knownModelNames, setKnownModelNames] = useState<string[]>([]);
 
+  const wasDemoRef = useRef(demoMode);
   useEffect(() => {
     if (currentAppPath() !== '/settings') return;
+    if (wasDemoRef.current && !demoMode) {
+      // Leaving demo mode: demo edits must not suppress the live reload.
+      dirtyRef.current = false;
+    }
+    wasDemoRef.current = demoMode;
     if (demoMode) {
       setKnownModelNames((mockModelCatalog.models || []).map((m) => m.name));
       return;
@@ -438,6 +444,12 @@ export function SettingsPage() {
   const handleAckRestore = async () => {
     setAckError(null);
     setAckingRestore(true);
+    if (demoMode) {
+      // Demo mode never reaches the server: just clear the local notice.
+      setBackupStatus(prev => (prev ? { ...prev, last_restore: undefined } : prev));
+      setAckingRestore(false);
+      return;
+    }
     try {
       await acknowledgeRestoreResult(backupStatus?.last_restore?.ref);
       if (mountedRef.current) {
@@ -764,6 +776,16 @@ export function SettingsPage() {
     }
     setCredSaving(true);
     setCredError(null);
+    if (demoMode) {
+      // Demo mode never changes a real password: show the success state only.
+      setCredSaved(true);
+      setCredCurrentPw('');
+      setCredNewPw('');
+      setCredConfirmPw('');
+      setTimeout(() => setCredSaved(false), 3000);
+      setCredSaving(false);
+      return;
+    }
     try {
       await changePassword(credCurrentPw, credNewPw || '');
       setCredSaved(true);

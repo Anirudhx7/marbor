@@ -16,24 +16,49 @@ const gpuNodes = read('src/pages/GPUNodes.tsx')
 const api = read('src/lib/api.ts')
 const css = read('src/index.css')
 
-// The text of a two-space-indented `const name = ...` handler, up to the next one.
+// The body of a two-space-indented `const name = ... => {` handler, found by brace matching.
 function handler(src, name) {
   const start = src.indexOf(`  const ${name} = `)
   assert.notEqual(start, -1, `${name} not found`)
-  const next = src.indexOf('\n  const ', start + 10)
-  return src.slice(start, next === -1 ? undefined : next)
+  const open = src.indexOf('=> {', start)
+  assert.notEqual(open, -1, `${name} has no block body`)
+  let depth = 0
+  for (let i = open + 3; i < src.length; i++) {
+    if (src[i] === '{') depth++
+    else if (src[i] === '}' && --depth === 0) return src.slice(open, i + 1)
+  }
+  assert.fail(`${name}: unbalanced braces`)
 }
 
-// A runtime demo toggle must be checked before the call that would reach the real backend.
+// A runtime demo toggle must be checked in an `if (demoMode` before the call that would reach the real backend.
 function guardedBefore(body, call, label) {
   const callAt = body.indexOf(call)
   assert.notEqual(callAt, -1, `${label}: ${call} not found`)
-  const guardAt = body.indexOf('demoMode')
-  assert.ok(guardAt !== -1 && guardAt < callAt, `${label}: demoMode must be checked before ${call}`)
+  const guardAt = body.search(/if [(]!?demoMode[^A-Za-z]/)
+  assert.ok(guardAt !== -1 && guardAt < callAt, `${label}: an if (demoMode) / if (!demoMode) check must come before ${call}`)
 }
 
 test('Settings save never reaches the server in demo mode', () => {
   guardedBefore(handler(settings, 'handleSave'), 'await updateSettings(', 'handleSave')
+})
+
+test('Settings credential change and restore acknowledgement are local-only in demo mode', () => {
+  guardedBefore(handler(settings, 'handleChangeCredentials'), 'await changePassword(', 'handleChangeCredentials')
+  guardedBefore(handler(settings, 'handleAckRestore'), 'await acknowledgeRestoreResult(', 'handleAckRestore')
+})
+
+test('leaving demo mode clears the dirty flag so the live reload applies', () => {
+  assert.ok(settings.includes("wasDemoRef.current && !demoMode"))
+  assert.ok(settings.includes("dirtyRef.current = false"))
+})
+
+test('api.ts reads the demo flag through the shared storage key, guarded against storage errors', () => {
+  assert.ok(!api.includes("'marbor-demo-mode'"), 'no hardcoded storage key in api.ts')
+  const at = api.indexOf('const demoUsersActive')
+  const w = api.slice(at, at + 400)
+  assert.ok(w.includes("try {") && w.includes("localStorage.getItem(DEMO_STORAGE_KEY)") && w.includes("catch"))
+  const cp = api.indexOf('export async function changePassword(')
+  assert.ok(api.slice(cp, cp + 300).includes('demoUsersActive()'), 'changePassword must self-guard')
 })
 
 test('Settings load never fetches from the server in demo mode', () => {
