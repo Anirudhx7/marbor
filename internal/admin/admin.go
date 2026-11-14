@@ -7643,6 +7643,7 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 	if useAgent {
 		go func() {
 			defer cancel()
+			defer recoverLog("model pull")
 			ctrl, _ := s.router.NodeControlSetting(nodeName)
 			err := s.pullModelViaAgent(pullCtx, nodeURL, agentCfg, body.Model, ctrl)
 			if err != nil {
@@ -7655,6 +7656,7 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 	} else {
 		go func() {
 			defer cancel()
+			defer recoverLog("model pull")
 			s.runDirectPull(pullCtx, job, nodeURL, body.Model)
 			logPullOutcome()
 		}()

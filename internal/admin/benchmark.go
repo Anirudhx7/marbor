@@ -80,6 +80,12 @@ func benchmarkKeyTTLFor(n int, sampleTimeout, unloadTimeout time.Duration) time.
 	return min(max(ttl, benchmarkKeyTTLMin), benchmarkKeyTTLMax)
 }
 
+// benchmarkJobContext bounds a benchmark job by the same worst case the key
+// TTL covers, so a hung node cannot hold the job and its node exclusion forever.
+func benchmarkJobContext(n int) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), benchmarkKeyTTLFor(n, benchmarkSampleTimeout, nodeUnloadModelTimeout))
+}
+
 // Ephemeral probe keys (the benchmark's and the post-pull load check's) are
 // named with these prefixes and live only for the duration of one request
 // sequence.
@@ -346,6 +352,7 @@ func (s *Server) handleRunBenchmark(w http.ResponseWriter, r *http.Request) {
 		Model string `json:"model"`
 		N     int    `json:"n"`
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<16)
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
@@ -388,7 +395,7 @@ func (s *Server) handleRunBenchmark(w http.ResponseWriter, r *http.Request) {
 	// node would otherwise both pass the check before either's insert lands,
 	// each evicting/reloading the model out from under the other and
 	// corrupting both runs' cold/warm numbers.
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := benchmarkJobContext(body.N)
 	// A process-lifetime counter suffix makes jobID collision-proof:
 	// UnixNano() alone can repeat across two rapid POSTs (worse on Windows'
 	// coarser clock tick), and a collision silently overwrites a live
@@ -535,6 +542,14 @@ func (s *Server) evictModelForBenchmark(ctx context.Context, nodeName, model str
 // (evicting before each) -> N warm samples (no evict) -> aggregate ->
 // persist -> always clean up the ephemeral key, on every exit path.
 func (s *Server) runBenchmarkJob(ctx context.Context, job *benchmarkJob, apiKey string) {
+	// Registered first so it runs last: a panic still lets the key cleanup
+	// below run, then marks the job failed instead of crashing the process.
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("admin: benchmark job stopped after a panic: %v", r)
+			job.finish("error", "benchmark stopped unexpectedly", nil)
+		}
+	}()
 	defer func() {
 		if s.auth != nil {
 			s.auth.RevokeKey(job.keyName)
