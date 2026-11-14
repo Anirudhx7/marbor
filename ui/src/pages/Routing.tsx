@@ -147,6 +147,9 @@ export function Routing() {
   const [providersReady, setProvidersReady] = useState(demoMode);
   const [cloudLoading, setCloudLoading] = useState(!demoMode);
   const [cloudModalOpen, setCloudModalOpen] = useState(false);
+  // Fixed when the modal opens, so typing an existing name in Add mode can
+  // never turn the form into an Edit that silently overwrites that provider.
+  const [cloudModalMode, setCloudModalMode] = useState<'add' | 'edit'>('add');
   const [editingProvider, setEditingProvider] = useState<CloudProviderInput | null>(null);
   const [cloudSaving, setCloudSaving] = useState(false);
   const [cloudTesting, setCloudTesting] = useState(false);
@@ -477,12 +480,14 @@ export function Routing() {
 
   const openAddCloudProvider = () => {
     setEditingProvider({ ...emptyProvider });
+    setCloudModalMode('add');
     setCloudError(null);
     setCloudModalOpen(true);
   };
 
   const openEditCloudProvider = (p: CloudProvider) => {
     setEditingProvider({ name: p.name, provider: p.provider, base_url: p.base_url, api_key: '***', default_model: p.default_model, cost_per_1k_tokens: p.cost_per_1k_tokens, enabled: p.enabled, priority: p.priority });
+    setCloudModalMode('edit');
     setCloudError(null);
     setCloudModalOpen(true);
   };
@@ -493,6 +498,7 @@ export function Routing() {
     const reordered = [...cloudProviders];
     [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
     setCloudProviders(reordered); // optimistic
+    if (demoMode) return;
     try {
       await reorderCloudProviders(reordered.map(p => p.name));
     } catch (err: any) {
@@ -511,7 +517,27 @@ export function Routing() {
       setCloudError('API key is required');
       return;
     }
+    if (isNew && cloudProviders.some(p => p.name === editingProvider.name.trim())) {
+      setCloudError(`A provider named "${editingProvider.name.trim()}" already exists. Pick another name, or edit the existing one.`);
+      return;
+    }
     setCloudError(null);
+    if (demoMode) {
+      // Demo mode edits the on-screen list only; nothing reaches the server.
+      const entry: CloudProvider = {
+        name: editingProvider.name.trim(),
+        provider: editingProvider.provider,
+        base_url: editingProvider.base_url,
+        default_model: editingProvider.default_model,
+        cost_per_1k_tokens: editingProvider.cost_per_1k_tokens,
+        enabled: editingProvider.enabled,
+        priority: editingProvider.priority,
+      };
+      setCloudProviders(prev => isNew ? [...prev, entry] : prev.map(p => p.name === entry.name ? entry : p));
+      setCloudModalOpen(false);
+      setEditingProvider(null);
+      return;
+    }
     // Only a real, freshly-typed key is testable - '***' means the operator
     // left the existing stored key unchanged, so there's nothing new to verify.
     const hasNewKey = editingProvider.api_key.trim() !== '' && editingProvider.api_key !== '***';
@@ -546,6 +572,11 @@ export function Routing() {
 
   const handleDeleteCloudProvider = async () => {
     if (!providerToDelete) return;
+    if (demoMode) {
+      setCloudProviders(prev => prev.filter(p => p.name !== providerToDelete));
+      setProviderToDelete(null);
+      return;
+    }
     try {
       await deleteCloudProvider(providerToDelete);
       if (!mountedRef.current) return;
@@ -559,6 +590,10 @@ export function Routing() {
   };
 
   const persistChains = async (next: Record<string, string[]>) => {
+    if (demoMode) {
+      setLocalDegradationChains(next);
+      return true;
+    }
     setChainsSaving(true);
     try {
       await updateSettings({ routing: { local_degradation_chains: next } });
@@ -1219,7 +1254,7 @@ export function Routing() {
       <Modal
         isOpen={cloudModalOpen}
         onClose={() => { setCloudModalOpen(false); setEditingProvider(null); }}
-        title={editingProvider && cloudProviders.some(p => p.name === editingProvider.name) ? 'Edit cloud provider' : 'Add cloud provider'}
+        title={cloudModalMode === 'edit' ? 'Edit cloud provider' : 'Add cloud provider'}
         maxWidth="sm"
       >
         {editingProvider && (
@@ -1231,7 +1266,7 @@ export function Routing() {
               <input
                 type="text"
                 value={editingProvider.name}
-                disabled={cloudProviders.some(p => p.name === editingProvider.name)}
+                disabled={cloudModalMode === 'edit'}
                 onChange={(e) => setEditingProvider({ ...editingProvider, name: e.target.value })}
                 placeholder="openai-prod"
                 className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50 disabled:opacity-50"
@@ -1264,9 +1299,9 @@ export function Routing() {
             </div>
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1.5">
-                API Key {!cloudProviders.some(p => p.name === editingProvider.name) && <span className="text-destructive">*</span>}
+                API Key {cloudModalMode === 'add' && <span className="text-destructive">*</span>}
               </label>
-              <input type="password" value={editingProvider.api_key} onChange={(e) => setEditingProvider({ ...editingProvider, api_key: e.target.value })} autoComplete="off" placeholder={cloudProviders.some(p => p.name === editingProvider.name) ? 'Leave unchanged to keep current key' : ''} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
+              <input type="password" value={editingProvider.api_key} onChange={(e) => setEditingProvider({ ...editingProvider, api_key: e.target.value })} autoComplete="off" placeholder={cloudModalMode === 'edit' ? 'Leave unchanged to keep current key' : ''} className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
@@ -1288,7 +1323,7 @@ export function Routing() {
                 Cancel
               </button>
               <Button
-                onClick={() => handleSaveCloudProvider(!cloudProviders.some(p => p.name === editingProvider.name))}
+                onClick={() => handleSaveCloudProvider(cloudModalMode === 'add')}
                 disabled={cloudSaving || cloudTesting}
                 className="flex items-center gap-2"
               >

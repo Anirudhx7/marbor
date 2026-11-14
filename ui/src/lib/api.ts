@@ -20,6 +20,10 @@ const DEMO = import.meta.env.VITE_FORCE_DEMO === 'true';
 // so the demo behaves realistically for the session; it resets on reload.
 let demoUsers: UserRecord[] | null = null;
 
+// The Users page also has to stay off the real backend when the operator turns
+// on the runtime demo toggle, not only in the static demo build.
+const demoUsersActive = () => DEMO || localStorage.getItem('marbor-demo-mode') === 'true';
+
 // Demo users reference keys from the shared mockAPIKeys list by id, so the
 // Users page can never name a key the API keys page does not show.
 const keyName = (id: string) => mockAPIKeys.find(k => k.id === id)?.name ?? '';
@@ -204,14 +208,14 @@ export async function changePassword(currentPassword: string, newPassword: strin
 // --- User management ---
 
 export async function listUsers(): Promise<UserRecord[]> {
-  if (DEMO) return demoDelay(demoUserStore().map(u => ({ ...u })));
+  if (demoUsersActive()) return demoDelay(demoUserStore().map(u => ({ ...u })));
   const res = await apiFetch(`${BASE}/v1/users`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch users');
   return res.json();
 }
 
 export async function createUser(data: { username: string; email?: string; role?: string }): Promise<{ id: number; username: string; initial_password: string }> {
-  if (DEMO) {
+  if (demoUsersActive()) {
     const store = demoUserStore();
     const id = store.reduce((max, u) => Math.max(max, u.id), 0) + 1;
     store.push({
@@ -237,7 +241,7 @@ export async function approveUser(id: number, data: {
   api_key_name?: string;
   create_key?: { name: string; rate_limit_per_hour: number; daily_limit: number; monthly_limit: number; models: string[] };
 }): Promise<{ user: UserRecord; api_key_value?: string }> {
-  if (DEMO) {
+  if (demoUsersActive()) {
     const u = demoUserStore().find(x => x.id === id);
     if (u) {
       u.status = 'active';
@@ -263,7 +267,7 @@ export async function approveUser(id: number, data: {
 }
 
 export async function suspendUser(id: number): Promise<void> {
-  if (DEMO) {
+  if (demoUsersActive()) {
     const u = demoUserStore().find(x => x.id === id);
     if (u) u.status = 'suspended';
     await demoDelay(null);
@@ -277,7 +281,7 @@ export async function suspendUser(id: number): Promise<void> {
 }
 
 export async function deleteUser(id: number): Promise<void> {
-  if (DEMO) {
+  if (demoUsersActive()) {
     demoUsers = demoUserStore().filter(x => x.id !== id);
     await demoDelay(null);
     return;
@@ -290,7 +294,7 @@ export async function deleteUser(id: number): Promise<void> {
 }
 
 export async function patchUser(id: number, data: { email?: string; role?: 'admin' | 'user' }): Promise<UserRecord> {
-  if (DEMO) {
+  if (demoUsersActive()) {
     const u = demoUserStore().find(x => x.id === id);
     if (!u) throw new Error('user not found');
     if (data.email !== undefined) u.email = data.email;
@@ -310,7 +314,7 @@ export async function patchUser(id: number, data: { email?: string; role?: 'admi
 }
 
 export async function resetUserPassword(id: number): Promise<{ initial_password: string }> {
-  if (DEMO) {
+  if (demoUsersActive()) {
     const u = demoUserStore().find(x => x.id === id);
     if (u) u.must_change_password = true;
     return demoDelay({ initial_password: demoRandomToken('demo-') });

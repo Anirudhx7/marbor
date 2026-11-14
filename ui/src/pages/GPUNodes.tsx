@@ -1911,7 +1911,7 @@ export function GPUNodes() {
 
   const handleUnloadModel = async (nodeName: string, model: string): Promise<boolean> => {
     try {
-      await unloadModel(nodeName, model);
+      if (!demoMode) await unloadModel(nodeName, model);
       setActionError(null);
       if (demoMode) {
         // Reflect the unload immediately in the static demo (no backend to re-poll).

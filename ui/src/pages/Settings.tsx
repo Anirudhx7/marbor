@@ -538,6 +538,15 @@ export function SettingsPage() {
 
   useEffect(() => {
     if (currentAppPath() !== '/settings') return;
+    if (demoMode) {
+      // Demo mode never reads the real server: show the built-in defaults.
+      if (!dirtyRef.current) {
+        lastLoadedSettingsRef.current = defaultSettings;
+        setSettings(defaultSettings);
+      }
+      setError(null);
+      return;
+    }
     let active = true;
     fetchSettings()
       .then((settingsData) => {
@@ -700,7 +709,8 @@ export function SettingsPage() {
         },
       };
 
-      await updateSettings(payload);
+      // Demo mode keeps edits on screen only; nothing is written to the server.
+      if (!demoMode) await updateSettings(payload);
       window.dispatchEvent(new Event('marbor-settings-change'));
       // Wake TimezoneProvider instantly so Activity/etc re-render without waiting
       // for the 15s poll (instant re-render is a required behavior here).
