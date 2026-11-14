@@ -15,6 +15,7 @@ package admin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -80,10 +81,31 @@ func benchmarkKeyTTLFor(n int, sampleTimeout, unloadTimeout time.Duration) time.
 	return min(max(ttl, benchmarkKeyTTLMin), benchmarkKeyTTLMax)
 }
 
-// benchmarkJobContext bounds a benchmark job by the same worst case the key
-// TTL covers, so a hung node cannot hold the job and its node exclusion forever.
+// benchmarkJobSlack is how much sooner the job deadline fires than the key
+// expires, so the last sample can never be sent with an already-expired key.
+const benchmarkJobSlack = 30 * time.Second
+
+// benchmarkRunBodyLimit caps the benchmark start request body.
+const benchmarkRunBodyLimit = 1 << 16
+
+// benchmarkJobContext bounds a benchmark job slightly under the worst case the
+// key TTL covers, so a hung node cannot hold the job and its node exclusion
+// forever and the key is still valid for every sample the job sends.
 func benchmarkJobContext(n int) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.Background(), benchmarkKeyTTLFor(n, benchmarkSampleTimeout, nodeUnloadModelTimeout))
+	ttl := benchmarkKeyTTLFor(n, benchmarkSampleTimeout, nodeUnloadModelTimeout)
+	return context.WithTimeout(context.Background(), ttl-benchmarkJobSlack)
+}
+
+// sleepCtx waits d or until ctx ends, reporting whether the full wait elapsed.
+func sleepCtx(ctx context.Context, d time.Duration) bool {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-t.C:
+		return true
+	}
 }
 
 // Ephemeral probe keys (the benchmark's and the post-pull load check's) are
@@ -352,8 +374,13 @@ func (s *Server) handleRunBenchmark(w http.ResponseWriter, r *http.Request) {
 		Model string `json:"model"`
 		N     int    `json:"n"`
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 1<<16)
+	r.Body = http.MaxBytesReader(w, r.Body, benchmarkRunBodyLimit)
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) {
+			writeJSONError(w, http.StatusRequestEntityTooLarge, "request body too large")
+			return
+		}
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -548,6 +575,12 @@ func (s *Server) runBenchmarkJob(ctx context.Context, job *benchmarkJob, apiKey 
 		if r := recover(); r != nil {
 			log.Printf("admin: benchmark job stopped after a panic: %v", r)
 			job.finish("error", "benchmark stopped unexpectedly", nil)
+		} else if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			// finish is a no-op when the job already reached a terminal phase.
+			job.finish("error", "benchmark timed out", nil)
+		}
+		if job.cancel != nil {
+			job.cancel()
 		}
 	}()
 	defer func() {
@@ -563,6 +596,10 @@ func (s *Server) runBenchmarkJob(ctx context.Context, job *benchmarkJob, apiKey 
 	client := &http.Client{Timeout: benchmarkSampleTimeout, CheckRedirect: noRedirect}
 
 	fail := func(err error) {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			job.finish("error", "benchmark timed out", nil)
+			return
+		}
 		job.finish("error", err.Error(), nil)
 	}
 
@@ -571,7 +608,9 @@ func (s *Server) runBenchmarkJob(ctx context.Context, job *benchmarkJob, apiKey 
 		fail(fmt.Errorf("initial evict: %w", err))
 		return
 	}
-	time.Sleep(benchmarkKeySettle)
+	if !sleepCtx(ctx, benchmarkKeySettle) {
+		return
+	}
 
 	job.setPhase("cold")
 	for i := 0; i < job.N; i++ {
@@ -583,7 +622,9 @@ func (s *Server) runBenchmarkJob(ctx context.Context, job *benchmarkJob, apiKey 
 				fail(fmt.Errorf("evict before cold sample %d: %w", i+1, err))
 				return
 			}
-			time.Sleep(benchmarkKeySettle)
+			if !sleepCtx(ctx, benchmarkKeySettle) {
+				return
+			}
 		}
 		sample, err := bench.MeasureChatLatency(ctx, client, target, job.Model, apiKey)
 		if err != nil {

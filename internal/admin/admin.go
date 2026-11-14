@@ -7388,6 +7388,15 @@ func (j *pullJob) finish(status, errMsg string) {
 	j.FinishedAt = time.Now()
 }
 
+// recoverPanic is deferred by the pull goroutines: a panic is logged and the
+// job is marked failed instead of crashing the process or staying "downloading".
+func (j *pullJob) recoverPanic() {
+	if r := recover(); r != nil {
+		log.Printf("admin: model pull stopped after a panic: %v", r)
+		j.finish("failed", "model pull stopped unexpectedly")
+	}
+}
+
 // setVerifying transitions j from "downloading" to "verifying" - the
 // download succeeded and completePull is about to run a load-verification
 // probe before reporting a final outcome. Returns false if the job is
@@ -7643,7 +7652,7 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 	if useAgent {
 		go func() {
 			defer cancel()
-			defer recoverLog("model pull")
+			defer job.recoverPanic()
 			ctrl, _ := s.router.NodeControlSetting(nodeName)
 			err := s.pullModelViaAgent(pullCtx, nodeURL, agentCfg, body.Model, ctrl)
 			if err != nil {
@@ -7656,7 +7665,7 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 	} else {
 		go func() {
 			defer cancel()
-			defer recoverLog("model pull")
+			defer job.recoverPanic()
 			s.runDirectPull(pullCtx, job, nodeURL, body.Model)
 			logPullOutcome()
 		}()
