@@ -48,17 +48,27 @@ test('Settings credential change and restore acknowledgement are local-only in d
 })
 
 test('leaving demo mode clears the dirty flag so the live reload applies', () => {
-  assert.ok(settings.includes("wasDemoRef.current && !demoMode"))
-  assert.ok(settings.includes("dirtyRef.current = false"))
+  const eff = settings.indexOf('const wasDemoRef')
+  assert.notEqual(eff, -1)
+  const win = settings.slice(eff, eff + 900)
+  const reset = win.indexOf('wasDemoRef.current && !demoMode')
+  const clear = win.indexOf('dirtyRef.current = false')
+  const pathGuard = win.indexOf("currentAppPath() !== '/settings'")
+  const branch = win.indexOf('if (demoMode)')
+  assert.ok(reset !== -1 && clear > reset, 'reset must clear the dirty flag')
+  assert.ok(pathGuard !== -1 && reset < pathGuard, 'reset must run before the route early return')
+  assert.ok(branch !== -1 && clear < branch, 'reset must run before the demoMode branch')
 })
 
 test('api.ts reads the demo flag through the shared storage key, guarded against storage errors', () => {
   assert.ok(!api.includes("'marbor-demo-mode'"), 'no hardcoded storage key in api.ts')
-  const at = api.indexOf('const demoUsersActive')
-  const w = api.slice(at, at + 400)
-  assert.ok(w.includes("try {") && w.includes("localStorage.getItem(DEMO_STORAGE_KEY)") && w.includes("catch"))
+  assert.ok(api.includes("from './demoFlag'") && !api.includes('hooks/useDemoMode'))
+  const flag = read('src/lib/demoFlag.ts')
+  assert.ok(flag.includes('try {') && flag.includes('localStorage.getItem(DEMO_STORAGE_KEY)') && flag.includes('catch'))
   const cp = api.indexOf('export async function changePassword(')
-  assert.ok(api.slice(cp, cp + 300).includes('demoUsersActive()'), 'changePassword must self-guard')
+  assert.notEqual(cp, -1)
+  const body = api.slice(cp, api.indexOf('\n}\n', cp))
+  assert.ok(!/demoUsersActive|DEMO\b|demoDelay/.test(body), 'changePassword must always call the real API (first-login change)')
 })
 
 test('Settings load never fetches from the server in demo mode', () => {

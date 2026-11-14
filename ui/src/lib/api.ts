@@ -7,7 +7,7 @@ import { sameDeclared } from './replicaGroups';
 import { dedupeInflight } from './inflight';
 import { checkBackupFile, describeBackupError, filenameFromDisposition, isAbortError, isNetworkFailure, isNewProcess, isValidRestoreRef, looksLikeBackup, tooBigForBrowser, MAX_MEMORY_DOWNLOAD_BYTES } from './backupUi';
 import { mockBackupResponse } from './backupMock';
-import { STORAGE_KEY as DEMO_STORAGE_KEY } from '../hooks/useDemoMode';
+import { readStoredDemoFlag } from './demoFlag';
 
 const BASE = '/admin';
 
@@ -25,15 +25,9 @@ let demoUsers: UserRecord[] | null = null;
 // on the runtime demo toggle, not only in the static demo build.
 // Page-level contract: pages that can run in the runtime demo toggle must
 // check demoMode themselves before calling a write helper (only the Users
-// helpers and changePassword self-guard here).
-const demoUsersActive = () => {
-  if (DEMO) return true;
-  try {
-    return localStorage.getItem(DEMO_STORAGE_KEY) === 'true';
-  } catch {
-    return false;
-  }
-};
+// helpers self-guard here; changePassword never does, so the first-login
+// password change always reaches the real API).
+const demoUsersActive = () => DEMO || readStoredDemoFlag();
 
 // Demo users reference keys from the shared mockAPIKeys list by id, so the
 // Users page can never name a key the API keys page does not show.
@@ -204,7 +198,6 @@ export async function logout(): Promise<void> {
 }
 
 export async function changePassword(currentPassword: string, newPassword: string): Promise<{ token?: string; expires_at?: string }> {
-  if (demoUsersActive()) return demoDelay({});
   const r = await apiFetch(`/change-password`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },

@@ -177,12 +177,12 @@ export function SettingsPage() {
 
   const wasDemoRef = useRef(demoMode);
   useEffect(() => {
-    if (currentAppPath() !== '/settings') return;
     if (wasDemoRef.current && !demoMode) {
       // Leaving demo mode: demo edits must not suppress the live reload.
       dirtyRef.current = false;
     }
     wasDemoRef.current = demoMode;
+    if (currentAppPath() !== '/settings') return;
     if (demoMode) {
       setKnownModelNames((mockModelCatalog.models || []).map((m) => m.name));
       return;
@@ -207,6 +207,8 @@ export function SettingsPage() {
   const [credSaving, setCredSaving] = useState(false);
   const [credError, setCredError] = useState<string | null>(null);
   const [credSaved, setCredSaved] = useState(false);
+  const credTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (credTimerRef.current) clearTimeout(credTimerRef.current); }, []);
 
   // Backup & restore
   const [backupDownloading, setBackupDownloading] = useState(false);
@@ -782,7 +784,8 @@ export function SettingsPage() {
       setCredCurrentPw('');
       setCredNewPw('');
       setCredConfirmPw('');
-      setTimeout(() => setCredSaved(false), 3000);
+      if (credTimerRef.current) clearTimeout(credTimerRef.current);
+      credTimerRef.current = setTimeout(() => setCredSaved(false), 3000);
       setCredSaving(false);
       return;
     }
@@ -792,7 +795,8 @@ export function SettingsPage() {
       setCredCurrentPw('');
       setCredNewPw('');
       setCredConfirmPw('');
-      setTimeout(() => setCredSaved(false), 3000);
+      if (credTimerRef.current) clearTimeout(credTimerRef.current);
+      credTimerRef.current = setTimeout(() => setCredSaved(false), 3000);
     } catch (err: any) {
       setCredError(err.message || 'Failed to update credentials');
     } finally {
