@@ -34,10 +34,8 @@ func runAgentGet(flags *globalFlags, node string, stdout, stderr io.Writer) int 
 
 // runAgentEnable implements `marbor agent enable <node> --port N
 // [--scheme http|https]`. Prints the one-line install command containing a
-// short-lived, single-use enrollment code - never the permanent token
-// itself in this text form; the raw "token" field is also present in
-// --json output for completeness but should not be pasted into shell
-// history / chat any more than the install command should.
+// short-lived, single-use enrollment code. The permanent agent token is
+// never printed, in text or --json output.
 func runAgentEnable(flags *globalFlags, node string, port int, scheme string, stdout, stderr io.Writer) int {
 	client, err := authenticatedClient(flags)
 	if err != nil {
