@@ -2778,14 +2778,15 @@ func (c *Client) GetMarborAgent(node string) (*MarborAgentInfo, error) {
 
 // MarborAgentEnableResult mirrors handleEnableMarborAgent/
 // handleRegenerateMarborAgentToken's response shape - the ONLY response
-// that ever carries the plaintext enrollment install command/token -
-// never persisted or echoed back by GetMarborAgent.
+// that ever carries the plaintext enrollment install command - never
+// persisted or echoed back by GetMarborAgent. The response also carries the
+// permanent agent token; it is deliberately not decoded so the CLI can never
+// print it (operators use the install command's enrollment code).
 type MarborAgentEnableResult struct {
 	Node                  string `json:"node"`
 	Enabled               bool   `json:"enabled"`
 	Port                  int    `json:"port"`
 	Scheme                string `json:"scheme"`
-	Token                 string `json:"token"`
 	InstallCommand        string `json:"install_command"`
 	InstallCommandWindows string `json:"install_command_windows"`
 }
