@@ -20,6 +20,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -220,10 +221,17 @@ func (j *benchmarkJob) snapshot() benchmarkJobSnapshot {
 	}
 }
 
+// setPhase moves the job to a running phase. It is a no-op once the job is
+// terminal, so a cancelled or failed job is never resurrected by the job
+// goroutine's next phase change.
 func (j *benchmarkJob) setPhase(phase string) {
 	j.mu.Lock()
+	defer j.mu.Unlock()
+	switch j.Phase {
+	case "done", "error", "cancelled":
+		return
+	}
 	j.Phase = phase
-	j.mu.Unlock()
 }
 
 // addColdSample records one cold-phase TTFT sample plus its TPOT when
@@ -573,7 +581,7 @@ func (s *Server) runBenchmarkJob(ctx context.Context, job *benchmarkJob, apiKey 
 	// below run, then marks the job failed instead of crashing the process.
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("admin: benchmark job stopped after a panic: %v", r)
+			log.Printf("admin: benchmark job stopped after a panic: %v\n%s", r, debug.Stack())
 			job.finish("error", "benchmark stopped unexpectedly", nil)
 		} else if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			// finish is a no-op when the job already reached a terminal phase.

@@ -123,3 +123,50 @@ func TestHandleRunBenchmark_OversizedBodyIs413(t *testing.T) {
 		t.Fatalf("status = %d, want 413", c)
 	}
 }
+
+func TestBenchmarkJob_SetPhaseDoesNotResurrectCancelledJob(t *testing.T) {
+	s := newBenchTestServer(t, "http://localhost:11434", "", "llama3:8b")
+	job := &benchmarkJob{Node: "gpu-0", Model: "llama3:8b", N: 1, Phase: "cold", cancel: func() {}}
+	s.benchJobs["j1"] = job
+
+	if !job.requestCancel() {
+		t.Fatal("requestCancel reported no running job")
+	}
+	job.finish("cancelled", "", nil)
+	job.setPhase("cold")
+	job.setPhase("warm")
+
+	if snap := job.snapshot(); snap.Phase != "cancelled" {
+		t.Fatalf("phase = %q, want cancelled to stay terminal", snap.Phase)
+	}
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, newBenchRunRequest(t, s, `{"node":"gpu-0","model":"llama3:8b","n":1}`))
+	if rec.Code == http.StatusConflict {
+		t.Fatal("node still blocked by a cancelled job")
+	}
+}
+
+func TestRunBenchmarkJob_DeadlineDuringSettleSleepEndsInTimeoutError(t *testing.T) {
+	ok := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(ok.Close)
+	s := newBenchTestServer(t, ok.URL, ok.URL, "llama3:8b")
+	job := &benchmarkJob{Node: "gpu-0", Model: "llama3:8b", N: 2, Phase: "evicting", keyName: "benchmark-settle"}
+	s.benchJobs["j1"] = job
+
+	// The deadline is shorter than benchmarkKeySettle, so it fires while the
+	// job waits between the evict and the first sample.
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	s.runBenchmarkJob(ctx, job, "k")
+
+	if time.Since(start) >= benchmarkKeySettle {
+		t.Fatalf("job ran %v, expected the deadline to cut the settle sleep short", time.Since(start))
+	}
+	snap := job.snapshot()
+	if snap.Phase != "error" || !strings.Contains(snap.Error, "timed out") {
+		t.Fatalf("phase=%q error=%q, want terminal error mentioning timed out", snap.Phase, snap.Error)
+	}
+}
