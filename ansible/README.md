@@ -182,8 +182,11 @@ never came up healthy.
 3. Decides whether the marbor agent needs (re-)enrolling - see **Agent
    re-enrollment policy** below.
 4. If needed, enables the marbor agent (`POST /admin/nodes/{name}/agent`) and
-   captures the returned `install_command`.
-5. Runs `install_command` on the GPU host itself over SSH (`delegate_to`).
+   captures the returned `enrollment_code`.
+5. Runs a fixed install command on the GPU host itself over SSH (`delegate_to`),
+   passing `MARBOR_SERVER` (your `marbor_url`), `MARBOR_ENROLL` (the code) and
+   `PORT` as environment variables. `marbor_url` must be `https://` unless it
+   points at localhost.
 6. Polls `GET /admin/nodes/{name}` until the node reports `health: "healthy"`
    and `agentPresent: true`, or gives up and names the host in the final
    failure message.
