@@ -305,6 +305,8 @@ Marbor is runtime-agnostic. Declare `runtime:` per node and the router uses the 
 
 All builds and `checksums.txt` on the [releases page](https://github.com/Anirudhx7/marbor/releases/latest).
 
+**Verify a download:** release binaries, the man-pages archive and `checksums.txt` carry a signed build provenance attestation. With the [GitHub CLI](https://cli.github.com/) installed, check a file you downloaded against this repository: `gh attestation verify marbor-linux-amd64 --repo Anirudhx7/marbor`.
+
 **Man pages:** `install.sh` installs them for you. To install by hand, download `marbor-man-pages.tar.gz` from the same page and unpack it into a man root: `sudo tar -xzf marbor-man-pages.tar.gz -C /usr/local/share/man`, then `man marbor`.
 
 
