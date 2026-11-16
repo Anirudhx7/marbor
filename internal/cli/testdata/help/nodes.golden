@@ -17,8 +17,8 @@ Flags:
   --search string    only nodes whose name or GPU model contains this text (trimmed, case-insensitive)
   --server string    Admin API base URL (default "http://localhost:8080", env MARBOR_SERVER)
   --json             output machine-readable JSON instead of a human table
-  --username string  admin username, used to log in (env MARBOR_USERNAME)
-  --password string  admin password, used to log in (env MARBOR_PASSWORD)
+  --username string  admin username, used to log in (env MARBOR_USERNAME); must be given together with --password
+  --password string  admin password, used to log in (env MARBOR_PASSWORD); must be given together with --username
 
 With --signal, lists only nodes that match any of the given signals, the same ones as the dashboard's filter chips: healthy,
 degraded, draining, down, agent, warm, pressure. healthy and degraded leave out draining nodes; a node that is down and draining

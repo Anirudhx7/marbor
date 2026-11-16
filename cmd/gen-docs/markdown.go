@@ -35,8 +35,8 @@ func generateMarkdown(root *cli.Command) error {
 
 	b.WriteString("## Environment\n\n")
 	b.WriteString("- `MARBOR_SERVER` - Admin API base URL, used when `--server` is not given\n")
-	b.WriteString("- `MARBOR_USERNAME` - admin username, used when `--username` is not given\n")
-	b.WriteString("- `MARBOR_PASSWORD` - admin password, used when `--password` is not given\n\n")
+	b.WriteString("- `MARBOR_USERNAME` - admin username, used when `--username` is not given (must be paired with MARBOR_PASSWORD)\n")
+	b.WriteString("- `MARBOR_PASSWORD` - admin password, used when `--password` is not given (must be paired with MARBOR_USERNAME)\n\n")
 
 	b.WriteString("## Files\n\n")
 	b.WriteString("The session saved by `marbor login` (mode `0600`), under the OS user " +

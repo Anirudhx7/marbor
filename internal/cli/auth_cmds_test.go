@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -539,5 +540,98 @@ func TestRun_Whoami_ServerUnreachable_ShowsCachedIdentity(t *testing.T) {
 	}
 	if !out.Cached || out.Username != "admin" {
 		t.Fatalf("expected cached identity shown despite being unreachable, got %+v", out)
+	}
+}
+
+func TestAuthenticatedClient_CredentialPairing(t *testing.T) {
+	cases := []struct {
+		name         string
+		flagUser     string
+		flagPass     string
+		envUser      string
+		envPass      string
+		wantUserErr  bool
+		wantLogin    bool
+		wantSavedUse bool
+	}{
+		{name: "lone username flag", flagUser: "alice", wantUserErr: true},
+		{name: "lone password flag", flagPass: "secret", wantUserErr: true},
+		{name: "lone username env", envUser: "alice", wantUserErr: true},
+		{name: "lone password env", envPass: "secret", wantUserErr: true},
+		{name: "username flag with password env", flagUser: "alice", envPass: "secret", wantLogin: true},
+		{name: "whitespace-only password", flagUser: "alice", flagPass: "   ", wantUserErr: true},
+		{name: "whitespace-only username", flagUser: "  ", flagPass: "secret", wantUserErr: true},
+		{name: "both set", flagUser: "alice", flagPass: "secret", wantLogin: true},
+		{name: "neither set", wantSavedUse: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			withTempConfigDir(t)
+			t.Setenv("MARBOR_USERNAME", tc.envUser)
+			t.Setenv("MARBOR_PASSWORD", tc.envPass)
+
+			var logins int
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/admin/v1/login" {
+					logins++
+					http.SetCookie(w, &http.Cookie{Name: "marbor_session", Value: "login-tok"})
+					w.Header().Set("Content-Type", "application/json")
+					w.Write([]byte(`{"role":"admin","username":"alice"}`))
+					return
+				}
+				w.WriteHeader(http.StatusNotFound)
+			}))
+			defer srv.Close()
+			mustSaveSession(t, srv.URL, "saved-tok")
+
+			client, err := authenticatedClient(&globalFlags{server: srv.URL, username: tc.flagUser, password: tc.flagPass})
+			if tc.wantUserErr {
+				var cliErr *CLIError
+				if !errors.As(err, &cliErr) || cliErr.Code != ExitUserError {
+					t.Fatalf("expected a user error, got client=%+v err=%v", client, err)
+				}
+				if !strings.Contains(err.Error(), "both") {
+					t.Errorf("message should say both are required, got %q", err.Error())
+				}
+				if logins != 0 {
+					t.Errorf("no login must be attempted, got %d", logins)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if tc.wantLogin && (logins != 1 || client.Token == "saved-tok") {
+				t.Errorf("expected a fresh login, got logins=%d token=%q", logins, client.Token)
+			}
+			if tc.wantSavedUse && (logins != 0 || client.Token != "saved-tok") {
+				t.Errorf("expected saved session, got logins=%d token=%q", logins, client.Token)
+			}
+		})
+	}
+}
+
+func TestRunLogin_WhitespaceOnlyPasswordIsTreatedAsUnset(t *testing.T) {
+	withTempConfigDir(t)
+	t.Setenv("MARBOR_USERNAME", "")
+	t.Setenv("MARBOR_PASSWORD", "")
+
+	var requests int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"login", "--server", srv.URL, "--username", "admin", "--password", "   "}, &stdout, &stderr)
+	if code != ExitUserError {
+		t.Fatalf("expected exit %d (no usable password, no terminal), got %d (stderr: %s)", ExitUserError, code, stderr.String())
+	}
+	if requests != 0 {
+		t.Errorf("a blank password must never be sent to the server, got %d requests", requests)
+	}
+	if s, err := loadSession(); err != nil || s != nil {
+		t.Errorf("no session may be saved, got %+v err=%v", s, err)
 	}
 }
