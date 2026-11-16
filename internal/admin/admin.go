@@ -22,6 +22,7 @@ import (
 	"net/url"
 	"regexp"
 	"runtime"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -7388,6 +7389,18 @@ func (j *pullJob) finish(status, errMsg string) {
 	j.FinishedAt = time.Now()
 }
 
+// pullPanicMessage is the error a pull job carries after a recovered panic.
+const pullPanicMessage = "model pull stopped unexpectedly"
+
+// recoverPanic is deferred by the pull goroutines: a panic is logged and the
+// job is marked failed instead of crashing the process or staying "downloading".
+func (j *pullJob) recoverPanic() {
+	if r := recover(); r != nil {
+		log.Printf("admin: model pull stopped after a panic: %v\n%s", r, debug.Stack())
+		j.finish("failed", pullPanicMessage)
+	}
+}
+
 // setVerifying transitions j from "downloading" to "verifying" - the
 // download succeeded and completePull is about to run a load-verification
 // probe before reporting a final outcome. Returns false if the job is
@@ -7637,12 +7650,22 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 			s.logSystemChange(r, "pull_model", nodeName, fmt.Sprintf("Model: %s%s", body.Model, suffix))
 		case "load_failed":
 			s.logSystemChange(r, "pull_model_load_failed", nodeName, fmt.Sprintf("Model: %s - %s", body.Model, job.snapshot().Error))
+		case "failed":
+			// Only a recovered panic is audited here; ordinary download
+			// failures keep their existing no-audit behaviour.
+			if job.snapshot().Error == pullPanicMessage {
+				s.logSystemChange(r, "pull_model_failed", nodeName, fmt.Sprintf("Model: %s - %s", body.Model, pullPanicMessage))
+			}
 		}
 	}
 
 	if useAgent {
 		go func() {
 			defer cancel()
+			// Registered before recoverPanic so it runs after it, on every exit
+			// path including a recovered panic.
+			defer logPullOutcome()
+			defer job.recoverPanic()
 			ctrl, _ := s.router.NodeControlSetting(nodeName)
 			err := s.pullModelViaAgent(pullCtx, nodeURL, agentCfg, body.Model, ctrl)
 			if err != nil {
@@ -7650,13 +7673,13 @@ func (s *Server) handleNodePull(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			s.completePull(pullCtx, job)
-			logPullOutcome()
 		}()
 	} else {
 		go func() {
 			defer cancel()
+			defer logPullOutcome()
+			defer job.recoverPanic()
 			s.runDirectPull(pullCtx, job, nodeURL, body.Model)
-			logPullOutcome()
 		}()
 	}
 

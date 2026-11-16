@@ -15,10 +15,12 @@ package admin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math"
 	"net/http"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -78,6 +80,33 @@ func benchmarkKeyTTLFor(n int, sampleTimeout, unloadTimeout time.Duration) time.
 	evict := unloadTimeout + benchmarkKeySettle
 	ttl := time.Duration(n+1)*evict + time.Duration(2*n)*sampleTimeout + 2*time.Minute
 	return min(max(ttl, benchmarkKeyTTLMin), benchmarkKeyTTLMax)
+}
+
+// benchmarkJobSlack is how much sooner the job deadline fires than the key
+// expires, so the last sample can never be sent with an already-expired key.
+const benchmarkJobSlack = 30 * time.Second
+
+// benchmarkRunBodyLimit caps the benchmark start request body.
+const benchmarkRunBodyLimit = 1 << 16
+
+// benchmarkJobContext bounds a benchmark job slightly under the worst case the
+// key TTL covers, so a hung node cannot hold the job and its node exclusion
+// forever and the key is still valid for every sample the job sends.
+func benchmarkJobContext(n int) (context.Context, context.CancelFunc) {
+	ttl := benchmarkKeyTTLFor(n, benchmarkSampleTimeout, nodeUnloadModelTimeout)
+	return context.WithTimeout(context.Background(), ttl-benchmarkJobSlack)
+}
+
+// sleepCtx waits d or until ctx ends, reporting whether the full wait elapsed.
+func sleepCtx(ctx context.Context, d time.Duration) bool {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-t.C:
+		return true
+	}
 }
 
 // Ephemeral probe keys (the benchmark's and the post-pull load check's) are
@@ -192,10 +221,17 @@ func (j *benchmarkJob) snapshot() benchmarkJobSnapshot {
 	}
 }
 
+// setPhase moves the job to a running phase. It is a no-op once the job is
+// terminal, so a cancelled or failed job is never resurrected by the job
+// goroutine's next phase change.
 func (j *benchmarkJob) setPhase(phase string) {
 	j.mu.Lock()
+	defer j.mu.Unlock()
+	switch j.Phase {
+	case "done", "error", "cancelled":
+		return
+	}
 	j.Phase = phase
-	j.mu.Unlock()
 }
 
 // addColdSample records one cold-phase TTFT sample plus its TPOT when
@@ -346,7 +382,13 @@ func (s *Server) handleRunBenchmark(w http.ResponseWriter, r *http.Request) {
 		Model string `json:"model"`
 		N     int    `json:"n"`
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, benchmarkRunBodyLimit)
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) {
+			writeJSONError(w, http.StatusRequestEntityTooLarge, "request body too large")
+			return
+		}
 		writeJSONError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -388,7 +430,7 @@ func (s *Server) handleRunBenchmark(w http.ResponseWriter, r *http.Request) {
 	// node would otherwise both pass the check before either's insert lands,
 	// each evicting/reloading the model out from under the other and
 	// corrupting both runs' cold/warm numbers.
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := benchmarkJobContext(body.N)
 	// A process-lifetime counter suffix makes jobID collision-proof:
 	// UnixNano() alone can repeat across two rapid POSTs (worse on Windows'
 	// coarser clock tick), and a collision silently overwrites a live
@@ -535,6 +577,20 @@ func (s *Server) evictModelForBenchmark(ctx context.Context, nodeName, model str
 // (evicting before each) -> N warm samples (no evict) -> aggregate ->
 // persist -> always clean up the ephemeral key, on every exit path.
 func (s *Server) runBenchmarkJob(ctx context.Context, job *benchmarkJob, apiKey string) {
+	// Registered first so it runs last: a panic still lets the key cleanup
+	// below run, then marks the job failed instead of crashing the process.
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("admin: benchmark job stopped after a panic: %v\n%s", r, debug.Stack())
+			job.finish("error", "benchmark stopped unexpectedly", nil)
+		} else if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			// finish is a no-op when the job already reached a terminal phase.
+			job.finish("error", "benchmark timed out", nil)
+		}
+		if job.cancel != nil {
+			job.cancel()
+		}
+	}()
 	defer func() {
 		if s.auth != nil {
 			s.auth.RevokeKey(job.keyName)
@@ -548,6 +604,10 @@ func (s *Server) runBenchmarkJob(ctx context.Context, job *benchmarkJob, apiKey 
 	client := &http.Client{Timeout: benchmarkSampleTimeout, CheckRedirect: noRedirect}
 
 	fail := func(err error) {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			job.finish("error", "benchmark timed out", nil)
+			return
+		}
 		job.finish("error", err.Error(), nil)
 	}
 
@@ -556,7 +616,9 @@ func (s *Server) runBenchmarkJob(ctx context.Context, job *benchmarkJob, apiKey 
 		fail(fmt.Errorf("initial evict: %w", err))
 		return
 	}
-	time.Sleep(benchmarkKeySettle)
+	if !sleepCtx(ctx, benchmarkKeySettle) {
+		return
+	}
 
 	job.setPhase("cold")
 	for i := 0; i < job.N; i++ {
@@ -568,7 +630,9 @@ func (s *Server) runBenchmarkJob(ctx context.Context, job *benchmarkJob, apiKey 
 				fail(fmt.Errorf("evict before cold sample %d: %w", i+1, err))
 				return
 			}
-			time.Sleep(benchmarkKeySettle)
+			if !sleepCtx(ctx, benchmarkKeySettle) {
+				return
+			}
 		}
 		sample, err := bench.MeasureChatLatency(ctx, client, target, job.Model, apiKey)
 		if err != nil {
