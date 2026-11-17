@@ -1345,6 +1345,14 @@ func (s *Server) nodeStateToResp(n *router.NodeState, id string, roles map[strin
 	hist := make([]float64, len(n.HealthHistory))
 	copy(hist, n.HealthHistory)
 
+	// The caller holds the node lock, so placement fields come from one view
+	// built here. Do not call the self-locking placement accessors in this
+	// function: a second read lock can deadlock behind a waiting writer.
+	placement := n.PlacementRequirementViewLocked()
+
+	// Lock order: the node lock first, then the router's own leaf mutexes
+	// taken inside SuppressedWarmupInfo here and PendingPrewarmReportedBytes
+	// below. Nothing takes them in the other order.
 	var warmupState []warmupStateEntry
 	for model, info := range s.router.SuppressedWarmupInfo(n.Name) {
 		warmupState = append(warmupState, warmupStateEntry{
@@ -1375,15 +1383,15 @@ func (s *Server) nodeStateToResp(n *router.NodeState, id string, roles map[strin
 		ParallelismType:                 n.ParallelismType,
 		ParallelismWidth:                n.ParallelismWidth,
 		VRAMOverrides:                   n.VRAMOverrides,
-		EffectiveRequiredGPUs:           n.EffectiveRequiredGPUs(),
+		EffectiveRequiredGPUs:           placement.EffectiveRequiredGPUs,
 		DetectedParallelismType:         n.DetectedParallelismType,
 		DetectedParallelismWidth:        n.DetectedParallelismWidth,
 		DetectedGPUGroup:                append([]int(nil), n.DetectedGPUGroup...),
 		DetectedSource:                  n.DetectedSource,
 		DetectedRuntime:                 n.DetectedRuntime,
-		DetectedEffectiveRequiredGPUs:   n.EffectiveDetectedRequiredGPUs(),
-		MismatchWarning:                 n.MismatchWarning(),
-		nodeDetectedExtras:              newNodeDetectedExtras(n),
+		DetectedEffectiveRequiredGPUs:   placement.DetectedEffectiveRequiredGPUs,
+		MismatchWarning:                 placement.MismatchWarning,
+		nodeDetectedExtras:              newNodeDetectedExtras(placement),
 		ReplicaPeers:                    n.ReplicaPeers,
 		SchedulingRole:                  role.String(),
 		ReplicaHead:                     replicaHead,
