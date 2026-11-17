@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -238,37 +237,116 @@ func lockingNodeMethods(t *testing.T, files []*ast.File) map[string]bool {
 	return out
 }
 
-// Guard against the nested-read-lock mistake coming back. It parses the
-// source, derives which node methods take the node lock themselves, and fails
-// if the lock-holding builders and handlers reference any of them on the node
-// variable (calls and method values alike). It only catches direct uses inside
-// the named functions, not calls reached through other helpers.
-func TestNoSelfLockingAccessorsUnderNodeLock(t *testing.T) {
-	_, thisFile, _, ok := runtime.Caller(0)
+// isNodeStatePtr reports whether e is *NodeState or *<pkg>.NodeState.
+func isNodeStatePtr(e ast.Expr) bool {
+	star, ok := e.(*ast.StarExpr)
 	if !ok {
-		t.Fatal("cannot locate test file")
+		return false
 	}
-	routerDir := filepath.Dir(thisFile)
-	adminDir := filepath.Join(routerDir, "..", "admin")
+	switch x := star.X.(type) {
+	case *ast.Ident:
+		return x.Name == "NodeState"
+	case *ast.SelectorExpr:
+		return x.Sel.Name == "NodeState"
+	}
+	return false
+}
 
-	parseDir := func(dir string) []*ast.File {
-		fset := token.NewFileSet()
-		pkgs, err := parser.ParseDir(fset, dir, func(fi os.FileInfo) bool {
-			return !strings.HasSuffix(fi.Name(), "_test.go")
-		}, 0)
+// nodeIdentsOf derives the identifiers that hold a node inside fd: the
+// receiver and parameters typed *NodeState, the conventional name "n", and
+// variables initialised from one of those (x := n) or ranged out of a node
+// list (for _, x := range nodes). It also returns how many receiver and
+// parameter names are typed *NodeState.
+func nodeIdentsOf(fd *ast.FuncDecl) (idents map[string]bool, typedParams int) {
+	idents = map[string]bool{"n": true}
+	add := func(fl *ast.FieldList) {
+		if fl == nil {
+			return
+		}
+		for _, f := range fl.List {
+			if !isNodeStatePtr(f.Type) {
+				continue
+			}
+			for _, nm := range f.Names {
+				idents[nm.Name] = true
+				typedParams++
+			}
+		}
+	}
+	add(fd.Recv)
+	add(fd.Type.Params)
+
+	// Repeat until nothing new is found so chains of simple aliases resolve.
+	for changed := true; changed; {
+		changed = false
+		mark := func(name string) {
+			if name != "_" && !idents[name] {
+				idents[name] = true
+				changed = true
+			}
+		}
+		ast.Inspect(fd.Body, func(x ast.Node) bool {
+			switch st := x.(type) {
+			case *ast.AssignStmt:
+				if len(st.Lhs) != len(st.Rhs) {
+					return true
+				}
+				for i, rhs := range st.Rhs {
+					r, ok := rhs.(*ast.Ident)
+					l, lok := st.Lhs[i].(*ast.Ident)
+					if ok && lok && idents[r.Name] {
+						mark(l.Name)
+					}
+				}
+			case *ast.RangeStmt:
+				src, ok := st.X.(*ast.Ident)
+				val, vok := st.Value.(*ast.Ident)
+				if ok && vok && (src.Name == "nodes" || idents[src.Name]) {
+					mark(val.Name)
+				}
+			}
+			return true
+		})
+	}
+	return idents, typedParams
+}
+
+// parseGoDir parses the non-test .go files of dir.
+func parseGoDir(t *testing.T, dir string) []*ast.File {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fset := token.NewFileSet()
+	var files []*ast.File
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		f, err := parser.ParseFile(fset, filepath.Join(dir, name), nil, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
-		var files []*ast.File
-		for _, p := range pkgs {
-			for _, f := range p.Files {
-				files = append(files, f)
-			}
-		}
-		return files
+		files = append(files, f)
 	}
-	routerFiles := parseDir(routerDir)
-	adminFiles := parseDir(adminDir)
+	return files
+}
+
+// Guard against the nested-read-lock mistake coming back. It parses the
+// source, derives which node methods take the node lock themselves, and fails
+// if the lock-holding builders and handlers reference any of them on a node
+// variable (calls and method values alike). Limits: it only catches direct
+// uses inside the named functions, not calls reached through other helpers,
+// and it follows node variables only through simple aliases (x := n, ranging
+// over a node list); a node renamed through anything more indirect is missed.
+// newNodeDetectedExtras holds no node: it takes a placement view, and the
+// test asserts it takes no *NodeState parameter so it cannot take the lock.
+// go test runs in the package directory, so the paths are relative to it.
+func TestNoSelfLockingAccessorsUnderNodeLock(t *testing.T) {
+	routerFiles := parseGoDir(t, ".")
+	adminFiles := parseGoDir(t, filepath.Join("..", "admin"))
 
 	selfLocking := lockingNodeMethods(t, routerFiles)
 	if len(selfLocking) == 0 || !selfLocking["GetRuntime"] || !selfLocking["EffectiveRequiredGPUs"] {
@@ -276,14 +354,15 @@ func TestNoSelfLockingAccessorsUnderNodeLock(t *testing.T) {
 	}
 
 	targets := []struct {
-		files []*ast.File
-		name  string
+		files  []*ast.File
+		name   string
+		noNode bool // takes a view, never a node
 	}{
-		{adminFiles, "nodeStateToResp"},
-		{adminFiles, "handleNodes"},
-		{adminFiles, "handleNode"},
-		{adminFiles, "newNodeDetectedExtras"},
-		{routerFiles, "PlacementRequirementViewLocked"},
+		{adminFiles, "nodeStateToResp", false},
+		{adminFiles, "handleNodes", false},
+		{adminFiles, "handleNode", false},
+		{adminFiles, "newNodeDetectedExtras", true},
+		{routerFiles, "PlacementRequirementViewLocked", false},
 	}
 	for _, tg := range targets {
 		found := false
@@ -294,13 +373,17 @@ func TestNoSelfLockingAccessorsUnderNodeLock(t *testing.T) {
 					continue
 				}
 				found = true
+				idents, typed := nodeIdentsOf(fd)
+				if tg.noNode && typed != 0 {
+					t.Errorf("%s takes a *NodeState parameter; it must take a placement view instead", tg.name)
+				}
 				ast.Inspect(fd.Body, func(x ast.Node) bool {
 					sel, ok := x.(*ast.SelectorExpr)
 					if !ok || !selfLocking[sel.Sel.Name] {
 						return true
 					}
-					if id, ok := sel.X.(*ast.Ident); ok && id.Name == "n" {
-						t.Errorf("%s uses self-locking n.%s while the node lock is held", tg.name, sel.Sel.Name)
+					if id, ok := sel.X.(*ast.Ident); ok && idents[id.Name] {
+						t.Errorf("%s uses self-locking %s.%s while the node lock is held", tg.name, id.Name, sel.Sel.Name)
 					}
 					return true
 				})
