@@ -142,7 +142,10 @@ func TestNodeResp_NoDeadlockWithQueuedWriter(t *testing.T) {
 		dump := dumpGoroutines()
 		n.RUnlock() // let the stuck goroutines drain
 		join()
-		<-done
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+		}
 		t.Fatalf("nodeStateToResp hung with a writer queued behind the read lock\n%s", dump)
 	}
 	n.RUnlock()
@@ -314,7 +317,17 @@ func TestHandleNodes_NoDeadlockUnderWriter(t *testing.T) {
 		case <-writerDone:
 		case <-time.After(5 * time.Second):
 		}
-		t.Fatalf("node handlers hung under a concurrent writer\n%s", dump)
+		var buffered []string
+	drain:
+		for {
+			select {
+			case msg := <-failures:
+				buffered = append(buffered, msg)
+			default:
+				break drain
+			}
+		}
+		t.Fatalf("node handlers hung under a concurrent writer; reader failures so far: %q\n%s", buffered, dump)
 	}
 	close(failures)
 	for msg := range failures {

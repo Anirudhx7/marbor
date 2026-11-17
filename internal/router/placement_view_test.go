@@ -337,12 +337,12 @@ func parseGoDir(t *testing.T, dir string) []*ast.File {
 // Guard against the nested-read-lock mistake coming back. It parses the
 // source, derives which node methods take the node lock themselves, and fails
 // if the lock-holding builders and handlers reference any of them on a node
-// variable (calls and method values alike). Limits: it only catches direct
-// uses inside the named functions, not calls reached through other helpers,
-// and it follows node variables only through simple aliases (x := n, ranging
-// over a node list); a node renamed through anything more indirect is missed.
-// newNodeDetectedExtras holds no node: it takes a placement view, and the
-// test asserts it takes no *NodeState parameter so it cannot take the lock.
+// variable (calls and method values alike). newNodeDetectedExtras holds no
+// node: it takes a placement view, and the test asserts it takes no *NodeState
+// parameter so it cannot take the lock. Limits: it only catches direct uses
+// inside the named functions, not calls reached through other helpers, and it
+// follows node variables only through simple aliases (x := n, ranging over a
+// node list); a node renamed through anything more indirect is missed.
 // go test runs in the package directory, so the paths are relative to it.
 func TestNoSelfLockingAccessorsUnderNodeLock(t *testing.T) {
 	routerFiles := parseGoDir(t, ".")
