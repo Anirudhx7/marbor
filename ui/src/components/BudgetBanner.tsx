@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { fetchCloudBudgetStatus, fetchSettings, updateSettings } from '../lib/api';
-import { useDemoMode, forcedDemo } from '../hooks/useDemoMode';
+import { useDemoMode } from '../hooks/useDemoMode';
 import { useCurrency } from '../hooks/useCurrency';
 import type { BudgetEntry, CloudBudgetStatus } from '../types';
 import { X, AlertTriangle, TrendingUp } from 'lucide-react';
@@ -33,6 +33,7 @@ export function BudgetBanner() {
   });
 
   useEffect(() => {
+    if (demoMode) return; // demo mode never reads live settings
     const load = () => {
       fetchSettings()
         .then(s => setHidden(!!s.hide_budget_banner))
@@ -47,6 +48,7 @@ export function BudgetBanner() {
   }, [demoMode]);
 
   useEffect(() => {
+    if (demoMode) return; // demo mode never reads live budget status
     let active = true;
     const load = () => {
       fetchCloudBudgetStatus()
@@ -74,6 +76,7 @@ export function BudgetBanner() {
 
   const handleDismiss = () => {
     setDismissed(true);
+    if (demoMode) return; // local-only dismiss, nothing persisted
     fetchSettings().then(s => {
       const updated = { ...s, hide_budget_banner: true };
       return updateSettings(updated);

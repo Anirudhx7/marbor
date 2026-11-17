@@ -535,7 +535,6 @@ export function Routing() {
       };
       setCloudProviders(prev => {
         if (!isNew) return prev.map(p => p.name === entry.name ? entry : p);
-        if (prev.some(p => p.name === entry.name)) return prev;
         const priority = prev.reduce((m, p) => Math.max(m, p.priority ?? 0), 0) + 1;
         return [...prev, { ...entry, priority }];
       });

@@ -15,6 +15,8 @@ const routing = read('src/pages/Routing.tsx')
 const gpuNodes = read('src/pages/GPUNodes.tsx')
 const userPortal = read('src/pages/UserPortal.tsx')
 const demoBanner = read('src/components/DemoBanner.tsx')
+const budgetBanner = read('src/components/BudgetBanner.tsx')
+const timezone = read('src/hooks/useTimezone.tsx')
 const api = read('src/lib/api.ts')
 const css = read('src/index.css')
 
@@ -55,7 +57,7 @@ function guardedBefore(body, call, label) {
       else if (body[i] === '}' && --depth === 0) { end = i; break }
     }
     const block = body.slice(open, end + 1)
-    if (m[1] === '!') ok = end >= callAt || /\breturn\b/.test(block)
+    if (m[1] === '!') ok = end >= callAt
     else ok = end < callAt && /\breturn\b/.test(block)
   }
   assert.ok(ok, `${label}: ${call} must be guarded by a demoMode branch that returns (or an !demoMode block)`)
@@ -82,11 +84,35 @@ test('UserPortal always changes the real password and has no demo guard', () => 
 })
 
 test('DemoBanner never reads or writes live settings in demo mode', () => {
-  guardedBefore(handler(demoBanner, 'handleDismiss'), 'fetchSettings()', 'handleDismiss fetch')
-  guardedBefore(handler(demoBanner, 'handleDismiss'), 'updateSettings(', 'handleDismiss update')
-  const eff = demoBanner.slice(demoBanner.indexOf('useEffect('))
-  guardedBefore(eff, 'fetchSettings()', 'banner load effect')
+  assert.ok(!/fetchSettings|updateSettings/.test(demoBanner), 'demo banner dismissal is session-only and never touches live settings')
   assert.ok(!/if \(forcedDemo\)/.test(demoBanner), 'dismiss/load must follow demoMode, not only the forced build flag')
+})
+
+test('BudgetBanner never reads or writes live data in demo mode', () => {
+  const dismiss = handler(budgetBanner, 'handleDismiss')
+  guardedBefore(dismiss, 'fetchSettings()', 'budget dismiss fetch')
+  guardedBefore(dismiss, 'updateSettings(', 'budget dismiss update')
+  const eff = budgetBanner.slice(budgetBanner.indexOf('useEffect('))
+  guardedBefore(eff, 'fetchSettings()', 'budget settings effect')
+  guardedBefore(eff, 'fetchCloudBudgetStatus()', 'budget status effect')
+})
+
+test('DemoBanner re-derives hidden when demo mode flips', () => {
+  const eff = demoBanner.slice(demoBanner.indexOf('useEffect('))
+  assert.ok(eff.indexOf('sessionStorage.getItem') !== -1 && eff.indexOf('sessionStorage.getItem') < eff.indexOf('return;'), 'effect must read the session flag in demo mode')
+  assert.ok(!demoBanner.includes('FORCED_DEMO_HIDDEN_KEY'), 'key constant name must fit every demo mode')
+  assert.ok(demoBanner.includes("'marbor_demo_banner_hidden_session'"), 'stored key string must not change')
+})
+
+test('TimezoneProvider never polls live settings in demo mode', () => {
+  assert.ok(timezone.includes('useDemoMode'), 'provider must follow the runtime demo toggle')
+  guardedBefore(handler(timezone, 'load'), 'await fetchSettings()', 'timezone load')
+})
+
+test('Settings restore notice can be dismissed locally in demo mode', () => {
+  const body = handler(settings, 'handleAckRestore')
+  assert.ok(/if \(demoMode\) \{[^}]*setBackupStatus/.test(body), 'demo branch must clear the notice locally')
+  assert.ok(!settings.includes('disabled={ackingRestore || demoMode}'), 'dismiss button must be enabled in demo mode')
 })
 
 test('leaving demo mode clears the dirty flag so the live reload applies', () => {
@@ -119,7 +145,14 @@ test('Settings load never fetches from the server in demo mode', () => {
   const before = settings.slice(0, at)
   const branch = before.lastIndexOf('if (demoMode) {')
   assert.ok(branch !== -1 && at - branch < 600, 'an if (demoMode) block must precede fetchSettings()')
-  assert.ok(/\breturn;/.test(before.slice(branch)), 'the demoMode block must return before fetchSettings()')
+  const open = branch + 'if (demoMode) '.length
+  let depth = 0, end = -1
+  for (let i = open; i < before.length; i++) {
+    if (before[i] === '{') depth++
+    else if (before[i] === '}' && --depth === 0) { end = i; break }
+  }
+  assert.ok(end !== -1, 'the demoMode block must close before fetchSettings()')
+  assert.ok(/\breturn;/.test(before.slice(open, end)), 'the demoMode block itself must return before fetchSettings()')
 })
 
 test('Routing cloud provider and chain mutations are local-only in demo mode', () => {
@@ -136,7 +169,8 @@ test('Routing demo add computes duplicate and priority from the latest list', ()
   const at = body.indexOf('setCloudProviders(prev =>')
   assert.notEqual(at, -1)
   const upd = body.slice(at, body.indexOf('setCloudModalOpen(false)', at))
-  assert.ok(upd.includes('prev.some(') && upd.includes('prev.reduce('), 'duplicate check and priority must derive from prev')
+  assert.ok(upd.includes('prev.reduce('), 'priority must derive from prev')
+  assert.ok(!upd.includes('prev.some('), 'no silent duplicate branch: the inline duplicate error runs first')
   assert.ok(!body.slice(0, at).includes('cloudProviders.reduce('), 'priority must not come from the render closure')
 })
 

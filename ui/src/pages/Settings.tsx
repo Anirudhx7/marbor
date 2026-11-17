@@ -444,7 +444,10 @@ export function SettingsPage() {
 
   // Forget the remembered restore result once the operator has read it.
   const handleAckRestore = async () => {
-    if (demoMode) return;
+    if (demoMode) {
+      setBackupStatus(prev => (prev ? { ...prev, last_restore: undefined } : prev));
+      return;
+    }
     setAckError(null);
     setAckingRestore(true);
     try {
@@ -1894,7 +1897,7 @@ export function SettingsPage() {
                       <button
                         type="button"
                         onClick={() => { void handleAckRestore(); }}
-                        disabled={ackingRestore || demoMode}
+                        disabled={ackingRestore}
                         title="Clears this restore result for every operator and for the command line, not only on this page"
                         className="ml-2 inline-flex items-center min-h-[44px] sm:min-h-0 px-1 underline text-muted-foreground hover:no-underline disabled:opacity-50 disabled:cursor-not-allowed"
                       >

@@ -1,20 +1,19 @@
 import { useState, useEffect } from 'react';
 import { useDemoMode, forcedDemo } from '../hooks/useDemoMode';
-import { fetchSettings, updateSettings } from '../lib/api';
 import { X, AlertCircle } from 'lucide-react';
 
 // In any demo mode (the forced-demo GitHub Pages build or the runtime toggle),
 // the "this is mock data" banner dismissal must never persist or reach the
 // live backend - the disclaimer has to keep coming back. sessionStorage (not
 // localStorage/the settings API) scopes a dismiss to the current tab session.
-const FORCED_DEMO_HIDDEN_KEY = 'marbor_demo_banner_hidden_session';
+const DEMO_BANNER_SESSION_KEY = 'marbor_demo_banner_hidden_session';
 
 export function DemoBanner() {
   const { demoMode } = useDemoMode();
   const [hidden, setHidden] = useState(() => {
     if (demoMode) {
       try {
-        return sessionStorage.getItem(FORCED_DEMO_HIDDEN_KEY) === '1';
+        return sessionStorage.getItem(DEMO_BANNER_SESSION_KEY) === '1';
       } catch {
         return false;
       }
@@ -30,31 +29,24 @@ export function DemoBanner() {
   });
 
   useEffect(() => {
-    if (demoMode) return; // dismissal is session-scoped only, never fetched/persisted server-side
-    const load = () => {
-      fetchSettings()
-        .then(s => setHidden(!!s.hide_demo_banner))
-        .catch(() => {});
-    };
-    load();
-    window.addEventListener('marbor-settings-change', load);
-    return () => window.removeEventListener('marbor-settings-change', load);
+    if (demoMode) {
+      // dismissal is session-scoped only, never fetched/persisted server-side
+      try {
+        setHidden(sessionStorage.getItem(DEMO_BANNER_SESSION_KEY) === '1');
+      } catch {
+        setHidden(false);
+      }
+      return;
+    }
+    // Back to live: a session dismissal must not hide anything; the live setting decides.
+    setHidden(false);
   }, [demoMode]);
 
   if (!demoMode || hidden) return null;
 
   const handleDismiss = () => {
     setHidden(true);
-    if (demoMode) {
-      try { sessionStorage.setItem(FORCED_DEMO_HIDDEN_KEY, '1'); } catch {}
-      return;
-    }
-    fetchSettings().then(s => {
-      const updated = { ...s, hide_demo_banner: true };
-      return updateSettings(updated);
-    }).then(() => {
-      window.dispatchEvent(new CustomEvent('marbor-settings-change'));
-    }).catch(() => {});
+    try { sessionStorage.setItem(DEMO_BANNER_SESSION_KEY, '1'); } catch {}
   };
 
   return (
