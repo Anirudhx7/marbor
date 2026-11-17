@@ -3,17 +3,16 @@ import { useDemoMode, forcedDemo } from '../hooks/useDemoMode';
 import { fetchSettings, updateSettings } from '../lib/api';
 import { X, AlertCircle } from 'lucide-react';
 
-// In the forced-demo (GitHub Pages) build, the "this is mock data" banner
-// dismissal must never persist across visits - every surface on that build
-// keeps rendering fake data forever, so the disclaimer has to keep coming
-// back. sessionStorage (not localStorage/the settings API) scopes a dismiss
-// to the current tab session only.
+// In any demo mode (the forced-demo GitHub Pages build or the runtime toggle),
+// the "this is mock data" banner dismissal must never persist or reach the
+// live backend - the disclaimer has to keep coming back. sessionStorage (not
+// localStorage/the settings API) scopes a dismiss to the current tab session.
 const FORCED_DEMO_HIDDEN_KEY = 'marbor_demo_banner_hidden_session';
 
 export function DemoBanner() {
   const { demoMode } = useDemoMode();
   const [hidden, setHidden] = useState(() => {
-    if (forcedDemo) {
+    if (demoMode) {
       try {
         return sessionStorage.getItem(FORCED_DEMO_HIDDEN_KEY) === '1';
       } catch {
@@ -31,7 +30,7 @@ export function DemoBanner() {
   });
 
   useEffect(() => {
-    if (forcedDemo) return; // dismissal is session-scoped only, never fetched/persisted server-side
+    if (demoMode) return; // dismissal is session-scoped only, never fetched/persisted server-side
     const load = () => {
       fetchSettings()
         .then(s => setHidden(!!s.hide_demo_banner))
@@ -46,7 +45,7 @@ export function DemoBanner() {
 
   const handleDismiss = () => {
     setHidden(true);
-    if (forcedDemo) {
+    if (demoMode) {
       try { sessionStorage.setItem(FORCED_DEMO_HIDDEN_KEY, '1'); } catch {}
       return;
     }

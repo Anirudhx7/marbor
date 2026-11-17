@@ -531,9 +531,14 @@ export function Routing() {
         default_model: editingProvider.default_model,
         cost_per_1k_tokens: editingProvider.cost_per_1k_tokens,
         enabled: editingProvider.enabled,
-        priority: isNew ? cloudProviders.reduce((m, p) => Math.max(m, p.priority ?? 0), 0) + 1 : editingProvider.priority,
+        priority: editingProvider.priority,
       };
-      setCloudProviders(prev => isNew ? [...prev, entry] : prev.map(p => p.name === entry.name ? entry : p));
+      setCloudProviders(prev => {
+        if (!isNew) return prev.map(p => p.name === entry.name ? entry : p);
+        if (prev.some(p => p.name === entry.name)) return prev;
+        const priority = prev.reduce((m, p) => Math.max(m, p.priority ?? 0), 0) + 1;
+        return [...prev, { ...entry, priority }];
+      });
       setCloudModalOpen(false);
       setEditingProvider(null);
       return;

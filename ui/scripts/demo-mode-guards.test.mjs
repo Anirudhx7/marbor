@@ -13,12 +13,14 @@ const read = (p) =>
 const settings = read('src/pages/Settings.tsx')
 const routing = read('src/pages/Routing.tsx')
 const gpuNodes = read('src/pages/GPUNodes.tsx')
+const userPortal = read('src/pages/UserPortal.tsx')
+const demoBanner = read('src/components/DemoBanner.tsx')
 const api = read('src/lib/api.ts')
 const css = read('src/index.css')
 
 // The body of a two-space-indented `const name = ... => {` handler, found by brace matching.
 function handler(src, name) {
-  const start = src.indexOf(`  const ${name} = `)
+  const start = src.indexOf(`const ${name} = `)
   assert.notEqual(start, -1, `${name} not found`)
   const open = src.indexOf('=> {', start)
   assert.notEqual(open, -1, `${name} has no block body`)
@@ -30,21 +32,61 @@ function handler(src, name) {
   assert.fail(`${name}: unbalanced braces`)
 }
 
-// A runtime demo toggle must be checked in an `if (demoMode` before the call that would reach the real backend.
+// A runtime demo toggle must be handled before the call that would reach the real backend: either an
+// `if (demoMode) { ... return }` / `if (!demoMode) return` branch ahead of the call, or the call itself
+// sits inside an `if (!demoMode) {` block / `!demoMode &&` expression.
 function guardedBefore(body, call, label) {
   const callAt = body.indexOf(call)
   assert.notEqual(callAt, -1, `${label}: ${call} not found`)
-  const guardAt = body.search(/if [(]!?demoMode[^A-Za-z]/)
-  assert.ok(guardAt !== -1 && guardAt < callAt, `${label}: an if (demoMode) / if (!demoMode) check must come before ${call}`)
+  const before = body.slice(0, callAt)
+  const re = /if [(](!?)demoMode[^A-Za-z]/g
+  let ok = /!demoMode\s*&&[^;\n]*$/.test(before.slice(before.lastIndexOf('\n') + 1))
+  for (let m; !ok && (m = re.exec(before)); ) {
+    const open = body.indexOf('{', m.index)
+    const bare = !/^[^;{]*\{/.test(body.slice(m.index, m.index + 200)) // `if (x) return` without braces
+    if (bare) {
+      const rest = body.slice(body.indexOf(')', m.index) + 1)
+      ok = m[1] === '!' ? callAt - body.indexOf(')', m.index) - 1 < rest.indexOf(';') && !before.slice(m.index).includes(';') : /^\s*return\b/.test(rest)
+      continue
+    }
+    let depth = 0, end = -1
+    for (let i = open; i < body.length; i++) {
+      if (body[i] === '{') depth++
+      else if (body[i] === '}' && --depth === 0) { end = i; break }
+    }
+    const block = body.slice(open, end + 1)
+    if (m[1] === '!') ok = end >= callAt || /\breturn\b/.test(block)
+    else ok = end < callAt && /\breturn\b/.test(block)
+  }
+  assert.ok(ok, `${label}: ${call} must be guarded by a demoMode branch that returns (or an !demoMode block)`)
 }
 
 test('Settings save never reaches the server in demo mode', () => {
   guardedBefore(handler(settings, 'handleSave'), 'await updateSettings(', 'handleSave')
 })
 
-test('Settings credential change and restore acknowledgement are local-only in demo mode', () => {
-  guardedBefore(handler(settings, 'handleChangeCredentials'), 'await changePassword(', 'handleChangeCredentials')
+test('Settings restore acknowledgement never reaches the server in demo mode', () => {
   guardedBefore(handler(settings, 'handleAckRestore'), 'await acknowledgeRestoreResult(', 'handleAckRestore')
+})
+
+test('Settings save does not wake live readers in demo mode', () => {
+  const body = handler(settings, 'handleSave')
+  for (const call of ["dispatchEvent(new Event('marbor-settings-change'))", 'notifyTimezoneChanged()']) {
+    guardedBefore(body, call, `handleSave ${call}`)
+  }
+})
+
+test('UserPortal always changes the real password and has no demo guard', () => {
+  assert.ok(!/demoMode|useDemoMode/.test(userPortal), 'UserPortal must not branch on demo mode')
+  assert.ok(userPortal.includes('await changePassword('))
+})
+
+test('DemoBanner never reads or writes live settings in demo mode', () => {
+  guardedBefore(handler(demoBanner, 'handleDismiss'), 'fetchSettings()', 'handleDismiss fetch')
+  guardedBefore(handler(demoBanner, 'handleDismiss'), 'updateSettings(', 'handleDismiss update')
+  const eff = demoBanner.slice(demoBanner.indexOf('useEffect('))
+  guardedBefore(eff, 'fetchSettings()', 'banner load effect')
+  assert.ok(!/if \(forcedDemo\)/.test(demoBanner), 'dismiss/load must follow demoMode, not only the forced build flag')
 })
 
 test('leaving demo mode clears the dirty flag so the live reload applies', () => {
@@ -74,7 +116,10 @@ test('api.ts reads the demo flag through the shared storage key, guarded against
 test('Settings load never fetches from the server in demo mode', () => {
   const at = settings.indexOf('fetchSettings()')
   assert.notEqual(at, -1)
-  assert.ok(settings.slice(Math.max(0, at - 250), at).includes('demoMode'), 'fetchSettings() needs a demoMode guard before it')
+  const before = settings.slice(0, at)
+  const branch = before.lastIndexOf('if (demoMode) {')
+  assert.ok(branch !== -1 && at - branch < 600, 'an if (demoMode) block must precede fetchSettings()')
+  assert.ok(/\breturn;/.test(before.slice(branch)), 'the demoMode block must return before fetchSettings()')
 })
 
 test('Routing cloud provider and chain mutations are local-only in demo mode', () => {
@@ -84,6 +129,15 @@ test('Routing cloud provider and chain mutations are local-only in demo mode', (
   guardedBefore(handler(routing, 'handleSaveCloudProvider'), 'await updateCloudProvider(', 'handleSaveCloudProvider update')
   guardedBefore(handler(routing, 'handleDeleteCloudProvider'), 'await deleteCloudProvider(', 'handleDeleteCloudProvider')
   guardedBefore(handler(routing, 'persistChains'), 'await updateSettings(', 'persistChains')
+})
+
+test('Routing demo add computes duplicate and priority from the latest list', () => {
+  const body = handler(routing, 'handleSaveCloudProvider')
+  const at = body.indexOf('setCloudProviders(prev =>')
+  assert.notEqual(at, -1)
+  const upd = body.slice(at, body.indexOf('setCloudModalOpen(false)', at))
+  assert.ok(upd.includes('prev.some(') && upd.includes('prev.reduce('), 'duplicate check and priority must derive from prev')
+  assert.ok(!body.slice(0, at).includes('cloudProviders.reduce('), 'priority must not come from the render closure')
 })
 
 test('GPUNodes unload checks demo mode before calling the backend', () => {
@@ -102,7 +156,10 @@ test('Users API functions follow the runtime demo toggle, not only the build fla
 
 test('cloud provider modal mode is stored, not derived from the typed name', () => {
   assert.ok(/cloudModalMode/.test(routing), 'cloudModalMode state missing')
-  const modal = routing.slice(routing.indexOf('Add/edit cloud provider modal'))
+  const at = routing.indexOf('title={cloudModalMode')
+  assert.notEqual(at, -1, 'modal title anchor missing')
+  const modal = routing.slice(at)
+  assert.ok(modal.length > 500, 'modal slice must be substantial')
   assert.ok(!modal.includes('cloudProviders.some('), 'modal must not derive Add/Edit from the live provider list')
   assert.ok(routing.includes('already exists'), 'Add mode must block a duplicate name with an inline error')
 })

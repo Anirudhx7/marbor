@@ -444,14 +444,9 @@ export function SettingsPage() {
 
   // Forget the remembered restore result once the operator has read it.
   const handleAckRestore = async () => {
+    if (demoMode) return;
     setAckError(null);
     setAckingRestore(true);
-    if (demoMode) {
-      // Demo mode never reaches the server: just clear the local notice.
-      setBackupStatus(prev => (prev ? { ...prev, last_restore: undefined } : prev));
-      setAckingRestore(false);
-      return;
-    }
     try {
       await acknowledgeRestoreResult(backupStatus?.last_restore?.ref);
       if (mountedRef.current) {
@@ -724,11 +719,13 @@ export function SettingsPage() {
       };
 
       // Demo mode keeps edits on screen only; nothing is written to the server.
-      if (!demoMode) await updateSettings(payload);
-      window.dispatchEvent(new Event('marbor-settings-change'));
-      // Wake TimezoneProvider instantly so Activity/etc re-render without waiting
-      // for the 15s poll (instant re-render is a required behavior here).
-      notifyTimezoneChanged();
+      if (!demoMode) {
+        await updateSettings(payload);
+        window.dispatchEvent(new Event('marbor-settings-change'));
+        // Wake TimezoneProvider instantly so Activity/etc re-render without waiting
+        // for the 15s poll (instant re-render is a required behavior here).
+        notifyTimezoneChanged();
+      }
       // The just-saved values are now the pristine baseline - clear the
       // dirty flag so a subsequent settings reload (e.g. a Demo mode
       // toggle) is free to apply fresh server-side values again.
@@ -778,17 +775,6 @@ export function SettingsPage() {
     }
     setCredSaving(true);
     setCredError(null);
-    if (demoMode) {
-      // Demo mode never changes a real password: show the success state only.
-      setCredSaved(true);
-      setCredCurrentPw('');
-      setCredNewPw('');
-      setCredConfirmPw('');
-      if (credTimerRef.current) clearTimeout(credTimerRef.current);
-      credTimerRef.current = setTimeout(() => setCredSaved(false), 3000);
-      setCredSaving(false);
-      return;
-    }
     try {
       await changePassword(credCurrentPw, credNewPw || '');
       setCredSaved(true);
