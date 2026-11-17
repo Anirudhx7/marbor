@@ -175,7 +175,13 @@ export function SettingsPage() {
   // config entry. (Local fallback chain comboboxes moved to Routing.tsx.)
   const [knownModelNames, setKnownModelNames] = useState<string[]>([]);
 
+  const wasDemoRef = useRef(demoMode);
   useEffect(() => {
+    if (wasDemoRef.current && !demoMode) {
+      // Leaving demo mode: demo edits must not suppress the live reload.
+      dirtyRef.current = false;
+    }
+    wasDemoRef.current = demoMode;
     if (currentAppPath() !== '/settings') return;
     if (demoMode) {
       setKnownModelNames((mockModelCatalog.models || []).map((m) => m.name));
@@ -201,6 +207,8 @@ export function SettingsPage() {
   const [credSaving, setCredSaving] = useState(false);
   const [credError, setCredError] = useState<string | null>(null);
   const [credSaved, setCredSaved] = useState(false);
+  const credTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (credTimerRef.current) clearTimeout(credTimerRef.current); }, []);
 
   // Backup & restore
   const [backupDownloading, setBackupDownloading] = useState(false);
@@ -436,6 +444,10 @@ export function SettingsPage() {
 
   // Forget the remembered restore result once the operator has read it.
   const handleAckRestore = async () => {
+    if (demoMode) {
+      setBackupStatus(prev => (prev ? { ...prev, last_restore: undefined } : prev));
+      return;
+    }
     setAckError(null);
     setAckingRestore(true);
     try {
@@ -538,6 +550,15 @@ export function SettingsPage() {
 
   useEffect(() => {
     if (currentAppPath() !== '/settings') return;
+    if (demoMode) {
+      // Demo mode never reads the real server: show the built-in defaults.
+      if (!dirtyRef.current) {
+        lastLoadedSettingsRef.current = defaultSettings;
+        setSettings(defaultSettings);
+      }
+      setError(null);
+      return;
+    }
     let active = true;
     fetchSettings()
       .then((settingsData) => {
@@ -700,11 +721,14 @@ export function SettingsPage() {
         },
       };
 
-      await updateSettings(payload);
-      window.dispatchEvent(new Event('marbor-settings-change'));
-      // Wake TimezoneProvider instantly so Activity/etc re-render without waiting
-      // for the 15s poll (instant re-render is a required behavior here).
-      notifyTimezoneChanged();
+      // Demo mode keeps edits on screen only; nothing is written to the server.
+      if (!demoMode) {
+        await updateSettings(payload);
+        window.dispatchEvent(new Event('marbor-settings-change'));
+        // Wake TimezoneProvider instantly so Activity/etc re-render without waiting
+        // for the 15s poll (instant re-render is a required behavior here).
+        notifyTimezoneChanged();
+      }
       // The just-saved values are now the pristine baseline - clear the
       // dirty flag so a subsequent settings reload (e.g. a Demo mode
       // toggle) is free to apply fresh server-side values again.
@@ -760,7 +784,8 @@ export function SettingsPage() {
       setCredCurrentPw('');
       setCredNewPw('');
       setCredConfirmPw('');
-      setTimeout(() => setCredSaved(false), 3000);
+      if (credTimerRef.current) clearTimeout(credTimerRef.current);
+      credTimerRef.current = setTimeout(() => setCredSaved(false), 3000);
     } catch (err: any) {
       setCredError(err.message || 'Failed to update credentials');
     } finally {
@@ -1872,7 +1897,7 @@ export function SettingsPage() {
                       <button
                         type="button"
                         onClick={() => { void handleAckRestore(); }}
-                        disabled={ackingRestore || demoMode}
+                        disabled={ackingRestore}
                         title="Clears this restore result for every operator and for the command line, not only on this page"
                         className="ml-2 inline-flex items-center min-h-[44px] sm:min-h-0 px-1 underline text-muted-foreground hover:no-underline disabled:opacity-50 disabled:cursor-not-allowed"
                       >

@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { fetchSettings } from '../lib/api';
-import { forcedDemo } from './useDemoMode';
+import { forcedDemo, useDemoMode } from './useDemoMode';
 import { loadSession } from '../lib/api';
 
 // Context holds the operator's configured timezone string: "Local" or an IANA
@@ -19,6 +19,7 @@ const POLL_MS = 15_000;
 export const TIMEZONE_CHANGED_EVENT = 'marbor-timezone-changed';
 
 export function TimezoneProvider({ children }: { children: React.ReactNode }) {
+  const { demoMode } = useDemoMode();
   const [tz, setTz] = useState<string>(() => {
     // Demo artifact has no backend; default to UTC so preview looks sane.
     if (forcedDemo) return 'UTC';
@@ -26,7 +27,7 @@ export function TimezoneProvider({ children }: { children: React.ReactNode }) {
   });
 
   const load = useCallback(async () => {
-    if (forcedDemo) {
+    if (demoMode) {
       setTz(prev => (prev === 'UTC' ? prev : 'UTC'));
       return;
     }
@@ -41,7 +42,7 @@ export function TimezoneProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // Keep previous value on fetch failure (network / 401 during demo toggle)
     }
-  }, []);
+  }, [demoMode]);
 
   useEffect(() => {
     let active = true;
