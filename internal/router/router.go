@@ -2244,7 +2244,7 @@ func effectiveRequiredGPUsLocked(n *NodeState) int {
 	// No declared constraint - fall back to the detected deployment, but only
 	// when an independent per-process check confirmed it. An unconfirmed
 	// detection is shown for the operator to adopt, never applied silently.
-	if detectedVerifiedLocked(n) && (n.DetectedParallelismWidth > 0 || len(n.DetectedGPUGroup) > 0) {
+	if detectedDrivesPlacementLocked(n) {
 		return deriveRequiredGPUs(n.DetectedParallelismWidth, n.DetectedGPUGroup)
 	}
 	return 0
@@ -2343,8 +2343,11 @@ func mismatchWarningLocked(n *NodeState) string {
 	return ""
 }
 
-// PlacementRequirementView is a point-in-time copy of everything the node API
-// reports about a node's GPU placement requirement. Build it with
+// PlacementRequirementView is a point-in-time copy of the lock-sensitive
+// derived placement values: the derived GPU counts, the mismatch warning, the
+// detected pipeline and data widths, a copy of the detected scope, and whether
+// detection drives placement. Raw detected fields are not included; the
+// caller reads those directly under the same lock. Build it with
 // PlacementRequirementViewLocked while holding the node lock once, instead of
 // calling the self-locking accessors one by one.
 type PlacementRequirementView struct {

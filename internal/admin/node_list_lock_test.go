@@ -2,10 +2,8 @@ package admin
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"runtime"
 	"runtime/pprof"
 	"strings"
@@ -54,32 +52,74 @@ func newLockTestServer(t *testing.T) (*Server, *router.NodeState) {
 func dumpGoroutines() string {
 	var sb strings.Builder
 	_ = pprof.Lookup("goroutine").WriteTo(&sb, 1)
-	return sb.String()
+	out := sb.String()
+	const maxDump = 8000
+	if len(out) > maxDump {
+		out = out[:maxDump] + "\n...(truncated)"
+	}
+	return out
+}
+
+// queueWriter starts a writer that blocks on the node lock and waits until it
+// is provably queued behind the read lock the caller holds. The admin package
+// cannot call TryRLock on the node mutex, so it probes instead: a goroutine
+// that takes and drops a read lock finishes quickly while no writer is queued,
+// and stays blocked once one is. Probes that finish mean "not queued yet, try
+// again"; a probe that stays blocked proves the writer is waiting. Every probe
+// and the writer end once the caller releases its read lock; the returned
+// function waits for all of them and must be called after that release.
+func queueWriter(t *testing.T, n *router.NodeState) (join func()) {
+	t.Helper()
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		n.Lock()
+		n.Unlock()
+	}()
+
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		probeDone := make(chan struct{})
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			n.RLock()
+			n.RUnlock()
+			close(probeDone)
+		}()
+		select {
+		case <-probeDone:
+			// Read lock was granted, so no writer is queued yet.
+			if time.Now().After(deadline) {
+				n.RUnlock()
+				wg.Wait()
+				t.Fatal("writer never queued behind the read lock")
+			}
+			time.Sleep(time.Millisecond)
+		case <-time.After(20 * time.Millisecond):
+			return wg.Wait // probe is blocked: the writer is queued
+		}
+	}
 }
 
 // Go's RWMutex blocks a new reader once a writer is waiting. If the response
 // builder took the node's read lock a second time while the handler already
 // held it, a queued writer would deadlock the node for good. This test holds
-// the read lock, queues a writer, then builds the response: it must finish.
-// The admin package cannot call TryRLock on the node mutex, so a short sleep
-// lets the writer queue; the router package has a variant that confirms the
-// queued writer exactly.
+// the read lock in the test goroutine, queues a writer, then runs the builder
+// in a separate goroutine so a hang can be timed out: it must finish.
+// The router package has a variant that confirms the queued writer exactly
+// with TryRLock.
 func TestNodeResp_NoDeadlockWithQueuedWriter(t *testing.T) {
 	s, n := newLockTestServer(t)
 
 	n.RLock()
-	writerDone := make(chan struct{})
-	go func() {
-		n.Lock()
-		n.Unlock()
-		close(writerDone)
-	}()
-	time.Sleep(150 * time.Millisecond)
+	join := queueWriter(t, n)
 
 	done := make(chan nodeResp, 1)
 	go func() {
-		// Build under the lock this goroutine does not own: call the builder
-		// directly because the read lock is already held by the test.
+		// The read lock is held by the test goroutine, so call the builder
+		// directly rather than through the locking helper.
 		done <- s.nodeStateToResp(n, "gpu-0", nil, nil)
 	}()
 
@@ -89,10 +129,12 @@ func TestNodeResp_NoDeadlockWithQueuedWriter(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		dump := dumpGoroutines()
 		n.RUnlock() // let the stuck goroutines drain
+		join()
+		<-done
 		t.Fatalf("nodeStateToResp hung with a writer queued behind the read lock\n%s", dump)
 	}
 	n.RUnlock()
-	<-writerDone
+	join()
 
 	if resp.EffectiveRequiredGPUs != 4 {
 		t.Errorf("EffectiveRequiredGPUs = %d, want 4 (verified detection, nothing declared)", resp.EffectiveRequiredGPUs)
@@ -131,6 +173,45 @@ func TestNodeResp_FieldsMatchAccessors(t *testing.T) {
 	if resp.DetectedDrivesPlacement != n.DetectedDrivesPlacement() {
 		t.Errorf("DetectedDrivesPlacement = %v, accessor %v", resp.DetectedDrivesPlacement, n.DetectedDrivesPlacement())
 	}
+
+	// Literal expectations for the fixture: declared 2, detected 4 (group of 4).
+	if resp.EffectiveRequiredGPUs != 2 {
+		t.Errorf("EffectiveRequiredGPUs = %d, want 2 (declared wins)", resp.EffectiveRequiredGPUs)
+	}
+	if resp.DetectedEffectiveRequiredGPUs != 4 {
+		t.Errorf("DetectedEffectiveRequiredGPUs = %d, want 4", resp.DetectedEffectiveRequiredGPUs)
+	}
+	if want := "declared 2 GPUs vs detected 4 GPUs"; resp.MismatchWarning != want {
+		t.Errorf("MismatchWarning = %q, want %q", resp.MismatchWarning, want)
+	}
+	if resp.DetectedDrivesPlacement {
+		t.Error("DetectedDrivesPlacement = true, want false when a width is declared")
+	}
+	if resp.DetectedPipelineWidth != 2 || resp.DetectedDataWidth != 3 {
+		t.Errorf("secondary widths = %d/%d, want 2/3", resp.DetectedPipelineWidth, resp.DetectedDataWidth)
+	}
+}
+
+// A node with no detected scope must serialize no scope and no placement.
+func TestNodeResp_NilScope(t *testing.T) {
+	s, n := newLockTestServer(t)
+	n.Lock()
+	n.DetectedGPUScope = nil
+	n.Unlock()
+
+	resp := buildNodeRespLocked(s, n)
+	if resp.DetectedGPUScope != nil {
+		t.Errorf("DetectedGPUScope = %+v, want nil", resp.DetectedGPUScope)
+	}
+	if resp.DetectedDrivesPlacement {
+		t.Error("DetectedDrivesPlacement = true, want false without a verified scope")
+	}
+	if resp.EffectiveRequiredGPUs != 0 {
+		t.Errorf("EffectiveRequiredGPUs = %d, want 0 (unverified detection is not applied)", resp.EffectiveRequiredGPUs)
+	}
+	if resp.DetectedEffectiveRequiredGPUs != 4 {
+		t.Errorf("DetectedEffectiveRequiredGPUs = %d, want 4", resp.DetectedEffectiveRequiredGPUs)
+	}
 }
 
 // Secondary check through the real handlers under a continuously flipping
@@ -155,6 +236,18 @@ func TestHandleNodes_NoDeadlockUnderWriter(t *testing.T) {
 			runtime.Gosched()
 		}
 	}()
+	defer func() {
+		close(stop)
+		writer.Wait()
+	}()
+
+	checkResp := func(r nodeResp) bool {
+		if r.EffectiveRequiredGPUs != 4 {
+			t.Errorf("effectiveRequiredGPUs = %d, want 4", r.EffectiveRequiredGPUs)
+			return false
+		}
+		return true
+	}
 
 	var readers sync.WaitGroup
 	deadline := time.Now().Add(2 * time.Second)
@@ -163,24 +256,38 @@ func TestHandleNodes_NoDeadlockUnderWriter(t *testing.T) {
 		go func(g int) {
 			defer readers.Done()
 			for i := 0; time.Now().Before(deadline); i++ {
-				var rec *httptest.ResponseRecorder
 				if (i+g)%2 == 0 {
-					rec = httptest.NewRecorder()
+					rec := httptest.NewRecorder()
 					s.handleNodes(rec, httptest.NewRequest(http.MethodGet, "/admin/nodes", nil))
+					if rec.Code != http.StatusOK {
+						t.Errorf("status = %d, body %s", rec.Code, rec.Body.String())
+						return
+					}
+					var list []nodeResp
+					if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil || len(list) != 1 {
+						t.Errorf("bad list JSON (%v), len %d", err, len(list))
+						return
+					}
+					if !checkResp(list[0]) {
+						return
+					}
 				} else {
 					req := httptest.NewRequest(http.MethodGet, "/admin/nodes/gpu-0", nil)
 					req.SetPathValue("name", "gpu-0")
-					rec = httptest.NewRecorder()
+					rec := httptest.NewRecorder()
 					s.handleNode(rec, req)
-				}
-				if rec.Code != http.StatusOK {
-					t.Errorf("status = %d, body %s", rec.Code, rec.Body.String())
-					return
-				}
-				var anyJSON any
-				if err := json.Unmarshal(rec.Body.Bytes(), &anyJSON); err != nil {
-					t.Errorf("bad JSON: %v", err)
-					return
+					if rec.Code != http.StatusOK {
+						t.Errorf("status = %d, body %s", rec.Code, rec.Body.String())
+						return
+					}
+					var one nodeResp
+					if err := json.Unmarshal(rec.Body.Bytes(), &one); err != nil {
+						t.Errorf("bad JSON: %v", err)
+						return
+					}
+					if !checkResp(one) {
+						return
+					}
 				}
 			}
 		}(g)
@@ -191,9 +298,7 @@ func TestHandleNodes_NoDeadlockUnderWriter(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(60 * time.Second):
-		fmt.Fprintln(os.Stderr, dumpGoroutines())
+		t.Log(dumpGoroutines())
 		t.Fatal("node handlers hung under a concurrent writer")
 	}
-	close(stop)
-	writer.Wait()
 }

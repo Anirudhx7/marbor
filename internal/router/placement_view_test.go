@@ -1,7 +1,13 @@
 package router
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
+	"path/filepath"
+	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -35,6 +41,8 @@ func TestPlacementRequirementView_MatchesAccessors(t *testing.T) {
 			n.DetectedParallelismType = "tp"
 			n.DetectedParallelismWidth = 2
 			n.DetectedGPUGroup = []int{0, 1}
+			n.DetectedPipelineWidth = 5
+			n.DetectedDataWidth = 7
 			n.DetectedGPUScope = unverified()
 		}},
 		{"detected verified", func(n *NodeState) {
@@ -45,7 +53,7 @@ func TestPlacementRequirementView_MatchesAccessors(t *testing.T) {
 			n.DetectedDataWidth = 3
 			n.DetectedGPUScope = verified()
 		}},
-		{"detected verified but nil scope", func(n *NodeState) {
+		{"detected width, nil scope (unverified)", func(n *NodeState) {
 			n.DetectedParallelismWidth = 2
 			n.DetectedGPUScope = nil
 		}},
@@ -54,6 +62,8 @@ func TestPlacementRequirementView_MatchesAccessors(t *testing.T) {
 			n.ParallelismWidth = 4
 			n.DetectedParallelismType = "tp"
 			n.DetectedParallelismWidth = 8
+			n.DetectedPipelineWidth = 3
+			n.DetectedDataWidth = 2
 			n.DetectedGPUScope = verified()
 		}},
 		{"type mismatch at equal width", func(n *NodeState) {
@@ -100,7 +110,7 @@ func TestPlacementRequirementView_MatchesAccessors(t *testing.T) {
 			if (v.GPUScope == nil) != (want == nil) {
 				t.Fatalf("GPUScope nil = %v, want nil = %v", v.GPUScope == nil, want == nil)
 			}
-			if want != nil && (v.GPUScope.CrossChecked != want.CrossChecked || len(v.GPUScope.Indices) != len(want.Indices)) {
+			if !reflect.DeepEqual(v.GPUScope, want) {
 				t.Errorf("GPUScope = %+v, want %+v", v.GPUScope, want)
 			}
 		})
@@ -112,7 +122,7 @@ func TestPlacementRequirementView_MatchesAccessors(t *testing.T) {
 func TestPlacementRequirementView_ScopeIsDeepCopy(t *testing.T) {
 	n := newViewTestNode()
 	n.Lock()
-	n.DetectedGPUScope = &marboragent.GPUScope{Indices: []int{0, 1}, UUIDs: []string{"a", "b"}, CrossChecked: true}
+	n.DetectedGPUScope = &marboragent.GPUScope{Indices: []int{0, 1}, UUIDs: []string{"a", "b"}, Source: "src", Note: "note", CrossChecked: true}
 	n.Unlock()
 
 	n.RLock()
@@ -120,12 +130,26 @@ func TestPlacementRequirementView_ScopeIsDeepCopy(t *testing.T) {
 	n.RUnlock()
 	v.GPUScope.Indices[0] = 99
 	v.GPUScope.UUIDs[0] = "changed"
+	v.GPUScope.Source = "other"
+	v.GPUScope.Note = "other"
 	v.GPUScope.CrossChecked = false
 
 	n.RLock()
 	defer n.RUnlock()
-	if n.DetectedGPUScope.Indices[0] != 0 || n.DetectedGPUScope.UUIDs[0] != "a" || !n.DetectedGPUScope.CrossChecked {
+	if n.DetectedGPUScope.Indices[0] != 0 || n.DetectedGPUScope.UUIDs[0] != "a" || !n.DetectedGPUScope.CrossChecked ||
+		n.DetectedGPUScope.Source != "src" || n.DetectedGPUScope.Note != "note" {
 		t.Errorf("node scope was changed through the view: %+v", n.DetectedGPUScope)
+	}
+}
+
+// A node with no scope yields a nil view scope.
+func TestPlacementRequirementView_NilScopeStaysNil(t *testing.T) {
+	n := newViewTestNode()
+	n.RLock()
+	v := n.PlacementRequirementViewLocked()
+	n.RUnlock()
+	if v.GPUScope != nil {
+		t.Errorf("GPUScope = %+v, want nil", v.GPUScope)
 	}
 }
 
@@ -146,7 +170,7 @@ func TestPlacementRequirementView_NoNestedLock(t *testing.T) {
 		n.Unlock()
 		close(writerDone)
 	}()
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(10 * time.Second)
 	for n.mu.TryRLock() {
 		n.mu.RUnlock()
 		if time.Now().After(deadline) {
@@ -171,37 +195,119 @@ func TestPlacementRequirementView_NoNestedLock(t *testing.T) {
 	<-writerDone
 }
 
-// Guard against the nested-read-lock mistake coming back. This is a plain
-// text scan, so it only catches direct calls to the self-locking accessors
-// inside the named functions, not calls reached through other helpers.
+// lockingNodeMethods returns the names of NodeState methods (non-test files in
+// this package) whose body takes the node lock, excluding the lock helpers.
+func lockingNodeMethods(t *testing.T, files []*ast.File) map[string]bool {
+	t.Helper()
+	helpers := map[string]bool{"RLock": true, "RUnlock": true, "Lock": true, "Unlock": true}
+	out := map[string]bool{}
+	for _, f := range files {
+		for _, d := range f.Decls {
+			fd, ok := d.(*ast.FuncDecl)
+			if !ok || fd.Recv == nil || fd.Body == nil || len(fd.Recv.List) != 1 || len(fd.Recv.List[0].Names) != 1 {
+				continue
+			}
+			if star, ok := fd.Recv.List[0].Type.(*ast.StarExpr); !ok {
+				continue
+			} else if id, ok := star.X.(*ast.Ident); !ok || id.Name != "NodeState" {
+				continue
+			}
+			if helpers[fd.Name.Name] {
+				continue
+			}
+			recv := fd.Recv.List[0].Names[0].Name
+			ast.Inspect(fd.Body, func(x ast.Node) bool {
+				sel, ok := x.(*ast.SelectorExpr)
+				if !ok || (sel.Sel.Name != "RLock" && sel.Sel.Name != "Lock") {
+					return true
+				}
+				switch r := sel.X.(type) {
+				case *ast.Ident: // n.RLock()
+					if r.Name == recv {
+						out[fd.Name.Name] = true
+					}
+				case *ast.SelectorExpr: // n.mu.RLock()
+					if id, ok := r.X.(*ast.Ident); ok && id.Name == recv && r.Sel.Name == "mu" {
+						out[fd.Name.Name] = true
+					}
+				}
+				return true
+			})
+		}
+	}
+	return out
+}
+
+// Guard against the nested-read-lock mistake coming back. It parses the
+// source, derives which node methods take the node lock themselves, and fails
+// if the lock-holding builders and handlers reference any of them on the node
+// variable (calls and method values alike). It only catches direct uses inside
+// the named functions, not calls reached through other helpers.
 func TestNoSelfLockingAccessorsUnderNodeLock(t *testing.T) {
-	selfLocking := []string{
-		".EffectiveRequiredGPUs(", ".EffectiveDetectedRequiredGPUs(", ".EffectiveDeclaredRequiredGPUs(",
-		".MismatchWarning(", ".DetectedDrivesPlacement(", ".DetectedGPUScopeCopy(", ".DetectedSecondaryWidths(",
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("cannot locate test file")
 	}
-	targets := []struct{ file, marker string }{
-		{"../admin/admin.go", "func (s *Server) nodeStateToResp("},
-		{"../admin/node_detected.go", "func newNodeDetectedExtras("},
-		{"router.go", "func (n *NodeState) PlacementRequirementViewLocked("},
-	}
-	for _, tg := range targets {
-		src, err := os.ReadFile(tg.file)
+	routerDir := filepath.Dir(thisFile)
+	adminDir := filepath.Join(routerDir, "..", "admin")
+
+	parseDir := func(dir string) []*ast.File {
+		fset := token.NewFileSet()
+		pkgs, err := parser.ParseDir(fset, dir, func(fi os.FileInfo) bool {
+			return !strings.HasSuffix(fi.Name(), "_test.go")
+		}, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
-		text := string(src)
-		start := strings.Index(text, tg.marker)
-		if start < 0 {
-			t.Fatalf("%s: %q not found", tg.file, tg.marker)
-		}
-		body := text[start:]
-		if end := strings.Index(body[1:], "\nfunc "); end >= 0 {
-			body = body[:end+1]
-		}
-		for _, call := range selfLocking {
-			if strings.Contains(body, call) {
-				t.Errorf("%s: %s calls %s while the caller holds the node lock", tg.file, tg.marker, call)
+		var files []*ast.File
+		for _, p := range pkgs {
+			for _, f := range p.Files {
+				files = append(files, f)
 			}
+		}
+		return files
+	}
+	routerFiles := parseDir(routerDir)
+	adminFiles := parseDir(adminDir)
+
+	selfLocking := lockingNodeMethods(t, routerFiles)
+	if len(selfLocking) == 0 || !selfLocking["GetRuntime"] || !selfLocking["EffectiveRequiredGPUs"] {
+		t.Fatalf("derived self-locking set looks wrong: %v", selfLocking)
+	}
+
+	targets := []struct {
+		files []*ast.File
+		name  string
+	}{
+		{adminFiles, "nodeStateToResp"},
+		{adminFiles, "handleNodes"},
+		{adminFiles, "handleNode"},
+		{adminFiles, "newNodeDetectedExtras"},
+		{routerFiles, "PlacementRequirementViewLocked"},
+	}
+	for _, tg := range targets {
+		found := false
+		for _, f := range tg.files {
+			for _, d := range f.Decls {
+				fd, ok := d.(*ast.FuncDecl)
+				if !ok || fd.Name.Name != tg.name || fd.Body == nil {
+					continue
+				}
+				found = true
+				ast.Inspect(fd.Body, func(x ast.Node) bool {
+					sel, ok := x.(*ast.SelectorExpr)
+					if !ok || !selfLocking[sel.Sel.Name] {
+						return true
+					}
+					if id, ok := sel.X.(*ast.Ident); ok && id.Name == "n" {
+						t.Errorf("%s uses self-locking n.%s while the node lock is held", tg.name, sel.Sel.Name)
+					}
+					return true
+				})
+			}
+		}
+		if !found {
+			t.Fatalf("function %s not found", tg.name)
 		}
 	}
 }
