@@ -2263,6 +2263,12 @@ func detectedVerifiedLocked(n *NodeState) bool {
 func (n *NodeState) DetectedDrivesPlacement() bool {
 	n.mu.RLock()
 	defer n.mu.RUnlock()
+	return detectedDrivesPlacementLocked(n)
+}
+
+// detectedDrivesPlacementLocked is DetectedDrivesPlacement for a caller that
+// already holds n.mu.
+func detectedDrivesPlacementLocked(n *NodeState) bool {
 	if n.ParallelismWidth > 0 || len(n.DeclaredGPUIndices) > 0 {
 		return false
 	}
@@ -2316,6 +2322,12 @@ func (n *NodeState) EffectiveDetectedRequiredGPUs() int {
 func (n *NodeState) MismatchWarning() string {
 	n.mu.RLock()
 	defer n.mu.RUnlock()
+	return mismatchWarningLocked(n)
+}
+
+// mismatchWarningLocked is MismatchWarning for a caller that already holds
+// n.mu.
+func mismatchWarningLocked(n *NodeState) string {
 	declared := effectiveRequiredGPUsDeclaredLocked(n)
 	detected := effectiveDetectedRequiredGPUsLocked(n)
 	if declared == 0 || detected == 0 {
@@ -2329,6 +2341,38 @@ func (n *NodeState) MismatchWarning() string {
 		return fmt.Sprintf("declared %s vs detected %s", n.ParallelismType, n.DetectedParallelismType)
 	}
 	return ""
+}
+
+// PlacementRequirementView is a point-in-time copy of everything the node API
+// reports about a node's GPU placement requirement. Build it with
+// PlacementRequirementViewLocked while holding the node lock once, instead of
+// calling the self-locking accessors one by one.
+type PlacementRequirementView struct {
+	EffectiveRequiredGPUs         int
+	DetectedEffectiveRequiredGPUs int
+	MismatchWarning               string
+	PipelineWidth                 int
+	DataWidth                     int
+	// GPUScope is a deep copy, safe to use after the node lock is released.
+	GPUScope        *marboragent.GPUScope
+	DrivesPlacement bool
+}
+
+// PlacementRequirementViewLocked builds the view. The caller must already
+// hold n.mu (through RLock or Lock); never call it without the lock. It takes
+// no lock itself on purpose: Go's RWMutex blocks a second reader once a writer
+// is waiting, so a nested read lock under the caller's read lock can deadlock
+// the node for good.
+func (n *NodeState) PlacementRequirementViewLocked() PlacementRequirementView {
+	return PlacementRequirementView{
+		EffectiveRequiredGPUs:         effectiveRequiredGPUsLocked(n),
+		DetectedEffectiveRequiredGPUs: effectiveDetectedRequiredGPUsLocked(n),
+		MismatchWarning:               mismatchWarningLocked(n),
+		PipelineWidth:                 n.DetectedPipelineWidth,
+		DataWidth:                     n.DetectedDataWidth,
+		GPUScope:                      copyGPUScope(n.DetectedGPUScope),
+		DrivesPlacement:               detectedDrivesPlacementLocked(n),
+	}
 }
 
 func effectiveRequiredGPUsDeclaredLocked(n *NodeState) int {

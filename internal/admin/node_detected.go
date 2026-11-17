@@ -33,13 +33,14 @@ type detectedGPUScopeResp struct {
 	Note         string   `json:"note,omitempty"`
 }
 
-func newNodeDetectedExtras(n *router.NodeState) nodeDetectedExtras {
-	pipeline, data := n.DetectedSecondaryWidths()
+// newNodeDetectedExtras takes a view built under the node lock and takes no
+// lock itself, so it is safe to call while the caller holds that lock.
+func newNodeDetectedExtras(v router.PlacementRequirementView) nodeDetectedExtras {
 	return nodeDetectedExtras{
-		DetectedPipelineWidth:   pipeline,
-		DetectedDataWidth:       data,
-		DetectedGPUScope:        toDetectedGPUScopeResp(n.DetectedGPUScopeCopy()),
-		DetectedDrivesPlacement: n.DetectedDrivesPlacement(),
+		DetectedPipelineWidth:   v.PipelineWidth,
+		DetectedDataWidth:       v.DataWidth,
+		DetectedGPUScope:        toDetectedGPUScopeResp(v.GPUScope),
+		DetectedDrivesPlacement: v.DrivesPlacement,
 	}
 }
 
