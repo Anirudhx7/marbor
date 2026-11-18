@@ -161,8 +161,15 @@ jobs:
         # govulncheck only covers the Go module graph - the UI's npm dependencies get
         # weekly Dependabot bumps but zero automated vuln scanning otherwise.
         # --omit=dev: only scans what actually ships. 0 findings as of 2026-09-15.
+        # Exactly one advisory is allowed, GHSA-fc5q-39xc-vjpf (picomatch, ReDoS,
+        # CVE-2026-112366): picomatch is reached only through vite, a build-time tool
+        # that is not in the shipped bundle, and the advisory has no patched release.
+        # The allowance lapses by itself on 2027-02-18, or as soon as the registry
+        # publishes a picomatch newer than 4.0.7 - then run "npm update picomatch" in
+        # ui/ and replace this step with a plain "npm audit --omit=dev" (delete
+        # ui/scripts/audit-gate.mjs and its test). Logic and tests: ui/scripts/audit-gate.mjs.
         working-directory: ./ui
-        run: npm audit --omit=dev
+        run: node scripts/audit-gate.mjs
 
       - name: Lint UI
         # Non-blocking: typescript-eslint does not support TypeScript 7.0.2 (pinned in
