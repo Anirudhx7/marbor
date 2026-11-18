@@ -411,7 +411,10 @@ export const mockGPUNodes: GPUNode[] = [
   // gpu-node-08 declare each other as a valid 2-host TP replica, showing
   // the "Worker (non-schedulable)" badge + "Part of replica" head-link on
   // the worker, and the resolved schedulingRole on the head (no badge -
-  // its card is what workers link to).
+  // its card is what workers link to). gpu-node-08's host agent has stopped
+  // answering, so the head is healthy but used only as a last resort and
+  // names the silent member (replicaBlockedBy), matching the routing
+  // explain example below where gpu-node-07 is skipped for that reason.
   {
     id: 'node-7',
     name: 'gpu-node-07',
@@ -423,6 +426,7 @@ export const mockGPUNodes: GPUNode[] = [
     replicaPeers: { members: ['gpu-node-07', 'gpu-node-08'], head: 'gpu-node-07' },
     schedulingRole: 'head',
     replicaHead: 'gpu-node-07',
+    replicaBlockedBy: 'gpu-node-08',
     parallelismType: 'tp',
     parallelismWidth: 8,
     effectiveRequiredGPUs: 8,
@@ -479,7 +483,7 @@ export const mockGPUNodes: GPUNode[] = [
     temperature: 69,
     health: 'healthy',
     draining: false,
-    signals: ['healthy', 'agent'],
+    signals: ['healthy'],
     drainedGraceSeconds: 0,
     activeConns: 0,
     prewarmDisabled: false,
@@ -494,13 +498,10 @@ export const mockGPUNodes: GPUNode[] = [
     tokensTotal: 0,
     avgLatencyMs: 0,
     warmHitRatio: 0,
-    agentPresent: true,
-    agentVersion: '0.25.0',
-    agentCapabilities: ['status'],
-    agentPlatform: 'linux',
-    agentArchitecture: 'amd64',
-    agentGpuVendor: 'nvidia',
-    agentRuntime: 'vllm',
+    // Enrolled agent that stopped answering (same shape as gpu-node-06):
+    // the figures above are last-known, not live.
+    agentPresent: false,
+    agentStale: true,
   },
   // Unresolved-replica demo pair: gpu-node-09 declares gpu-node-10 as a
   // member, but gpu-node-10 has a conflicting declaration (different head) -
@@ -2383,7 +2384,7 @@ export const mockReplicaSuggestions: ReplicaSuggestionsResponse = {
   ],
   coverage: [
     { node: 'gpu-node-03', host: '10.0.0.13', state: 'agent_update_needed', detected: false, detail: 'the agent is too old to report launch details' },
-    { node: 'gpu-node-08', host: '10.0.0.18', state: 'env_unreadable', detected: false, detail: "the agent cannot read this runtime's environment" },
+    { node: 'gpu-node-08', host: '10.0.0.18', state: 'no_agent', detected: false, detail: 'no marbor agent is enabled on this host' },
     { node: 'gpu-node-06', host: '10.0.0.16', state: 'no_agent', detected: false, detail: 'no marbor agent is enabled on this host' },
   ],
   dismissedCount: 1,

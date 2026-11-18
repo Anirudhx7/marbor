@@ -179,3 +179,33 @@ test('demo by-model sums sit between the 24h total and the all-time total', () =
   const totalSaved = Number(savedMatch[1]);
   assert.ok(modelSaved <= totalSaved, `by_model saved ${modelSaved} <= all-time saved ${totalSaved}`);
 });
+
+test('demo replica head blocked by a silent member agrees with the member and the explain example', () => {
+  const nodeBlock = (name) => {
+    const i = mock.indexOf(`name: '${name}',`);
+    assert.ok(i > 0, `${name} not found`);
+    const next = mock.indexOf("\n  {\n    id: 'node-", i);
+    return mock.slice(i, next > 0 ? next : i + 4000);
+  };
+  const head = nodeBlock('gpu-node-07');
+  const worker = nodeBlock('gpu-node-08');
+  assert.ok(head.includes("replicaBlockedBy: 'gpu-node-08'"), 'head does not name its silent member');
+  assert.ok(/agentStale: true/.test(worker) && /agentPresent: false/.test(worker), 'named member is not a stale-agent node');
+  assert.ok(!/signals: \[[^\]]*'agent'/.test(worker), 'stale agent must not light the agent signal');
+  assert.ok(mock.includes("{ node: 'gpu-node-07', reason: 'replica_member_unreachable' }"), 'explain example no longer skips the head');
+  // The environment-detection coverage must not claim a live agent read for a silent agent.
+  assert.ok(!/node: 'gpu-node-08'[^\n]*env_unreadable/.test(mock), 'coverage row says the agent is reachable');
+});
+
+test('the agent badge never says no agent is installed for a stale agent', () => {
+  const src = read('src/pages/GPUNodes.tsx');
+  const fn = src.slice(src.indexOf('function AgentBadge'), src.indexOf('function AgentBadge') + 2500);
+  const stale = fn.indexOf('if (stale)');
+  const none = fn.indexOf('No marbor agent installed');
+  assert.ok(stale > 0 && none > stale, 'stale branch must come before the no-agent branch');
+  assert.ok(/stale=\{node\.agentStale\}/.test(src), 'AgentBadge call does not pass agentStale');
+});
+
+test('demo confirm flow derives the blocked member from stale agents, lowest name first', () => {
+  assert.ok(/replicaBlockedBy: silent/.test(api) && /agentStale\)\.sort\(\)\[0\]/.test(api));
+});

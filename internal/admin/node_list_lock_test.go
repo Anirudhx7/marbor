@@ -23,7 +23,7 @@ import (
 func buildNodeRespLocked(s *Server, n *router.NodeState) nodeResp {
 	n.RLock()
 	defer n.RUnlock()
-	return s.nodeStateToResp(n, "gpu-0", nil, nil)
+	return s.nodeStateToResp(n, "gpu-0", nil, nil, nil)
 }
 
 func newLockTestServer(t *testing.T) (*Server, *router.NodeState) {
@@ -132,7 +132,7 @@ func TestNodeResp_NoDeadlockWithQueuedWriter(t *testing.T) {
 	go func() {
 		// The read lock is held by the test goroutine, so call the builder
 		// directly rather than through the locking helper.
-		done <- s.nodeStateToResp(n, "gpu-0", nil, nil)
+		done <- s.nodeStateToResp(n, "gpu-0", nil, nil, nil)
 	}()
 
 	var resp nodeResp
