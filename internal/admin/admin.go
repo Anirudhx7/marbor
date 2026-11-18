@@ -173,9 +173,9 @@ type Server struct {
 	// keysMu serializes API key create/rotate/revoke/patch so a concurrent
 	// revoke cannot be undone by another handler's store write.
 	keysMu sync.Mutex
-	// userMu serializes the read, last-admin check and write of admin user
-	// removals and role changes. Lock order: userMu before keysMu; never held
-	// across key revocation or the audit log.
+	// userMu serializes read-modify-write of user rows (role change, suspend,
+	// approve, delete, password reset) and the last-admin checks that depend on
+	// them. Lock order: userMu before keysMu.
 	userMu             sync.Mutex
 	router             *router.Router
 	soleReplica        soleReplicaState // serializes the sole-replica check with drain/restart
@@ -5132,6 +5132,8 @@ func (s *Server) handleApproveUser(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"error":"invalid user id"}`))
 		return
 	}
+	s.userMu.Lock()
+	defer s.userMu.Unlock()
 	user, err := s.st.GetUserByID(id)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -5253,6 +5255,8 @@ func (s *Server) handleSuspendUser(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"error":"invalid user id"}`))
 		return
 	}
+	s.userMu.Lock()
+	defer s.userMu.Unlock()
 	user, err := s.st.GetUserByID(id)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -5266,6 +5270,18 @@ func (s *Server) handleSuspendUser(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(`{"error":"cannot suspend yourself"}`))
 		return
+	}
+	if user.Role == "admin" && user.Status == "active" {
+		count, cerr := s.st.CountAdminUsers()
+		if cerr != nil {
+			log.Printf("admin: count admins before suspend: %v", cerr)
+			writeJSONError(w, http.StatusInternalServerError, "could not verify the remaining admins")
+			return
+		}
+		if count <= 1 {
+			writeJSONError(w, http.StatusBadRequest, "cannot suspend the last active admin")
+			return
+		}
 	}
 	user.Status = "suspended"
 	if err := s.st.UpdateUser(user); err != nil {
@@ -5453,6 +5469,8 @@ func (s *Server) handleResetUserPassword(w http.ResponseWriter, r *http.Request)
 		w.Write([]byte(`{"error":"invalid user id"}`))
 		return
 	}
+	s.userMu.Lock()
+	defer s.userMu.Unlock()
 	user, err := s.st.GetUserByID(id)
 	if err != nil {
 		if s.resetPwLimiter != nil {

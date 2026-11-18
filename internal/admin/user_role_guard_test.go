@@ -257,3 +257,39 @@ func TestPatchUserResponseStillEncodesUser(t *testing.T) {
 		t.Errorf("response user = %+v err=%v, want role admin", u, err)
 	}
 }
+
+func TestSuspendLastActiveAdminIsBlocked(t *testing.T) {
+	s, st := newRoleGuardServer(t)
+	a := addUser(t, st, "alpha", "admin", "active")
+	addUser(t, st, "bravo", "admin", "suspended")
+
+	if rec := callUser(t, s.handleSuspendUser, a, "someone", ``); rec.Code != http.StatusBadRequest {
+		t.Fatalf("suspend of the only active admin: status = %d body=%s, want 400", rec.Code, rec.Body.String())
+	}
+	u, err := st.GetUserByID(a)
+	if err != nil || u.Status != "active" {
+		t.Errorf("admin status = %q err=%v after a blocked suspend, want active", u.Status, err)
+	}
+}
+
+func TestConcurrentSuspendAndDemoteKeepOneActiveAdmin(t *testing.T) {
+	for i := 0; i < 20; i++ {
+		s, st := newRoleGuardServer(t)
+		a := addUser(t, st, "alpha", "admin", "active")
+		b := addUser(t, st, "bravo", "admin", "active")
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() { defer wg.Done(); callUser(t, s.handlePatchUser, a, "bravo", `{"role":"user"}`) }()
+		go func() { defer wg.Done(); callUser(t, s.handleSuspendUser, b, "alpha", ``) }()
+		wg.Wait()
+
+		n, err := st.CountAdminUsers()
+		if err != nil {
+			t.Fatalf("CountAdminUsers: %v", err)
+		}
+		if n != 1 {
+			t.Fatalf("round %d: %d active admins after concurrent suspend and demote, want 1", i, n)
+		}
+	}
+}
