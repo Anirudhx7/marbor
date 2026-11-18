@@ -39,6 +39,28 @@ function isNewer(a, b) {
 
 const VERSION_LIST = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/
 
+const isAdvisory = (x) => typeof x === 'object' && x !== null
+
+// Every chain entry (a package name in via) must be a finding in the report, and
+// every finding must reach an advisory object by following those chains. A name
+// that is missing, or a chain that only loops, is not accounted for. Returns the
+// offending names, empty when everything is accounted for.
+function unaccountedChains(entries, vulns) {
+  const isName = (x) => typeof x === 'string'
+  const unknown = entries.flatMap(([k, v]) => v.via.filter((x) => isName(x) && !Object.hasOwn(vulns, x)).map((x) => `${k} -> ${x}`))
+  const reaching = new Set(entries.filter(([, v]) => v.via.some(isAdvisory)).map(([k]) => k))
+  for (let grew = true; grew;) {
+    grew = false
+    for (const [k, v] of entries) {
+      if (!reaching.has(k) && v.via.some((x) => isName(x) && reaching.has(x))) {
+        reaching.add(k)
+        grew = true
+      }
+    }
+  }
+  return [...unknown, ...entries.map(([k]) => k).filter((k) => !reaching.has(k))]
+}
+
 // evaluate decides whether a FAILED audit result may pass. audit is the parsed
 // `npm audit --json` object, today is an ISO date (YYYY-MM-DD), published is the
 // list of versions the registry has for PACKAGE. Anything it cannot positively
@@ -55,30 +77,15 @@ export function evaluate({ audit, today, published }) {
   if (entries.some(([, v]) => !v || typeof v !== 'object' || !Array.isArray(v.via))) {
     return { ok: false, reason: 'npm audit report has a malformed finding; failing closed' }
   }
-  const isAdvisory = (x) => typeof x === 'object' && x !== null
   const advisories = entries.flatMap(([, v]) => v.via.filter(isAdvisory))
   if (advisories.length === 0) {
     return { ok: false, reason: 'audit reported findings but no advisory details; failing closed' }
   }
-  // Every chain entry (a package name in via) must be a finding in this report, and
-  // every finding must reach an advisory object by following those chains. A name
-  // that is missing, or a chain that only loops, is not accounted for.
-  const unknownNames = entries.flatMap(([k, v]) => v.via.filter((x) => typeof x === 'string' && !Object.hasOwn(vulns, x)).map((x) => `${k} -> ${x}`))
-  const reaching = new Set(entries.filter(([, v]) => v.via.some(isAdvisory)).map(([k]) => k))
-  for (let grew = true; grew;) {
-    grew = false
-    for (const [k, v] of entries) {
-      if (!reaching.has(k) && v.via.some((x) => typeof x === 'string' && reaching.has(x))) {
-        reaching.add(k)
-        grew = true
-      }
-    }
+  const broken = unaccountedChains(entries, vulns)
+  if (broken.length > 0) {
+    return { ok: false, reason: `finding chain not accounted for: ${broken.join(', ')}` }
   }
-  const unaccounted = entries.map(([k]) => k).filter((k) => !reaching.has(k))
-  if (unknownNames.length > 0 || unaccounted.length > 0) {
-    return { ok: false, reason: `finding chain not accounted for: ${[...unknownNames, ...unaccounted].join(', ')}` }
-  }
-  const other = advisories.filter((a) => a.name !== PACKAGE || a.url !== ALLOWED_URL || (a.range !== undefined && a.range !== `<=${LAST_AFFECTED}`))
+  const other = advisories.filter((a) => a.name !== PACKAGE || a.url !== ALLOWED_URL || a.range !== `<=${LAST_AFFECTED}`)
   if (other.length > 0) {
     return { ok: false, reason: `unallowed advisory: ${other.map((a) => `${a.name}: ${a.url ?? a.title}`).join(', ')}` }
   }

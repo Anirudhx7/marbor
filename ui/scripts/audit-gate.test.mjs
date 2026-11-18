@@ -4,7 +4,7 @@ import { evaluate, main, EXPIRES, LAST_AFFECTED, ALLOWED_URL } from './audit-gat
 
 const picomatchAudit = {
   vulnerabilities: {
-    picomatch: { via: [{ source: 1, name: 'picomatch', url: ALLOWED_URL }] },
+    picomatch: { via: [{ source: 1, name: 'picomatch', url: ALLOWED_URL, range: `<=${LAST_AFFECTED}` }] },
     tinyglobby: { via: ['picomatch'] },
     vite: { via: ['picomatch', 'tinyglobby'] },
   },
@@ -51,6 +51,14 @@ test('fails closed on a dangling chain or an advisory range that is not the cove
   const malformed = { vulnerabilities: { ...picomatchAudit.vulnerabilities, x: null } }
   assert.equal(evaluate({ ...base, audit: malformed }).ok, false)
   assert.equal(evaluate({ ...base, audit: { vulnerabilities: { x: { via: 'picomatch' } } } }).ok, false)
+  const unknownOnly = { vulnerabilities: { ...picomatchAudit.vulnerabilities, vite: { via: ['picomatch', 'tinyglobby', 'ghost'] } } }
+  assert.equal(evaluate({ ...base, audit: unknownOnly }).ok, false)
+  const arrayVia = { vulnerabilities: { ...picomatchAudit.vulnerabilities, vite: { via: [[], 'picomatch'] } } }
+  assert.equal(evaluate({ ...base, audit: arrayVia }).ok, false)
+  const noRange = { vulnerabilities: { p: { via: [{ name: 'picomatch', url: ALLOWED_URL }] } } }
+  assert.equal(evaluate({ ...base, audit: noRange }).ok, false)
+  const foreign = { vulnerabilities: { ...picomatchAudit.vulnerabilities, vite: { via: [{ name: 'vite', url: 'https://github.com/advisories/GHSA-zzzz-zzzz-zzzz', range: '<9' }] } } }
+  assert.equal(evaluate({ ...base, audit: foreign }).ok, false)
   const range = { vulnerabilities: { p: { via: [{ name: 'picomatch', url: ALLOWED_URL, range: '<=9.9.9' }] } } }
   assert.equal(evaluate({ ...base, audit: range }).ok, false)
   const covered = { vulnerabilities: { p: { via: [{ name: 'picomatch', url: ALLOWED_URL, range: '<=4.0.7' }] } } }
@@ -79,11 +87,7 @@ test('fails closed on a missing or malformed published version list', () => {
 })
 
 test('accepts a prerelease in the published list without lapsing', () => {
-  assert.equal(evaluate({ ...base, published: ['4.0.8-rc.1', LAST_AFFECTED] }).ok, true)
-})
-
-test('does not lapse on a prerelease alone', () => {
-  assert.equal(evaluate({ ...base, published: ['4.1.0-beta.1', LAST_AFFECTED] }).ok, true)
+  assert.equal(evaluate({ ...base, published: ['4.1.0-beta.1', '4.0.8-rc.1', LAST_AFFECTED] }).ok, true)
 })
 
 const silent = { log() {}, error() {} }
