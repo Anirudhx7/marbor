@@ -25,6 +25,8 @@ function parseVersion(v) {
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null
 }
 
+// Prerelease versions (4.0.8-rc.1) are ignored on purpose: the allowance lapses
+// when the stable release appears, not on a release candidate.
 function isNewer(a, b) {
   const x = parseVersion(a)
   const y = parseVersion(b)
@@ -49,18 +51,32 @@ export function evaluate({ audit, today, published }) {
   if (!vulns || typeof vulns !== 'object' || Array.isArray(vulns) || Object.keys(vulns).length === 0) {
     return { ok: false, reason: 'npm audit failed but reported no findings; failing closed' }
   }
-  const advisories = Object.values(vulns).flatMap((v) => (v.via ?? []).filter((x) => typeof x === 'object' && x !== null))
+  const entries = Object.entries(vulns)
+  if (entries.some(([, v]) => !v || typeof v !== 'object' || !Array.isArray(v.via))) {
+    return { ok: false, reason: 'npm audit report has a malformed finding; failing closed' }
+  }
+  const isAdvisory = (x) => typeof x === 'object' && x !== null
+  const advisories = entries.flatMap(([, v]) => v.via.filter(isAdvisory))
   if (advisories.length === 0) {
     return { ok: false, reason: 'audit reported findings but no advisory details; failing closed' }
   }
-  // A finding that names no advisory itself must be a chain that leads to another
-  // finding in this report; a dangling chain is not accounted for.
-  const dangling = Object.entries(vulns).filter(
-    ([, v]) => !(v.via ?? []).some((x) => typeof x === 'object' && x !== null) &&
-      !(v.via ?? []).some((x) => typeof x === 'string' && Object.hasOwn(vulns, x)),
-  )
-  if (dangling.length > 0) {
-    return { ok: false, reason: `finding chain not accounted for: ${dangling.map(([k]) => k).join(', ')}` }
+  // Every chain entry (a package name in via) must be a finding in this report, and
+  // every finding must reach an advisory object by following those chains. A name
+  // that is missing, or a chain that only loops, is not accounted for.
+  const unknownNames = entries.flatMap(([k, v]) => v.via.filter((x) => typeof x === 'string' && !Object.hasOwn(vulns, x)).map((x) => `${k} -> ${x}`))
+  const reaching = new Set(entries.filter(([, v]) => v.via.some(isAdvisory)).map(([k]) => k))
+  for (let grew = true; grew;) {
+    grew = false
+    for (const [k, v] of entries) {
+      if (!reaching.has(k) && v.via.some((x) => typeof x === 'string' && reaching.has(x))) {
+        reaching.add(k)
+        grew = true
+      }
+    }
+  }
+  const unaccounted = entries.map(([k]) => k).filter((k) => !reaching.has(k))
+  if (unknownNames.length > 0 || unaccounted.length > 0) {
+    return { ok: false, reason: `finding chain not accounted for: ${[...unknownNames, ...unaccounted].join(', ')}` }
   }
   const other = advisories.filter((a) => a.name !== PACKAGE || a.url !== ALLOWED_URL || (a.range !== undefined && a.range !== `<=${LAST_AFFECTED}`))
   if (other.length > 0) {

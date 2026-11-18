@@ -5,6 +5,7 @@ import { evaluate, main, EXPIRES, LAST_AFFECTED, ALLOWED_URL } from './audit-gat
 const picomatchAudit = {
   vulnerabilities: {
     picomatch: { via: [{ source: 1, name: 'picomatch', url: ALLOWED_URL }] },
+    tinyglobby: { via: ['picomatch'] },
     vite: { via: ['picomatch', 'tinyglobby'] },
   },
 }
@@ -43,6 +44,13 @@ test('fails closed on an audit error report, an empty report or a non-object', (
 test('fails closed on a dangling chain or an advisory range that is not the covered one', () => {
   const dangling = { vulnerabilities: { ...picomatchAudit.vulnerabilities, ghost: { via: ['nowhere'] } } }
   assert.equal(evaluate({ ...base, audit: dangling }).ok, false)
+  const cycle = { vulnerabilities: { ...picomatchAudit.vulnerabilities, a: { via: ['b'] }, b: { via: ['a'] } } }
+  assert.equal(evaluate({ ...base, audit: cycle }).ok, false)
+  const mixed = { vulnerabilities: { p: { via: [{ name: 'picomatch', url: ALLOWED_URL }, 'ghost'] } } }
+  assert.equal(evaluate({ ...base, audit: mixed }).ok, false)
+  const malformed = { vulnerabilities: { ...picomatchAudit.vulnerabilities, x: null } }
+  assert.equal(evaluate({ ...base, audit: malformed }).ok, false)
+  assert.equal(evaluate({ ...base, audit: { vulnerabilities: { x: { via: 'picomatch' } } } }).ok, false)
   const range = { vulnerabilities: { p: { via: [{ name: 'picomatch', url: ALLOWED_URL, range: '<=9.9.9' }] } } }
   assert.equal(evaluate({ ...base, audit: range }).ok, false)
   const covered = { vulnerabilities: { p: { via: [{ name: 'picomatch', url: ALLOWED_URL, range: '<=4.0.7' }] } } }
@@ -68,6 +76,10 @@ test('fails closed on a missing or malformed published version list', () => {
   for (const published of [undefined, null, [], [null], [{ error: 'x' }], ['4.0.6'], ['next', LAST_AFFECTED], ['4.1.0abc', LAST_AFFECTED]]) {
     assert.equal(evaluate({ ...base, published }).ok, false, JSON.stringify(published))
   }
+})
+
+test('accepts a prerelease in the published list without lapsing', () => {
+  assert.equal(evaluate({ ...base, published: ['4.0.8-rc.1', LAST_AFFECTED] }).ok, true)
 })
 
 test('does not lapse on a prerelease alone', () => {
