@@ -35,7 +35,7 @@ function isNewer(a, b) {
   return false
 }
 
-const VERSION_LIST = /^\d+\.\d+\.\d+/
+const VERSION_LIST = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/
 
 // evaluate decides whether a FAILED audit result may pass. audit is the parsed
 // `npm audit --json` object, today is an ISO date (YYYY-MM-DD), published is the
@@ -53,7 +53,16 @@ export function evaluate({ audit, today, published }) {
   if (advisories.length === 0) {
     return { ok: false, reason: 'audit reported findings but no advisory details; failing closed' }
   }
-  const other = advisories.filter((a) => a.name !== PACKAGE || a.url !== ALLOWED_URL)
+  // A finding that names no advisory itself must be a chain that leads to another
+  // finding in this report; a dangling chain is not accounted for.
+  const dangling = Object.entries(vulns).filter(
+    ([, v]) => !(v.via ?? []).some((x) => typeof x === 'object' && x !== null) &&
+      !(v.via ?? []).some((x) => typeof x === 'string' && Object.hasOwn(vulns, x)),
+  )
+  if (dangling.length > 0) {
+    return { ok: false, reason: `finding chain not accounted for: ${dangling.map(([k]) => k).join(', ')}` }
+  }
+  const other = advisories.filter((a) => a.name !== PACKAGE || a.url !== ALLOWED_URL || (a.range !== undefined && a.range !== `<=${LAST_AFFECTED}`))
   if (other.length > 0) {
     return { ok: false, reason: `unallowed advisory: ${other.map((a) => `${a.name}: ${a.url ?? a.title}`).join(', ')}` }
   }

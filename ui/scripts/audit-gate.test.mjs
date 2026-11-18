@@ -40,6 +40,15 @@ test('fails closed on an audit error report, an empty report or a non-object', (
   assert.equal(evaluate({ ...base, audit: null }).ok, false)
 })
 
+test('fails closed on a dangling chain or an advisory range that is not the covered one', () => {
+  const dangling = { vulnerabilities: { ...picomatchAudit.vulnerabilities, ghost: { via: ['nowhere'] } } }
+  assert.equal(evaluate({ ...base, audit: dangling }).ok, false)
+  const range = { vulnerabilities: { p: { via: [{ name: 'picomatch', url: ALLOWED_URL, range: '<=9.9.9' }] } } }
+  assert.equal(evaluate({ ...base, audit: range }).ok, false)
+  const covered = { vulnerabilities: { p: { via: [{ name: 'picomatch', url: ALLOWED_URL, range: '<=4.0.7' }] } } }
+  assert.equal(evaluate({ ...base, audit: covered }).ok, true)
+})
+
 test('fails closed when findings carry no advisory details', () => {
   assert.equal(evaluate({ ...base, audit: { vulnerabilities: { x: { via: ['y'] } } } }).ok, false)
 })
@@ -56,7 +65,7 @@ test('lapses as soon as a newer picomatch is published', () => {
 })
 
 test('fails closed on a missing or malformed published version list', () => {
-  for (const published of [undefined, null, [], [null], [{ error: 'x' }], ['4.0.6'], ['next', LAST_AFFECTED]]) {
+  for (const published of [undefined, null, [], [null], [{ error: 'x' }], ['4.0.6'], ['next', LAST_AFFECTED], ['4.1.0abc', LAST_AFFECTED]]) {
     assert.equal(evaluate({ ...base, published }).ok, false, JSON.stringify(published))
   }
 })
