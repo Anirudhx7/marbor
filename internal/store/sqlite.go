@@ -2604,9 +2604,12 @@ func (s *sqliteStore) SoftDeleteUser(id int64, deletedBy string) error {
 	return nil
 }
 
+// CountAdminUsers counts admins who can actually sign in: role admin, status
+// active, not deleted. Suspended and pending admins are excluded so the
+// last-admin guards cannot be satisfied by an account that cannot log in.
 func (s *sqliteStore) CountAdminUsers() (int, error) {
 	var n int
-	err := s.db.QueryRow(`SELECT COUNT(*) FROM users WHERE role='admin' AND deleted_at IS NULL`).Scan(&n)
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM users WHERE role='admin' AND status='active' AND deleted_at IS NULL`).Scan(&n)
 	if err != nil {
 		return 0, fmt.Errorf("store: CountAdminUsers: %w", err)
 	}

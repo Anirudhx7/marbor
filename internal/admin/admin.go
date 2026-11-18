@@ -172,7 +172,11 @@ type TokenEvent struct {
 type Server struct {
 	// keysMu serializes API key create/rotate/revoke/patch so a concurrent
 	// revoke cannot be undone by another handler's store write.
-	keysMu             sync.Mutex
+	keysMu sync.Mutex
+	// userMu serializes the read, last-admin check and write of admin user
+	// removals and role changes. Lock order: userMu before keysMu; never held
+	// across key revocation or the audit log.
+	userMu             sync.Mutex
 	router             *router.Router
 	soleReplica        soleReplicaState // serializes the sole-replica check with drain/restart
 	auth               *auth.Middleware
@@ -5295,33 +5299,10 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"error":"invalid user id"}`))
 		return
 	}
-	user, err := s.st.GetUserByID(id)
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte(`{"error":"user not found"}`))
-		return
-	}
-	if user.Role == "admin" {
-		if count, _ := s.st.CountAdminUsers(); count <= 1 {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(`{"error":"cannot delete the last admin user"}`))
-			return
-		}
-	}
 	callerUsername, _ := r.Context().Value(ctxKeyUsername).(string)
-	if callerUsername != "" && user.Username == callerUsername {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(`{"error":"cannot delete yourself"}`))
-		return
-	}
-	_ = s.st.DeleteUserSessionsByUserID(id)
-	if err := s.st.SoftDeleteUser(id, callerUsername); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"error":"failed to delete user"}`))
+	user, status, msg := s.deleteUserGuarded(id, callerUsername)
+	if msg != "" {
+		writeJSONError(w, status, msg)
 		return
 	}
 	if user.APIKeyName != "" {
@@ -5338,6 +5319,37 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 	s.logSystemChange(r, "delete_user", user.Username, "")
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(`{}`))
+}
+
+// deleteUserGuarded runs the last-admin check and the delete under userMu so
+// two concurrent admin removals cannot both pass the check. It returns a
+// non-empty message with the HTTP status when the delete must not proceed.
+// The lock is released before the caller revokes the user's API key.
+func (s *Server) deleteUserGuarded(id int64, callerUsername string) (store.User, int, string) {
+	s.userMu.Lock()
+	defer s.userMu.Unlock()
+	user, err := s.st.GetUserByID(id)
+	if err != nil {
+		return store.User{}, http.StatusNotFound, "user not found"
+	}
+	if user.Role == "admin" && user.Status == "active" {
+		count, cerr := s.st.CountAdminUsers()
+		if cerr != nil {
+			log.Printf("admin: count admins before delete: %v", cerr)
+			return store.User{}, http.StatusInternalServerError, "could not verify the remaining admins"
+		}
+		if count <= 1 {
+			return store.User{}, http.StatusBadRequest, "cannot delete the last active admin"
+		}
+	}
+	if callerUsername != "" && user.Username == callerUsername {
+		return store.User{}, http.StatusBadRequest, "cannot delete yourself"
+	}
+	_ = s.st.DeleteUserSessionsByUserID(id)
+	if err := s.st.SoftDeleteUser(id, callerUsername); err != nil {
+		return store.User{}, http.StatusInternalServerError, "failed to delete user"
+	}
+	return user, 0, ""
 }
 
 func (s *Server) handlePatchUser(w http.ResponseWriter, r *http.Request) {
@@ -5360,6 +5372,8 @@ func (s *Server) handlePatchUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.userMu.Lock()
+	defer s.userMu.Unlock()
 	user, err := s.st.GetUserByID(id)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -5367,21 +5381,39 @@ func (s *Server) handlePatchUser(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"error":"user not found"}`))
 		return
 	}
+	roleChanged := false
 	if req.Role != "" && req.Role != user.Role {
-		if user.Role == "admin" && req.Role == "user" {
-			if count, _ := s.st.CountAdminUsers(); count <= 1 {
+		if user.Role == "admin" && user.Status == "active" && req.Role == "user" {
+			count, cerr := s.st.CountAdminUsers()
+			if cerr != nil {
+				log.Printf("admin: count admins before demote: %v", cerr)
+				writeJSONError(w, http.StatusInternalServerError, "could not verify the remaining admins")
+				return
+			}
+			if count <= 1 {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusBadRequest)
-				w.Write([]byte(`{"error":"cannot demote the last admin"}`))
+				w.Write([]byte(`{"error":"cannot demote the last active admin"}`))
 				return
 			}
 		}
 		if req.Role == "admin" || req.Role == "user" {
 			user.Role = req.Role
+			roleChanged = true
 		}
 	}
 	if req.Email != "" {
 		user.Email = req.Email
+	}
+	if roleChanged {
+		// A session carries the role it was created with, so end the user's
+		// sessions before the new role is written. A failure here leaves the
+		// old role in place and the request can simply be retried.
+		if err := s.st.DeleteUserSessionsByUserID(id); err != nil {
+			log.Printf("admin: end sessions before role change for user %d: %v", id, err)
+			writeJSONError(w, http.StatusInternalServerError, "could not end the user's active sessions; role not changed")
+			return
+		}
 	}
 	if err := s.st.UpdateUser(user); err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -5389,7 +5421,14 @@ func (s *Server) handlePatchUser(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"error":"failed to update user"}`))
 		return
 	}
-	s.logSystemChange(r, "patch_user", user.Username, fmt.Sprintf("RoleChanged: %v, EmailChanged: %v", req.Role != "", req.Email != ""))
+	if roleChanged {
+		// Close the window where a login between the first delete and the
+		// write minted a session with the old role.
+		if err := s.st.DeleteUserSessionsByUserID(id); err != nil {
+			log.Printf("admin: end sessions after role change for user %d: %v", id, err)
+		}
+	}
+	s.logSystemChange(r, "patch_user", user.Username, fmt.Sprintf("RoleChanged: %v, EmailChanged: %v", roleChanged, req.Email != ""))
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(user)
 }
@@ -5512,7 +5551,7 @@ const defaultAdminPassword = "admin"
 // On a completely fresh install it creates admin/admin and forces a
 // password change on first login - no secret is generated or logged.
 func (s *Server) ensureAdminUser() {
-	if count, err := s.st.CountAdminUsers(); err == nil && count > 0 {
+	if users, err := s.st.ListUsers(); err == nil && hasAdminAccount(users) {
 		s.warnIfDefaultAdminCredential()
 		return // already set up
 	}
@@ -5588,6 +5627,20 @@ func (s *Server) ensureAdminUser() {
 	}
 	log.Printf("admin: created default admin account (username: admin); password must be changed on first login")
 	logDefaultAdminCredentialWarning("admin", true)
+}
+
+// hasAdminAccount reports whether any non-deleted user holds the admin role,
+// whatever their status. Startup recovery keys off this, not the active-admin
+// count: a suspended admin keeps its username, so creating a fresh default
+// admin would collide with it, and the unused legacy credential must not be
+// revived while an admin row exists.
+func hasAdminAccount(users []store.User) bool {
+	for _, u := range users {
+		if u.Role == "admin" {
+			return true
+		}
+	}
+	return false
 }
 
 // isBcryptHash reports whether hash is a well-formed bcrypt hash, i.e. one the
