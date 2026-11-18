@@ -183,6 +183,7 @@ type Store interface {
 	IncrementSkipCount(id int64, limit int) (bool, error)
 	DeleteUser(id int64) error
 	SoftDeleteUser(id int64, deletedBy string) error
+	// CountAdminUsers counts active, non-deleted admins only.
 	CountAdminUsers() (int, error)
 	PendingUserCount() (int, error)
 
