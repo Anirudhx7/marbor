@@ -747,6 +747,9 @@ type HealthResp struct {
 	Nodes     struct {
 		Total   int `json:"total"`
 		Healthy int `json:"healthy"`
+		// Workers counts replica workers whose probe is failing. They are
+		// left out of Total and Healthy. Absent (0) from older servers.
+		Workers int `json:"workers"`
 	} `json:"nodes"`
 }
 
@@ -783,6 +786,9 @@ type NodeResp struct {
 	Runtime    string `json:"runtime"`
 	Health     string `json:"health"`
 	Draining   bool   `json:"draining"`
+	// HeadlessWorker is true for a replica worker whose probe is failing.
+	// Health stays the raw probe state; the table shows "worker" instead.
+	HeadlessWorker bool `json:"headlessWorker"`
 	// Signals are the placement signals the server says this node matches
 	// (healthy, degraded, draining, down, agent, warm, pressure). Absent
 	// from servers that predate filtering, which is how the CLI tells. An

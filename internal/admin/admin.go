@@ -644,13 +644,19 @@ type nodeResp struct {
 	// not the head is itself down or draining. Absent (never an empty string)
 	// when no member's agent is silent. A member with no agent is unknown and
 	// never counts.
-	ReplicaBlockedBy string   `json:"replicaBlockedBy,omitempty"`
-	VRAMTotalMB      int64    `json:"vramTotalMB"`
-	VRAMUsedMB       int64    `json:"vramUsedMB"`
-	VRAMSource       string   `json:"vramSource"`
-	PowerDrawW       float64  `json:"powerDrawW"`
-	Temperature      *float64 `json:"temperature"`
-	Runtime          string   `json:"runtime"`
+	ReplicaBlockedBy string `json:"replicaBlockedBy,omitempty"`
+	// HeadlessWorker is true for a resolved replica worker whose health probe
+	// is failing. A headless worker serves no HTTP, so the failing probe is
+	// expected rather than an outage. It is presentation only: Health stays
+	// the raw probe state, and routing and gates keep using the raw state.
+	// Absent when false.
+	HeadlessWorker bool     `json:"headlessWorker,omitempty"`
+	VRAMTotalMB    int64    `json:"vramTotalMB"`
+	VRAMUsedMB     int64    `json:"vramUsedMB"`
+	VRAMSource     string   `json:"vramSource"`
+	PowerDrawW     float64  `json:"powerDrawW"`
+	Temperature    *float64 `json:"temperature"`
+	Runtime        string   `json:"runtime"`
 	// RuntimeMismatchHint is set only when this node is currently
 	// probed as llamacpp and its /health check is failing specifically with
 	// a 404 - the real, observed signature of an MLX node auto-detected as
@@ -1390,7 +1396,10 @@ func (s *Server) nodeStateToResp(n *router.NodeState, id string, roles map[strin
 		replicaBlockedBy = blocked[n.Name]
 	}
 
+	headlessWorker := router.IsHeadlessWorker(role, n.Healthy, n.Failures)
+
 	resp := nodeResp{
+		HeadlessWorker:                  headlessWorker,
 		ID:                              id,
 		Name:                            n.Name,
 		Host:                            host,
@@ -1799,17 +1808,14 @@ func (s *Server) handleExplainRequest(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 	nodes := s.router.Nodes()
+	roles, _ := s.router.SchedulingRolesWithHeads(nodes) // before any node lock: role resolution takes each node's own lock
+	totalNodes, online, workers := fleetCounts(nodes, roles)
 	totalConns := int32(0)
-	online := 0
 	draining := 0
 	for _, n := range nodes {
 		n.RLock()
-		healthy := n.Healthy
 		isDraining := n.Draining
 		n.RUnlock()
-		if healthy {
-			online++
-		}
 		if isDraining {
 			draining++
 		}
@@ -1861,7 +1867,8 @@ func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 		"active_requests": totalConns,
 		"nodes_online":    online,
 		"nodes_draining":  draining,
-		"total_nodes":     len(nodes),
+		"nodes_workers":   workers,
+		"total_nodes":     totalNodes,
 		"queue_depth":     s.router.QueueDepth(),
 		"avg_latency":     avgLatency,
 		"tokens_per_min":  tokensLastMin,
@@ -7306,14 +7313,8 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	totalHealthy := 0
-	for _, n := range nodes {
-		n.RLock()
-		if n.Healthy {
-			totalHealthy++
-		}
-		n.RUnlock()
-	}
+	roles, _ := s.router.SchedulingRolesWithHeads(nodes) // before any node lock
+	totalCounted, totalHealthy, _ := fleetCounts(nodes, roles)
 
 	entries := make([]modelEntry, 0, len(modelMap))
 	for _, v := range modelMap {
@@ -7367,7 +7368,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"models":        entries,
 		"total_models":  len(entries),
-		"total_nodes":   len(nodes),
+		"total_nodes":   totalCounted,
 		"healthy_nodes": totalHealthy,
 	})
 }
@@ -9482,24 +9483,45 @@ func (s *Server) handleModelFit(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	nodes := s.router.Nodes()
-	total := len(nodes)
-	healthy := 0
+// fleetCounts tallies the fleet for the health, summary and model catalog
+// responses. A failing headless worker is left out of both total and healthy
+// and reported separately as workers: it serves no HTTP, so its probe failing
+// is not an outage. roles must come from SchedulingRolesWithHeads over the same
+// nodes, computed before this call because it reads each node under its lock.
+func fleetCounts(nodes []*router.NodeState, roles map[string]router.SchedulingRole) (total, healthy, workers int) {
 	for _, n := range nodes {
 		n.RLock()
-		if n.Healthy {
+		isHealthy, failures, name := n.Healthy, n.Failures, n.Name
+		n.RUnlock()
+		if router.IsHeadlessWorker(roles[name], isHealthy, failures) {
+			workers++
+			continue
+		}
+		total++
+		if isHealthy {
 			healthy++
 		}
-		n.RUnlock()
 	}
+	return total, healthy, workers
+}
+
+// healthStatus is "degraded" (HTTP 503) only when nodes are counted and none is
+// healthy. A fleet with nothing counted reports ok.
+func healthStatus(total, healthy int) string {
+	if total > 0 && healthy == 0 {
+		return "degraded"
+	}
+	return "ok"
+}
+
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	nodes := s.router.Nodes()
+	roles, _ := s.router.SchedulingRolesWithHeads(nodes) // before any node lock: role resolution takes each node's own lock
+	total, healthy, workers := fleetCounts(nodes, roles)
 
 	uptimeSecs := int(time.Since(s.startTime).Seconds())
 
-	status := "ok"
-	if total > 0 && healthy == 0 {
-		status = "degraded"
-	}
+	status := healthStatus(total, healthy)
 
 	s.mu.RLock()
 	proxyPort := s.cfg.Proxy.Port
@@ -9521,6 +9543,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"nodes": map[string]int{
 			"total":   total,
 			"healthy": healthy,
+			"workers": workers,
 		},
 	})
 }

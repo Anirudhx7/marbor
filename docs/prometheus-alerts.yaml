@@ -3,6 +3,10 @@ groups:
     rules:
 
       # A node has been unhealthy for 5 minutes - likely crashed or unreachable.
+      # The gauge is the raw probe result. A replica worker (a headless host in a
+      # multi-host group) serves no HTTP, so its gauge is 0 and this alert fires
+      # for it even though marbor shows it as a muted worker. The metric has no
+      # worker label: silence it per node with an Alertmanager matcher.
       - alert: MarborNodeDown
         expr: marbor_node_healthy == 0
         for: 5m

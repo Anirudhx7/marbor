@@ -139,8 +139,12 @@ func runNodes(ctx *RunCtx) int {
 		if n.WarmupSupported != nil {
 			keepWarm = yesNo(*n.WarmupSupported)
 		}
+		health := n.Health
+		if n.HeadlessWorker {
+			health = "worker"
+		}
 		fmt.Fprintf(tw, "%s\t%s:%d\t%s\t%s\t%s\t%s / %s\t%d\t%s\t%s\t%s\t%s\t%s\n",
-			n.Name, n.Host, n.Port, n.Health, n.Runtime, n.GPUModel,
+			n.Name, n.Host, n.Port, health, n.Runtime, n.GPUModel,
 			fmtVRAMUsed(n), fmtVRAMTotal(n), len(n.LoadedModels), yesNo(n.Draining),
 			role, replicaHead, formatDetectedGPUs(n), keepWarm)
 	}

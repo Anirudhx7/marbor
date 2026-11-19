@@ -376,9 +376,11 @@ func TestHandleNodes_FilterDoesNotShiftReplicaRoles(t *testing.T) {
 	for _, n := range r.Nodes() {
 		n.Lock()
 		n.Healthy = n.Name == "head"
+		// A failing worker matches no health signal, so select it by draining.
+		n.Draining = n.Name == "worker"
 		n.Unlock()
 	}
-	_, body := getNodes(t, s, "signal=down")
+	_, body := getNodes(t, s, "signal=draining")
 	got := decodeNodes(t, body)
 	if len(got) != 1 || got[0].Name != "worker" {
 		t.Fatalf("got %v, want [worker]", namesOf(got))

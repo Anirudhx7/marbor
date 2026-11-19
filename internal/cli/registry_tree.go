@@ -102,6 +102,7 @@ func buildRoot() *Command {
 					"degraded, draining, down, agent, warm, pressure. healthy and degraded leave out draining nodes; a node that is down and draining\n" +
 					"matches both down and draining; agent means a live marbor agent is reporting; warm means a model is loaded; pressure means used\n" +
 					"VRAM is at least 90% of a known total (a node without measured VRAM never matches, so \"no pressure\" there means unknown, not ok).\n" +
+					"A worker whose probe is failing shows worker instead of down and matches none of healthy, degraded or down.\n" +
 					"--search keeps nodes whose name or GPU model contains the text, trimmed and ignoring case, and combines with --signal. Giving --signal more\n" +
 					"than once adds to the list. No match is an empty table (header only) or [] with --json and still exits 0, so scripts that act on\n" +
 					"matches should count rows rather than check the exit status.",

@@ -652,6 +652,12 @@ func (r *Router) markFailure(n *NodeState) {
 		// Capture the node's last-known warm set immediately (Tier 1): once it is
 		// unhealthy, polling can no longer refresh its residency.
 		r.snapshotNode(n)
+		// A replica worker serves no HTTP, so a failing probe is expected and
+		// is not announced. prevHealthy is left untouched so a later recovery
+		// sends no node_up either.
+		if r.roleForWebhook(nodeName) == RoleWorker {
+			return
+		}
 		// Fire webhook on node_down transition. Guarded by a pool-membership
 		// check so a poll racing RemoveNode cannot resurrect a prevHealthy
 		// entry for a node that was just removed.
@@ -665,6 +671,24 @@ func (r *Router) markFailure(n *NodeState) {
 			r.fireWebhook("node_down", nodeName, nodeURL)
 		}
 	}
+}
+
+// roleForWebhook resolves a node's replica role for the node_down decision.
+// No lock is held by the caller or taken here beyond the short pool copy in
+// Nodes: role resolution reads every node's declaration under that node's own
+// lock, so calling it while holding this node's lock, or the router lock,
+// would nest locks and can deadlock against a concurrent node write. A panic
+// during resolution (a malformed declaration) falls back to RoleUnresolved so
+// the webhook still fires: failing loud is better than silencing a real outage.
+func (r *Router) roleForWebhook(name string) (role SchedulingRole) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			log.Printf("router: role resolution panicked for node %s: %v", name, truncateForLog(fmt.Sprint(rec), maxLogValueBytes))
+			role = RoleUnresolved
+		}
+	}()
+	roles, _ := resolveSchedulingRolesAndHeads(r.Nodes())
+	return roles[name]
 }
 
 // nvidiaStaleIntervals is how many nvidia-smi poll intervals a cached reading

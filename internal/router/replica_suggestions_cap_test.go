@@ -55,3 +55,15 @@ func TestCorrelate_VLLMSmallNodeCountListsEveryMissingRank(t *testing.T) {
 		t.Errorf("small counts must not be summarized: %q", joined)
 	}
 }
+
+// A worker that is not registered yet is described as muted, not as down.
+func TestCorrelate_MissingRankTextDescribesMutedWorker(t *testing.T) {
+	s := missingRankSuggestion(t, 3)
+	joined := strings.Join(s.Missing, "\n")
+	if strings.Contains(joined, "will show down") {
+		t.Errorf("missing text still says the worker will show down: %q", joined)
+	}
+	if !strings.Contains(joined, "shows as a muted worker while its probe fails") {
+		t.Errorf("missing text should describe the muted worker: %q", joined)
+	}
+}

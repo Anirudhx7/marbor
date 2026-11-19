@@ -2394,6 +2394,22 @@ func (r *Router) Nodes() []*NodeState {
 	return out
 }
 
+// IsHeadlessWorker reports whether a node with this role and probe state
+// should be presented as a headless worker: a resolved replica worker whose
+// health probe is failing. A headless worker serves no HTTP of its own, so a
+// failing probe is expected and is not an outage. The raw health state, the
+// routing decisions and the admin gates are unaffected; only presentation
+// (counts, signals, webhooks) consults this. A role that did not resolve is
+// never headless, so a misdeclared group still shows as down. The caller
+// reads healthy and failures under the node's own lock.
+func IsHeadlessWorker(role SchedulingRole, healthy bool, failures int) bool {
+	return isHeadlessWorker(role, healthy, failures)
+}
+
+func isHeadlessWorker(role SchedulingRole, healthy bool, failures int) bool {
+	return role == RoleWorker && (!healthy || failures > 0)
+}
+
 // SchedulingRoles exposes resolveSchedulingRoles (placement.go) to callers
 // outside this package - the admin API and CLI both need to compute every
 // node's replica-scheduling role once per request/list (never per node) to
