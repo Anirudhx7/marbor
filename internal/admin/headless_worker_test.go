@@ -161,10 +161,18 @@ func TestHandleNodes_Law5RuntimeTable(t *testing.T) {
 			s, r := workerServerWith(t, rt)
 			failWorker(t, r, "w1")
 			_, body := getNodes(t, s, "")
+			found := false
 			for _, n := range decodeNodes(t, body) {
-				if n.Name == "w1" && (!n.HeadlessWorker || len(n.Signals) != 0) {
+				if n.Name != "w1" {
+					continue
+				}
+				found = true
+				if !n.HeadlessWorker || len(n.Signals) != 0 {
 					t.Errorf("%s worker: headless=%v signals=%v, want muted", rt, n.HeadlessWorker, n.Signals)
 				}
+			}
+			if !found {
+				t.Fatalf("%s: node w1 missing from the node list", rt)
 			}
 			code, h := getHealth(t, s)
 			if code != http.StatusOK || h.Nodes.Workers != 1 || h.Nodes.Total != 4 {
@@ -264,7 +272,6 @@ func TestFleetCounts(t *testing.T) {
 			}
 			r := router.New(config.RoutingConfig{}, cfgs, nil)
 			for _, n := range tc.nodes {
-				n := n
 				setNode(t, r, n.name, func(ns *router.NodeState) { ns.Healthy = n.healthy; ns.Failures = n.failures })
 			}
 			total, healthy, workers := fleetCounts(r.Nodes(), tc.roles)
@@ -340,10 +347,18 @@ func TestHandleModels_CountsExcludeFailingWorkersButPerNodeStaysRaw(t *testing.T
 	if got.Models[0].TotalNodes == got.TotalNodes {
 		t.Errorf("per-model total_nodes (%d) must differ from top-level total_nodes (%d)", got.Models[0].TotalNodes, got.TotalNodes)
 	}
+	foundW1 := false
 	for _, n := range got.Models[0].Nodes {
-		if n.Name == "w1" && n.Healthy {
+		if n.Name != "w1" {
+			continue
+		}
+		foundW1 = true
+		if n.Healthy {
 			t.Error("per-node healthy for w1 must stay raw (false)")
 		}
+	}
+	if !foundW1 {
+		t.Fatalf("w1 missing from the model's node list: %+v", got.Models[0].Nodes)
 	}
 }
 
@@ -366,18 +381,13 @@ func groupedFleet(tb testing.TB, n int) *Server {
 			nodes[g+k].Lock()
 			nodes[g+k].ReplicaPeers = &store.ReplicaPeers{Members: members, Head: members[0]}
 			nodes[g+k].Healthy = k == 0
-			nodes[g+k].Failures = 3 * (1 - boolInt(k == 0))
+			if k != 0 {
+				nodes[g+k].Failures = 3
+			}
 			nodes[g+k].Unlock()
 		}
 	}
 	return NewServer(r, nil, config.Config{})
-}
-
-func boolInt(b bool) int {
-	if b {
-		return 1
-	}
-	return 0
 }
 
 func TestHealthSummaryCatalog_BoundUnderLoad(t *testing.T) {
@@ -393,18 +403,18 @@ func TestHealthSummaryCatalog_BoundUnderLoad(t *testing.T) {
 		{"/admin/models", s.handleModels, 10},
 	}
 	for _, c := range calls {
-		target, h := c.target, c.h
 		start := time.Now()
 		for i := 0; i < c.n; i++ {
 			rec := httptest.NewRecorder()
-			h(rec, httptest.NewRequest(http.MethodGet, target, nil))
+			c.h(rec, httptest.NewRequest(http.MethodGet, c.target, nil))
 			if rec.Code != http.StatusOK {
-				t.Fatalf("%s: status %d", target, rec.Code)
+				t.Fatalf("%s: status %d", c.target, rec.Code)
 			}
 		}
-		// Generous: it only has to catch a quadratic or lock-convoy regression.
+		// Generous wall-clock bound on the whole loop of calls for this handler,
+		// not per call: it only has to catch a quadratic or lock-convoy regression.
 		if d := time.Since(start); d > 5*time.Second {
-			t.Fatalf("%d %s calls over 200 grouped nodes took %v, want under 5s", c.n, target, d)
+			t.Fatalf("%d %s calls over 200 grouped nodes took %v, want under 5s", c.n, c.target, d)
 		}
 	}
 }
@@ -470,13 +480,18 @@ func TestHeadlessWorker_DrainingAcrossSurfaces(t *testing.T) {
 	setNode(t, r, "w1", func(n *router.NodeState) { n.Draining = true })
 
 	_, body := getNodes(t, s, "")
+	foundW1 := false
 	for _, n := range decodeNodes(t, body) {
 		if n.Name != "w1" {
 			continue
 		}
+		foundW1 = true
 		if !n.HeadlessWorker || !reflect.DeepEqual(n.Signals, []string{"draining"}) {
 			t.Errorf("w1 = headless %v signals %v, want true [draining]", n.HeadlessWorker, n.Signals)
 		}
+	}
+	if !foundW1 {
+		t.Fatal("node w1 missing from the node list")
 	}
 	code, h := getHealth(t, s)
 	if code != http.StatusOK || h.Nodes.Total != 4 || h.Nodes.Workers != 1 {

@@ -47,7 +47,10 @@ func TestIsHeadlessWorker(t *testing.T) {
 type hookCollector struct {
 	mu     sync.Mutex
 	events []string
-	srv    *httptest.Server
+	// sentinels are the names of every sentinel node this collector's settles
+	// have used, so a later settle also hides earlier sentinels' events.
+	sentinels map[string]bool
+	srv       *httptest.Server
 }
 
 func newHookCollector(t *testing.T) *hookCollector {
@@ -93,12 +96,7 @@ func (c *hookCollector) settle() []string {
 	return c.snapshot()
 }
 
-// settleWithSentinel waits for a real node_down from a throwaway standalone
-// node, which was started after the code under test, then returns every event
-// except the sentinel's. A wrongly fired webhook from earlier work would have
-// been queued ahead of the sentinel's, so it is far less likely to be missed
-// than with a plain sleep. Delivery order is not guaranteed, so a short
-// grace period still follows.
+// sentinelSeq numbers the throwaway sentinel nodes so each has its own name.
 var sentinelSeq atomic.Int64
 
 // waitForEvent polls until the event has arrived or times out.
@@ -123,12 +121,26 @@ func countEvent(events []string, want string) int {
 	return n
 }
 
+// settleWithSentinel waits for a real node_down from a throwaway standalone
+// node, which was started after the code under test, then returns every event
+// except those of this and earlier sentinels. A wrongly fired webhook from earlier work would
+// have been queued ahead of the sentinel's, so it is far less likely to be
+// missed than with a plain sleep. Delivery order is not guaranteed, so a short
+// grace period still follows.
 func (c *hookCollector) settleWithSentinel(t *testing.T, r *Router) []string {
 	t.Helper()
 	seq := sentinelSeq.Add(1)
 	name := fmt.Sprintf("sentinel-%d", seq)
-	// A distinct URL per sentinel: the router refuses one backend under two names.
-	r.AddNode(config.NodeConfig{Name: name, URL: fmt.Sprintf("http://localhost:%d", 20000+seq%40000)})
+	c.mu.Lock()
+	if c.sentinels == nil {
+		c.sentinels = map[string]bool{}
+	}
+	c.sentinels[name] = true
+	c.mu.Unlock()
+	// A distinct host per sentinel: the router refuses one backend under two
+	// names. The sentinel is failed through markFailure directly and never
+	// probed, so the reserved .invalid host is never dialled.
+	r.AddNode(config.NodeConfig{Name: name, URL: fmt.Sprintf("http://sentinel-%d.invalid:9", seq)})
 	failN(r, nodeByName(t, r, name), 3)
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
@@ -137,7 +149,10 @@ func (c *hookCollector) settleWithSentinel(t *testing.T, r *Router) []string {
 				time.Sleep(50 * time.Millisecond)
 				var out []string
 				for _, e := range c.snapshot() {
-					if !strings.HasPrefix(e, "node_down:sentinel-") {
+					c.mu.Lock()
+					isSentinel := c.sentinels[strings.TrimPrefix(e, "node_down:")]
+					c.mu.Unlock()
+					if !isSentinel {
 						out = append(out, e)
 					}
 				}
@@ -236,7 +251,7 @@ func TestMarkFailure_StandaloneHeadAndUnresolvedStillFireNodeDown(t *testing.T) 
 	}
 	// Only once each: further failures do not repeat.
 	failN(r, nodeByName(t, r, "solo"), 3)
-	if got := hook.settle(); len(got) != 3 {
+	if got := hook.settleWithSentinel(t, r); len(got) != 3 {
 		t.Errorf("repeat failures re-sent node_down: %v", got)
 	}
 }
@@ -328,9 +343,10 @@ func TestMarkFailure_ProcessRestartMidOutageSeededTrue(t *testing.T) {
 	}
 	failN(r, nodeByName(t, r, "worker"), 3)
 	failN(r, nodeByName(t, r, "solo"), 3)
-	got := hook.waitFor(1)
+	hook.waitFor(1)
+	got := hook.settleWithSentinel(t, r)
 	if len(got) != 1 || got[0] != "node_down:solo" {
-		t.Fatalf("events = %v, want only node_down:solo", hook.settle())
+		t.Fatalf("events = %v, want only node_down:solo", got)
 	}
 }
 
@@ -378,17 +394,6 @@ func TestMarkFailure_PanicRecoverPathSilentForWorker(t *testing.T) {
 	}
 }
 
-func TestRoleForWebhook_PanicFallsBackToUnresolved(t *testing.T) {
-	r := newTestRouter([]config.NodeConfig{{Name: "a", URL: "http://localhost:19991"}}, config.WebhookConfig{})
-	// A nil node in the pool makes role resolution panic.
-	r.mu.Lock()
-	r.nodes = append(r.nodes, nil)
-	r.mu.Unlock()
-	if got := r.roleForWebhook("a"); got != RoleUnresolved {
-		t.Fatalf("roleForWebhook after panic = %v, want RoleUnresolved", got)
-	}
-}
-
 // TestRoleForWebhook_HoldsNoLockWhileResolving: role resolution reads every
 // node under that node's own lock, so it must run with no lock of this node or
 // the router held. While resolution is blocked on node b's write lock, this
@@ -402,8 +407,9 @@ func TestRoleForWebhook_HoldsNoLockWhileResolving(t *testing.T) {
 	a := nodeByName(t, r, "a")
 	b := nodeByName(t, r, "b")
 	started := make(chan struct{})
+	var startedOnce sync.Once
 	r.resolveRoles = func(nodes []*NodeState) (map[string]SchedulingRole, map[string]string) {
-		close(started)
+		startedOnce.Do(func() { close(started) })
 		return resolveSchedulingRolesAndHeads(nodes)
 	}
 	b.mu.Lock() // another node is being written
@@ -531,8 +537,8 @@ func resetNode(n *NodeState) {
 // TestMarkFailure_RaceWithRoleChange flips the worker's real role through
 // PatchNode (declare the group, then clear it) while markFailure runs, with the
 // node reset each round so every round can cross the failure threshold again.
-// Whatever the interleaving, a node_down for the worker is recorded exactly
-// when one was sent, and once the role stops moving the converged behaviour
+// Whatever the interleaving, the node_down events delivered equal the rounds
+// that recorded one, and once the role stops moving the converged behaviour
 // holds: silent as a worker, announced as a standalone node.
 func TestMarkFailure_RaceWithRoleChange(t *testing.T) {
 	const rounds = 60
@@ -540,13 +546,23 @@ func TestMarkFailure_RaceWithRoleChange(t *testing.T) {
 	r := workerFleet(t, hook)
 	w := nodeByName(t, r, "worker")
 	members := []string{"head", "worker"}
+	// Each round re-arms prevHealthy to true, so after the round it is false
+	// exactly when that round sent a node_down. sent is written only by the
+	// failing goroutine and read after wg.Wait.
+	sent := 0
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
 		for i := 0; i < rounds; i++ {
+			r.mu.Lock()
+			r.prevHealthy["worker"] = true
+			r.mu.Unlock()
 			resetNode(w)
 			failN(r, w, 3)
+			if v, ok := prevHealthyOf(r, "worker"); ok && !v {
+				sent++
+			}
 		}
 	}()
 	go func() {
@@ -557,22 +573,24 @@ func TestMarkFailure_RaceWithRoleChange(t *testing.T) {
 	}()
 	wg.Wait()
 
+	// Wait until every node_down that was sent has arrived, then require the
+	// exact count after a sentinel settle.
+	before := sent
+	for deadline := time.Now().Add(5 * time.Second); countEvent(hook.snapshot(), "node_down:worker") < sent && time.Now().Before(deadline); {
+		time.Sleep(10 * time.Millisecond)
+	}
 	got := hook.settleWithSentinel(t, r)
-	if len(got) > rounds {
-		t.Fatalf("%d events for %d rounds: %v", len(got), rounds, got)
+	if len(got) != sent {
+		t.Fatalf("%d events, want %d (rounds that sent node_down): %v", len(got), sent, got)
 	}
 	for _, e := range got {
 		if e != "node_down:worker" {
 			t.Fatalf("unexpected event %q in %v", e, got)
 		}
 	}
-	if v, ok := prevHealthyOf(r, "worker"); !ok || v != (len(got) == 0) {
-		t.Fatalf("prevHealthy = %v,%v with %d node_down events: must be false exactly when one was sent", v, ok, len(got))
-	}
 
 	// Converged as a worker: silent.
 	setPeers(t, r, "head", members, false)
-	before := len(got)
 	resetNode(w)
 	failN(r, w, 3)
 	if after := hook.settleWithSentinel(t, r); len(after) != before {
@@ -636,5 +654,30 @@ func TestMarkFailure_Law5RuntimeTable(t *testing.T) {
 				t.Fatalf("%s worker muted, events = %v", rt, got)
 			}
 		})
+	}
+}
+
+func TestMarkFailure_WorkerMuteIsLogged(t *testing.T) {
+	buf := captureLog(t)
+	hook := newHookCollector(t)
+	r := workerFleet(t, hook)
+	failN(r, nodeByName(t, r, "worker"), 3)
+	if out := buf.String(); !strings.Contains(out, `probe failing for node "worker", muted as replica worker`) {
+		t.Fatalf("muted-worker log line missing, log = %q", out)
+	}
+}
+
+func TestRoleForWebhook_PanicLogsStack(t *testing.T) {
+	buf := captureLog(t)
+	r := newTestRouter([]config.NodeConfig{{Name: "a", URL: "http://localhost:19991"}}, config.WebhookConfig{})
+	r.resolveRoles = func([]*NodeState) (map[string]SchedulingRole, map[string]string) {
+		panic("simulated resolver panic")
+	}
+	if got := r.roleForWebhook("a"); got != RoleUnresolved {
+		t.Fatalf("roleForWebhook after panic = %v, want RoleUnresolved", got)
+	}
+	out := buf.String()
+	if !strings.Contains(out, `role resolution panicked for node "a"`) || !strings.Contains(out, "goroutine ") {
+		t.Fatalf("panic log missing message or stack: %q", out)
 	}
 }

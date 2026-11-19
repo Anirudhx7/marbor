@@ -12,13 +12,13 @@ import (
 func TestRun_NodesShowsWorkerForHeadlessWorker(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`[
+		_, _ = w.Write([]byte(`[
 			{"name":"head","runtime":"vllm","health":"healthy","schedulingRole":"head"},
 			{"name":"w1","runtime":"vllm","health":"down","headlessWorker":true,"schedulingRole":"worker"},
 			{"name":"solo","runtime":"vllm","health":"down"}
 		]`))
 	}))
-	defer srv.Close()
+	t.Cleanup(srv.Close)
 	withTempConfigDir(t)
 	mustSaveSession(t, srv.URL, "tok")
 
@@ -44,7 +44,7 @@ func TestRun_NodesShowsWorkerForHeadlessWorker(t *testing.T) {
 			health[f[0]] = cell[0]
 		}
 	}
-	if health["w1"] != "worker" || health["solo"] != "down" || health["head"] != "healthy" {
+	if health["w1"] != healthWorker || health["solo"] != "down" || health["head"] != "healthy" {
 		t.Errorf("HEALTH column = %v, want w1 worker, solo down, head healthy", health)
 	}
 }
@@ -52,9 +52,9 @@ func TestRun_NodesShowsWorkerForHeadlessWorker(t *testing.T) {
 func TestRun_NodesJSONKeepsRawHealth(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`[{"name":"w1","health":"down","headlessWorker":true}]`))
+		_, _ = w.Write([]byte(`[{"name":"w1","health":"down","headlessWorker":true}]`))
 	}))
-	defer srv.Close()
+	t.Cleanup(srv.Close)
 	withTempConfigDir(t)
 	mustSaveSession(t, srv.URL, "tok")
 
@@ -90,9 +90,9 @@ func TestRun_StatusWorkerSuffix(t *testing.T) {
 					"nodes": map[string]int{"total": 3, "healthy": 3, "workers": tc.workers},
 				})
 				w.Header().Set("Content-Type", "application/json")
-				w.Write(body)
+				_, _ = w.Write(body)
 			}))
-			defer srv.Close()
+			t.Cleanup(srv.Close)
 			withTempConfigDir(t)
 			var stdout, stderr bytes.Buffer
 			if code := Run([]string{"status", "--server", srv.URL}, &stdout, &stderr); code != ExitOK {
@@ -111,9 +111,9 @@ func TestRun_StatusWorkerSuffix(t *testing.T) {
 func TestRun_StatusJSONCarriesWorkers(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"status":"ok","nodes":{"total":3,"healthy":3,"workers":2}}`))
+		_, _ = w.Write([]byte(`{"status":"ok","nodes":{"total":3,"healthy":3,"workers":2}}`))
 	}))
-	defer srv.Close()
+	t.Cleanup(srv.Close)
 	withTempConfigDir(t)
 	var stdout, stderr bytes.Buffer
 	if code := Run([]string{"status", "--json", "--server", srv.URL}, &stdout, &stderr); code != ExitOK {
@@ -154,5 +154,38 @@ func TestHeadlessWorkerFieldsAreAdditive(t *testing.T) {
 	}
 	if ns[1].Health != "down" || ns[1].HeadlessWorker {
 		t.Errorf("older node payload decoded to %+v, want raw down and not a worker", ns[1])
+	}
+}
+
+// An older client decodes only the fields that existed before the worker
+// fields. A new payload must leave each of those fields unchanged for it.
+func TestHeadlessWorkerPayloadKeepsOldFieldsForOldClients(t *testing.T) {
+	type oldHealth struct {
+		Status    string `json:"status"`
+		Version   string `json:"version"`
+		ProxyPort int    `json:"proxy_port"`
+		Nodes     struct {
+			Total   int `json:"total"`
+			Healthy int `json:"healthy"`
+		} `json:"nodes"`
+	}
+	type oldNode struct {
+		Name     string `json:"name"`
+		Health   string `json:"health"`
+		Draining bool   `json:"draining"`
+	}
+	var h oldHealth
+	if err := json.Unmarshal([]byte(`{"status":"ok","version":"v1","proxy_port":11434,"nodes":{"total":3,"healthy":3,"workers":2}}`), &h); err != nil {
+		t.Fatal(err)
+	}
+	if h.Status != "ok" || h.Version != "v1" || h.ProxyPort != 11434 || h.Nodes.Total != 3 || h.Nodes.Healthy != 3 {
+		t.Errorf("old health subset decoded to %+v", h)
+	}
+	var ns []oldNode
+	if err := json.Unmarshal([]byte(`[{"name":"w1","health":"down","draining":true,"headlessWorker":true,"schedulingRole":"worker"}]`), &ns); err != nil {
+		t.Fatal(err)
+	}
+	if len(ns) != 1 || ns[0].Name != "w1" || ns[0].Health != "down" || !ns[0].Draining {
+		t.Errorf("old node subset decoded to %+v", ns)
 	}
 }

@@ -518,7 +518,8 @@ type Router struct {
 	// transition detection (healthy -> unhealthy and back).
 	prevHealthy map[string]bool
 	// resolveRoles replaces role resolution in roleForWebhook when set. Nil in
-	// production; tests set it to simulate a resolver that panics.
+	// production; a test hook to simulate a resolver that panics. It is read
+	// without synchronisation, so set it only before any goroutine uses the router.
 	resolveRoles func([]*NodeState) (map[string]SchedulingRole, map[string]string)
 	// prevAgentPresent mirrors prevHealthy for Marbor Agent reachability, so an
 	// operator gets an agent_down/agent_up webhook when a configured agent
@@ -2405,6 +2406,7 @@ func (r *Router) Nodes() []*NodeState {
 // (counts, signals, webhooks) consults this. A role that did not resolve is
 // never headless, so a misdeclared group still shows as down. The caller
 // reads healthy and failures under the node's own lock.
+// The router and the admin API share this one rule.
 func IsHeadlessWorker(role SchedulingRole, healthy bool, failures int) bool {
 	return role == RoleWorker && (!healthy || failures > 0)
 }

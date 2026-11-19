@@ -97,7 +97,10 @@ func TestMarkFailure_DownThenDeclaredWorkerRecoveryStillSendsNodeUp(t *testing.T
 	if v, _ := prevHealthyOf(f.r, "worker"); v {
 		t.Fatal("prevHealthy must remain false after node_down was sent")
 	}
-	f.poll(t, "worker", 2) // still down as a worker: no further event
+	// Still down as a worker: no further event. This is a weak check (an
+	// already-unhealthy node has no transition to announce); the recovery
+	// node_up below is the assertion that matters.
+	f.poll(t, "worker", 2)
 	if got := f.hook.settleWithSentinel(t, f.r); len(got) != 1 {
 		t.Fatalf("events = %v, want just the original node_down", got)
 	}
@@ -134,14 +137,13 @@ func TestMarkFailure_WorkerRedeclaredStandaloneRecoversSilently(t *testing.T) {
 // prevHealthy.
 func TestPollNode_WorkerHysteresisWindowStaysHeadlessAndSilent(t *testing.T) {
 	f := newSwitchFleet(t)
-	roleOf := func() SchedulingRole {
-		return f.r.roleForWebhook("worker")
-	}
 	headless := func() bool {
+		// Resolve the role before taking the node lock: resolution locks every node.
+		role := f.r.roleForWebhook("worker")
 		n := nodeByName(t, f.r, "worker")
 		n.mu.RLock()
 		defer n.mu.RUnlock()
-		return IsHeadlessWorker(roleOf(), n.Healthy, n.Failures)
+		return IsHeadlessWorker(role, n.Healthy, n.Failures)
 	}
 	f.down.Store(true)
 	f.poll(t, "worker", 3)

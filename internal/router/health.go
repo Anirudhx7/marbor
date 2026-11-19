@@ -657,7 +657,7 @@ func (r *Router) markFailure(n *NodeState) {
 		// is not announced. prevHealthy is left untouched so a later recovery
 		// sends no node_up either.
 		if r.roleForWebhook(nodeName) == RoleWorker {
-			log.Printf("router: probe failing for node %s, muted as replica worker (no node_down)", nodeName)
+			log.Printf("router: probe failing for node %q, muted as replica worker (no node_down)", nodeName)
 			return
 		}
 		// Fire webhook on node_down transition. Guarded by a pool-membership
@@ -693,7 +693,7 @@ func (r *Router) markFailure(n *NodeState) {
 func (r *Router) roleForWebhook(name string) (role SchedulingRole) {
 	defer func() {
 		if rec := recover(); rec != nil {
-			log.Printf("router: role resolution panicked for node %s: %v\n%s", name, truncateForLog(fmt.Sprint(rec), maxLogValueBytes), debug.Stack())
+			log.Printf("router: role resolution panicked for node %q: %v\n%s", name, truncateForLog(fmt.Sprint(rec), maxLogValueBytes), debug.Stack())
 			role = RoleUnresolved
 		}
 	}()

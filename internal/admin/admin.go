@@ -1808,6 +1808,7 @@ func (s *Server) handleExplainRequest(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 	nodes := s.router.Nodes()
+	// roles first, before any node lock (see fleetCounts)
 	roles, _ := s.router.SchedulingRolesWithHeads(nodes)
 	totalNodes, online, workers := fleetCounts(nodes, roles)
 	totalConns := int32(0)
@@ -7313,6 +7314,7 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// roles first, before any node lock (see fleetCounts)
 	roles, _ := s.router.SchedulingRolesWithHeads(nodes)
 	totalCounted, totalHealthy, _ := fleetCounts(nodes, roles)
 
@@ -9520,6 +9522,7 @@ func healthStatus(total, healthy int) string {
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	nodes := s.router.Nodes()
+	// roles first, before any node lock (see fleetCounts)
 	roles, _ := s.router.SchedulingRolesWithHeads(nodes)
 	total, healthy, workers := fleetCounts(nodes, roles)
 
