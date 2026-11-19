@@ -517,6 +517,9 @@ type Router struct {
 	// prevHealthy tracks the last known health state per node name for
 	// transition detection (healthy -> unhealthy and back).
 	prevHealthy map[string]bool
+	// resolveRoles replaces role resolution in roleForWebhook when set. Nil in
+	// production; tests set it to simulate a resolver that panics.
+	resolveRoles func([]*NodeState) (map[string]SchedulingRole, map[string]string)
 	// prevAgentPresent mirrors prevHealthy for Marbor Agent reachability, so an
 	// operator gets an agent_down/agent_up webhook when a configured agent
 	// stops/resumes responding - independent of the node's own inference
@@ -2403,10 +2406,6 @@ func (r *Router) Nodes() []*NodeState {
 // never headless, so a misdeclared group still shows as down. The caller
 // reads healthy and failures under the node's own lock.
 func IsHeadlessWorker(role SchedulingRole, healthy bool, failures int) bool {
-	return isHeadlessWorker(role, healthy, failures)
-}
-
-func isHeadlessWorker(role SchedulingRole, healthy bool, failures int) bool {
 	return role == RoleWorker && (!healthy || failures > 0)
 }
 

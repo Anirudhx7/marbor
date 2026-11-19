@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -656,6 +657,7 @@ func (r *Router) markFailure(n *NodeState) {
 		// is not announced. prevHealthy is left untouched so a later recovery
 		// sends no node_up either.
 		if r.roleForWebhook(nodeName) == RoleWorker {
+			log.Printf("router: probe failing for node %s, muted as replica worker (no node_down)", nodeName)
 			return
 		}
 		// Fire webhook on node_down transition. Guarded by a pool-membership
@@ -680,14 +682,26 @@ func (r *Router) markFailure(n *NodeState) {
 // would nest locks and can deadlock against a concurrent node write. A panic
 // during resolution (a malformed declaration) falls back to RoleUnresolved so
 // the webhook still fires: failing loud is better than silencing a real outage.
+//
+// A node removed from the pool resolves to the zero value (standalone); the
+// caller's pool-membership check then blocks both the webhook and the
+// prevHealthy write. Leaving prevHealthy untouched for a worker is safe because
+// a true or absent entry means no node_down was sent, so recovery sends no
+// node_up. This is reachable from the pollNode panic-recover defer, which is why
+// it recovers on its own. Resolving over the whole pool is O(nodes) on purpose:
+// it runs once per node going unhealthy, and a cache could go stale.
 func (r *Router) roleForWebhook(name string) (role SchedulingRole) {
 	defer func() {
 		if rec := recover(); rec != nil {
-			log.Printf("router: role resolution panicked for node %s: %v", name, truncateForLog(fmt.Sprint(rec), maxLogValueBytes))
+			log.Printf("router: role resolution panicked for node %s: %v\n%s", name, truncateForLog(fmt.Sprint(rec), maxLogValueBytes), debug.Stack())
 			role = RoleUnresolved
 		}
 	}()
-	roles, _ := resolveSchedulingRolesAndHeads(r.Nodes())
+	resolve := r.resolveRoles
+	if resolve == nil {
+		resolve = resolveSchedulingRolesAndHeads
+	}
+	roles, _ := resolve(r.Nodes())
 	return roles[name]
 }
 

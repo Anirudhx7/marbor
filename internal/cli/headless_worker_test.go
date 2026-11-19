@@ -26,11 +26,22 @@ func TestRun_NodesShowsWorkerForHeadlessWorker(t *testing.T) {
 	if code := Run([]string{"nodes", "--server", srv.URL}, &stdout, &stderr); code != ExitOK {
 		t.Fatalf("exit %d (stderr: %s)", code, stderr.String())
 	}
+	// Read the HEALTH cell by the header's column offset, not by splitting on
+	// spaces, so empty cells in other columns cannot shift it.
+	lines := strings.Split(stdout.String(), "\n")
+	col := strings.Index(lines[0], "HEALTH")
+	if col < 0 {
+		t.Fatalf("no HEALTH column in %q", lines[0])
+	}
 	health := map[string]string{}
-	for _, line := range strings.Split(stdout.String(), "\n") {
+	for _, line := range lines[1:] {
 		f := strings.Fields(line)
-		if len(f) >= 3 {
-			health[f[0]] = f[2]
+		if len(f) == 0 || len(line) <= col {
+			continue
+		}
+		cell := strings.Fields(line[col:])
+		if len(cell) > 0 {
+			health[f[0]] = cell[0]
 		}
 	}
 	if health["w1"] != "worker" || health["solo"] != "down" || health["head"] != "healthy" {
@@ -67,6 +78,7 @@ func TestRun_StatusWorkerSuffix(t *testing.T) {
 		want    string
 	}{
 		{"none", 0, "nodes:    3/3 healthy\n"},
+		{"negative is ignored", -2, "nodes:    3/3 healthy\n"},
 		{"one", 1, "nodes:    3/3 healthy, 1 worker probe failing\n"},
 		{"many", 2, "nodes:    3/3 healthy, 2 workers probe failing\n"},
 	}
@@ -89,30 +101,58 @@ func TestRun_StatusWorkerSuffix(t *testing.T) {
 			if !strings.Contains(stdout.String(), tc.want) {
 				t.Errorf("status output = %q, want it to contain %q", stdout.String(), tc.want)
 			}
+			if tc.workers <= 0 && strings.Contains(stdout.String(), "probe") {
+				t.Errorf("status output = %q, want no worker suffix", stdout.String())
+			}
 		})
 	}
 }
 
-// An older CLI (the structs as they were before the worker fields) must still
-// decode a new server payload: the fields are additive.
-func TestHeadlessWorkerPayloadDecodesIntoOldStructs(t *testing.T) {
-	type oldHealth struct {
-		Status string `json:"status"`
-		Nodes  struct {
-			Total   int `json:"total"`
-			Healthy int `json:"healthy"`
-		} `json:"nodes"`
+func TestRun_StatusJSONCarriesWorkers(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"status":"ok","nodes":{"total":3,"healthy":3,"workers":2}}`))
+	}))
+	defer srv.Close()
+	withTempConfigDir(t)
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"status", "--json", "--server", srv.URL}, &stdout, &stderr); code != ExitOK {
+		t.Fatalf("exit %d (stderr: %s)", code, stderr.String())
 	}
-	type oldNode struct {
-		Name   string `json:"name"`
-		Health string `json:"health"`
+	var got HealthResp
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("%v: %s", err, stdout.String())
 	}
-	var h oldHealth
-	if err := json.Unmarshal([]byte(`{"status":"ok","nodes":{"total":3,"healthy":3,"workers":2}}`), &h); err != nil || h.Nodes.Total != 3 {
-		t.Fatalf("old health decode: %v %+v", err, h)
+	if got.Nodes.Workers != 2 || got.Nodes.Total != 3 || got.Nodes.Healthy != 3 {
+		t.Errorf("status --json nodes = %+v, want total 3 healthy 3 workers 2", got.Nodes)
 	}
-	var n []oldNode
-	if err := json.Unmarshal([]byte(`[{"name":"w1","health":"down","headlessWorker":true}]`), &n); err != nil || n[0].Health != "down" {
-		t.Fatalf("old node decode: %v %+v", err, n)
+}
+
+// The worker fields are additive. The real response structs must keep every
+// existing field intact on a new payload (raw health string included), and an
+// older server's payload, which lacks the new fields, must decode to the
+// "no worker" values instead of failing.
+func TestHeadlessWorkerFieldsAreAdditive(t *testing.T) {
+	var h HealthResp
+	if err := json.Unmarshal([]byte(`{"status":"ok","version":"v1","proxy_port":11434,"nodes":{"total":3,"healthy":3,"workers":2}}`), &h); err != nil {
+		t.Fatal(err)
+	}
+	if h.Status != "ok" || h.Version != "v1" || h.ProxyPort != 11434 || h.Nodes.Total != 3 || h.Nodes.Healthy != 3 || h.Nodes.Workers != 2 {
+		t.Errorf("new health payload decoded to %+v", h)
+	}
+	var oldH HealthResp
+	if err := json.Unmarshal([]byte(`{"status":"ok","nodes":{"total":3,"healthy":3}}`), &oldH); err != nil || oldH.Nodes.Workers != 0 || oldH.Nodes.Total != 3 {
+		t.Errorf("older health payload: %v %+v", err, oldH)
+	}
+
+	var ns []NodeResp
+	if err := json.Unmarshal([]byte(`[{"name":"w1","health":"down","draining":true,"headlessWorker":true},{"name":"solo","health":"down"}]`), &ns); err != nil {
+		t.Fatal(err)
+	}
+	if ns[0].Name != "w1" || ns[0].Health != "down" || !ns[0].Draining || !ns[0].HeadlessWorker {
+		t.Errorf("new node payload decoded to %+v", ns[0])
+	}
+	if ns[1].Health != "down" || ns[1].HeadlessWorker {
+		t.Errorf("older node payload decoded to %+v, want raw down and not a worker", ns[1])
 	}
 }

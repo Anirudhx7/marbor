@@ -1808,7 +1808,7 @@ func (s *Server) handleExplainRequest(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleSummary(w http.ResponseWriter, r *http.Request) {
 	nodes := s.router.Nodes()
-	roles, _ := s.router.SchedulingRolesWithHeads(nodes) // before any node lock: role resolution takes each node's own lock
+	roles, _ := s.router.SchedulingRolesWithHeads(nodes)
 	totalNodes, online, workers := fleetCounts(nodes, roles)
 	totalConns := int32(0)
 	draining := 0
@@ -7313,11 +7313,14 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	roles, _ := s.router.SchedulingRolesWithHeads(nodes) // before any node lock
+	roles, _ := s.router.SchedulingRolesWithHeads(nodes)
 	totalCounted, totalHealthy, _ := fleetCounts(nodes, roles)
 
 	entries := make([]modelEntry, 0, len(modelMap))
 	for _, v := range modelMap {
+		// Per-model total_nodes is the healthy count minus failing workers
+		// (it equals the top-level healthy_nodes), unlike the top-level
+		// total_nodes, which is all nodes minus failing workers.
 		v.TotalNodes = totalHealthy
 		// A model "disagrees" across the fleet when 2+ nodes report a non-empty
 		// digest for it and those digests aren't all the same - e.g. the same
@@ -9487,7 +9490,8 @@ func (s *Server) handleModelFit(w http.ResponseWriter, r *http.Request) {
 // responses. A failing headless worker is left out of both total and healthy
 // and reported separately as workers: it serves no HTTP, so its probe failing
 // is not an outage. roles must come from SchedulingRolesWithHeads over the same
-// nodes, computed before this call because it reads each node under its lock.
+// nodes, computed before any node lock is taken (callers hoist it above their
+// own node loops) because role resolution reads each node under its own lock.
 func fleetCounts(nodes []*router.NodeState, roles map[string]router.SchedulingRole) (total, healthy, workers int) {
 	for _, n := range nodes {
 		n.RLock()
@@ -9516,7 +9520,7 @@ func healthStatus(total, healthy int) string {
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	nodes := s.router.Nodes()
-	roles, _ := s.router.SchedulingRolesWithHeads(nodes) // before any node lock: role resolution takes each node's own lock
+	roles, _ := s.router.SchedulingRolesWithHeads(nodes)
 	total, healthy, workers := fleetCounts(nodes, roles)
 
 	uptimeSecs := int(time.Since(s.startTime).Seconds())

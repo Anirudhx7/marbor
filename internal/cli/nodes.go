@@ -95,6 +95,10 @@ func runNodesConfirmTLS(flags *globalFlags, name, fingerprint string, stdout, st
 	return ExitOK
 }
 
+// healthWorker is the HEALTH column value for a replica worker whose probe is
+// failing; the raw health stays in --json.
+const healthWorker = "worker"
+
 // runNodes implements `marbor nodes` - GET /admin/v1/nodes, session-authed.
 // --signal and --search are passed to the server as-is; the server owns the
 // signal definitions and rejects an unknown id, so the CLI keeps no copy.
@@ -141,7 +145,7 @@ func runNodes(ctx *RunCtx) int {
 		}
 		health := n.Health
 		if n.HeadlessWorker {
-			health = "worker"
+			health = healthWorker
 		}
 		fmt.Fprintf(tw, "%s\t%s:%d\t%s\t%s\t%s\t%s / %s\t%d\t%s\t%s\t%s\t%s\t%s\n",
 			n.Name, n.Host, n.Port, health, n.Runtime, n.GPUModel,
