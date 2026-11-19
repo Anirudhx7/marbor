@@ -97,12 +97,18 @@ func TestMarkFailure_DownThenDeclaredWorkerRecoveryStillSendsNodeUp(t *testing.T
 	if v, _ := prevHealthyOf(f.r, "worker"); v {
 		t.Fatal("prevHealthy must remain false after node_down was sent")
 	}
-	// Still down as a worker: no further event. This is a weak check (an
-	// already-unhealthy node has no transition to announce); the recovery
-	// node_up below is the assertion that matters.
+	// Still down as a worker: the node keeps failing and prevHealthy stays false
+	// so the later recovery knows a node_down went out.
 	f.poll(t, "worker", 2)
-	if got := f.hook.settleWithSentinel(t, f.r); len(got) != 1 {
-		t.Fatalf("events = %v, want just the original node_down", got)
+	n := nodeByName(t, f.r, "worker")
+	n.mu.RLock()
+	healthy, failures := n.Healthy, n.Failures
+	n.mu.RUnlock()
+	if healthy || failures < 5 {
+		t.Fatalf("state = healthy %v failures %d, want unhealthy with at least 5 failures", healthy, failures)
+	}
+	if v, ok := prevHealthyOf(f.r, "worker"); !ok || v {
+		t.Fatalf("prevHealthy = %v,%v, want false,true while still down", v, ok)
 	}
 	f.down.Store(false)
 	f.poll(t, "worker", 2)

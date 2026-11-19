@@ -1,7 +1,6 @@
 package router
 
 import (
-	"bytes"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -19,7 +18,7 @@ import (
 
 const lastResortLogNeedle = "as a last resort"
 
-func lastResortLogLines(buf *bytes.Buffer) int {
+func lastResortLogLines(buf *logCapture) int {
 	return strings.Count(buf.String(), lastResortLogNeedle)
 }
 

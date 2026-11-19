@@ -159,6 +159,10 @@ func TestHeadlessWorkerFieldsAreAdditive(t *testing.T) {
 
 // An older client decodes only the fields that existed before the worker
 // fields. A new payload must leave each of those fields unchanged for it.
+// The payloads are literals because the server-side response structs are
+// unexported in the admin package, which the cli package must not import; the
+// literals mirror the wire shape, and each old field is asserted to keep its
+// value.
 func TestHeadlessWorkerPayloadKeepsOldFieldsForOldClients(t *testing.T) {
 	type oldHealth struct {
 		Status    string `json:"status"`

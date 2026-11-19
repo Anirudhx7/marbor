@@ -155,7 +155,7 @@ func TestHandleNode_HeadlessWorker(t *testing.T) {
 
 // The rows differ only in the runtime string: the worker role is a
 // declaration, so muting must not depend on which runtime the node runs.
-func TestHandleNodes_Law5RuntimeTable(t *testing.T) {
+func TestHandleNodes_AllRuntimes(t *testing.T) {
 	for _, rt := range []string{"ollama", "mlx", "vllm", "llamacpp"} {
 		t.Run(rt, func(t *testing.T) {
 			s, r := workerServerWith(t, rt)
