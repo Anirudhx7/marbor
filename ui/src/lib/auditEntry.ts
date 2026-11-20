@@ -1,6 +1,7 @@
 // Pure mapping of one /admin/audit row to the row the Requests page renders.
 // Kept free of runtime imports so it can be tested directly with node.
 import type { RequestEntry } from '../types';
+import { isValidSplit } from './cacheView.ts';
 
 export interface AuditLogEntry {
   id?: number;
@@ -25,10 +26,10 @@ export interface AuditLogEntry {
 export type AuditPageEntry = RequestEntry & { auditId: number };
 
 // mapAuditEntry turns one /admin/audit row into the row the Requests page
-// renders. The cache split is carried only when both values are numbers: a
-// missing one is unknown and stays absent.
+// renders. The cache split is carried only when both values form a valid split
+// (see isValidSplit): anything else is unknown and stays absent.
 export function mapAuditEntry(e: AuditLogEntry): AuditPageEntry {
-  const hasSplit = typeof e.cachedTokens === 'number' && typeof e.inputTokens === 'number';
+  const hasSplit = isValidSplit(e.cachedTokens, e.inputTokens);
   return {
     id: e.request_id,
     auditId: e.id ?? 0,
@@ -42,7 +43,7 @@ export function mapAuditEntry(e: AuditLogEntry): AuditPageEntry {
     routingReason: e.routing_reason || undefined,
     queueWaitMs: typeof e.queue_wait_ms === 'number' ? e.queue_wait_ms : undefined,
     cloudMs: typeof e.cloud_ms === 'number' ? e.cloud_ms : undefined,
-    cachedTokens: hasSplit ? e.cachedTokens : undefined,
-    inputTokens: hasSplit ? e.inputTokens : undefined,
+    cachedTokens: hasSplit ? (e.cachedTokens as number) : undefined,
+    inputTokens: hasSplit ? (e.inputTokens as number) : undefined,
   };
 }

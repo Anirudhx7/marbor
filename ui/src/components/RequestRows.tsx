@@ -85,7 +85,7 @@ export const RequestRow = memo(function RequestRow({ entry, expanded, explain, o
         <td className="px-4 py-3 whitespace-nowrap text-right font-mono text-xs text-muted-foreground">
           {entry.prefillMs ? `${entry.prefillMs} ms` : '-'}
         </td>
-        <td className="px-4 py-3 whitespace-nowrap text-right font-mono text-xs text-muted-foreground" title={cache.title}>
+        <td className="px-4 py-3 whitespace-nowrap text-right font-mono text-xs text-muted-foreground" title={cache.known ? cache.title : undefined}>
           <CacheText cache={cache} />
         </td>
         <td className="px-4 py-3 whitespace-nowrap">
@@ -138,7 +138,7 @@ export const RequestCard = memo(function RequestCard({ entry, expanded, explain,
         </div>
         <div>
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Cached</div>
-          <div className="text-sm text-foreground font-mono break-words" title={cache.title}><CacheText cache={cache} /></div>
+          <div className="text-sm text-foreground font-mono break-words" title={cache.known ? cache.title : undefined}><CacheText cache={cache} /></div>
         </div>
         <div>
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Model</div>

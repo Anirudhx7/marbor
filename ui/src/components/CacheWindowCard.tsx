@@ -1,5 +1,5 @@
 import type { Analytics } from '../types';
-import { CACHE_EMPTY_HINT, cacheWindowLabel, cacheWindowState, hitPctLabel } from '../lib/cacheView';
+import { CACHE_EMPTY_HINT, cacheRowKey, cacheWindowLabel, cacheWindowState, hitPctLabel } from '../lib/cacheView';
 
 interface Props {
   data: Analytics | null;
@@ -84,8 +84,8 @@ function GroupTable({ title, nameHeader, rows }: { title: string; nameHeader: st
 export function CacheWindowCard({ data, loading, loadError = false }: Props) {
   const state = cacheWindowState(data, loading, loadError);
   const cw = data?.cache_window ?? undefined;
-  const note = (text: string) => (
-    <div className="px-6 py-8 text-center text-sm text-muted-foreground font-medium">{text}</div>
+  const note = (text: string, role: 'status' | 'alert' = 'status') => (
+    <div role={role} className="px-6 py-8 text-center text-sm text-muted-foreground font-medium">{text}</div>
   );
   return (
     <div className="bg-card border border-border shadow-sm rounded-xl overflow-hidden">
@@ -94,17 +94,17 @@ export function CacheWindowCard({ data, loading, loadError = false }: Props) {
         {cw && (state === 'ready' || state === 'unreported') && (
           <p className="text-xs text-muted-foreground mt-0.5">
             {cacheWindowLabel(cw.window_requests, cw.reporting_requests)}. Hit rates cover only requests that reported.
-            {state === 'ready' && ` ${tokens(cw.cached_tokens, cw.input_tokens, cw.reporting_requests)} tokens cached / input in total.`}
+            {state === 'ready' && ` ${cw.cached_tokens.toLocaleString('en-US')} of ${cw.input_tokens.toLocaleString('en-US')} input tokens cached${cw.hit_pct != null ? ` (${hitPctLabel(cw.hit_pct)})` : ''}.`}
           </p>
         )}
       </div>
       {state === 'loading' && (
-        <div className="px-6 py-4 space-y-3 animate-pulse">
+        <div className="px-6 py-4 space-y-3 animate-pulse" aria-busy="true" role="status" aria-label="Loading cache data">
           <div className="h-4 bg-secondary rounded w-1/3" />
           <div className="h-4 bg-secondary rounded w-1/2" />
         </div>
       )}
-      {state === 'unavailable' && note('Cache data unavailable')}
+      {state === 'unavailable' && note('Cache data unavailable', 'alert')}
       {state === 'unsupported' && note('Cache reuse is not supported by this server version')}
       {state === 'empty' && note('No requests on record yet.')}
       {state === 'unreported' && note(CACHE_EMPTY_HINT)}
@@ -113,12 +113,12 @@ export function CacheWindowCard({ data, loading, loadError = false }: Props) {
           <GroupTable
             title="By model"
             nameHeader="Model"
-            rows={cw.by_model.map((m) => ({ ...m, name: m.model, rowKey: `m:${m.model}` }))}
+            rows={cw.by_model.map((m) => ({ ...m, name: m.model, rowKey: cacheRowKey('model', m.model, m.no_model) }))}
           />
           <GroupTable
             title="By key"
             nameHeader="Key"
-            rows={cw.by_key.map((k) => ({ ...k, name: k.key, rowKey: `${k.no_key ? 'none' : 'k'}:${k.key}` }))}
+            rows={cw.by_key.map((k) => ({ ...k, name: k.key, rowKey: cacheRowKey('key', k.key, k.no_key) }))}
           />
         </>
       )}

@@ -29,14 +29,24 @@ function sharePct(cached: number, input: number): string {
   return `${Math.round(raw)}%`;
 }
 
+// A usable split: both values are finite whole numbers, input > 0 and
+// 0 <= cached <= input. It mirrors the server's rule for a stored split.
+export function isValidSplit(cached: unknown, input: unknown): cached is number {
+  return (
+    typeof cached === 'number' && typeof input === 'number' &&
+    Number.isInteger(cached) && Number.isInteger(input) &&
+    input > 0 && cached >= 0 && cached <= input
+  );
+}
+
 // One request's cache split as "cached / input (pct)".
 export function cacheCell(cached?: number | null, input?: number | null): CacheCell {
-  if (cached == null || input == null || input <= 0 || cached < 0 || cached > input) {
+  if (!isValidSplit(cached, input)) {
     return { text: '-', title: UNKNOWN_TITLE, known: false };
   }
   return {
-    text: `${groupDigits(cached)} / ${groupDigits(input)} (${sharePct(cached, input)})`,
-    title: `${groupDigits(cached)} of ${groupDigits(input)} prompt tokens were served from the engine's prefix cache`,
+    text: `${groupDigits(cached)} / ${groupDigits(input as number)} (${sharePct(cached, input as number)})`,
+    title: `${groupDigits(cached)} of ${groupDigits(input as number)} prompt tokens were served from the engine's prefix cache`,
     known: true,
   };
 }
@@ -68,7 +78,10 @@ export function cacheWindowState(
   loadError: boolean,
 ): CacheWindowState {
   if (loading) return 'loading';
-  if (!data) return loadError ? 'unavailable' : 'loading';
+  // A failed request wins over any figures still held from an earlier poll, so
+  // old numbers are never shown as current.
+  if (loadError) return 'unavailable';
+  if (!data) return 'unavailable';
   if (data.cache_window_error) return 'unavailable';
   const cw = data.cache_window;
   if (cw === undefined) return 'unsupported';
@@ -76,4 +89,11 @@ export function cacheWindowState(
   if (cw.window_requests === 0) return 'empty';
   if (cw.reporting_requests === 0) return 'unreported';
   return 'ready';
+}
+
+// The key that identifies one row of a by-model or by-key list. The group of
+// requests with no model or key name is flagged by the server and gets its own
+// prefix, so it never shares a key with a real name that happens to be "-".
+export function cacheRowKey(kind: 'model' | 'key', name: string, unknown?: boolean): string {
+  return `${unknown ? 'none' : 'name'}:${kind}:${name}`;
 }

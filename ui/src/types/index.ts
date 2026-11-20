@@ -735,6 +735,9 @@ export interface CacheStats {
 
 export interface CacheModelStat extends CacheStats {
   model: string;
+  // True for the group of requests that carried no model name; its model is a
+  // dash that a model literally named "-" does not share.
+  no_model?: boolean;
 }
 
 export interface CacheKeyStat extends CacheStats {
@@ -745,13 +748,10 @@ export interface CacheKeyStat extends CacheStats {
 }
 
 // The most recent window_size requests on record, not a time period.
-export interface CacheWindow {
+// The CacheStats fields are the whole window: sums and hit_pct over the
+// reporting requests only.
+export interface CacheWindow extends CacheStats {
   window_size: number;
-  window_requests: number;
-  reporting_requests: number;
-  // Window-wide sums over the reporting requests only.
-  cached_tokens: number;
-  input_tokens: number;
   window_oldest: string | null;
   by_model: CacheModelStat[];
   by_key: CacheKeyStat[];

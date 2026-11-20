@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Anirudhx7/marbor/internal/admin"
@@ -27,6 +28,7 @@ import (
 	"github.com/Anirudhx7/marbor/internal/config"
 	"github.com/Anirudhx7/marbor/internal/metrics"
 	"github.com/Anirudhx7/marbor/internal/router"
+	"github.com/Anirudhx7/marbor/internal/store"
 )
 
 // maxRequestBodyBytes bounds how much of a request body the proxy will buffer
@@ -1097,7 +1099,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			RequestID: requestID, APIKey: keyName, SourceIP: clientIP, Model: loggedModel, Node: node.Name,
 			Status: status, HTTPStatus: rec.statusCode, LatencyMs: latencyMs, Tokens: tokens,
 			PrefillMs: rec.promptEvalDurationMs(), Decision: decision,
-			Usage: rec.usageSplit(aborted || rec.truncatedTail),
+			Usage: rec.usageSplit(aborted || rec.truncatedTail || rec.statusCode >= http.StatusBadRequest),
 		})
 		if tokens >= 0 {
 			h.admin.TrackLocalRequestModel(keyName, modelName, tokens, rec.evalDurationMs())
@@ -2139,30 +2141,30 @@ func rawNonNegInt(raw json.RawMessage) (int64, bool) {
 	return n, true
 }
 
-// malformedSplitOnce gates the single process-wide log line for a usage block
+// malformedSplitLogged gates the single process-wide log line for a usage block
 // that carries prompt_tokens_details the split could not be read from.
-var malformedSplitOnce sync.Once
+var malformedSplitLogged atomic.Bool
 
 // noteMalformedSplit logs once per process, never per request, that a usage
 // object had prompt_tokens_details but no usable cache split.
 func noteMalformedSplit() {
-	malformedSplitOnce.Do(func() {
+	if malformedSplitLogged.CompareAndSwap(false, true) {
 		log.Printf("proxy: a response usage block had prompt_tokens_details but no readable cached_tokens within its prompt_tokens; its cache split is recorded as not reported (logged once)")
-	})
+	}
 }
 
 // splitFromUsage turns one usage object into the cache split. Both values are
 // reported together or neither is: it needs prompt_tokens > 0 and a
 // prompt_tokens_details object that carries an integer cached_tokens no
-// larger than the prompt, both within admin.MaxSplitTokens (a larger value is
-// treated as not reported, not clamped). Anything else is unknown, not zero.
+// larger than the prompt, both within store.MaxCacheSplitTokens (a larger value
+// is treated as not reported, not clamped). Anything else is unknown, not zero.
 func splitFromUsage(usage json.RawMessage) admin.RequestUsage {
 	var f usageSplitFields
 	if json.Unmarshal(usage, &f) != nil {
 		return admin.RequestUsage{}
 	}
 	input, ok := rawNonNegInt(f.PromptTokens)
-	if !ok || input <= 0 || input > admin.MaxSplitTokens {
+	if !ok || input <= 0 {
 		return admin.RequestUsage{}
 	}
 	details := bytes.TrimSpace(f.PromptTokensDetails)
@@ -2175,7 +2177,7 @@ func splitFromUsage(usage json.RawMessage) admin.RequestUsage {
 		return admin.RequestUsage{}
 	}
 	cached, ok := rawNonNegInt(d.CachedTokens)
-	if !ok || cached > input {
+	if !ok || !store.ValidCacheSplit(&input, &cached) {
 		noteMalformedSplit()
 		return admin.RequestUsage{}
 	}

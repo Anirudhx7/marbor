@@ -1748,6 +1748,9 @@ type AuditResult struct {
 	Truncated    bool         `json:"truncated"`
 	NextBeforeID int64        `json:"next_before_id,omitempty"`
 	PrevAfterID  int64        `json:"prev_after_id,omitempty"`
+	// CacheSplitError is set when the server could not read the cache split for
+	// this page; the CACHED and INPUT columns are then unknown, not unreported.
+	CacheSplitError string `json:"cache_split_error,omitempty"`
 }
 
 // AuditQuery calls GET /admin/audit with the request audit log's own filter

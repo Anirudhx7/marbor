@@ -9,7 +9,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
-	"sync"
 	"testing"
 )
 
@@ -214,12 +213,6 @@ func TestUsageSplit(t *testing.T) {
 			wantTotal: 52,
 		},
 		{
-			name:      "synthetic sse trailing usage null chunk is skipped, earlier usage read",
-			body:      "data: {\"usage\":{\"prompt_tokens\":50,\"total_tokens\":52,\"prompt_tokens_details\":{\"cached_tokens\":32}}}\n\ndata: {\"choices\":[],\"usage\":null}\n\ndata: [DONE]\n\n",
-			wantInput: ptrTo(50), wantCached: ptrTo(32),
-			wantTotal: 52,
-		},
-		{
 			// usageSplit stops at the last line that carries a usage object,
 			// even one tokenCount skips for a zero total: the later zero-total
 			// object is what the split describes, so it is unknown.
@@ -286,7 +279,7 @@ func TestMalformedSplitLoggedOnce(t *testing.T) {
 	var buf bytes.Buffer
 	log.SetOutput(&buf)
 	t.Cleanup(func() { log.SetOutput(os.Stderr) })
-	malformedSplitOnce = sync.Once{}
+	malformedSplitLogged.Store(false)
 	bad := []byte(`{"prompt_tokens":10,"prompt_tokens_details":{"cached_tokens":"x"}}`)
 	for i := 0; i < 5; i++ {
 		if got := splitFromUsage(bad); got.Input != nil || got.Cached != nil {

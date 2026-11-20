@@ -37,3 +37,17 @@ test('an absent, null, string or half-present split stays absent', () => {
     assert.equal(e.inputTokens, undefined, JSON.stringify(over));
   }
 });
+
+test('an out-of-range split stays absent, as the server and the cell also treat it', () => {
+  for (const over of [
+    { cachedTokens: 11, inputTokens: 10 },
+    { cachedTokens: -1, inputTokens: 10 },
+    { cachedTokens: 0, inputTokens: 0 },
+    { cachedTokens: NaN, inputTokens: 10 },
+    { cachedTokens: 1.5, inputTokens: 10 },
+  ]) {
+    const e = mapAuditEntry(row(over));
+    assert.equal(e.cachedTokens, undefined, JSON.stringify(over));
+    assert.equal(e.inputTokens, undefined, JSON.stringify(over));
+  }
+});

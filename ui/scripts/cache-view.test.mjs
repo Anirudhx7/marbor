@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { cacheCell, hitPctLabel, cacheWindowLabel, cacheWindowState, CACHE_EMPTY_HINT } from '../src/lib/cacheView.ts';
+import { cacheCell, hitPctLabel, cacheWindowLabel, cacheWindowState, cacheRowKey, isValidSplit, CACHE_EMPTY_HINT } from '../src/lib/cacheView.ts';
 
 test('cacheCell shows cached / input (pct) when both are reported', () => {
   assert.equal(cacheCell(1820, 2000).text, '1,820 / 2,000 (91%)');
@@ -63,6 +63,9 @@ const analytics = (over = {}) => ({ local_requests: 0, cloud_requests: 0, hourly
 test('cacheWindowState tells a failed read, an old server and an empty window apart', () => {
   assert.equal(cacheWindowState(null, true, false), 'loading');
   assert.equal(cacheWindowState(null, false, true), 'unavailable');
+  // Not loading, no error and no data is nothing to show, never an endless spinner.
+  assert.equal(cacheWindowState(null, false, false), 'unavailable');
+  assert.equal(cacheWindowState(undefined, false, false), 'unavailable');
   assert.equal(cacheWindowState(analytics({ cache_window: null, cache_window_error: 'cache window unavailable' }), false, false), 'unavailable');
   assert.equal(cacheWindowState(analytics({ cache_window: null }), false, false), 'unavailable');
   assert.equal(cacheWindowState(analytics(), false, false), 'unsupported');
@@ -71,12 +74,44 @@ test('cacheWindowState tells a failed read, an old server and an empty window ap
   assert.equal(cacheWindowState(analytics({ cache_window: cw() }), false, false), 'ready');
 });
 
+test('a failed poll wins over figures held from an earlier poll', () => {
+  const held = analytics({ cache_window: cw() });
+  assert.equal(cacheWindowState(held, false, true), 'unavailable');
+  assert.equal(cacheWindowState(held, true, true), 'loading');
+});
+
+test('cacheCell is a dash for NaN, Infinity and fractional counts', () => {
+  for (const [c, i] of [[NaN, 10], [1, NaN], [Infinity, Infinity], [1.5, 10], [1, 10.5]]) {
+    assert.equal(cacheCell(c, i).text, '-', `${c}/${i}`);
+    assert.equal(cacheCell(c, i).known, false);
+  }
+});
+
+test('isValidSplit mirrors the server rule', () => {
+  assert.equal(isValidSplit(0, 1), true);
+  assert.equal(isValidSplit(5, 5), true);
+  assert.equal(isValidSplit(6, 5), false);
+  assert.equal(isValidSplit(-1, 5), false);
+  assert.equal(isValidSplit(0, 0), false);
+  assert.equal(isValidSplit(1, undefined), false);
+  assert.equal(isValidSplit('1', 5), false);
+});
+
+test('a group with no name never shares a row key with a real name of the same text', () => {
+  assert.notEqual(cacheRowKey('model', '-', true), cacheRowKey('model', '-', false));
+  assert.notEqual(cacheRowKey('key', '-', true), cacheRowKey('key', '-', undefined));
+  assert.notEqual(cacheRowKey('model', 'x'), cacheRowKey('key', 'x'));
+});
+
 test('the empty hint names only what is verified and is not a capability promise', () => {
   assert.match(CACHE_EMPTY_HINT, /--enable-prompt-tokens-details/);
   assert.match(CACHE_EMPTY_HINT, /non-streaming/);
   assert.match(CACHE_EMPTY_HINT, /Ollama and MLX do not report/);
 });
 
+// Source-text check, kept because the message-to-state mapping lives in JSX and
+// the node runner has no renderer; the state choice itself is covered by the
+// pure cacheWindowState tests above.
 test('the card renders a distinct message for each non-ready state', () => {
   const src = fs.readFileSync(new URL('../src/components/CacheWindowCard.tsx', import.meta.url), 'utf8');
   assert.match(src, /state === 'unavailable'[^\n]*Cache data unavailable/);
@@ -87,6 +122,8 @@ test('the card renders a distinct message for each non-ready state', () => {
   assert.match(page, /<CacheWindowCard[^>]*loadError=\{!!error\}/);
 });
 
+// Source-text check, kept because column and cell counts are only visible in
+// JSX; there is no renderer to count cells in.
 test('the Requests table has exactly one body cell per column', () => {
   const cols = fs.readFileSync(new URL('../src/components/RequestLogParts.tsx', import.meta.url), 'utf8');
   const colsStart = cols.indexOf('= [', cols.indexOf('export const COLUMNS'));
@@ -101,6 +138,8 @@ test('the Requests table has exactly one body cell per column', () => {
   assert.match(skeleton, /COLUMNS\.map/);
 });
 
+// Source-text check, kept because the mock module cannot be imported under the
+// node runner (it pulls in the app's runtime imports).
 test('the demo cache window adds up: model, key and window totals agree', () => {
   const src = fs.readFileSync(new URL('../src/lib/mockData.ts', import.meta.url), 'utf8');
   const block = src.slice(src.indexOf('cache_window: {'));
@@ -115,4 +154,6 @@ test('the demo cache window adds up: model, key and window totals agree', () => 
     assert.equal(sum(grab('by_model: [', f)), sum(grab('by_key: [', f)), f + ' model vs key');
     assert.equal(sum(grab('by_model: [', f)), top(f), f + ' vs window total');
   }
+  const hit = Number(block.match(/\n    hit_pct: ([\d.]+)/)[1]);
+  assert.equal(hit, Math.round((top('cached_tokens') * 1000) / top('input_tokens')) / 10, 'window hit_pct vs its sums');
 });

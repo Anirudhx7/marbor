@@ -1,11 +1,15 @@
 package store_test
 
 import (
+	"bytes"
 	"database/sql"
 	"fmt"
+	"log"
+	"os"
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -321,5 +325,126 @@ func TestRequestCacheSplits_BatchAndChunking(t *testing.T) {
 	}
 	if got, err := s.RequestCacheSplits(nil); err != nil || len(got) != 0 {
 		t.Errorf("empty ids = %v err=%v", got, err)
+	}
+}
+
+// A row that violates the split invariant (written by something other than
+// AppendRequest, or before the guard existed) reads as not reported on every
+// read path, so bad values never reach the boot restore, /admin/requests or the
+// cache window.
+func TestReadsValidateStoredSplit(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "badread.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	for _, id := range []string{"over", "half", "good"} {
+		if err := s.AppendRequest(store.RequestRecord{ID: id, KeyName: "k", Model: "m", NodeName: "n", StatusCode: 200, TS: time.Now(), CachedTokens: int64p(1), InputTokens: int64p(2)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	raw, err := sql.Open("sqlite", s.DBPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	if _, err := raw.Exec(`UPDATE request_log SET cached_tokens=99 WHERE id='over'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(`UPDATE request_log SET input_tokens=NULL WHERE id='half'`); err != nil {
+		t.Fatal(err)
+	}
+
+	recs, err := s.LastRequests(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range recs {
+		bad := r.ID != "good"
+		if bad != (r.CachedTokens == nil && r.InputTokens == nil) || (!bad && (r.CachedTokens == nil || r.InputTokens == nil)) {
+			t.Errorf("LastRequests %s = %v/%v", r.ID, r.CachedTokens, r.InputTokens)
+		}
+	}
+	for _, id := range []string{"over", "half"} {
+		got, _, err := s.GetRequest(id)
+		if err != nil || got.CachedTokens != nil || got.InputTokens != nil {
+			t.Errorf("GetRequest %s = %v/%v err %v, want nil/nil", id, got.CachedTokens, got.InputTokens, err)
+		}
+	}
+	rows, err := s.CacheWindowRows(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("CacheWindowRows = %d, want 3", len(rows))
+	}
+	reporting := 0
+	for _, r := range rows {
+		if r.CachedTokens != nil || r.InputTokens != nil {
+			reporting++
+		}
+	}
+	if reporting != 1 {
+		t.Errorf("CacheWindowRows reporting = %d, want only the good row", reporting)
+	}
+	splits, err := s.RequestCacheSplits([]string{"over", "half", "good"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"over", "half"} {
+		if sp := splits[id]; sp.Cached != nil || sp.Input != nil {
+			t.Errorf("RequestCacheSplits %s = %v/%v, want nil/nil", id, sp.Cached, sp.Input)
+		}
+	}
+	if sp := splits["good"]; sp.Cached == nil || *sp.Cached != 1 || *sp.Input != 2 {
+		t.Errorf("RequestCacheSplits good = %v/%v, want 1/2", sp.Cached, sp.Input)
+	}
+}
+
+func TestValidCacheSplit(t *testing.T) {
+	cases := []struct {
+		name          string
+		input, cached *int64
+		want          bool
+	}{
+		{"ok", int64p(10), int64p(4), true},
+		{"cached zero", int64p(10), int64p(0), true},
+		{"cached equals input", int64p(10), int64p(10), true},
+		{"at cap", int64p(store.MaxCacheSplitTokens), int64p(store.MaxCacheSplitTokens), true},
+		{"over cap", int64p(store.MaxCacheSplitTokens + 1), int64p(1), false},
+		{"half input", int64p(10), nil, false},
+		{"half cached", nil, int64p(1), false},
+		{"both nil", nil, nil, false},
+		{"zero input", int64p(0), int64p(0), false},
+		{"negative cached", int64p(5), int64p(-1), false},
+		{"cached over input", int64p(5), int64p(6), false},
+	}
+	for _, c := range cases {
+		if got := store.ValidCacheSplit(c.input, c.cached); got != c.want {
+			t.Errorf("%s: ValidCacheSplit = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+// A dropped non-nil pair is logged once, not per request, and a plain "not
+// reported" pair is never logged.
+func TestSanitizeCacheSplitLogsDropsSparingly(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	defer log.SetOutput(os.Stderr)
+	if in, ca := store.SanitizeCacheSplit("test", nil, nil); in != nil || ca != nil || buf.Len() != 0 {
+		t.Fatalf("nil pair: %v/%v log %q, want silent nil/nil", in, ca, buf.String())
+	}
+	for i := 0; i < 5; i++ {
+		if in, ca := store.SanitizeCacheSplit("test", int64p(5), int64p(6)); in != nil || ca != nil {
+			t.Fatalf("invalid pair kept: %v/%v", in, ca)
+		}
+	}
+	if n := strings.Count(buf.String(), "dropped an invalid cache split"); n > 1 {
+		t.Errorf("logged %d times for 5 drops, want at most 1 (first drop only)", n)
+	}
+	in, ca := store.SanitizeCacheSplit("test", int64p(10), int64p(4))
+	if in == nil || ca == nil || *in != 10 || *ca != 4 {
+		t.Errorf("valid pair = %v/%v, want 10/4", in, ca)
 	}
 }

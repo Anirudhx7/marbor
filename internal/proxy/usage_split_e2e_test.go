@@ -190,12 +190,13 @@ func TestUsageSplitGzipResponseIsUnknown(t *testing.T) {
 	}
 }
 
-// An upstream error response carries no usage block, so its row has no split.
+// An upstream error response is not a measurement: even if its body carries a
+// usage block, its row has no split.
 func TestUsageSplitErrorResponseLoggedWithoutSplit(t *testing.T) {
 	node := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"error":{"message":"boom"}}`))
+		w.Write([]byte(`{"error":{"message":"boom"},"usage":{"prompt_tokens":50,"total_tokens":52,"prompt_tokens_details":{"cached_tokens":32}}}`))
 	}))
 	defer node.Close()
 	h, a := newStreamTestHandler(t, node.URL)
@@ -213,14 +214,15 @@ func TestUsageSplitErrorResponseLoggedWithoutSplit(t *testing.T) {
 	}
 }
 
-// A client that goes away before the usage chunk arrives is an aborted
-// request: it logs no split.
+// A client that goes away mid-stream is an aborted request: even when a usage
+// chunk was already sent, it logs no split.
 func TestUsageSplitAbortedStreamLoggedWithoutSplit(t *testing.T) {
 	started := make(chan struct{})
 	node := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f := w.(http.Flusher)
 		w.Header().Set("Content-Type", "text/event-stream")
 		io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\n")
+		io.WriteString(w, "data: {\"usage\":{\"prompt_tokens\":50,\"total_tokens\":52,\"prompt_tokens_details\":{\"cached_tokens\":32}}}\n\n")
 		f.Flush()
 		close(started)
 		<-r.Context().Done()

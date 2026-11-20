@@ -1,13 +1,16 @@
 package admin
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -73,7 +76,9 @@ func TestCacheWindowSuccessHasNoErrorField(t *testing.T) {
 	w := httptest.NewRecorder()
 	srv.handleAnalytics(w, httptest.NewRequest(http.MethodGet, "/x", nil))
 	var out map[string]any
-	_ = json.Unmarshal(w.Body.Bytes(), &out)
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
 	if _, ok := out["cache_window_error"]; ok {
 		t.Errorf("cache_window_error present on success: %v", out["cache_window_error"])
 	}
@@ -148,75 +153,109 @@ func TestCacheWindowCountsCloudAndErrorRows(t *testing.T) {
 
 func TestCacheWindowUnknownModelAndKeyBuckets(t *testing.T) {
 	srv, st := newCacheTestServer(t)
-	bulkInsert(t, st, 3, func(i int) (string, string, string, int64, any, any) {
-		now := time.Now().Unix()
+	now := time.Now().Unix()
+	bulkInsert(t, st, 5, func(i int) (string, string, string, int64, any, any) {
 		switch i {
 		case 0:
 			return "a", "", "", now, nil, nil // no key, empty model
 		case 1:
-			return "b", "-", "m", now, 1, 2 // a key literally named "-"
-		default:
+			return "b", "-", "-", now, 1, 2 // a key and a model literally named "-"
+		case 2:
 			return "c", "", "m", now, nil, nil
+		case 3:
+			return "d", "", "", now, nil, nil // becomes NULL model and NULL key below
+		default:
+			return "e", "", "", now, nil, nil // stays an empty-string model
 		}
 	})
-	var withNull = func() {
-		raw, _ := sql.Open("sqlite", st.DBPath())
-		defer raw.Close()
-		if _, err := raw.Exec(`UPDATE request_log SET model=NULL WHERE id='a'`); err != nil {
-			t.Fatal(err)
-		}
+	raw, err := sql.Open("sqlite", st.DBPath())
+	if err != nil {
+		t.Fatal(err)
 	}
-	withNull()
+	if _, err := raw.Exec(`UPDATE request_log SET model=NULL, key_name=NULL WHERE id IN ('a','d')`); err != nil {
+		t.Fatal(err)
+	}
+	raw.Close()
 	cw := getCacheWindow(t, srv)
-	if m := findGroup(t, cw, "by_model", "model", "-"); m["window_requests"] != float64(1) {
-		t.Errorf("NULL model group = %v, want grouped under -", m)
-	}
-	var dash, none int
-	for _, k := range cw["by_key"].([]any) {
-		km := k.(map[string]any)
-		if km["key"] != "-" {
-			continue
-		}
-		if km["no_key"] == true {
-			none++
-			if km["window_requests"] != float64(2) {
-				t.Errorf("no-key group = %v, want 2 requests", km)
+	count := func(list, nameField, flag, name string, flagged bool) float64 {
+		var total float64
+		for _, g := range cw[list].([]any) {
+			gm := g.(map[string]any)
+			if gm[nameField] != name || (gm[flag] == true) != flagged {
+				continue
 			}
-		} else {
-			dash++
-			if km["window_requests"] != float64(1) || km["reporting_requests"] != float64(1) {
-				t.Errorf("key named - = %v, want its own bucket with 1 reporting request", km)
-			}
+			total += gm["window_requests"].(float64)
 		}
+		return total
 	}
-	if dash != 1 || none != 1 {
-		t.Errorf("by_key = %v, want separate buckets for the key named - and for no key", cw["by_key"])
+	if got := count("by_model", "model", "no_model", "-", true); got != 3 {
+		t.Errorf("unknown-model bucket = %v requests, want 3 (empty and NULL model)", got)
+	}
+	if got := count("by_model", "model", "no_model", "-", false); got != 1 {
+		t.Errorf("model named - bucket = %v requests, want its own bucket of 1", got)
+	}
+	if got := count("by_key", "key", "no_key", "-", true); got != 4 {
+		t.Errorf("no-key bucket = %v requests, want 4 (empty and NULL key_name)", got)
+	}
+	if got := count("by_key", "key", "no_key", "-", false); got != 1 {
+		t.Errorf("key named - bucket = %v requests, want its own bucket of 1", got)
 	}
 }
 
-func TestCacheStatsAddSaturatesAndRejectsOverCap(t *testing.T) {
+func TestCacheStatsAddCountsOnlyValidSplits(t *testing.T) {
 	var c CacheStats
-	c.CachedTokens, c.InputTokens = math.MaxInt64-1, math.MaxInt64-1
-	c.add(i64(MaxSplitTokens), i64(MaxSplitTokens))
-	if c.CachedTokens != math.MaxInt64 || c.InputTokens != math.MaxInt64 {
-		t.Errorf("sums = %d/%d, want saturated at MaxInt64, not wrapped", c.CachedTokens, c.InputTokens)
+	c.add(i64(store.MaxCacheSplitTokens), i64(store.MaxCacheSplitTokens))
+	c.add(i64(store.MaxCacheSplitTokens+1), i64(1)) // over cap
+	c.add(nil, nil)
+	c.add(i64(5), nil)    // half set
+	c.add(i64(5), i64(6)) // cached above input
+	c.add(i64(0), i64(0))
+	if c.WindowRequests != 6 || c.ReportingRequests != 1 {
+		t.Errorf("counts = %d/%d, want 6 window and 1 reporting", c.WindowRequests, c.ReportingRequests)
 	}
-	var d CacheStats
-	if !d.add(i64(1), i64(MaxSplitTokens+1)) || d.ReportingRequests != 0 {
-		t.Errorf("over-cap row counted: %+v", d)
+	if c.InputTokens != store.MaxCacheSplitTokens || c.CachedTokens != store.MaxCacheSplitTokens {
+		t.Errorf("sums = %d/%d, want only the valid row", c.CachedTokens, c.InputTokens)
 	}
-	if d.add(nil, nil) {
-		t.Error("a plain not-reported row must not count as inconsistent")
+	c.finish()
+	if c.HitPct == nil || *c.HitPct != 100 {
+		t.Errorf("HitPct = %v, want 100", c.HitPct)
 	}
-	if !d.add(i64(1), nil) {
-		t.Error("a half-set pair must count as inconsistent")
+}
+
+func TestCacheWindowTotalCarriesHitPct(t *testing.T) {
+	srv, st := newCacheTestServer(t)
+	seedRow(t, st, "1", "k", "a", 2, i64(1), i64(4))
+	seedRow(t, st, "2", "k", "b", 1, i64(3), i64(4))
+	cw := getCacheWindow(t, srv)
+	if cw["hit_pct"] != float64(50) {
+		t.Errorf("window hit_pct = %v, want 50 (4 of 8)", cw["hit_pct"])
+	}
+}
+
+func TestNoteDroppedWindowRowsLogsOnChangeOnly(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	defer log.SetOutput(os.Stderr)
+	lastDroppedRows.Store(0)
+	noteDroppedWindowRows(2, 10, "m/k")
+	noteDroppedWindowRows(2, 10, "m/k")
+	noteDroppedWindowRows(2, 11, "m/k")
+	if n := strings.Count(buf.String(), "ignored 2 of"); n != 1 {
+		t.Errorf("logged %d times for an unchanged count, want 1: %q", n, buf.String())
+	}
+	if !strings.Contains(buf.String(), "m/k") {
+		t.Errorf("log does not name the first offender: %q", buf.String())
+	}
+	noteDroppedWindowRows(3, 10, "x/y")
+	if !strings.Contains(buf.String(), "ignored 3 of") {
+		t.Errorf("a changed count was not logged: %q", buf.String())
 	}
 }
 
 func TestLogRequestValidatesAndCopiesUsage(t *testing.T) {
 	srv, st := newCacheTestServer(t)
 	cached, input := i64(7), i64(9)
-	srv.LogRequest(RequestLogParams{RequestID: "good", Model: "m", Usage: RequestUsage{Cached: cached, Input: input}})
+	srv.LogRequest(RequestLogParams{RequestID: "good", Model: "m", Usage: RequestUsage{Input: input, Cached: cached}})
 	srv.LogRequest(RequestLogParams{RequestID: "over", Model: "m", Usage: RequestUsage{Cached: i64(10), Input: i64(9)}})
 	srv.LogRequest(RequestLogParams{RequestID: "half", Model: "m", Usage: RequestUsage{Cached: i64(1)}})
 	srv.LogRequest(RequestLogParams{RequestID: "zeroin", Model: "m", Usage: RequestUsage{Cached: i64(0), Input: i64(0)}})
@@ -284,7 +323,10 @@ func TestHandleAuditCarriesCacheSplitFromRequestLog(t *testing.T) {
 	}
 	// A row that violates the invariant (written by something else).
 	seedRow(t, st, "bad", "k", "m", 5, i64(1), i64(2))
-	raw, _ := sql.Open("sqlite", st.DBPath())
+	raw, err := sql.Open("sqlite", st.DBPath())
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := raw.Exec(`UPDATE request_log SET cached_tokens=50 WHERE id='bad'`); err != nil {
 		t.Fatal(err)
 	}
@@ -318,11 +360,46 @@ func TestHandleAuditCarriesCacheSplitFromRequestLog(t *testing.T) {
 
 func TestHandleAuditStoreErrorLeavesEntriesUndecorated(t *testing.T) {
 	srv, st := auditJoinServer(t)
+	seedRow(t, st, "x", "k", "m", 5, i64(1820), i64(2000))
 	appendAudit(t, st, "x")
 	srv.st = errSplitStore{st}
-	resp := decodeAuditPage(t, getAudit(t, srv, ""))
+	w := getAudit(t, srv, "")
+	resp := decodeAuditPage(t, w)
 	if len(resp.Entries) != 1 {
 		t.Fatalf("entries = %d, want 1", len(resp.Entries))
+	}
+	if _, ok := resp.Entries[0]["cachedTokens"]; ok {
+		t.Errorf("entry carries cachedTokens although the lookup failed: %v", resp.Entries[0])
+	}
+	var out map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out["cache_split_error"] != auditCacheSplitUnavailable {
+		t.Errorf("cache_split_error = %v, want %q", out["cache_split_error"], auditCacheSplitUnavailable)
+	}
+}
+
+func TestHandleAuditSplitLookupFailureLogsOnStateChange(t *testing.T) {
+	srv, st := auditJoinServer(t)
+	appendAudit(t, st, "x")
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	defer log.SetOutput(os.Stderr)
+	srv.st = errSplitStore{st}
+	for i := 0; i < 3; i++ {
+		getAudit(t, srv, "")
+	}
+	if n := strings.Count(buf.String(), "failing"); n != 1 {
+		t.Errorf("failure logged %d times over 3 polls, want 1: %q", n, buf.String())
+	}
+	srv.st = st
+	w := getAudit(t, srv, "")
+	if strings.Contains(w.Body.String(), "cache_split_error") {
+		t.Errorf("error marker present after recovery: %s", w.Body.String())
+	}
+	if !strings.Contains(buf.String(), "recovered") {
+		t.Errorf("recovery not logged: %q", buf.String())
 	}
 }
 

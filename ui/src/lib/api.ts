@@ -1061,6 +1061,9 @@ export interface AuditPage {
   // True when the page is full (not a statement that more rows exist; the
   // cursors are the exact signal).
   truncated: boolean;
+  // Set when the server could not read the cache split for this page; the
+  // cache column is then unknown for every row, not merely unreported.
+  cacheSplitError?: string;
 }
 
 // fetchAuditPage queries the server-side filterable /admin/audit endpoint
@@ -1094,7 +1097,7 @@ export async function fetchAuditPage(filters: AuditLogFilters = {}): Promise<Aud
     const detail = await res.text().then((t) => t.trim().slice(0, 200)).catch(() => '');
     throw new Error(detail ? `Failed to fetch audit log (HTTP ${res.status}): ${detail}` : `Failed to fetch audit log (HTTP ${res.status})`);
   }
-  let data: { entries?: unknown; next_before_id?: number; prev_after_id?: number; truncated?: boolean };
+  let data: { entries?: unknown; next_before_id?: number; prev_after_id?: number; truncated?: boolean; cache_split_error?: unknown };
   try {
     data = await res.json();
   } catch {
@@ -1115,6 +1118,7 @@ export async function fetchAuditPage(filters: AuditLogFilters = {}): Promise<Aud
     nextBeforeId: data.next_before_id || undefined,
     prevAfterId: data.prev_after_id || undefined,
     truncated: Boolean(data.truncated),
+    cacheSplitError: typeof data.cache_split_error === 'string' && data.cache_split_error ? data.cache_split_error : undefined,
   };
 }
 

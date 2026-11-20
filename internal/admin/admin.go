@@ -177,6 +177,7 @@ type Server struct {
 	// approve, delete, password reset) and the last-admin checks that depend on
 	// them. Lock order: userMu before keysMu.
 	userMu             sync.Mutex
+	auditSplitFailing  atomic.Bool // audit cache-split lookup is currently failing (log on change only)
 	router             *router.Router
 	soleReplica        soleReplicaState // serializes the sole-replica check with drain/restart
 	auth               *auth.Middleware
@@ -6669,15 +6670,11 @@ type RequestUsage struct {
 }
 
 // cacheSplitPtrs returns copies of the usage's values when they form a valid
-// split (both set, input > 0, 0 <= cached <= input) and nil, nil otherwise, so
-// a malformed pair is never recorded and the ring and the persisted record do
-// not share pointers.
-func cacheSplitPtrs(u RequestUsage) (cached, input *int64) {
-	if u.Cached == nil || u.Input == nil || *u.Input <= 0 || *u.Cached < 0 || *u.Cached > *u.Input || *u.Input > MaxSplitTokens {
-		return nil, nil
-	}
-	c, i := *u.Cached, *u.Input
-	return &c, &i
+// split (see store.ValidCacheSplit) and nil, nil otherwise, so a malformed pair
+// is never recorded and the ring and the persisted record do not share
+// pointers. The order matches RequestUsage: input first, then cached.
+func cacheSplitPtrs(u RequestUsage) (input, cached *int64) {
+	return store.SanitizeCacheSplit("request log", u.Input, u.Cached)
 }
 
 func copyInt64Ptr(p *int64) *int64 {
@@ -6700,7 +6697,7 @@ type RequestTiming struct {
 func (s *Server) LogRequestTimed(p RequestLogParams, timing RequestTiming) {
 	requestID, apiKey, sourceIP, model, node, status := p.RequestID, p.APIKey, p.SourceIP, p.Model, p.Node, p.Status
 	httpStatus, latencyMs, tokens, prefillMs, decision := p.HTTPStatus, p.LatencyMs, p.Tokens, p.PrefillMs, p.Decision
-	cachedTokens, inputTokens := cacheSplitPtrs(p.Usage)
+	inputTokens, cachedTokens := cacheSplitPtrs(p.Usage)
 	var tps float64
 	if tokens > 0 && latencyMs > 0 {
 		tps = float64(tokens) / (float64(latencyMs) / 1000.0)
@@ -9144,12 +9141,15 @@ func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
 		writeServerError(w, r, err)
 		return
 	}
-	entries := s.auditEntriesWithCache(page.Entries)
+	entries, splitErr := s.auditEntriesWithCache(page.Entries)
 
 	resp := map[string]interface{}{
 		"entries":   entries,
 		"total":     len(entries),
 		"truncated": len(entries) == limit,
+	}
+	if splitErr != "" {
+		resp["cache_split_error"] = splitErr
 	}
 	if page.NextBeforeID > 0 {
 		resp["next_before_id"] = page.NextBeforeID
@@ -9162,7 +9162,8 @@ func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
 }
 
 // auditEntryView is an audit entry as /admin/audit returns it: the persisted
-// fields unchanged, plus the prompt-cache split joined from request_log by
+// fields unchanged (audit.Entry must therefore never gain a custom marshaller,
+// or embedding it would flatten away the cache fields), plus the prompt-cache split joined from request_log by
 // request id. The split is absent when request_log has no valid split for the
 // request (not reported, or the row has aged out of its shorter retention).
 type auditEntryView struct {
@@ -9171,9 +9172,16 @@ type auditEntryView struct {
 	InputTokens  *int64 `json:"inputTokens,omitempty"`
 }
 
+// auditCacheSplitUnavailable is the cache_split_error value sent when the
+// split lookup failed; the detail goes to the server log only.
+const auditCacheSplitUnavailable = "cache split unavailable"
+
 // auditEntriesWithCache decorates a page of audit entries with the cache split
-// from request_log. A store error leaves the entries undecorated.
-func (s *Server) auditEntriesWithCache(entries []audit.Entry) []auditEntryView {
+// from request_log. It returns a non-empty error string when the lookup failed,
+// in which case the entries are undecorated and the caller must say so rather
+// than let it read as "not reported". The failure is logged when it starts and
+// again when it clears, not on every poll.
+func (s *Server) auditEntriesWithCache(entries []audit.Entry) ([]auditEntryView, string) {
 	out := make([]auditEntryView, len(entries))
 	ids := make([]string, 0, len(entries))
 	for i, e := range entries {
@@ -9183,22 +9191,24 @@ func (s *Server) auditEntriesWithCache(entries []audit.Entry) []auditEntryView {
 		}
 	}
 	if len(ids) == 0 {
-		return out
+		return out, ""
 	}
 	splits, err := s.st.RequestCacheSplits(ids)
 	if err != nil {
-		log.Printf("admin: audit cache split lookup for %d entries: %v", len(ids), err)
-		return out
+		if s.auditSplitFailing.CompareAndSwap(false, true) {
+			log.Printf("admin: audit cache split lookup failing (%d entries): %v", len(ids), err)
+		}
+		return out, auditCacheSplitUnavailable
+	}
+	if s.auditSplitFailing.CompareAndSwap(true, false) {
+		log.Printf("admin: audit cache split lookup recovered")
 	}
 	for i := range out {
-		sp, ok := splits[out[i].RequestID]
-		if !ok {
-			continue
+		if sp, ok := splits[out[i].RequestID]; ok {
+			out[i].InputTokens, out[i].CachedTokens = sp.Input, sp.Cached
 		}
-		cached, input := cacheSplitPtrs(RequestUsage{Cached: sp.Cached, Input: sp.Input})
-		out[i].CachedTokens, out[i].InputTokens = cached, input
 	}
-	return out
+	return out, ""
 }
 
 // parsePositiveID parses a row-id query value, reporting false unless it is a

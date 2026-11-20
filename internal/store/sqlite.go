@@ -979,7 +979,7 @@ func (s *sqliteStore) AppendRequest(r RequestRecord) error {
 	if r.IsCloud {
 		isCloud = 1
 	}
-	cached, input := sanitizeCacheSplit(r.CachedTokens, r.InputTokens)
+	input, cached := SanitizeCacheSplit("AppendRequest", r.InputTokens, r.CachedTokens)
 	_, err := s.db.Exec(
 		`INSERT OR IGNORE INTO request_log
 			(id, key_name, model, node_name, status_code, latency_ms, tokens_used, cost_usd, routed_to, is_cloud, ts, routing_reason, routing_detail, prefill_ms, queue_wait_ms, cloud_ms, cached_tokens, input_tokens)
@@ -1030,7 +1030,7 @@ func (s *sqliteStore) LastRequests(n int) ([]RequestRecord, error) {
 		r.RoutingReason = reason.String
 		r.RoutingDetail = detail.String
 		r.QueueWaitMs, r.CloudMs = ptrInt64(qw), ptrInt64(cm)
-		r.CachedTokens, r.InputTokens = ptrInt64(cached), ptrInt64(input)
+		r.InputTokens, r.CachedTokens = readCacheSplit(ptrInt64(input), ptrInt64(cached))
 		recs = append(recs, r)
 	}
 	if err := rows.Err(); err != nil {
@@ -1070,7 +1070,7 @@ func (s *sqliteStore) CacheWindowRows(n int) ([]CacheWindowRow, error) {
 		}
 		r.TS = time.Unix(ts, 0).UTC()
 		r.Model, r.KeyName = model.String, key.String
-		r.CachedTokens, r.InputTokens = ptrInt64(cached), ptrInt64(input)
+		r.InputTokens, r.CachedTokens = readCacheSplit(ptrInt64(input), ptrInt64(cached))
 		out = append(out, r)
 	}
 	if err := rows.Err(); err != nil {
@@ -1112,7 +1112,8 @@ func (s *sqliteStore) RequestCacheSplits(ids []string) (map[string]CacheSplit, e
 				rows.Close()
 				return nil, fmt.Errorf("store: RequestCacheSplits scan: %w", err)
 			}
-			out[id] = CacheSplit{Cached: ptrInt64(cached), Input: ptrInt64(input)}
+			in, ca := readCacheSplit(ptrInt64(input), ptrInt64(cached))
+			out[id] = CacheSplit{Cached: ca, Input: in}
 		}
 		err = rows.Err()
 		rows.Close()
@@ -1150,7 +1151,7 @@ func (s *sqliteStore) GetRequest(id string) (RequestRecord, bool, error) {
 	r.RoutingReason = reason.String
 	r.RoutingDetail = detail.String
 	r.QueueWaitMs, r.CloudMs = ptrInt64(qw), ptrInt64(cm)
-	r.CachedTokens, r.InputTokens = ptrInt64(cached), ptrInt64(input)
+	r.InputTokens, r.CachedTokens = readCacheSplit(ptrInt64(input), ptrInt64(cached))
 	return r, true, nil
 }
 
@@ -3911,22 +3912,6 @@ func (s *sqliteStore) migrateModelConfigsToNodeKeyed() error {
 }
 
 // nullInt64 maps an optional measurement to a SQL value: NULL when absent.
-// MaxCacheSplitTokens caps one request's stored prompt or cached token count;
-// a pair above it is not believable and is stored as NULL, not clamped.
-const MaxCacheSplitTokens = 1 << 40
-
-// sanitizeCacheSplit enforces the cache-split invariant at the write boundary:
-// both values present, input > 0, 0 <= cached <= input. Anything else stores
-// NULL for both, so a malformed pair can never reach the table. The returned
-// pointers are copies, not the caller's.
-func sanitizeCacheSplit(cached, input *int64) (*int64, *int64) {
-	if cached == nil || input == nil || *input <= 0 || *cached < 0 || *cached > *input || *input > MaxCacheSplitTokens {
-		return nil, nil
-	}
-	c, i := *cached, *input
-	return &c, &i
-}
-
 func nullInt64(p *int64) interface{} {
 	if p == nil {
 		return nil

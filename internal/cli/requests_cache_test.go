@@ -93,7 +93,7 @@ func TestRun_AnalyticsShowsCacheWindowRaw(t *testing.T) {
 
 func TestRun_AuditListShowsCachedAndInputOrDash(t *testing.T) {
 	srv := serveJSON(`{"entries":[
-		{"id":2,"time":"2026-11-20T10:00:03Z","request_id":"r-val","key_name":"k","model":"m","node":"n","status":"200","latency_ms":5,"cloud":false,"cachedTokens":1820,"inputTokens":2000},
+		{"id":2,"time":"2026-11-20T10:00:03Z","request_id":"r-val","key_name":"k","model":"m","node":"n","status":"200","latency_ms":5,"cloud":false,"routing_reason":"warm node","cachedTokens":1820,"inputTokens":2000},
 		{"id":1,"time":"2026-11-20T10:00:02Z","request_id":"r-none","key_name":"k","model":"m","node":"n","status":"200","latency_ms":5,"cloud":false}
 	],"total":2,"truncated":false}`)
 	defer srv.Close()
@@ -104,17 +104,36 @@ func TestRun_AuditListShowsCachedAndInputOrDash(t *testing.T) {
 		t.Fatalf("exit %d: %s", code, stderr.String())
 	}
 	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
-	if len(lines) < 3 {
+	if len(lines) != 3 {
 		t.Fatalf("output: %q", stdout.String())
 	}
-	if !strings.Contains(lines[0], "CACHED") || !strings.Contains(lines[0], "INPUT") {
-		t.Errorf("header lacks CACHED/INPUT: %q", lines[0])
+	wantHeader := "ID TIME REQUEST ID KEY MODEL NODE STATUS LATENCY MS WAIT MS CLOUD MS CACHED INPUT CLOUD REASON"
+	if got := strings.Join(strings.Fields(lines[0]), " "); got != wantHeader {
+		t.Errorf("header = %q, want %q", got, wantHeader)
 	}
-	for i, want := range [][2]string{{"1820", "2000"}, {"-", "-"}} {
+	// Columns from CACHED on: CACHED INPUT CLOUD REASON (reason may be several words).
+	for i, want := range []string{"1820 2000 no warm node", "- - no"} {
 		f := strings.Fields(lines[i+1])
-		n := len(f)
-		if f[n-3] != want[0] || f[n-2] != want[1] {
-			t.Errorf("row %q: cached/input = %q/%q, want %q/%q", lines[i+1], f[n-3], f[n-2], want[0], want[1])
+		// Ten single-word columns (ID through CLOUD MS) precede CACHED.
+		got := strings.Join(f[10:], " ")
+		if got != want {
+			t.Errorf("row %q: tail = %q, want %q", lines[i+1], got, want)
 		}
+	}
+}
+
+func TestRun_AuditListSaysWhenCacheDataUnavailable(t *testing.T) {
+	srv := serveJSON(`{"entries":[
+		{"id":1,"time":"2026-11-20T10:00:02Z","request_id":"r","key_name":"k","model":"m","node":"n","status":"200","latency_ms":5,"cloud":false}
+	],"total":1,"truncated":false,"cache_split_error":"cache split unavailable"}`)
+	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"audit", "--server", srv.URL}, &stdout, &stderr); code != ExitOK {
+		t.Fatalf("exit %d: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "cache data unavailable") {
+		t.Errorf("output does not say the cache data is unavailable: %q", stdout.String())
 	}
 }

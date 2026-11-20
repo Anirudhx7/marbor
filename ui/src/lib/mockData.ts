@@ -1371,6 +1371,7 @@ export const mockAnalytics: Analytics = {
     reporting_requests: 412,
     cached_tokens: 243320,
     input_tokens: 412000,
+    hit_pct: 59.1,
     window_oldest: new Date(Date.now() - 6 * 3600 * 1000).toISOString(),
     by_model: [
       { model: 'llama3.3:8b', window_requests: 340, reporting_requests: 240, cached_tokens: 172800, input_tokens: 240000, hit_pct: 72 },

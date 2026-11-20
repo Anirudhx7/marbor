@@ -43,6 +43,7 @@ interface PageData {
   entries: RequestEntry[];
   nextBeforeId?: number;
   prevAfterId?: number;
+  cacheSplitError?: string;
 }
 
 // The bottom pager saves scrolling back up on a long page.
@@ -66,7 +67,8 @@ function reusePage(prev: PageData | null, next: PageData): PageData {
   let allSame =
     prev.entries.length === next.entries.length &&
     prev.nextBeforeId === next.nextBeforeId &&
-    prev.prevAfterId === next.prevAfterId;
+    prev.prevAfterId === next.prevAfterId &&
+    prev.cacheSplitError === next.cacheSplitError;
   const entries = next.entries.map((e, i) => {
     const before = old.get(e.id);
     const same = before !== undefined && JSON.stringify(before) === JSON.stringify(e);
@@ -658,6 +660,12 @@ export function Requests() {
           >
             Retry
           </button>
+        </div>
+      )}
+
+      {page?.cacheSplitError && (
+        <div role="status" className="p-3 bg-secondary/40 border border-border rounded-xl text-muted-foreground text-sm">
+          Cache data unavailable for this page. The Cached column shows a dash because the server could not read it, not because nothing was cached.
         </div>
       )}
 
