@@ -5,7 +5,6 @@ import (
 	"math"
 	"sort"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/Anirudhx7/marbor/internal/store"
@@ -124,8 +123,6 @@ func (s *Server) cacheWindow() (*CacheWindow, string) {
 	}
 	byModel := map[groupID]*CacheStats{}
 	byKey := map[groupID]*CacheStats{}
-	var dropped int
-	var firstBad string
 	for _, row := range rows {
 		model := groupID{name: resolvedModel(row.Model)}
 		if model.name == "" {
@@ -144,18 +141,11 @@ func (s *Server) cacheWindow() (*CacheWindow, string) {
 		byModel[model].add(row.InputTokens, row.CachedTokens)
 		byKey[key].add(row.InputTokens, row.CachedTokens)
 		out.add(row.InputTokens, row.CachedTokens)
-		if (row.InputTokens != nil || row.CachedTokens != nil) && !store.ValidCacheSplit(row.InputTokens, row.CachedTokens) {
-			if dropped == 0 {
-				firstBad = model.name + "/" + key.name
-			}
-			dropped++
-		}
 		if oldest := row.TS; out.WindowOldest == nil || oldest.Before(*out.WindowOldest) {
 			t := oldest
 			out.WindowOldest = &t
 		}
 	}
-	noteDroppedWindowRows(dropped, len(rows), firstBad)
 	out.finish()
 	for g, c := range byModel {
 		c.finish()
@@ -186,19 +176,6 @@ func (s *Server) cacheWindow() (*CacheWindow, string) {
 		return !a.NoKey && b.NoKey
 	})
 	return out, ""
-}
-
-// lastDroppedRows is the dropped-row count last logged, so the same count is
-// not logged again on every analytics poll; it logs on a change only.
-var lastDroppedRows atomic.Int64
-
-// noteDroppedWindowRows logs when the number of rows ignored for an invalid
-// cache split changes, naming the first offending model/key.
-func noteDroppedWindowRows(dropped, total int, first string) {
-	if lastDroppedRows.Swap(int64(dropped)) == int64(dropped) || dropped == 0 {
-		return
-	}
-	log.Printf("admin: cache window: ignored %d of %d requests with an inconsistent cache split (first: %s)", dropped, total, first)
 }
 
 // withCacheWindow adds the cache window to a JSON response body: the window

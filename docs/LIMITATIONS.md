@@ -156,6 +156,7 @@ The Requests page, `marbor requests list` and the Analytics "Prompt cache reuse"
 - **Streaming needs the client to ask.** An OpenAI-style streamed reply carries usage only when the client sets `stream_options.include_usage`, and marbor does not change client request options. vLLM can also include it server-side.
 - **A window, not a period.** Hit rates cover the most recent 1000 requests on record (the size of the request log), computed only over the requests that reported. The block always says how many of the window reported, and per-model and per-key figures are not restored from older history.
 - **Very large non-streaming replies.** A single-line JSON reply larger than 1 MiB shows `-`: marbor keeps only a bounded tail of a response to read the usage block from, which is what keeps streaming unbuffered.
+- **Error responses never carry a split.** A response with status 400 or above shows `-`, even if its body includes a usage block, because a failed request is not a measurement.
 - **Clients that ask for compressed replies** (`Accept-Encoding: gzip`) get their response untouched, but marbor cannot read a split out of a compressed body, so those rows show `-`.
 
 ### Routing rules persist to SQLite

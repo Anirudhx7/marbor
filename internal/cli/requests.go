@@ -84,7 +84,7 @@ func runRequestsList(flags *globalFlags, stdout, stderr io.Writer) int {
 			prefill = fmt.Sprintf("%d", r.PrefillMs)
 		}
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			r.Time.Format("2006-01-02T15:04:05Z07:00"), r.ID, r.KeyName, r.Model, r.Node, r.Status, r.LatencyMs, msOrDash(r.QueueWaitMs), msOrDash(r.CloudMs), prefill, intDash(r.CachedTokens), intDash(r.InputTokens), yesNo(r.Cloud), r.RoutingReason)
+			r.Time.Format("2006-01-02T15:04:05Z07:00"), r.ID, r.KeyName, r.Model, r.Node, r.Status, r.LatencyMs, intDash(r.QueueWaitMs), intDash(r.CloudMs), prefill, intDash(r.CachedTokens), intDash(r.InputTokens), yesNo(r.Cloud), r.RoutingReason)
 	}
 	if err := tw.Flush(); err != nil {
 		fmt.Fprintln(stderr, err)
@@ -111,7 +111,7 @@ func runRequestsLive(flags *globalFlags, stdout, stderr io.Writer) int {
 	fmt.Fprintln(tw, "TIME\tID\tMODEL\tNODE\tSTATUS\tHTTP\tLATENCY MS\tWAIT MS\tCLOUD MS\tTOK/S")
 	for _, r := range reqs {
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%d\t%d\t%s\t%s\t%.1f\n",
-			r.Time.Format("2006-01-02T15:04:05Z07:00"), r.ID, r.Model, r.Node, r.Status, r.HTTPStatus, r.Latency, msOrDash(r.QueueWaitMs), msOrDash(r.CloudMs), r.TokensPerSec)
+			r.Time.Format("2006-01-02T15:04:05Z07:00"), r.ID, r.Model, r.Node, r.Status, r.HTTPStatus, r.Latency, intDash(r.QueueWaitMs), intDash(r.CloudMs), r.TokensPerSec)
 	}
 	if err := tw.Flush(); err != nil {
 		fmt.Fprintln(stderr, err)
@@ -183,7 +183,3 @@ func intDash(p *int64) string {
 	}
 	return fmt.Sprintf("%d", *p)
 }
-
-// msOrDash prints a measured duration in milliseconds, or "-" when it was not
-// measured.
-func msOrDash(p *int64) string { return intDash(p) }

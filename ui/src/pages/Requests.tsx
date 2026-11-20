@@ -664,7 +664,7 @@ export function Requests() {
       )}
 
       {page?.cacheSplitError && (
-        <div role="status" className="p-3 bg-secondary/40 border border-border rounded-xl text-muted-foreground text-sm">
+        <div role="alert" className="p-3 bg-secondary/40 border border-border rounded-xl text-muted-foreground text-sm">
           Cache data unavailable for this page. The Cached column shows a dash because the server could not read it, not because nothing was cached.
         </div>
       )}

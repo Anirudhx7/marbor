@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { cacheCell, hitPctLabel, cacheWindowLabel, cacheWindowState, cacheRowKey, isValidSplit, CACHE_EMPTY_HINT } from '../src/lib/cacheView.ts';
+import { cacheCell, hitPctLabel, cacheWindowLabel, cacheWindowState, cacheRowKey, isValidSplit, parseCacheSplitError, CACHE_EMPTY_HINT } from '../src/lib/cacheView.ts';
 
 test('cacheCell shows cached / input (pct) when both are reported', () => {
   assert.equal(cacheCell(1820, 2000).text, '1,820 / 2,000 (91%)');
@@ -87,14 +87,21 @@ test('cacheCell is a dash for NaN, Infinity and fractional counts', () => {
   }
 });
 
-test('isValidSplit mirrors the server rule', () => {
-  assert.equal(isValidSplit(0, 1), true);
+test('isValidSplit mirrors the server rule (input first, then cached)', () => {
+  assert.equal(isValidSplit(1, 0), true);
   assert.equal(isValidSplit(5, 5), true);
-  assert.equal(isValidSplit(6, 5), false);
-  assert.equal(isValidSplit(-1, 5), false);
+  assert.equal(isValidSplit(5, 6), false);
+  assert.equal(isValidSplit(5, -1), false);
   assert.equal(isValidSplit(0, 0), false);
-  assert.equal(isValidSplit(1, undefined), false);
-  assert.equal(isValidSplit('1', 5), false);
+  assert.equal(isValidSplit(undefined, 1), false);
+  assert.equal(isValidSplit(5, '1'), false);
+});
+
+test('parseCacheSplitError keeps only a non-empty string', () => {
+  assert.equal(parseCacheSplitError('cache split unavailable'), 'cache split unavailable');
+  for (const v of [undefined, null, '', 0, 1, true, {}, ['x']]) {
+    assert.equal(parseCacheSplitError(v), undefined, String(v));
+  }
 });
 
 test('a group with no name never shares a row key with a real name of the same text', () => {

@@ -6,6 +6,7 @@ import { deepMerge, serverErrorText } from './settingsMerge';
 import { sameDeclared } from './replicaGroups';
 import { dedupeInflight } from './inflight';
 import { mapAuditEntry } from './auditEntry';
+import { parseCacheSplitError } from './cacheView';
 import type { AuditLogEntry, AuditPageEntry } from './auditEntry';
 import { checkBackupFile, describeBackupError, filenameFromDisposition, isAbortError, isNetworkFailure, isNewProcess, isValidRestoreRef, looksLikeBackup, tooBigForBrowser, MAX_MEMORY_DOWNLOAD_BYTES } from './backupUi';
 import { mockBackupResponse } from './backupMock';
@@ -1118,7 +1119,7 @@ export async function fetchAuditPage(filters: AuditLogFilters = {}): Promise<Aud
     nextBeforeId: data.next_before_id || undefined,
     prevAfterId: data.prev_after_id || undefined,
     truncated: Boolean(data.truncated),
-    cacheSplitError: typeof data.cache_split_error === 'string' && data.cache_split_error ? data.cache_split_error : undefined,
+    cacheSplitError: parseCacheSplitError(data.cache_split_error),
   };
 }
 

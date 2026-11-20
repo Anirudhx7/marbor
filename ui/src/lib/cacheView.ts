@@ -29,9 +29,9 @@ function sharePct(cached: number, input: number): string {
   return `${Math.round(raw)}%`;
 }
 
-// A usable split: both values are finite whole numbers, input > 0 and
+// A usable split (input first, as the server's ValidCacheSplit): both values are finite whole numbers, input > 0 and
 // 0 <= cached <= input. It mirrors the server's rule for a stored split.
-export function isValidSplit(cached: unknown, input: unknown): cached is number {
+export function isValidSplit(input: unknown, cached: unknown): cached is number {
   return (
     typeof cached === 'number' && typeof input === 'number' &&
     Number.isInteger(cached) && Number.isInteger(input) &&
@@ -41,7 +41,7 @@ export function isValidSplit(cached: unknown, input: unknown): cached is number 
 
 // One request's cache split as "cached / input (pct)".
 export function cacheCell(cached?: number | null, input?: number | null): CacheCell {
-  if (!isValidSplit(cached, input)) {
+  if (!isValidSplit(input, cached)) {
     return { text: '-', title: UNKNOWN_TITLE, known: false };
   }
   return {
@@ -49,6 +49,12 @@ export function cacheCell(cached?: number | null, input?: number | null): CacheC
     title: `${groupDigits(cached)} of ${groupDigits(input as number)} prompt tokens were served from the engine's prefix cache`,
     known: true,
   };
+}
+
+// The audit page's cache_split_error: a non-empty string only. Anything else
+// (absent, null, empty, wrong type) means the split was read fine.
+export function parseCacheSplitError(v: unknown): string | undefined {
+  return typeof v === 'string' && v ? v : undefined;
 }
 
 // A group's hit rate; null (no request in the group reported) is a dash.

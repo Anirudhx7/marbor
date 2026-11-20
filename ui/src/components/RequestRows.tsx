@@ -7,14 +7,14 @@ import { cacheCell } from '../lib/cacheView';
 import type { CacheCell } from '../lib/cacheView';
 import { COLUMNS, ExplainPanel, ReasonBadge, ScrollableValue, StatusBadge } from './RequestLogParts';
 
-// The cache cell's text. An unknown split is a dash with its explanation as
-// screen-reader text, since a title alone is not reachable by keyboard or touch.
+// The cache cell's text. An unknown split is a dash with short screen-reader
+// text, since a title alone is not reachable by keyboard or touch.
 function CacheText({ cache }: { cache: CacheCell }) {
   if (cache.known) return <>{cache.text}</>;
   return (
     <>
       <span aria-hidden="true">{cache.text}</span>
-      <span className="sr-only">{cache.title}</span>
+      <span className="sr-only">not reported</span>
     </>
   );
 }

@@ -177,7 +177,6 @@ type Server struct {
 	// approve, delete, password reset) and the last-admin checks that depend on
 	// them. Lock order: userMu before keysMu.
 	userMu             sync.Mutex
-	auditSplitFailing  atomic.Bool // audit cache-split lookup is currently failing (log on change only)
 	router             *router.Router
 	soleReplica        soleReplicaState // serializes the sole-replica check with drain/restart
 	auth               *auth.Middleware
@@ -185,12 +184,13 @@ type Server struct {
 	version            string
 	mu                 sync.RWMutex
 	requests           []RequestLog
-	localCount         int64   // atomic - requests served by local nodes
-	cloudCount         int64   // atomic - requests forwarded to cloud
-	localTokens        int64   // atomic - real token counts parsed from local node responses
-	cloudTokens        int64   // atomic - real token counts parsed from cloud responses
-	cloudSpentUSD      float64 // protected by mu
-	refCostPer1K       float64 // reference cloud rate used to value local tokens (immutable after construction)
+	localCount         int64       // atomic - requests served by local nodes
+	cloudCount         int64       // atomic - requests forwarded to cloud
+	localTokens        int64       // atomic - real token counts parsed from local node responses
+	cloudTokens        int64       // atomic - real token counts parsed from cloud responses
+	auditSplitFailing  atomic.Bool // audit cache-split lookup is failing (log on change only)
+	cloudSpentUSD      float64     // protected by mu
+	refCostPer1K       float64     // reference cloud rate used to value local tokens (immutable after construction)
 	startTime          time.Time
 	analytics          *analyticsStore
 	auditLog           *audit.Logger
@@ -9161,11 +9161,11 @@ func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
-// auditEntryView is an audit entry as /admin/audit returns it: the persisted
-// fields unchanged (audit.Entry must therefore never gain a custom marshaller,
-// or embedding it would flatten away the cache fields), plus the prompt-cache split joined from request_log by
-// request id. The split is absent when request_log has no valid split for the
-// request (not reported, or the row has aged out of its shorter retention).
+// auditEntryView is an audit entry as /admin/audit returns it, plus the
+// prompt-cache split joined from request_log by request id. The split is absent
+// when request_log has no valid split for the request (not reported, or the row
+// aged out). audit.Entry must not gain a custom marshaller, or embedding it
+// would flatten away the cache fields.
 type auditEntryView struct {
 	audit.Entry
 	CachedTokens *int64 `json:"cachedTokens,omitempty"`

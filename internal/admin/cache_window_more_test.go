@@ -232,26 +232,6 @@ func TestCacheWindowTotalCarriesHitPct(t *testing.T) {
 	}
 }
 
-func TestNoteDroppedWindowRowsLogsOnChangeOnly(t *testing.T) {
-	var buf bytes.Buffer
-	log.SetOutput(&buf)
-	defer log.SetOutput(os.Stderr)
-	lastDroppedRows.Store(0)
-	noteDroppedWindowRows(2, 10, "m/k")
-	noteDroppedWindowRows(2, 10, "m/k")
-	noteDroppedWindowRows(2, 11, "m/k")
-	if n := strings.Count(buf.String(), "ignored 2 of"); n != 1 {
-		t.Errorf("logged %d times for an unchanged count, want 1: %q", n, buf.String())
-	}
-	if !strings.Contains(buf.String(), "m/k") {
-		t.Errorf("log does not name the first offender: %q", buf.String())
-	}
-	noteDroppedWindowRows(3, 10, "x/y")
-	if !strings.Contains(buf.String(), "ignored 3 of") {
-		t.Errorf("a changed count was not logged: %q", buf.String())
-	}
-}
-
 func TestLogRequestValidatesAndCopiesUsage(t *testing.T) {
 	srv, st := newCacheTestServer(t)
 	cached, input := i64(7), i64(9)

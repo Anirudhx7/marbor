@@ -4,6 +4,7 @@ package proxy
 // OpenAI-compatible and Ollama shapes, not captured from a running engine.
 
 import (
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -240,8 +241,22 @@ func TestUsageSplitAbortedStreamLoggedWithoutSplit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	buf := make([]byte, 16)
-	resp.Body.Read(buf)
+	// Read through the usage line before cancelling, so the abort is what
+	// withholds the split, not a usage chunk the proxy never saw.
+	br := bufio.NewReader(resp.Body)
+	sawUsage := false
+	for !sawUsage {
+		line, err := br.ReadString('\n')
+		if strings.Contains(line, `"usage"`) {
+			sawUsage = true
+		}
+		if err != nil {
+			break
+		}
+	}
+	if !sawUsage {
+		t.Fatal("client never received the usage line before the cancel")
+	}
 	<-started
 	cancel()
 	resp.Body.Close()
@@ -252,5 +267,35 @@ func TestUsageSplitAbortedStreamLoggedWithoutSplit(t *testing.T) {
 	}
 	if got[0].CachedTokens != nil || got[0].InputTokens != nil {
 		t.Errorf("split = %v/%v, want nil for an aborted request", got[0].CachedTokens, got[0].InputTokens)
+	}
+}
+
+// Only status 400 and above carries no split: 200 and 399 keep theirs, 400 and
+// 404 (a client error with a usage body) do not.
+func TestUsageSplitStatusBoundary(t *testing.T) {
+	for _, tc := range []struct {
+		status  int
+		wantSet bool
+	}{{200, true}, {399, true}, {400, false}, {404, false}} {
+		node := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(tc.status)
+			w.Write([]byte(syntheticUsageJSON))
+		}))
+		h, a := newStreamTestHandler(t, node.URL)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"mock-node","messages":[{"role":"user","content":"hi"}]}`)))
+		got := waitLiveUsages(t, a)
+		node.Close()
+		if len(got) != 1 {
+			t.Fatalf("status %d: entries = %d, want 1", tc.status, len(got))
+		}
+		hasSplit := got[0].CachedTokens != nil && got[0].InputTokens != nil
+		if hasSplit != tc.wantSet {
+			t.Errorf("status %d: split present = %v, want %v", tc.status, hasSplit, tc.wantSet)
+		}
+		if tc.wantSet && (*got[0].CachedTokens != 1820 || *got[0].InputTokens != 2000) {
+			t.Errorf("status %d: split = %d/%d, want 1820/2000", tc.status, *got[0].CachedTokens, *got[0].InputTokens)
+		}
 	}
 }

@@ -2149,7 +2149,7 @@ var malformedSplitLogged atomic.Bool
 // object had prompt_tokens_details but no usable cache split.
 func noteMalformedSplit() {
 	if malformedSplitLogged.CompareAndSwap(false, true) {
-		log.Printf("proxy: a response usage block had prompt_tokens_details but no readable cached_tokens within its prompt_tokens; its cache split is recorded as not reported (logged once)")
+		log.Printf("proxy: a response usage block had prompt_tokens_details but no usable cache split (cached_tokens unreadable, larger than prompt_tokens, or a count over the allowed cap); it is recorded as not reported (logged once)")
 	}
 }
 

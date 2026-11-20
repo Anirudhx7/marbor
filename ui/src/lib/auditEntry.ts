@@ -29,7 +29,7 @@ export type AuditPageEntry = RequestEntry & { auditId: number };
 // renders. The cache split is carried only when both values form a valid split
 // (see isValidSplit): anything else is unknown and stays absent.
 export function mapAuditEntry(e: AuditLogEntry): AuditPageEntry {
-  const hasSplit = isValidSplit(e.cachedTokens, e.inputTokens);
+  const hasSplit = isValidSplit(e.inputTokens, e.cachedTokens);
   return {
     id: e.request_id,
     auditId: e.id ?? 0,
