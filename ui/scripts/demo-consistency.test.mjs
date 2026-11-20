@@ -228,7 +228,10 @@ test('the dashboard strip and node cards render the worker state through the sha
   const nodes = read('src/pages/GPUNodes.tsx');
   assert.match(nodes, /note=\{nodes\.some\(n => n\.headlessWorker\) \? 'A worker with a failing probe is in no health chip\.'/);
   assert.match(nodes, /worker: 'text-muted-foreground'/, 'worker needs its own health color key');
-  assert.match(dash, /to=\{`\/gpu-nodes\?highlight=\$\{encodeURIComponent\(f\.workerNodes\.map/, 'worker strip segment links to the worker nodes');
-  assert.match(dash, /\{f\.total === 0 && f\.draining > 0 && \(/, 'a drain must show in an all-workers fleet');
+  assert.match(dash, /to=\{`\/gpu-nodes\?highlight=\$\{encodeURIComponent\(f\.workerNodes\.map\(\(n\) => n\.name\)\.join\(','\)\)\}&from=dashboard`\}/, 'worker strip segment links to the worker nodes');
+  assert.match(dash, /\{\(f\.total > 0 \|\| f\.draining > 0\) && \(/, 'a drain must show in an all-workers fleet');
+  assert.equal(dash.split('</span> draining').length - 1, 1, 'the strip draining segment markup appears once');
+  assert.match(dash, /<span className="text-muted-foreground">Worker \(probe failing is expected\)<\/span>/, 'dashboard legend has a Worker row');
+  assert.match(dash, /\{nodes\.some\(n => n\.headlessWorker\) && \(\s*<div[^>]*>\s*<span className="w-2 h-2 rounded-full bg-muted-foreground" \/>/, 'the Worker legend row only shows when a worker exists');
   assert.match(nodes, /\{dotStatus === 'worker' \? \(/, 'health percentage placeholder for a worker');
 });

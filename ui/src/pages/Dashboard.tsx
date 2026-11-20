@@ -166,17 +166,16 @@ function FleetHealthStrip({ nodes }: { nodes: GPUNode[] }) {
                   <span className="text-foreground font-semibold font-mono">{f.degraded}</span> degraded
                 </HealthSegment>
               )}
-              <HealthSegment color={f.draining > 0 ? 'bg-amber-500' : 'bg-muted-foreground/30'}>
-                <span className="text-foreground font-semibold font-mono">{f.draining}</span> draining
-              </HealthSegment>
-              <HealthSegment color={f.downNodes.length > 0 ? 'bg-destructive' : 'bg-muted-foreground/30'}>
-                <span className="text-foreground font-semibold font-mono">{f.downNodes.length}</span> down
-              </HealthSegment>
             </>
           )}
-          {f.total === 0 && f.draining > 0 && (
-            <HealthSegment color="bg-amber-500">
+          {(f.total > 0 || f.draining > 0) && (
+            <HealthSegment color={f.draining > 0 ? 'bg-amber-500' : 'bg-muted-foreground/30'}>
               <span className="text-foreground font-semibold font-mono">{f.draining}</span> draining
+            </HealthSegment>
+          )}
+          {f.total > 0 && (
+            <HealthSegment color={f.downNodes.length > 0 ? 'bg-destructive' : 'bg-muted-foreground/30'}>
+              <span className="text-foreground font-semibold font-mono">{f.downNodes.length}</span> down
             </HealthSegment>
           )}
           {f.workersFailing > 0 && (
