@@ -21,7 +21,7 @@ import { waitCloudSummary } from '../lib/requestsView';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import { mockGPUNodes, mockSavings } from '../lib/mockData';
 import { readLastNodeCount, writeLastNodeCount } from '../lib/nodeCount';
-import { computeFleetHealth, nodeDotStatus, nodeDotTitle, workersLabel, workersText } from '../lib/fleetHealth';
+import { computeFleetHealth, nodeDotStatus, nodeDotTitle, WORKER_DOT_TITLE, workersLabel, workersText } from '../lib/fleetHealth';
 import { fetchNodes, fetchSummary, fetchSavings, fetchHealth, fetchKeys, fetchRequests } from '../lib/api';
 import { GPUNode, Savings, APIKey, RequestEntry } from '../types';
 import { SetupChecklist } from '../components/SetupChecklist';
@@ -132,9 +132,9 @@ function NodeCardSkeleton() {
 // degrades to "+N more" instead of wrapping the strip into a wall of red.
 const MAX_DOWN_BADGES = 3;
 
-function HealthSegment({ color, children, title }: { color: string; children: React.ReactNode; title?: string }) {
+function HealthSegment({ color, children }: { color: string; children: React.ReactNode }) {
   return (
-    <span className="flex items-center gap-1.5 whitespace-nowrap" title={title}>
+    <span className="flex items-center gap-1.5 whitespace-nowrap">
       <span className={`w-2 h-2 rounded-full shrink-0 ${color}`} />
       <span className="text-muted-foreground">{children}</span>
     </span>
@@ -174,11 +174,16 @@ function FleetHealthStrip({ nodes }: { nodes: GPUNode[] }) {
               </HealthSegment>
             </>
           )}
+          {f.total === 0 && f.draining > 0 && (
+            <HealthSegment color="bg-amber-500">
+              <span className="text-foreground font-semibold font-mono">{f.draining}</span> draining
+            </HealthSegment>
+          )}
           {f.workersFailing > 0 && (
             <Link
               to={`/gpu-nodes?highlight=${encodeURIComponent(f.workerNodes.map((n) => n.name).join(','))}&from=dashboard`}
               className="no-underline rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2"
-              title={`${workersText(f.workersFailing)}. A headless worker is expected to fail its probe, so it is not counted as down. View on GPU Nodes.`}
+              title={`${workersText(f.workersFailing)}. ${WORKER_DOT_TITLE} View on GPU Nodes.`}
             >
               <HealthSegment color="bg-muted-foreground">
                 <span className="text-foreground font-semibold font-mono">{f.workersFailing}</span> {workersLabel(f.workersFailing)}
@@ -737,6 +742,12 @@ export function Dashboard() {
               <span className="w-2 h-2 rounded-full bg-destructive" />
               <span className="text-muted-foreground">Down</span>
             </div>
+            {nodes.some(n => n.headlessWorker) && (
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-muted-foreground" />
+                <span className="text-muted-foreground">Worker (probe failing is expected)</span>
+              </div>
+            )}
             {summary.nodesDraining > 0 && (
               <div className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-amber-500" />

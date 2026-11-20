@@ -4,7 +4,7 @@
 // health endpoint's totals.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { computeFleetHealth, nodeDotStatus, nodeDotTitle, WORKER_DOT_TITLE, workersLabel, workersText } from '../src/lib/fleetHealth.ts';
+import { computeFleetHealth, isDemoHeadlessWorker, nodeDotStatus, nodeDotTitle, WORKER_DOT_TITLE, workersLabel, workersText } from '../src/lib/fleetHealth.ts';
 
 const node = (name, signals, extra = {}) => ({ id: name, name, health: 'healthy', draining: false, signals, ...extra });
 
@@ -102,5 +102,13 @@ test('the dot is muted for a headless worker and keeps both facts when it is dra
   assert.equal(nodeDotStatus({ health: 'down' }), 'down');
   assert.equal(nodeDotTitle({ draining: false }), undefined);
   assert.equal(nodeDotTitle({ draining: true }), 'Draining');
+  assert.equal(nodeDotTitle({ draining: false, headlessWorker: true }), WORKER_DOT_TITLE);
   assert.equal(nodeDotTitle({ draining: true, headlessWorker: true }), `Draining. ${WORKER_DOT_TITLE}`);
+});
+
+test('the demo overlay mutes only a confirmed non-head member whose probe is failing', () => {
+  assert.equal(isDemoHeadlessWorker(false, 'down'), true);
+  assert.equal(isDemoHeadlessWorker(true, 'down'), false);
+  assert.equal(isDemoHeadlessWorker(false, 'healthy'), false);
+  assert.equal(isDemoHeadlessWorker(false, 'degraded'), false);
 });

@@ -71,9 +71,16 @@ export function nodeDotStatus(n: Pick<GPUNode, 'health' | 'headlessWorker'>): 'w
 // WORKER_DOT_TITLE is the muted worker dot's tooltip.
 export const WORKER_DOT_TITLE = 'Worker host: probe failing is expected for a headless worker. Not counted in fleet health.';
 
-// nodeDotTitle is the dot's tooltip. A draining worker keeps both facts; an
-// undefined result lets the dot fall back to its own label.
+// nodeDotTitle is the dot's tooltip and accessible name. A draining worker keeps
+// both facts; an undefined result lets the dot fall back to its own label.
 export function nodeDotTitle(n: Pick<GPUNode, 'draining' | 'headlessWorker'>): string | undefined {
   if (n.draining && n.headlessWorker) return `Draining. ${WORKER_DOT_TITLE}`;
+  if (n.headlessWorker) return WORKER_DOT_TITLE;
   return n.draining ? 'Draining' : undefined;
+}
+
+// isDemoHeadlessWorker is the server's rule applied to the demo overlay: a
+// confirmed replica member that is not the head and whose probe is failing.
+export function isDemoHeadlessWorker(isHead: boolean, health: GPUNode['health']): boolean {
+  return !isHead && health === 'down';
 }

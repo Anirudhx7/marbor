@@ -1,4 +1,5 @@
 import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, CloudProviderInput, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, QuantRecommendation, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry, ModelConfig, LocalModel, BenchmarkRun, BackupFileInfo, BackupListResponse, SpillCounterRow, RoutingDecision, ModelAlias } from '../types';
+import { isDemoHeadlessWorker } from './fleetHealth';
 import { readSoleReplicaImpact, runtimeActionFailureInfo, runtimeActionQuery } from './soleReplica';
 import { auditAddNodeDetails, auditRuntimeUnitDetails, mockAPIKeys, mockCloudProviders, mockGPUNodes, mockSavings, mockReplicaSuggestions, withDemoSignals, mockSoleReplicaImpact, getMockCloudOnly, setMockCloudOnly } from './mockData';
 import { addEntry, removeEntry } from './cloudOnlyView';
@@ -727,7 +728,7 @@ export function applyDemoConfirmedGroups(nodes: GPUNode[]): GPUNode[] {
     // Same rule as the server: a confirmed worker whose probe is failing is a
     // headless worker, muted and in none of the healthy, degraded or down
     // signals. Raw health stays as probed.
-    if (isHead || n.health !== 'down') return confirmed;
+    if (!isDemoHeadlessWorker(isHead, n.health)) return confirmed;
     return withDemoSignals({ ...confirmed, headlessWorker: true });
   });
 }
