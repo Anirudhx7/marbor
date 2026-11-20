@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { RequestEntry, RoutingDecision } from '../types';
 import { formatRelativeTime } from '../lib/time';
 import { waitCloudSummary } from '../lib/requestsView';
+import { cacheCell } from '../lib/cacheView';
 import { COLUMNS, ExplainPanel, ReasonBadge, ScrollableValue, StatusBadge } from './RequestLogParts';
 
 export type ExplainState = RoutingDecision | 'loading' | 'error' | undefined;
@@ -22,6 +23,7 @@ interface RowProps {
 // the next page that changes.
 export const RequestRow = memo(function RequestRow({ entry, expanded, explain, onToggle }: RowProps) {
   const timing = entry.cloud ? waitCloudSummary(entry.queueWaitMs, entry.cloudMs) : undefined;
+  const cache = cacheCell(entry.cachedTokens, entry.inputTokens);
   return (
     <>
       <tr className="border-b border-border last:border-0 hover:bg-secondary/30 transition-colors">
@@ -70,6 +72,9 @@ export const RequestRow = memo(function RequestRow({ entry, expanded, explain, o
         <td className="px-4 py-3 whitespace-nowrap text-right font-mono text-xs text-muted-foreground">
           {entry.prefillMs ? `${entry.prefillMs} ms` : '-'}
         </td>
+        <td className="px-4 py-3 whitespace-nowrap text-right font-mono text-xs text-muted-foreground" title={cache.title}>
+          {cache.text}
+        </td>
         <td className="px-4 py-3 whitespace-nowrap">
           <button
             type="button"
@@ -95,6 +100,7 @@ export const RequestRow = memo(function RequestRow({ entry, expanded, explain, o
 
 export const RequestCard = memo(function RequestCard({ entry, expanded, explain, onToggle }: RowProps) {
   const timing = entry.cloud ? waitCloudSummary(entry.queueWaitMs, entry.cloudMs) : undefined;
+  const cache = cacheCell(entry.cachedTokens, entry.inputTokens);
   return (
     <div className="bg-card/50 backdrop-blur-sm border border-border/60 rounded-xl p-4 space-y-3 active:bg-secondary/50 transition-colors">
       <div className="flex items-center justify-between gap-2">
@@ -116,6 +122,10 @@ export const RequestCard = memo(function RequestCard({ entry, expanded, explain,
         <div>
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Prefill</div>
           <div className="text-sm text-foreground font-mono">{entry.prefillMs ? `${entry.prefillMs} ms` : '-'}</div>
+        </div>
+        <div>
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Cached</div>
+          <div className="text-sm text-foreground font-mono break-words" title={cache.title}>{cache.text}</div>
         </div>
         <div>
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Model</div>

@@ -669,7 +669,7 @@ export function Requests() {
               COLUMNS. min-w stops the flex columns collapsing on a narrow
               card - below it the region scrolls instead of colliding headers.
             */}
-            <table className="w-full min-w-[960px] text-sm">
+            <table className="w-full min-w-[1090px] text-sm">
               <thead>
                 <tr className="border-b border-border bg-secondary/30">
                   {COLUMNS.map((c) => (

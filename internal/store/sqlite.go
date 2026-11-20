@@ -270,7 +270,9 @@ func (s *sqliteStore) migrate() error {
 			is_cloud       INTEGER,
 			ts             INTEGER,
 			routing_reason TEXT,
-			routing_detail TEXT
+			routing_detail TEXT,
+			cached_tokens  INTEGER,
+			input_tokens   INTEGER
 		)`,
 		`CREATE INDEX IF NOT EXISTS request_log_ts ON request_log(ts DESC)`,
 
@@ -698,6 +700,12 @@ func (s *sqliteStore) migrate() error {
 		`ALTER TABLE request_log ADD COLUMN cloud_ms INTEGER`,
 		`ALTER TABLE audit_log ADD COLUMN queue_wait_ms INTEGER`,
 		`ALTER TABLE audit_log ADD COLUMN cloud_ms INTEGER`,
+		// Prompt-cache split from the response's usage block: prompt tokens
+		// served from the engine's prefix cache, and the prompt token count
+		// they are measured against. NULL (not 0) when the runtime reported no
+		// split, so a real 0 cached tokens is distinguishable from unknown.
+		`ALTER TABLE request_log ADD COLUMN cached_tokens INTEGER`,
+		`ALTER TABLE request_log ADD COLUMN input_tokens INTEGER`,
 	} {
 		// Idempotent: a rerun against an already-migrated DB hits "duplicate
 		// column name" for every statement here, which is benign and must be
@@ -973,9 +981,9 @@ func (s *sqliteStore) AppendRequest(r RequestRecord) error {
 	}
 	_, err := s.db.Exec(
 		`INSERT OR IGNORE INTO request_log
-			(id, key_name, model, node_name, status_code, latency_ms, tokens_used, cost_usd, routed_to, is_cloud, ts, routing_reason, routing_detail, prefill_ms, queue_wait_ms, cloud_ms)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		r.ID, r.KeyName, r.Model, r.NodeName, r.StatusCode, r.LatencyMs, r.TokensUsed, r.CostUSD, r.RoutedTo, isCloud, r.TS.Unix(), r.RoutingReason, r.RoutingDetail, r.PrefillMs, nullInt64(r.QueueWaitMs), nullInt64(r.CloudMs),
+			(id, key_name, model, node_name, status_code, latency_ms, tokens_used, cost_usd, routed_to, is_cloud, ts, routing_reason, routing_detail, prefill_ms, queue_wait_ms, cloud_ms, cached_tokens, input_tokens)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		r.ID, r.KeyName, r.Model, r.NodeName, r.StatusCode, r.LatencyMs, r.TokensUsed, r.CostUSD, r.RoutedTo, isCloud, r.TS.Unix(), r.RoutingReason, r.RoutingDetail, r.PrefillMs, nullInt64(r.QueueWaitMs), nullInt64(r.CloudMs), nullInt64(r.CachedTokens), nullInt64(r.InputTokens),
 	)
 	if err != nil {
 		return fmt.Errorf("store: AppendRequest: %w", err)
@@ -995,7 +1003,7 @@ func (s *sqliteStore) AppendRequest(r RequestRecord) error {
 
 func (s *sqliteStore) LastRequests(n int) ([]RequestRecord, error) {
 	rows, err := s.db.Query(
-		`SELECT id, key_name, model, node_name, status_code, latency_ms, tokens_used, cost_usd, routed_to, is_cloud, ts, routing_reason, routing_detail, prefill_ms, queue_wait_ms, cloud_ms
+		`SELECT id, key_name, model, node_name, status_code, latency_ms, tokens_used, cost_usd, routed_to, is_cloud, ts, routing_reason, routing_detail, prefill_ms, queue_wait_ms, cloud_ms, cached_tokens, input_tokens
 		 FROM request_log ORDER BY ts DESC LIMIT ?`, n,
 	)
 	if err != nil {
@@ -1008,11 +1016,11 @@ func (s *sqliteStore) LastRequests(n int) ([]RequestRecord, error) {
 		var r RequestRecord
 		var isCloud int
 		var ts int64
-		var qw, cm sql.NullInt64
+		var qw, cm, cached, input sql.NullInt64
 		var reason, detail sql.NullString
 		if err := rows.Scan(
 			&r.ID, &r.KeyName, &r.Model, &r.NodeName, &r.StatusCode,
-			&r.LatencyMs, &r.TokensUsed, &r.CostUSD, &r.RoutedTo, &isCloud, &ts, &reason, &detail, &r.PrefillMs, &qw, &cm,
+			&r.LatencyMs, &r.TokensUsed, &r.CostUSD, &r.RoutedTo, &isCloud, &ts, &reason, &detail, &r.PrefillMs, &qw, &cm, &cached, &input,
 		); err != nil {
 			return nil, fmt.Errorf("store: LastRequests scan: %w", err)
 		}
@@ -1021,6 +1029,7 @@ func (s *sqliteStore) LastRequests(n int) ([]RequestRecord, error) {
 		r.RoutingReason = reason.String
 		r.RoutingDetail = detail.String
 		r.QueueWaitMs, r.CloudMs = ptrInt64(qw), ptrInt64(cm)
+		r.CachedTokens, r.InputTokens = ptrInt64(cached), ptrInt64(input)
 		recs = append(recs, r)
 	}
 	if err := rows.Err(); err != nil {
@@ -1033,6 +1042,39 @@ func (s *sqliteStore) LastRequests(n int) ([]RequestRecord, error) {
 	return recs, nil
 }
 
+// CacheWindowRows reads the narrow cache-hit columns for the n most recent
+// rows. It is one short indexed read; the file-backed pool has several
+// connections in WAL mode, so it cannot block AppendRequest's writer.
+func (s *sqliteStore) CacheWindowRows(n int) ([]CacheWindowRow, error) {
+	rows, err := s.db.Query(
+		`SELECT ts, model, key_name, cached_tokens, input_tokens
+		 FROM request_log ORDER BY ts DESC LIMIT ?`, n,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("store: CacheWindowRows: %w", err)
+	}
+	defer rows.Close()
+
+	var out []CacheWindowRow
+	for rows.Next() {
+		var r CacheWindowRow
+		var ts int64
+		var model, key sql.NullString
+		var cached, input sql.NullInt64
+		if err := rows.Scan(&ts, &model, &key, &cached, &input); err != nil {
+			return nil, fmt.Errorf("store: CacheWindowRows scan: %w", err)
+		}
+		r.TS = time.Unix(ts, 0).UTC()
+		r.Model, r.KeyName = model.String, key.String
+		r.CachedTokens, r.InputTokens = ptrInt64(cached), ptrInt64(input)
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: CacheWindowRows rows: %w", err)
+	}
+	return out, nil
+}
+
 // GetRequest looks up one request_log row by id - the explain endpoint's
 // fallback for a request that has aged out of the bounded in-memory ring but
 // is still within the SQLite table's 1000-row retention window.
@@ -1040,14 +1082,14 @@ func (s *sqliteStore) GetRequest(id string) (RequestRecord, bool, error) {
 	var r RequestRecord
 	var isCloud int
 	var ts int64
-	var qw, cm sql.NullInt64
+	var qw, cm, cached, input sql.NullInt64
 	var reason, detail sql.NullString
 	err := s.db.QueryRow(
-		`SELECT id, key_name, model, node_name, status_code, latency_ms, tokens_used, cost_usd, routed_to, is_cloud, ts, routing_reason, routing_detail, prefill_ms, queue_wait_ms, cloud_ms
+		`SELECT id, key_name, model, node_name, status_code, latency_ms, tokens_used, cost_usd, routed_to, is_cloud, ts, routing_reason, routing_detail, prefill_ms, queue_wait_ms, cloud_ms, cached_tokens, input_tokens
 		 FROM request_log WHERE id = ?`, id,
 	).Scan(
 		&r.ID, &r.KeyName, &r.Model, &r.NodeName, &r.StatusCode,
-		&r.LatencyMs, &r.TokensUsed, &r.CostUSD, &r.RoutedTo, &isCloud, &ts, &reason, &detail, &r.PrefillMs, &qw, &cm,
+		&r.LatencyMs, &r.TokensUsed, &r.CostUSD, &r.RoutedTo, &isCloud, &ts, &reason, &detail, &r.PrefillMs, &qw, &cm, &cached, &input,
 	)
 	if err == sql.ErrNoRows {
 		return RequestRecord{}, false, nil
@@ -1060,6 +1102,7 @@ func (s *sqliteStore) GetRequest(id string) (RequestRecord, bool, error) {
 	r.RoutingReason = reason.String
 	r.RoutingDetail = detail.String
 	r.QueueWaitMs, r.CloudMs = ptrInt64(qw), ptrInt64(cm)
+	r.CachedTokens, r.InputTokens = ptrInt64(cached), ptrInt64(input)
 	return r, true, nil
 }
 

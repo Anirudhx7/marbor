@@ -1093,7 +1093,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		// rec.statusCode, not StatusCode(): a request cancelled before any
 		// response was written has no status, and must not be logged as 200.
-		h.admin.LogRequest(requestID, keyName, clientIP, loggedModel, node.Name, status, rec.statusCode, latencyMs, tokens, rec.promptEvalDurationMs(), decision)
+		h.admin.LogRequest(requestID, keyName, clientIP, loggedModel, node.Name, status, rec.statusCode, latencyMs, tokens, rec.promptEvalDurationMs(), decision, rec.usageSplit(aborted || rec.truncatedTail))
 		if tokens >= 0 {
 			h.admin.TrackLocalRequestModel(keyName, modelName, tokens, rec.evalDurationMs())
 			h.modelLimiter.recordTokens(modelName, node.Name, int64(tokens))
@@ -1599,7 +1599,7 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 		latencyMs := int(elapsed.Milliseconds())
 		tokens := rec.tokenCount(aborted || rec.truncatedTail)
 		clientIP := h.clientIP(r)
-		h.admin.LogRequestTimed(requestID, keyName, clientIP, loggedModel, nodeName, status, rec.statusCode, latencyMs, tokens, 0, route.decision(nodeName), admin.RequestTiming{QueueWaitMs: &queueWait, CloudMs: &cloudTime})
+		h.admin.LogRequestTimed(requestID, keyName, clientIP, loggedModel, nodeName, status, rec.statusCode, latencyMs, tokens, 0, route.decision(nodeName), admin.RequestUsage{}, admin.RequestTiming{QueueWaitMs: &queueWait, CloudMs: &cloudTime})
 		if tokens >= 0 {
 			if route.isCloudOnly() {
 				// Intended cloud traffic is not overflow: cost and budget are
@@ -2101,6 +2101,106 @@ func (r *statusRecorder) tokenCount(aborted bool) int64 {
 		return -1
 	}
 	return 0
+}
+
+// usageSplitDoc and its helpers decode only the prompt-cache fields, each as
+// raw JSON, in a struct of their own. They are kept out of usageDoc on
+// purpose: a wrongly-typed cache field must make this split unknown, and
+// must never make the total token count in tokenCount unreadable.
+type usageSplitDoc struct {
+	Usage json.RawMessage `json:"usage"`
+}
+
+type usageSplitFields struct {
+	PromptTokens        json.RawMessage `json:"prompt_tokens"`
+	PromptTokensDetails json.RawMessage `json:"prompt_tokens_details"`
+}
+
+type usageSplitDetails struct {
+	CachedTokens json.RawMessage `json:"cached_tokens"`
+}
+
+// rawNonNegInt parses raw as a plain non-negative JSON integer. A float,
+// string, null, or negative number is not a token count, so it reports false.
+func rawNonNegInt(raw json.RawMessage) (int64, bool) {
+	n, err := strconv.ParseInt(string(bytes.TrimSpace(raw)), 10, 64)
+	if err != nil || n < 0 {
+		return 0, false
+	}
+	return n, true
+}
+
+// splitFromUsage turns one usage object into the cache split. Both values are
+// reported together or neither is: it needs prompt_tokens > 0 and a
+// prompt_tokens_details object that carries an integer cached_tokens no
+// larger than the prompt. Anything else is unknown, not zero.
+func splitFromUsage(usage json.RawMessage) admin.RequestUsage {
+	var f usageSplitFields
+	if json.Unmarshal(usage, &f) != nil {
+		return admin.RequestUsage{}
+	}
+	input, ok := rawNonNegInt(f.PromptTokens)
+	if !ok || input <= 0 {
+		return admin.RequestUsage{}
+	}
+	var d usageSplitDetails
+	if json.Unmarshal(f.PromptTokensDetails, &d) != nil {
+		return admin.RequestUsage{}
+	}
+	cached, ok := rawNonNegInt(d.CachedTokens)
+	if !ok || cached > input {
+		return admin.RequestUsage{}
+	}
+	return admin.RequestUsage{Input: &input, Cached: &cached}
+}
+
+// usageObject returns the raw usage object a document carries, or nil when it
+// has none (absent, null, or not an object).
+func usageObject(doc []byte) (obj json.RawMessage, parsed bool) {
+	var d usageSplitDoc
+	if json.Unmarshal(doc, &d) != nil {
+		return nil, false
+	}
+	u := bytes.TrimSpace(d.Usage)
+	if len(u) == 0 || u[0] != '{' {
+		return nil, true
+	}
+	return u, true
+}
+
+// usageSplit reads the prompt-cache split (prompt tokens and how many of them
+// were served from the engine's prefix cache) from the response tail, using
+// the same last-JSON-line walk as tokenCount so the two read the same
+// document. A zero value (both nil) means the response did not report a
+// split: aborted or cut-off responses, an unreadable last JSON line, a usage
+// block without prompt_tokens_details, and every runtime that never reports
+// it. Only the retained tail is read, so streaming is untouched.
+func (r *statusRecorder) usageSplit(aborted bool) admin.RequestUsage {
+	if aborted {
+		return admin.RequestUsage{}
+	}
+	if doc := bytes.TrimSpace(r.tail); len(doc) > 0 && doc[0] == '{' && json.Valid(doc) {
+		if u, _ := usageObject(doc); u != nil {
+			return splitFromUsage(u)
+		}
+		return admin.RequestUsage{}
+	}
+	lines := bytes.Split(r.tail, []byte("\n"))
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := bytes.TrimSpace(lines[i])
+		line = bytes.TrimPrefix(line, []byte("data: "))
+		if len(line) == 0 || line[0] != '{' {
+			continue
+		}
+		u, parsed := usageObject(line)
+		if !parsed {
+			return admin.RequestUsage{}
+		}
+		if u != nil {
+			return splitFromUsage(u)
+		}
+	}
+	return admin.RequestUsage{}
 }
 
 // evalDurationMs parses Ollama's real eval_duration (nanoseconds spent

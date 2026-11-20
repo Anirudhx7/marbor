@@ -1040,8 +1040,8 @@ const secs = (n: number) => new Date(now - n * 1000).toISOString();
 
 export const mockRequests: RequestEntry[] = [
   { id: 'req-a1b2c3d4e5f6', time: secs(8),   key_name: 'Engineering Team',  model: 'deepseek-r1:7b',  node: 'gpu-node-01', status: 200, latency_ms: 42,   cloud: false, routingReason: 'score_based', prefillMs: 9 },
-  { id: 'req-b2c3d4e5f6a1', time: secs(22),  key_name: 'Engineering Team',  model: 'llama3.3:8b',     node: 'gpu-node-02', status: 200, latency_ms: 38,   cloud: false, routingReason: 'session_affinity', prefillMs: 6 },
-  { id: 'req-c3d4e5f6a1b2', time: secs(38),  key_name: 'Data Platform',     model: 'qwen2.5:14b',     node: 'gpu-node-02', status: 200, latency_ms: 74,   cloud: false, routingReason: 'pinned_warm', prefillMs: 14 },
+  { id: 'req-b2c3d4e5f6a1', time: secs(22),  key_name: 'Engineering Team',  model: 'llama3.3:8b',     node: 'gpu-node-02', status: 200, latency_ms: 38,   cloud: false, routingReason: 'session_affinity', prefillMs: 6, cachedTokens: 1820, inputTokens: 2000 },
+  { id: 'req-c3d4e5f6a1b2', time: secs(38),  key_name: 'Data Platform',     model: 'qwen2.5:14b',     node: 'gpu-node-02', status: 200, latency_ms: 74,   cloud: false, routingReason: 'pinned_warm', prefillMs: 14, cachedTokens: 0, inputTokens: 1450 },
   { id: 'req-d4e5f6a1b2c3', time: secs(51),  key_name: 'Engineering Team',  model: 'gpt-4o',           node: '',            status: 200, latency_ms: 312,  cloud: true, routingReason: 'no_node_serves_model', queueWaitMs: 0, cloudMs: 306 },
   { id: 'req-0a1b2c3d4e5f', time: secs(53),  key_name: 'Data Platform',     model: 'llama3.3:70b',     node: '',            status: 200, latency_ms: 1840, cloud: true, routingReason: 'saturated_sla_expired', queueWaitMs: 1500, cloudMs: 335 },
   { id: 'req-1b2c3d4e5f0a', time: secs(54),  key_name: 'Support Bot',       model: 'qwen2.5:14b',      node: '',            status: 200, latency_ms: 4310, cloud: true, routingReason: 'queue_timeout_cloud', queueWaitMs: 4000, cloudMs: 298 },
@@ -1055,12 +1055,12 @@ export const mockRequests: RequestEntry[] = [
   { id: 'req-9d4e5f6a7b8c', time: secs(59.5), key_name: 'Local-only Batch',  model: 'llama3.3:70b',     node: 'none',        status: 503, latency_ms: 2,    cloud: false, routingReason: 'local_only_blocked', queueWaitMs: 0 },
   { id: 'req-e5f6a1b2c3d4', time: mins(1),   key_name: 'CI/CD Pipeline',    model: 'qwen2.5-coder:14b',   node: 'gpu-node-01', status: 200, latency_ms: 29,   cloud: false },
   { id: 'req-f6a1b2c3d4e5', time: mins(2),   key_name: 'Engineering Team',  model: 'qwen3:8b',         node: 'gpu-node-03', status: 200, latency_ms: 67,   cloud: false, routingReason: 'score_based' },
-  { id: 'req-a7b8c9d0e1f2', time: mins(3),   key_name: 'Data Platform',     model: 'llama3.3:8b',     node: 'gpu-node-01', status: 200, latency_ms: 183,  cloud: false },
+  { id: 'req-a7b8c9d0e1f2', time: mins(3),   key_name: 'Data Platform',     model: 'llama3.3:8b',     node: 'gpu-node-01', status: 200, latency_ms: 183,  cloud: false, cachedTokens: 912, inputTokens: 1200 },
   { id: 'req-b8c9d0e1f2a7', time: mins(5),   key_name: 'Support Bot',       model: 'deepseek-r1:7b',  node: 'gpu-node-02', status: 200, latency_ms: 55,   cloud: false },
   { id: 'req-c9d0e1f2a7b8', time: mins(6),   key_name: 'Engineering Team',  model: 'claude-sonnet-4', node: '',            status: 200, latency_ms: 521,  cloud: true  },
   { id: 'req-d0e1f2a7b8c9', time: mins(8),   key_name: 'CI/CD Pipeline',    model: 'qwen2.5-coder:14b',   node: 'gpu-node-01', status: 200, latency_ms: 24,   cloud: false },
-  { id: 'req-e1f2a7b8c9d0', time: mins(10),  key_name: 'Data Platform',     model: 'qwen2.5:14b',     node: 'gpu-node-02', status: 200, latency_ms: 81,   cloud: false },
-  { id: 'req-f2a7b8c9d0e1', time: mins(11),  key_name: 'Support Bot',       model: 'llama3.3:8b',     node: 'gpu-node-03', status: 200, latency_ms: 44,   cloud: false },
+  { id: 'req-e1f2a7b8c9d0', time: mins(10),  key_name: 'Data Platform',     model: 'qwen2.5:14b',     node: 'gpu-node-02', status: 200, latency_ms: 81,   cloud: false, cachedTokens: 640, inputTokens: 800 },
+  { id: 'req-f2a7b8c9d0e1', time: mins(11),  key_name: 'Support Bot',       model: 'llama3.3:8b',     node: 'gpu-node-03', status: 200, latency_ms: 44,   cloud: false, cachedTokens: 300, inputTokens: 700 },
   { id: 'req-a3b8c9d0e1f2', time: mins(13),  key_name: 'Engineering Team',  model: 'qwen3:8b',         node: 'gpu-node-04', status: 429, latency_ms: 3,    cloud: false },
   { id: 'req-b4c9d0e1f2a3', time: mins(15),  key_name: 'Data Platform',     model: 'llama3.3:70b',    node: 'gpu-node-01', status: 500, latency_ms: 1104, cloud: false },
   { id: 'req-c5d0e1f2a3b4', time: mins(17),  key_name: 'Engineering Team',  model: 'gemma4:12b',      node: 'gpu-node-03', status: 200, latency_ms: 91,   cloud: false },
@@ -1363,6 +1363,24 @@ export const mockAnalytics: Analytics = {
     { model: 'gemma4:12b',        local:  624, cloud:  24, saved_usd:  6.24 },
     { model: 'mistral:7b',        local:  406, cloud:  16, saved_usd:  4.06 },
   ],
+  // Sample prompt-cache window: two models on a runtime that reports cached
+  // tokens, one (Ollama) that does not, so the unreported state is visible.
+  cache_window: {
+    window_size: 1000,
+    window_requests: 1000,
+    reporting_requests: 412,
+    window_oldest: new Date(Date.now() - 6 * 3600 * 1000).toISOString(),
+    by_model: [
+      { model: 'llama3.3:8b', window_requests: 340, reporting_requests: 240, cached_tokens: 172800, input_tokens: 240000, hit_pct: 72 },
+      { model: 'qwen2.5:14b', window_requests: 220, reporting_requests: 172, cached_tokens: 70520, input_tokens: 172000, hit_pct: 41 },
+      { model: 'deepseek-r1:7b', window_requests: 440, reporting_requests: 0, cached_tokens: 0, input_tokens: 0, hit_pct: null },
+    ],
+    by_key: [
+      { key: 'Engineering Team', window_requests: 520, reporting_requests: 260, cached_tokens: 171600, input_tokens: 260000, hit_pct: 66 },
+      { key: 'Data Platform', window_requests: 310, reporting_requests: 152, cached_tokens: 71720, input_tokens: 152000, hit_pct: 47.2 },
+      { key: 'Support Bot', window_requests: 170, reporting_requests: 0, cached_tokens: 0, input_tokens: 0, hit_pct: null },
+    ],
+  },
 };
 
 // Mock spill_counters rows: one local_only key ("Data Platform")

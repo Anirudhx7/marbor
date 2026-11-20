@@ -24,6 +24,7 @@ export const COLUMNS: { label: string; size: string; align: 'left' | 'right' }[]
   { label: 'Status', size: `${FIT} min-w-[80px]`, align: 'left' },
   { label: 'Latency', size: `${FIT} min-w-[90px]`, align: 'right' },
   { label: 'Prefill', size: `${FIT} min-w-[84px]`, align: 'right' },
+  { label: 'Cached', size: `${FIT} min-w-[132px]`, align: 'right' },
   { label: 'Why', size: `${FIT} min-w-[156px]`, align: 'left' },
 ];
 

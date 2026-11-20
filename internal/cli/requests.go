@@ -77,14 +77,14 @@ func runRequestsList(flags *globalFlags, stdout, stderr io.Writer) int {
 		return code
 	}
 	tw := newTabWriter(stdout)
-	fmt.Fprintln(tw, "TIME\tID\tKEY\tMODEL\tNODE\tSTATUS\tLATENCY MS\tWAIT MS\tCLOUD MS\tPREFILL MS\tCLOUD\tREASON")
+	fmt.Fprintln(tw, "TIME\tID\tKEY\tMODEL\tNODE\tSTATUS\tLATENCY MS\tWAIT MS\tCLOUD MS\tPREFILL MS\tCACHED\tINPUT\tCLOUD\tREASON")
 	for _, r := range reqs {
 		prefill := "-"
 		if r.PrefillMs > 0 {
 			prefill = fmt.Sprintf("%d", r.PrefillMs)
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%d\t%d\t%s\t%s\t%s\t%s\t%s\n",
-			r.Time.Format("2006-01-02T15:04:05Z07:00"), r.ID, r.KeyName, r.Model, r.Node, r.Status, r.LatencyMs, msOrDash(r.QueueWaitMs), msOrDash(r.CloudMs), prefill, yesNo(r.Cloud), r.RoutingReason)
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			r.Time.Format("2006-01-02T15:04:05Z07:00"), r.ID, r.KeyName, r.Model, r.Node, r.Status, r.LatencyMs, msOrDash(r.QueueWaitMs), msOrDash(r.CloudMs), prefill, msOrDash(r.CachedTokens), msOrDash(r.InputTokens), yesNo(r.Cloud), r.RoutingReason)
 	}
 	if err := tw.Flush(); err != nil {
 		fmt.Fprintln(stderr, err)
@@ -175,8 +175,8 @@ func runRequestsExplain(flags *globalFlags, requestID string, stdout, stderr io.
 	return ExitOK
 }
 
-// msOrDash prints a measured duration in milliseconds, or "-" when it was
-// not measured (never a fabricated 0).
+// msOrDash prints a measured integer (a duration in milliseconds, or a token
+// count), or "-" when it was not measured (never a fabricated 0).
 func msOrDash(p *int64) string {
 	if p == nil {
 		return "-"

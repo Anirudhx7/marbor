@@ -39,6 +39,9 @@ type Store interface {
 	// Request log
 	AppendRequest(r RequestRecord) error
 	LastRequests(n int) ([]RequestRecord, error)
+	// CacheWindowRows returns up to n of the most recent request_log rows,
+	// newest first, with only the columns the cache-hit aggregation reads.
+	CacheWindowRows(n int) ([]CacheWindowRow, error)
 	// GetRequest looks up one request_log row by id (the explain endpoint's
 	// fallback beyond the bounded in-memory ring). ok is false if no row
 	// with that id exists (already trimmed, or never persisted).
@@ -320,9 +323,25 @@ type RequestRecord struct {
 	// it went to cloud, CloudMs the time spent in the cloud call. Both are nil
 	// (stored NULL) unless the request was routed to cloud and the value was
 	// measured; they are measured, never derived from the total.
-	QueueWaitMs *int64    `json:"queue_wait_ms,omitempty"`
-	CloudMs     *int64    `json:"cloud_ms,omitempty"`
-	TS          time.Time `json:"ts"`
+	QueueWaitMs *int64 `json:"queue_wait_ms,omitempty"`
+	CloudMs     *int64 `json:"cloud_ms,omitempty"`
+	// CachedTokens and InputTokens are the prompt tokens served from the
+	// engine's prefix cache and the prompt token count they are measured
+	// against, as the response's usage block reported them. Nil (stored NULL)
+	// means not reported - never a measured zero.
+	CachedTokens *int64    `json:"cached_tokens,omitempty"`
+	InputTokens  *int64    `json:"input_tokens,omitempty"`
+	TS           time.Time `json:"ts"`
+}
+
+// CacheWindowRow is the narrow slice of one request_log row the cache-window
+// aggregation needs. It deliberately omits the routing detail text.
+type CacheWindowRow struct {
+	TS           time.Time
+	Model        string
+	KeyName      string
+	CachedTokens *int64
+	InputTokens  *int64
 }
 
 // HourlyBucket tracks request counts and costs for one UTC hour.
@@ -823,6 +842,7 @@ type NopStore struct{}
 
 func (NopStore) AppendRequest(_ RequestRecord) error                    { return nil }
 func (NopStore) LastRequests(_ int) ([]RequestRecord, error)            { return nil, nil }
+func (NopStore) CacheWindowRows(_ int) ([]CacheWindowRow, error)        { return nil, nil }
 func (NopStore) GetRequest(_ string) (RequestRecord, bool, error)       { return RequestRecord{}, false, nil }
 func (NopStore) UpsertHourlyBucket(_ HourlyBucket) error                { return nil }
 func (NopStore) HourlyBuckets(_ time.Time) ([]HourlyBucket, error)      { return nil, nil }

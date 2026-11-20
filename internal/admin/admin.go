@@ -409,6 +409,8 @@ func (s *Server) LoadFromStore() error {
 				PrefillMs:     rec.PrefillMs,
 				QueueWaitMs:   rec.QueueWaitMs,
 				CloudMs:       rec.CloudMs,
+				CachedTokens:  rec.CachedTokens,
+				InputTokens:   rec.InputTokens,
 			})
 		}
 		s.mu.Lock()
@@ -566,6 +568,13 @@ type RequestLog struct {
 	// scrape, not attributable to one request). Never a fabricated real
 	// zero - a genuine prefill always takes non-zero time.
 	PrefillMs int64 `json:"prefillMs,omitempty"`
+	// CachedTokens and InputTokens are the prompt tokens served from the
+	// engine's prefix cache and the prompt token count they are measured
+	// against, both read from the response's own usage block. They are set
+	// together or not at all: nil means the runtime did not report a cache
+	// split for this request, which is different from a reported 0.
+	CachedTokens *int64 `json:"cachedTokens,omitempty"`
+	InputTokens  *int64 `json:"inputTokens,omitempty"`
 }
 
 type nodeResp struct {
@@ -1722,6 +1731,8 @@ func (s *Server) handleRequests(w http.ResponseWriter, r *http.Request) {
 		PrefillMs     int64     `json:"prefillMs,omitempty"`
 		QueueWaitMs   *int64    `json:"queueWaitMs,omitempty"`
 		CloudMs       *int64    `json:"cloudMs,omitempty"`
+		CachedTokens  *int64    `json:"cachedTokens,omitempty"`
+		InputTokens   *int64    `json:"inputTokens,omitempty"`
 	}
 	s.mu.RLock()
 	reqs := make([]RequestLog, len(s.requests))
@@ -1750,6 +1761,8 @@ func (s *Server) handleRequests(w http.ResponseWriter, r *http.Request) {
 			PrefillMs:     req.PrefillMs,
 			QueueWaitMs:   req.QueueWaitMs,
 			CloudMs:       req.CloudMs,
+			CachedTokens:  req.CachedTokens,
+			InputTokens:   req.InputTokens,
 		}
 	}
 	// Reverse so newest entries come first.
@@ -6625,8 +6638,17 @@ func (s *Server) IncrSpill(keyName, servedBy string) {
 // decision is the routing explanation from the router for this
 // request's chosen node; nil for cloud-fallback requests, which have no
 // router.RoutingDecision.
-func (s *Server) LogRequest(requestID, apiKey, sourceIP, model, node, status string, httpStatus int, latencyMs int, tokens int64, prefillMs int64, decision *router.RoutingDecision) {
-	s.LogRequestTimed(requestID, apiKey, sourceIP, model, node, status, httpStatus, latencyMs, tokens, prefillMs, decision, RequestTiming{})
+func (s *Server) LogRequest(requestID, apiKey, sourceIP, model, node, status string, httpStatus int, latencyMs int, tokens int64, prefillMs int64, decision *router.RoutingDecision, usage RequestUsage) {
+	s.LogRequestTimed(requestID, apiKey, sourceIP, model, node, status, httpStatus, latencyMs, tokens, prefillMs, decision, usage, RequestTiming{})
+}
+
+// RequestUsage is the prompt-cache split a response reported: Input is the
+// prompt token count and Cached the part of it served from the engine's
+// prefix cache. Both are nil when the response reported no split; they are
+// set together or not at all, so a hit ratio always has one denominator.
+type RequestUsage struct {
+	Input  *int64
+	Cached *int64
 }
 
 // RequestTiming is the measured queue-wait and cloud-call time of a
@@ -6638,7 +6660,7 @@ type RequestTiming struct {
 }
 
 // LogRequestTimed is LogRequest plus the cloud-route timing split.
-func (s *Server) LogRequestTimed(requestID, apiKey, sourceIP, model, node, status string, httpStatus int, latencyMs int, tokens int64, prefillMs int64, decision *router.RoutingDecision, timing RequestTiming) {
+func (s *Server) LogRequestTimed(requestID, apiKey, sourceIP, model, node, status string, httpStatus int, latencyMs int, tokens int64, prefillMs int64, decision *router.RoutingDecision, usage RequestUsage, timing RequestTiming) {
 	var tps float64
 	if tokens > 0 && latencyMs > 0 {
 		tps = float64(tokens) / (float64(latencyMs) / 1000.0)
@@ -6686,6 +6708,8 @@ func (s *Server) LogRequestTimed(requestID, apiKey, sourceIP, model, node, statu
 		PrefillMs:     prefillMs,
 		QueueWaitMs:   timing.QueueWaitMs,
 		CloudMs:       timing.CloudMs,
+		CachedTokens:  usage.Cached,
+		InputTokens:   usage.Input,
 	})
 	if len(s.requests) > 50 {
 		s.requests = s.requests[len(s.requests)-50:]
@@ -6737,6 +6761,8 @@ func (s *Server) LogRequestTimed(requestID, apiKey, sourceIP, model, node, statu
 		PrefillMs:     prefillMs,
 		QueueWaitMs:   timing.QueueWaitMs,
 		CloudMs:       timing.CloudMs,
+		CachedTokens:  usage.Cached,
+		InputTokens:   usage.Input,
 	}:
 	default:
 		// Prevent blocking the proxy path if SQLite writes are completely backed up.
@@ -7043,6 +7069,7 @@ func (s *Server) handleAnalytics(w http.ResponseWriter, r *http.Request) {
 		"local_requests":  local,
 		"cloud_requests":  cloud,
 		"since":           s.startTime.UTC().Format(time.RFC3339),
+		"cache_window":    s.cacheWindow(),
 	})
 }
 
@@ -9287,7 +9314,8 @@ func (s *Server) handleAnalyticsExport(w http.ResponseWriter, r *http.Request) {
 	switch exportType {
 	case "models":
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"by_model": s.analytics.topModels(),
+			"by_model":     s.analytics.topModels(),
+			"cache_window": s.cacheWindow(),
 		})
 	default: // hourly
 		buckets := s.analytics.last24hBuckets()

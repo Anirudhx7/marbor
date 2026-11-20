@@ -1636,6 +1636,11 @@ type RequestEntry struct {
 	// not cloud-routed or not measured.
 	QueueWaitMs *int64 `json:"queueWaitMs,omitempty"`
 	CloudMs     *int64 `json:"cloudMs,omitempty"`
+	// CachedTokens / InputTokens are the prompt tokens served from the engine's
+	// prefix cache and the prompt size they are measured against; nil when the
+	// runtime did not report a split.
+	CachedTokens *int64 `json:"cachedTokens,omitempty"`
+	InputTokens  *int64 `json:"inputTokens,omitempty"`
 }
 
 // Requests calls GET /admin/requests - the full in-memory request log ring,
@@ -1673,6 +1678,8 @@ type LiveRequestEntry struct {
 	RoutingReason string    `json:"routingReason,omitempty"`
 	QueueWaitMs   *int64    `json:"queueWaitMs,omitempty"`
 	CloudMs       *int64    `json:"cloudMs,omitempty"`
+	CachedTokens  *int64    `json:"cachedTokens,omitempty"`
+	InputTokens   *int64    `json:"inputTokens,omitempty"`
 }
 
 // LiveRequests calls GET /admin/requests/live - the same bounded in-memory

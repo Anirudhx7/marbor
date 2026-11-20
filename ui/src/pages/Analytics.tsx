@@ -17,6 +17,7 @@ import { fetchAnalytics, analyticsExportUrl, getSpillCounters } from '../lib/api
 import { mockAnalytics, mockSpillCounters } from '../lib/mockData';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import { useTimezone } from '../hooks/useTimezone';
+import { CacheWindowCard } from '../components/CacheWindowCard';
 import { formatHourLabelInTimezone, formatDateTimeInZone } from '../lib/time';
 import { pollNotice, errorReason, createPollSequence } from '../lib/pollNotice';
 import type { Analytics, HourlyBucket, ModelStat, SpillCounterRow } from '../types';
@@ -511,6 +512,8 @@ export function Analytics() {
           </>
         )}
       </div>
+
+      <CacheWindowCard data={data} loading={loading} />
 
       {/* Cloud spill - per-key, per-provider local-vs-cloud request counts */}
       <div className="bg-card border border-border shadow-sm rounded-xl overflow-hidden">
