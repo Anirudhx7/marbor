@@ -734,7 +734,7 @@ func (c *correlator) vllmCandidate(key string, group []attribution, masterHost, 
 		listed := 0
 		for r := 0; r < total && listed < maxListedMissingRanks; r++ {
 			if len(byRank[r]) == 0 {
-				missing = append(missing, fmt.Sprintf("rank %d has not been seen. Register its host as a node and update its agent; the worker will show down because a headless worker serves no HTTP", r))
+				missing = append(missing, fmt.Sprintf("rank %d has not been seen. Register its host as a node and update its agent; the worker shows as a muted worker while its probe fails, because a headless worker serves no HTTP", r))
 				listed++
 			}
 		}

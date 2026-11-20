@@ -23,20 +23,38 @@ var captureLogMu sync.Mutex
 // captureLog redirects the standard logger into a buffer for the test and
 // restores the previous writer when the test ends. It is not parallel-safe
 // by nature (the logger is global), so it takes captureLogMu for the life of
-// the test; tests using it run one at a time. The buffer is not synchronised:
-// read it only after the code under test has finished (for example after the
-// poll's wg.Wait).
-func captureLog(t *testing.T) *bytes.Buffer {
+// the test; tests using it run one at a time. The returned writer is safe to
+// read while background goroutines are still logging.
+func captureLog(t *testing.T) *logCapture {
 	t.Helper()
 	captureLogMu.Lock()
-	var buf bytes.Buffer
+	buf := &logCapture{}
 	prev := log.Writer()
-	log.SetOutput(&buf)
+	log.SetOutput(buf)
 	t.Cleanup(func() {
 		log.SetOutput(prev)
 		captureLogMu.Unlock()
 	})
-	return &buf
+	return buf
+}
+
+// logCapture is a bytes.Buffer guarded by a mutex, so a test can read the log
+// while goroutines are still writing to it.
+type logCapture struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (l *logCapture) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.Write(p)
+}
+
+func (l *logCapture) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.String()
 }
 
 func evidenceOfSize(host string, addrs, deps int) HostEvidence {
@@ -188,4 +206,16 @@ func TestDropHostEvidenceForgetsRateLimitKeys(t *testing.T) {
 	if r.allowHostLog("truncate:kept") {
 		t.Error("the kept host's key must survive the drop")
 	}
+}
+
+func (l *logCapture) Reset() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.buf.Reset()
+}
+
+func (l *logCapture) Len() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.Len()
 }

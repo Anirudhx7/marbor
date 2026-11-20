@@ -517,6 +517,10 @@ type Router struct {
 	// prevHealthy tracks the last known health state per node name for
 	// transition detection (healthy -> unhealthy and back).
 	prevHealthy map[string]bool
+	// resolveRoles replaces role resolution in roleForWebhook when set. Nil in
+	// production; a test hook to simulate a resolver that panics. It is read
+	// without synchronisation, so set it only before any goroutine uses the router.
+	resolveRoles func([]*NodeState) (map[string]SchedulingRole, map[string]string)
 	// prevAgentPresent mirrors prevHealthy for Marbor Agent reachability, so an
 	// operator gets an agent_down/agent_up webhook when a configured agent
 	// stops/resumes responding - independent of the node's own inference
@@ -2392,6 +2396,19 @@ func (r *Router) Nodes() []*NodeState {
 	out := make([]*NodeState, len(r.nodes))
 	copy(out, r.nodes)
 	return out
+}
+
+// IsHeadlessWorker reports whether a node with this role and probe state
+// should be presented as a headless worker: a resolved replica worker whose
+// health probe is failing. A headless worker serves no HTTP of its own, so a
+// failing probe is expected and is not an outage. The raw health state, the
+// routing decisions and the admin gates are unaffected; only presentation
+// (counts, signals, webhooks) consults this. A role that did not resolve is
+// never headless, so a misdeclared group still shows as down. The caller
+// reads healthy and failures under the node's own lock.
+// The router and the admin API share this one rule.
+func IsHeadlessWorker(role SchedulingRole, healthy bool, failures int) bool {
+	return role == RoleWorker && (!healthy || failures > 0)
 }
 
 // SchedulingRoles exposes resolveSchedulingRoles (placement.go) to callers

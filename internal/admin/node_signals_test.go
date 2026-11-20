@@ -376,15 +376,51 @@ func TestHandleNodes_FilterDoesNotShiftReplicaRoles(t *testing.T) {
 	for _, n := range r.Nodes() {
 		n.Lock()
 		n.Healthy = n.Name == "head"
+		// A failing worker matches no health signal, so select it by draining.
+		n.Draining = n.Name == "worker"
 		n.Unlock()
 	}
-	_, body := getNodes(t, s, "signal=down")
+	_, body := getNodes(t, s, "signal=draining")
 	got := decodeNodes(t, body)
 	if len(got) != 1 || got[0].Name != "worker" {
 		t.Fatalf("got %v, want [worker]", namesOf(got))
 	}
 	if got[0].SchedulingRole != "worker" || got[0].ReplicaHead != "head" {
 		t.Fatalf("worker role = %q head = %q, want worker/head (roles resolve fleet-wide before filtering)", got[0].SchedulingRole, got[0].ReplicaHead)
+	}
+}
+
+// The down filter still selects a non-worker failure and still resolves roles
+// fleet-wide before filtering, while the failing worker is in no health filter.
+func TestHandleNodes_HealthFilterKeepsRolesAndSkipsWorker(t *testing.T) {
+	r := router.New(config.RoutingConfig{}, []config.NodeConfig{
+		{Name: "head", URL: "http://head:11434", Runtime: "vllm"},
+		{Name: "worker", URL: "http://worker:11434", Runtime: "vllm"},
+	}, nil)
+	s := NewServer(r, nil, config.Config{})
+	for _, name := range []string{"head", "worker"} {
+		req := httptest.NewRequest(http.MethodPatch, "/admin/nodes/"+name,
+			strings.NewReader(`{"replica_peers":{"members":["head","worker"],"head":"head"}}`))
+		req.SetPathValue("name", name)
+		rec := httptest.NewRecorder()
+		s.handlePatchNode(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("patch %s: %d %s", name, rec.Code, rec.Body.String())
+		}
+	}
+	for _, n := range r.Nodes() {
+		n.Lock()
+		n.Healthy = false // head down (a real failure), worker down (muted)
+		n.Unlock()
+	}
+	_, body := getNodes(t, s, "signal=down")
+	got := decodeNodes(t, body)
+	if len(got) != 1 || got[0].Name != "head" || got[0].SchedulingRole != "head" {
+		t.Fatalf("down filter = %v, want only the head with role head", namesOf(got))
+	}
+	_, body = getNodes(t, s, "signal=healthy")
+	if got := decodeNodes(t, body); len(got) != 0 {
+		t.Fatalf("healthy filter = %v, want none", namesOf(got))
 	}
 }
 

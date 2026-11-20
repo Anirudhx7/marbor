@@ -44,6 +44,10 @@ func NodeSignalIDs() []string {
 //   - down does not exclude draining: a node that is both matches both.
 //   - agent means a live agent is reporting; a stale agent does not match.
 //   - warm means at least one model is loaded.
+//   - a headless worker (a replica worker whose probe is failing) matches none
+//     of healthy, degraded or down, whatever its raw health. It keeps draining,
+//     agent, warm and pressure, so a draining headless worker is exactly
+//     draining.
 //   - a replica head that routing is holding back because a member's host
 //     agent is silent (replicaBlockedBy) keeps its own signals: it is still
 //     healthy, and there is deliberately no signal or filter for the blocked
@@ -54,16 +58,16 @@ func NodeSignalIDs() []string {
 // The result is never nil so it always encodes as a JSON array.
 func nodeSignals(n nodeResp) []string {
 	out := make([]string, 0, len(nodeSignalIDs))
-	if n.Health == "healthy" && !n.Draining {
+	if n.Health == "healthy" && !n.Draining && !n.HeadlessWorker {
 		out = append(out, signalHealthy)
 	}
-	if n.Health == "degraded" && !n.Draining {
+	if n.Health == "degraded" && !n.Draining && !n.HeadlessWorker {
 		out = append(out, signalDegraded)
 	}
 	if n.Draining {
 		out = append(out, signalDraining)
 	}
-	if n.Health == "down" {
+	if n.Health == "down" && !n.HeadlessWorker {
 		out = append(out, signalDown)
 	}
 	if n.AgentPresent {
