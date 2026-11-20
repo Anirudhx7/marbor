@@ -155,3 +155,14 @@ test('dark: red-400 text on the destructive 15% tint is at least 4.5:1', () => {
   const r = ratio(red400, tint);
   assert.ok(r >= 4.5, `red-400 ${r.toFixed(2)}`);
 });
+
+test('the worker status dot is muted, not a health color, in every dot map', () => {
+  const dot = read('components/StatusDot.tsx');
+  assert.match(dot, /worker: 'bg-muted-foreground'/);
+  assert.match(dot, /worker: 'shadow-\[[^\]]*--muted-foreground[^\]]*\]'/);
+  assert.match(dot, /worker: 'Worker'/);
+  assert.match(dot, /\{\.\.\.\(accessibleName \? \{ role: 'img', 'aria-label': accessibleName \} : \{\}\)\}/, 'role=img is tied to aria-label');
+  assert.match(dot, /accessibleName = title \?\? \(status === 'worker' \? statusLabels\.worker : undefined\)/, 'only a titled or worker dot is named');
+  assert.doesNotMatch(dot, /aria-label=\{title \?\? statusLabels\[status\]\}/, 'a dot with no title and no worker status must not be named');
+  assert.match(read('lib/fleetHealth.ts'), /WORKER_DOT_TITLE = '[^']*probe failing[^']*'/);
+});

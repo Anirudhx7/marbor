@@ -1,5 +1,5 @@
 interface StatusDotProps {
-  status: 'healthy' | 'degraded' | 'down' | 'online' | 'offline' | 'active' | 'suspended' | 'rate-limited';
+  status: 'healthy' | 'degraded' | 'down' | 'online' | 'offline' | 'active' | 'suspended' | 'rate-limited' | 'worker';
   size?: 'sm' | 'md' | 'lg';
   pulse?: boolean;
   // halo renders the soft status-colored ring from the marketing site's live
@@ -8,7 +8,7 @@ interface StatusDotProps {
   title?: string;
 }
 
-const statusColors = {
+const statusColors: Record<StatusDotProps['status'], string> = {
   healthy: 'bg-success',
   online: 'bg-success',
   active: 'bg-primary',
@@ -17,6 +17,7 @@ const statusColors = {
   offline: 'bg-destructive',
   suspended: 'bg-muted-foreground',
   'rate-limited': 'bg-warning',
+  worker: 'bg-muted-foreground',
 };
 
 const sizeClasses = {
@@ -34,9 +35,10 @@ const haloColors: Record<StatusDotProps['status'], string> = {
   offline: 'shadow-[0_0_0_4px_hsl(var(--destructive)_/_0.18)]',
   suspended: 'shadow-[0_0_0_4px_hsl(var(--muted-foreground)_/_0.18)]',
   'rate-limited': 'shadow-[0_0_0_4px_hsl(var(--warning)_/_0.18)]',
+  worker: 'shadow-[0_0_0_4px_hsl(var(--muted-foreground)_/_0.18)]',
 };
 
-const statusLabels = {
+const statusLabels: Record<StatusDotProps['status'], string> = {
   healthy: 'Healthy',
   online: 'Online',
   active: 'Active',
@@ -45,11 +47,18 @@ const statusLabels = {
   offline: 'Offline',
   suspended: 'Suspended',
   'rate-limited': 'Rate limited',
+  // A worker's probe failing is expected; the dot is muted, not red.
+  worker: 'Worker',
 };
 
 export function StatusDot({ status, size = 'md', pulse = false, halo = false, title }: StatusDotProps) {
+  // Only a dot that was given a title, or a worker dot (whose muted color has
+  // no other cue), gets an accessible name. Other dots sit beside text that
+  // already says the same thing, and a generic label there reads twice or wrongly.
+  const accessibleName = title ?? (status === 'worker' ? statusLabels.worker : undefined);
   return (
     <span
+      {...(accessibleName ? { role: 'img', 'aria-label': accessibleName } : {})}
       title={title ?? statusLabels[status]}
       className={`inline-block rounded-full ${statusColors[status]} ${sizeClasses[size]} ${
         pulse ? 'animate-pulse' : ''
