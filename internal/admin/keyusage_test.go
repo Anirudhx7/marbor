@@ -26,8 +26,8 @@ func TestHandleKeysReportsTokensAndCost(t *testing.T) {
 	s := NewServer(r, mw, cfg)
 
 	// Two requests by key "team" totalling 500 tokens this month.
-	s.LogRequest(RequestLogParams{RequestID: "req-1", APIKey: "team", Model: "llama3", Node: "node-a", Status: "warm", HTTPStatus: 200, LatencyMs: 100, Tokens: 300})
-	s.LogRequest(RequestLogParams{RequestID: "req-2", APIKey: "team", Model: "llama3", Node: "node-a", Status: "warm", HTTPStatus: 200, LatencyMs: 100, Tokens: 200})
+	s.LogRequest(RequestLogParams{RequestID: "req-1", KeyName: "team", Model: "llama3", Node: "node-a", Status: "warm", HTTPStatus: 200, LatencyMs: 100, Tokens: 300})
+	s.LogRequest(RequestLogParams{RequestID: "req-2", KeyName: "team", Model: "llama3", Node: "node-a", Status: "warm", HTTPStatus: 200, LatencyMs: 100, Tokens: 200})
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/keys", nil)
 	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: s.AdminToken()})

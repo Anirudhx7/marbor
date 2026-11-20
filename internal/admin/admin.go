@@ -6647,7 +6647,7 @@ func (s *Server) LogRequest(p RequestLogParams) {
 // request. Field meanings are documented on LogRequest.
 type RequestLogParams struct {
 	RequestID  string
-	APIKey     string
+	KeyName    string
 	SourceIP   string
 	Model      string
 	Node       string
@@ -6695,7 +6695,7 @@ type RequestTiming struct {
 
 // LogRequestTimed is LogRequest plus the cloud-route timing split.
 func (s *Server) LogRequestTimed(p RequestLogParams, timing RequestTiming) {
-	requestID, apiKey, sourceIP, model, node, status := p.RequestID, p.APIKey, p.SourceIP, p.Model, p.Node, p.Status
+	requestID, keyName, sourceIP, model, node, status := p.RequestID, p.KeyName, p.SourceIP, p.Model, p.Node, p.Status
 	httpStatus, latencyMs, tokens, prefillMs, decision := p.HTTPStatus, p.LatencyMs, p.Tokens, p.PrefillMs, p.Decision
 	inputTokens, cachedTokens := cacheSplitPtrs(p.Usage)
 	var tps float64
@@ -6704,7 +6704,7 @@ func (s *Server) LogRequestTimed(p RequestLogParams, timing RequestTiming) {
 	}
 	// Attribute token usage to the calling key for per-key analytics + cost.
 	if s.auth != nil {
-		s.auth.AddKeyTokens(apiKey, tokens)
+		s.auth.AddKeyTokens(keyName, tokens)
 	}
 	now := time.Now()
 	id := requestID
@@ -6730,7 +6730,7 @@ func (s *Server) LogRequestTimed(p RequestLogParams, timing RequestTiming) {
 	s.mu.Lock()
 	s.requests = append(s.requests, RequestLog{
 		ID:            id,
-		ApiKey:        apiKey,
+		ApiKey:        keyName,
 		SourceIP:      sourceIP,
 		Model:         model,
 		Node:          node,
@@ -6786,7 +6786,7 @@ func (s *Server) LogRequestTimed(p RequestLogParams, timing RequestTiming) {
 	select {
 	case s.logChan <- store.RequestRecord{
 		ID:            id,
-		KeyName:       apiKey,
+		KeyName:       keyName,
 		Model:         model,
 		NodeName:      node,
 		StatusCode:    httpStatus,

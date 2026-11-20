@@ -300,9 +300,9 @@ func TestBootRestoreCarriesCacheFields(t *testing.T) {
 
 func TestRequestsEndpointsCarryUsageAndOmitWhenNil(t *testing.T) {
 	srv, _ := newCacheTestServer(t)
-	srv.LogRequest(RequestLogParams{RequestID: "with", APIKey: "k", SourceIP: "ip", Model: "m", Node: "gpu-0", Status: "warm", HTTPStatus: 200, LatencyMs: 5, Tokens: 100, Usage: RequestUsage{Input: i64(2000), Cached: i64(1820)}})
-	srv.LogRequest(RequestLogParams{RequestID: "zero", APIKey: "k", SourceIP: "ip", Model: "m", Node: "gpu-0", Status: "warm", HTTPStatus: 200, LatencyMs: 5, Tokens: 100, Usage: RequestUsage{Input: i64(1450), Cached: i64(0)}})
-	srv.LogRequest(RequestLogParams{RequestID: "none", APIKey: "k", SourceIP: "ip", Model: "m", Node: "gpu-0", Status: "warm", HTTPStatus: 200, LatencyMs: 5, Tokens: 100})
+	srv.LogRequest(RequestLogParams{RequestID: "with", KeyName: "k", SourceIP: "ip", Model: "m", Node: "gpu-0", Status: "warm", HTTPStatus: 200, LatencyMs: 5, Tokens: 100, Usage: RequestUsage{Input: i64(2000), Cached: i64(1820)}})
+	srv.LogRequest(RequestLogParams{RequestID: "zero", KeyName: "k", SourceIP: "ip", Model: "m", Node: "gpu-0", Status: "warm", HTTPStatus: 200, LatencyMs: 5, Tokens: 100, Usage: RequestUsage{Input: i64(1450), Cached: i64(0)}})
+	srv.LogRequest(RequestLogParams{RequestID: "none", KeyName: "k", SourceIP: "ip", Model: "m", Node: "gpu-0", Status: "warm", HTTPStatus: 200, LatencyMs: 5, Tokens: 100})
 
 	for _, h := range []struct {
 		name string

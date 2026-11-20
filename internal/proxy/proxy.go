@@ -1096,7 +1096,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// rec.statusCode, not StatusCode(): a request cancelled before any
 		// response was written has no status, and must not be logged as 200.
 		h.admin.LogRequest(admin.RequestLogParams{
-			RequestID: requestID, APIKey: keyName, SourceIP: clientIP, Model: loggedModel, Node: node.Name,
+			RequestID: requestID, KeyName: keyName, SourceIP: clientIP, Model: loggedModel, Node: node.Name,
 			Status: status, HTTPStatus: rec.statusCode, LatencyMs: latencyMs, Tokens: tokens,
 			PrefillMs: rec.promptEvalDurationMs(), Decision: decision,
 			Usage: rec.usageSplit(aborted || rec.truncatedTail || rec.statusCode >= http.StatusBadRequest),
@@ -1607,7 +1607,7 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 		tokens := rec.tokenCount(aborted || rec.truncatedTail)
 		clientIP := h.clientIP(r)
 		h.admin.LogRequestTimed(admin.RequestLogParams{
-			RequestID: requestID, APIKey: keyName, SourceIP: clientIP, Model: loggedModel, Node: nodeName,
+			RequestID: requestID, KeyName: keyName, SourceIP: clientIP, Model: loggedModel, Node: nodeName,
 			Status: status, HTTPStatus: rec.statusCode, LatencyMs: latencyMs, Tokens: tokens,
 			Decision: route.decision(nodeName),
 		}, admin.RequestTiming{QueueWaitMs: &queueWait, CloudMs: &cloudTime})

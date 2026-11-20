@@ -474,7 +474,7 @@ func TestShutdownDrainsAsyncLogQueue(t *testing.T) {
 	s := NewServer(r, nil, config.Config{}, st)
 
 	for i := 0; i < 10; i++ {
-		s.LogRequest(RequestLogParams{RequestID: fmt.Sprintf("req-%d", i), APIKey: "key1", SourceIP: "127.0.0.1", Model: "llama3", Node: "node1", Status: "200", HTTPStatus: 200, LatencyMs: 12, Tokens: 100})
+		s.LogRequest(RequestLogParams{RequestID: fmt.Sprintf("req-%d", i), KeyName: "key1", SourceIP: "127.0.0.1", Model: "llama3", Node: "node1", Status: "200", HTTPStatus: 200, LatencyMs: 12, Tokens: 100})
 	}
 
 	s.Shutdown()
@@ -489,7 +489,7 @@ func TestShutdownDrainsAsyncLogQueue(t *testing.T) {
 
 	// A LogRequest call after Shutdown must not panic (send on closed
 	// channel) even though the async logger has already exited.
-	s.LogRequest(RequestLogParams{RequestID: "req-after-shutdown", APIKey: "key1", SourceIP: "127.0.0.1", Model: "llama3", Node: "node1", Status: "200", HTTPStatus: 200, LatencyMs: 12, Tokens: 100})
+	s.LogRequest(RequestLogParams{RequestID: "req-after-shutdown", KeyName: "key1", SourceIP: "127.0.0.1", Model: "llama3", Node: "node1", Status: "200", HTTPStatus: 200, LatencyMs: 12, Tokens: 100})
 }
 
 // newScheduleTestServer builds an admin Server with one registered node
@@ -1297,7 +1297,7 @@ func TestHandleExplainRequest(t *testing.T) {
 		Excluded:      []router.ExcludedCandidate{{Node: "node-b", Reason: router.ExcludeReasonOverCapacity}},
 		ExcludedTotal: 3,
 	}
-	s.LogRequest(RequestLogParams{RequestID: "req-explain-1", APIKey: "key1", SourceIP: "127.0.0.1", Model: "llama3", Node: "node-a", Status: "warm", HTTPStatus: 200, LatencyMs: 12, Tokens: 100, Decision: decision})
+	s.LogRequest(RequestLogParams{RequestID: "req-explain-1", KeyName: "key1", SourceIP: "127.0.0.1", Model: "llama3", Node: "node-a", Status: "warm", HTTPStatus: 200, LatencyMs: 12, Tokens: 100, Decision: decision})
 
 	doGet := func(path string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodGet, path, nil)

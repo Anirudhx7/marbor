@@ -133,7 +133,7 @@ func (h *Handler) logCloudOnlyRefusal(r *http.Request, keyName, modelName, reque
 		d := route.decision("none")
 		d.Detail = detail
 		h.admin.LogRequestTimed(admin.RequestLogParams{
-			RequestID: requestID, APIKey: keyName, SourceIP: h.clientIP(r), Model: modelName, Node: "none",
+			RequestID: requestID, KeyName: keyName, SourceIP: h.clientIP(r), Model: modelName, Node: "none",
 			Status: "error", HTTPStatus: http.StatusServiceUnavailable, LatencyMs: int(total.Milliseconds()),
 			Decision: d,
 		}, admin.RequestTiming{QueueWaitMs: &waitMs})
