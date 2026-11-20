@@ -799,8 +799,8 @@ function NodeCard({ node, pinnedModels, replicaWorkers, onRemove, onDrain, onUnd
           <span className="text-xs font-medium">Health (60m)</span>
         </div>
         <div className="flex items-center gap-2">
-          {node.headlessWorker ? (
-            <span className="text-xs font-mono text-muted-foreground" title="Probe failures are muted for a headless worker, so no health percentage is shown." aria-label="No health percentage: probe failures are muted for a headless worker">-</span>
+          {dotStatus === 'worker' ? (
+            <span role="img" className="text-xs font-mono text-muted-foreground" title="Probe failures are muted for a headless worker, so no health percentage is shown." aria-label="No health percentage: probe failures are muted for a headless worker">-</span>
           ) : (node.healthHistory || []).length > 1 ? (
             <>
               <Sparkline data={node.healthHistory} width={100} height={24} />
@@ -2508,7 +2508,7 @@ export function GPUNodes() {
           activeIds={activeSignals}
           onToggle={toggleSignal}
           onClear={() => setActiveSignals(new Set())}
-          note={filteredNodes.some(n => n.headlessWorker) ? 'A worker with a failing probe is in no health chip.' : undefined}
+          note={nodes.some(n => n.headlessWorker) ? 'A worker with a failing probe is in no health chip.' : undefined}
           resultText={
             activeSignals.size === 0
               ? `${filteredNodes.length} of ${nodes.length} shown`

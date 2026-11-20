@@ -211,7 +211,7 @@ test('demo confirm flow derives the blocked member from stale agents, lowest nam
 });
 
 test('a confirmed demo worker whose node is down becomes a headless worker, a head or healthy worker does not', () => {
-  assert.match(api, /if \(isHead \|\| n\.health !== 'down'\) return confirmed;/);
+  assert.match(api, /if \(!isDemoHeadlessWorker\(isHead, n\.health\)\) return confirmed;/);
   assert.match(api, /withDemoSignals\(\{ \.\.\.confirmed, headlessWorker: true \}\)/);
 });
 
@@ -220,12 +220,15 @@ test('the dashboard strip and node cards render the worker state through the sha
     const page = read(rel);
     assert.match(page, /status=\{nodeDotStatus\(node\)\}/, `${rel} dot`);
     assert.match(page, /title=\{nodeDotTitle\(node\)\}/, `${rel} dot title`);
-    assert.ok(!/<StatusDot status=\{node\.health\}/.test(page), `${rel} still draws the raw health dot`);
+    assert.ok(!/<StatusDot status=\{(?:node|n)\.health\}/.test(page), `${rel} still draws the raw health dot`);
   }
   const dash = read('src/pages/Dashboard.tsx');
   assert.match(dash, /f\.total === 0 && f\.workersFailing === 0/, 'all-workers fleet must not read as empty');
   assert.match(dash, /\(f\.total > 0 \|\| f\.workersFailing > 0\)/, 'alert row must show for an all-workers fleet');
   const nodes = read('src/pages/GPUNodes.tsx');
-  assert.match(nodes, /A worker with a failing probe is in no health chip\./);
-  assert.match(nodes, /\{node\.headlessWorker \? \(/, 'health percentage placeholder for a worker');
+  assert.match(nodes, /note=\{nodes\.some\(n => n\.headlessWorker\) \? 'A worker with a failing probe is in no health chip\.'/);
+  assert.match(nodes, /worker: 'text-muted-foreground'/, 'worker needs its own health color key');
+  assert.match(dash, /to=\{`\/gpu-nodes\?highlight=\$\{encodeURIComponent\(f\.workerNodes\.map/, 'worker strip segment links to the worker nodes');
+  assert.match(dash, /\{f\.total === 0 && f\.draining > 0 && \(/, 'a drain must show in an all-workers fleet');
+  assert.match(nodes, /\{dotStatus === 'worker' \? \(/, 'health percentage placeholder for a worker');
 });

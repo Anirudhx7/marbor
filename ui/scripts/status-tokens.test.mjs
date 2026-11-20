@@ -160,6 +160,7 @@ test('the worker status dot is muted, not a health color, in every dot map', () 
   const dot = read('components/StatusDot.tsx');
   assert.match(dot, /worker: 'bg-muted-foreground'/);
   assert.match(dot, /worker: 'shadow-\[[^\]]*--muted-foreground[^\]]*\]'/);
-  assert.match(dot, /worker: WORKER_DOT_TITLE/);
+  assert.match(dot, /worker: 'Worker'/);
+  assert.match(dot, /role="img"/);
   assert.match(read('lib/fleetHealth.ts'), /WORKER_DOT_TITLE = '[^']*probe failing[^']*'/);
 });
