@@ -392,7 +392,9 @@ function NodeCard({ node, pinnedModels, replicaWorkers, onRemove, onDrain, onUnd
   isHighlighted?: boolean;
   highlightSource?: string | null;
 }) {
-  const healthColor = {
+  // A headless worker's failing probe is expected, so it reads muted rather
+  // than red; raw health stays what the server probed.
+  const healthColor = node.headlessWorker ? 'text-muted-foreground' : {
     healthy: 'text-primary',
     degraded: 'text-amber-700 dark:text-amber-400',
     down: 'text-destructive',
@@ -506,7 +508,7 @@ function NodeCard({ node, pinnedModels, replicaWorkers, onRemove, onDrain, onUnd
   if (node.schedulingRole === 'worker') {
     statusPills.push({ sev: 1, key: 'replica-worker', el: (
       <span
-        title={`This node is a confirmed member of a multi-host replica and is never a direct placement target - requests route to its head${node.replicaHead ? ` (${node.replicaHead})` : ''}.`}
+        title={`This node is a confirmed member of a multi-host replica and is never a direct placement target - requests route to its head${node.replicaHead ? ` (${node.replicaHead})` : ''}. Probe failures are muted.`}
         className="text-xs font-medium px-1.5 py-0.5 rounded bg-info/15 text-info border border-info/30 whitespace-nowrap"
       >
         Worker (non-schedulable)
@@ -568,7 +570,7 @@ function NodeCard({ node, pinnedModels, replicaWorkers, onRemove, onDrain, onUnd
         <div className="flex items-start gap-3 min-w-0">
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <StatusDot status={node.health} title={node.draining ? 'Draining' : undefined} />
+              <StatusDot status={node.headlessWorker ? 'worker' : node.health} title={node.draining ? 'Draining' : undefined} />
               <h3 className="font-semibold text-foreground truncate">{node.name}</h3>
               {isHighlighted && (
                 <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-md bg-primary text-primary-foreground shadow-sm animate-pulse">
@@ -795,7 +797,9 @@ function NodeCard({ node, pinnedModels, replicaWorkers, onRemove, onDrain, onUnd
           <span className="text-xs font-medium">Health (60m)</span>
         </div>
         <div className="flex items-center gap-2">
-          {(node.healthHistory || []).length > 1 ? (
+          {node.headlessWorker ? (
+            <span className="text-xs font-mono text-muted-foreground" title="Probe failures are muted for a headless worker, so no health percentage is shown.">-</span>
+          ) : (node.healthHistory || []).length > 1 ? (
             <>
               <Sparkline data={node.healthHistory} width={100} height={24} />
               <span className={`text-xs font-mono font-medium ${healthColor}`}>
@@ -2517,6 +2521,9 @@ export function GPUNodes() {
               : `${visibleNodes.length} of ${filteredNodes.length} shown match${visibleNodes.length === 1 ? 'es' : ''}`
           }
         />
+      )}
+      {nodes.some(n => n.headlessWorker) && (
+        <p className="text-xs text-muted-foreground -mt-3">A worker with a failing probe is in no health chip.</p>
       )}
 
       {/* Nodes Grid */}

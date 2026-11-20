@@ -78,6 +78,11 @@ export interface GPUNode {
   powerDrawW: number;
   temperature: number | null;
   health: 'healthy' | 'degraded' | 'down';
+  // True for a replica worker whose health probe is failing. A headless worker
+  // is expected to fail its probe, so the dashboard shows it as a muted worker
+  // instead of down and counts it apart. Raw `health` stays as probed; read
+  // this flag to present it. Absent on a server that predates it.
+  headlessWorker?: boolean;
   runtime: string;
   // Set only when this node is currently probed as llamacpp and /health is
   // failing with a 404 (route doesn't exist) - the real, observed signature

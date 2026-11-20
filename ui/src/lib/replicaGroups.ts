@@ -221,7 +221,9 @@ const HEALTH_RANK: Record<GPUNode['health'], number> = { healthy: 0, degraded: 1
 export function confirmedChip(g: ConfirmedGroup): StatusChip {
   if (!g.resolved) return { label: 'Unresolved', tone: 'danger' };
   let worst: GPUNode['health'] = 'healthy';
-  for (const n of g.nodes) if (HEALTH_RANK[n.health] > HEALTH_RANK[worst]) worst = n.health;
+  // A worker whose probe is failing is expected to; it never drags the group
+  // chip to Down or Degraded.
+  for (const n of g.nodes) if (!n.headlessWorker && HEALTH_RANK[n.health] > HEALTH_RANK[worst]) worst = n.health;
   if (worst === 'down') return { label: 'Down', tone: 'danger' };
   if (worst === 'degraded') return { label: 'Degraded', tone: 'warn' };
   return { label: 'Healthy', tone: 'success' };

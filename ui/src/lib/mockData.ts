@@ -32,10 +32,12 @@ export function mockRuntimeLogLinesFor(node: GPUNode): string[] {
 // server's own signals and never go through this.
 export function withDemoSignals(n: GPUNode): GPUNode {
   const signals: NodeSignalId[] = [];
-  if (n.health === 'healthy' && !n.draining) signals.push('healthy');
-  if (n.health === 'degraded' && !n.draining) signals.push('degraded');
+  // A headless worker (a replica worker whose probe is failing) matches none
+  // of healthy, degraded or down, whatever its raw health.
+  if (n.health === 'healthy' && !n.draining && !n.headlessWorker) signals.push('healthy');
+  if (n.health === 'degraded' && !n.draining && !n.headlessWorker) signals.push('degraded');
   if (n.draining) signals.push('draining');
-  if (n.health === 'down') signals.push('down');
+  if (n.health === 'down' && !n.headlessWorker) signals.push('down');
   if (n.agentPresent) signals.push('agent');
   if ((n.loadedModels ?? []).length > 0) signals.push('warm');
   if (n.vramSource !== 'none' && n.vramTotalMB > 0 && n.vramUsedMB / n.vramTotalMB >= 0.9) signals.push('pressure');
@@ -491,9 +493,13 @@ export const mockGPUNodes: GPUNode[] = [
     powerDrawW: 318,
     cpuPercent: 35,
     temperature: 69,
-    health: 'healthy',
+    // A headless worker has no serving endpoint of its own, so its health
+    // probe fails by design: raw health is down, the dashboard shows it as a
+    // muted worker and matches no health signal.
+    health: 'down',
+    headlessWorker: true,
     draining: false,
-    signals: ['healthy'],
+    signals: [],
     drainedGraceSeconds: 0,
     activeConns: 0,
     prewarmDisabled: false,
@@ -503,7 +509,9 @@ export const mockGPUNodes: GPUNode[] = [
     // list is meaningful here, matching real TP/PP deployments where only
     // the head process binds the OpenAI-compatible port.
     loadedModels: [],
-    healthHistory: Array(60).fill(0).map(() => 97 + Math.random() * 3),
+    // Probe has been failing the whole window; the card shows `-` for a
+    // headless worker rather than this series.
+    healthHistory: Array(60).fill(0),
     coldStarts: 0,
     tokensTotal: 0,
     avgLatencyMs: 0,
@@ -643,6 +651,10 @@ export const mockGPUNodes: GPUNode[] = [
     agentRuntime: 'ollama',
   },
 ];
+
+// Nodes the server counts in fleet totals: every node except a replica worker
+// whose probe is failing, which is counted apart as a worker.
+const DEMO_COUNTED_NODES = mockGPUNodes.filter(n => !n.headlessWorker).length;
 
 // SoleReplicaImpact mirrors the Admin API sole-replica response: the models
 // that stop being served anywhere if the node is drained or its runtime is
@@ -882,7 +894,7 @@ export const mockModelCatalog: ModelCatalog = (() => {
       size_vram: Math.round(16.2 * 1024 * 1024 * 1024),
       size_disk: Math.round(4.7 * 1024 * 1024 * 1024),
       warm_count: 0, // derived from nodes[].warm below
-      total_nodes: mockGPUNodes.length,
+      total_nodes: DEMO_COUNTED_NODES,
       // Demo parity for the digest-mismatch warning: these two nodes
       // deliberately report different digests for the same model name, as if
       // the tag was re-pulled with different content mid-rollout.
@@ -898,7 +910,7 @@ export const mockModelCatalog: ModelCatalog = (() => {
       size_vram: Math.round(14.8 * 1024 * 1024 * 1024),
       size_disk: Math.round(4.1 * 1024 * 1024 * 1024),
       warm_count: 0, // derived from nodes[].warm below
-      total_nodes: mockGPUNodes.length,
+      total_nodes: DEMO_COUNTED_NODES,
       nodes: [
         { name: 'gpu-node-02', healthy: true, warm: true, vram_bytes: Math.round(14.8 * 1024 * 1024 * 1024), runtime: 'ollama' },
         { name: 'gpu-node-03', healthy: true, warm: true, vram_bytes: Math.round(14.8 * 1024 * 1024 * 1024), runtime: 'vllm' },
@@ -909,7 +921,7 @@ export const mockModelCatalog: ModelCatalog = (() => {
       size_vram: Math.round(40.2 * 1024 * 1024 * 1024),
       size_disk: Math.round(42.5 * 1024 * 1024 * 1024),
       warm_count: 0, // derived from nodes[].warm below
-      total_nodes: mockGPUNodes.length,
+      total_nodes: DEMO_COUNTED_NODES,
       nodes: [
         { name: 'gpu-node-01', healthy: true, warm: true, vram_bytes: Math.round(40.2 * 1024 * 1024 * 1024), runtime: 'ollama' },
       ],
@@ -919,7 +931,7 @@ export const mockModelCatalog: ModelCatalog = (() => {
       size_vram: Math.round(26.5 * 1024 * 1024 * 1024),
       size_disk: Math.round(9.0 * 1024 * 1024 * 1024),
       warm_count: 0, // derived from nodes[].warm below
-      total_nodes: mockGPUNodes.length,
+      total_nodes: DEMO_COUNTED_NODES,
       digest_mismatch: true,
       drift_details: 'a1b2c3 vs d4e5f6',
       nodes: [
@@ -932,7 +944,7 @@ export const mockModelCatalog: ModelCatalog = (() => {
       size_vram: Math.round(14.1 * 1024 * 1024 * 1024),
       size_disk: Math.round(5.4 * 1024 * 1024 * 1024),
       warm_count: 0, // derived from nodes[].warm below
-      total_nodes: mockGPUNodes.length,
+      total_nodes: DEMO_COUNTED_NODES,
       nodes: [
         { name: 'gpu-node-01', healthy: true, warm: true, vram_bytes: Math.round(14.1 * 1024 * 1024 * 1024), runtime: 'ollama' },
         { name: 'gpu-node-02', healthy: true, warm: true, vram_bytes: Math.round(14.1 * 1024 * 1024 * 1024), runtime: 'ollama' },
@@ -944,7 +956,7 @@ export const mockModelCatalog: ModelCatalog = (() => {
       size_vram: Math.round(4.2 * 1024 * 1024 * 1024),
       size_disk: Math.round(7.9 * 1024 * 1024 * 1024),
       warm_count: 0, // derived from nodes[].warm below
-      total_nodes: mockGPUNodes.length,
+      total_nodes: DEMO_COUNTED_NODES,
       nodes: [
         { name: 'gpu-node-04', healthy: false, warm: false, runtime: 'llamacpp' },
         { name: 'gpu-node-06', healthy: false, warm: false, runtime: 'ollama' },
@@ -955,7 +967,7 @@ export const mockModelCatalog: ModelCatalog = (() => {
       size_vram: Math.round(9.5 * 1024 * 1024 * 1024),
       size_disk: Math.round(4.7 * 1024 * 1024 * 1024),
       warm_count: 0, // derived from nodes[].warm below
-      total_nodes: mockGPUNodes.length,
+      total_nodes: DEMO_COUNTED_NODES,
       nodes: [
         { name: 'gpu-node-01', healthy: true, warm: true, vram_bytes: Math.round(9.5 * 1024 * 1024 * 1024), runtime: 'llamacpp' },
       ],
@@ -965,7 +977,7 @@ export const mockModelCatalog: ModelCatalog = (() => {
       size_vram: Math.round(0.6 * 1024 * 1024 * 1024),
       size_disk: Math.round(0.27 * 1024 * 1024 * 1024),
       warm_count: 0, // derived from nodes[].warm below
-      total_nodes: mockGPUNodes.length,
+      total_nodes: DEMO_COUNTED_NODES,
       family: 'bert',
       nodes: [
         { name: 'gpu-node-02', healthy: true, warm: true, vram_bytes: Math.round(0.6 * 1024 * 1024 * 1024), runtime: 'ollama' },
@@ -984,7 +996,7 @@ export const mockModelCatalog: ModelCatalog = (() => {
       size_vram: Math.round(61.0 * 1024 * 1024 * 1024),
       size_disk: Math.round(230.0 * 1024 * 1024 * 1024),
       warm_count: 0, // derived from nodes[].warm below
-      total_nodes: mockGPUNodes.length,
+      total_nodes: DEMO_COUNTED_NODES,
       family: 'llama',
       nodes: [
         { name: 'gpu-node-07', healthy: true, warm: true, vram_bytes: Math.round(61.0 * 1024 * 1024 * 1024), runtime: 'vllm' },
@@ -1049,8 +1061,8 @@ export const mockModelCatalog: ModelCatalog = (() => {
   });
   return {
     total_models: models.length,
-    total_nodes: mockGPUNodes.length,
-    healthy_nodes: mockGPUNodes.filter(n => n.health === 'healthy').length,
+    total_nodes: DEMO_COUNTED_NODES,
+    healthy_nodes: mockGPUNodes.filter(n => n.health === 'healthy' && !n.headlessWorker).length,
     models,
   };
 })();

@@ -155,3 +155,9 @@ test('dark: red-400 text on the destructive 15% tint is at least 4.5:1', () => {
   const r = ratio(red400, tint);
   assert.ok(r >= 4.5, `red-400 ${r.toFixed(2)}`);
 });
+
+test('the worker status dot is muted, not a health color', () => {
+  const dot = read('components/StatusDot.tsx');
+  assert.match(dot, /worker: 'bg-muted-foreground'/);
+  assert.match(dot, /worker: 'Worker host: probe failing is expected for a headless worker\. Not counted in fleet health\.'/);
+});
