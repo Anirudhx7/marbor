@@ -521,7 +521,6 @@ export async function fetchSummary() {
     queueDepth: d.queue_depth ?? 0,
     nodesOnline: d.nodes_online ?? 0,
     nodesDraining: d.nodes_draining ?? 0,
-    nodesWorkers: d.nodes_workers ?? 0,
     totalNodes: d.total_nodes ?? 0,
     warmHitRatio: d.warm_hit_ratio ?? 0,
   };
@@ -1840,16 +1839,7 @@ export async function fetchCloudBudgetStatus(): Promise<CloudBudgetStatus> {
   return res.json();
 }
 
-export interface HealthResponse {
-  version: string;
-  proxy_port: number;
-  status: string;
-  // total and healthy leave out a replica worker whose probe is failing;
-  // workers counts those separately. Absent fields mean an older server.
-  nodes?: { total: number; healthy: number; workers?: number };
-}
-
-export async function fetchHealth(): Promise<HealthResponse> {
+export async function fetchHealth(): Promise<{ version: string; proxy_port: number; status: string }> {
   // No backend in the static demo; callers keep the build-time version.
   if (DEMO) throw new Error('health unavailable in demo');
   const res = await fetch('/health');

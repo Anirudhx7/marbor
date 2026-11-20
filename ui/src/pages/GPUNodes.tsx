@@ -15,6 +15,7 @@ import { FormError } from '../components/FormError';
 import { parseNodeForm } from '../lib/formValidation';
 import { useModalForm, errorMessage } from '../lib/useModalForm';
 import { buttonClasses } from '../lib/buttonClasses';
+import { nodeDotStatus, nodeDotTitle } from '../lib/fleetHealth';
 import { ReplicaGroupsTab } from '../components/ReplicaGroupsTab';
 import { ModelConfigModal } from '../components/ModelConfigModal';
 import { CustomSelect } from '../components/Select';
@@ -393,11 +394,13 @@ function NodeCard({ node, pinnedModels, replicaWorkers, onRemove, onDrain, onUnd
 }) {
   // A headless worker's failing probe is expected, so it reads muted rather
   // than red; raw health stays what the server probed.
-  const healthColor = node.headlessWorker ? 'text-muted-foreground' : {
+  const dotStatus = nodeDotStatus(node);
+  const healthColor = {
     healthy: 'text-primary',
     degraded: 'text-amber-700 dark:text-amber-400',
     down: 'text-destructive',
-  }[node.health];
+    worker: 'text-muted-foreground',
+  }[dotStatus];
 
   // Status pills, worst news first - a troubled node can carry half a dozen
   // flags and DOM order would bury a TLS mismatch under a draining notice.
@@ -569,7 +572,7 @@ function NodeCard({ node, pinnedModels, replicaWorkers, onRemove, onDrain, onUnd
         <div className="flex items-start gap-3 min-w-0">
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <StatusDot status={node.headlessWorker ? 'worker' : node.health} title={node.draining ? 'Draining' : undefined} />
+              <StatusDot status={nodeDotStatus(node)} title={nodeDotTitle(node)} />
               <h3 className="font-semibold text-foreground truncate">{node.name}</h3>
               {isHighlighted && (
                 <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-md bg-primary text-primary-foreground shadow-sm animate-pulse">
@@ -797,7 +800,7 @@ function NodeCard({ node, pinnedModels, replicaWorkers, onRemove, onDrain, onUnd
         </div>
         <div className="flex items-center gap-2">
           {node.headlessWorker ? (
-            <span className="text-xs font-mono text-muted-foreground" title="Probe failures are muted for a headless worker, so no health percentage is shown.">-</span>
+            <span className="text-xs font-mono text-muted-foreground" title="Probe failures are muted for a headless worker, so no health percentage is shown." aria-label="No health percentage: probe failures are muted for a headless worker">-</span>
           ) : (node.healthHistory || []).length > 1 ? (
             <>
               <Sparkline data={node.healthHistory} width={100} height={24} />
@@ -2505,15 +2508,13 @@ export function GPUNodes() {
           activeIds={activeSignals}
           onToggle={toggleSignal}
           onClear={() => setActiveSignals(new Set())}
+          note={filteredNodes.some(n => n.headlessWorker) ? 'A worker with a failing probe is in no health chip.' : undefined}
           resultText={
             activeSignals.size === 0
               ? `${filteredNodes.length} of ${nodes.length} shown`
               : `${visibleNodes.length} of ${filteredNodes.length} shown match${visibleNodes.length === 1 ? 'es' : ''}`
           }
         />
-      )}
-      {nodes.some(n => n.headlessWorker) && (
-        <p className="text-xs text-muted-foreground -mt-3">A worker with a failing probe is in no health chip.</p>
       )}
 
       {/* Nodes Grid */}

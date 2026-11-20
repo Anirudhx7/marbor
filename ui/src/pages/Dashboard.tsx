@@ -21,7 +21,7 @@ import { waitCloudSummary } from '../lib/requestsView';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import { mockGPUNodes, mockSavings } from '../lib/mockData';
 import { readLastNodeCount, writeLastNodeCount } from '../lib/nodeCount';
-import { computeFleetHealth, workersText } from '../lib/fleetHealth';
+import { computeFleetHealth, nodeDotStatus, nodeDotTitle, workersLabel, workersText } from '../lib/fleetHealth';
 import { fetchNodes, fetchSummary, fetchSavings, fetchHealth, fetchKeys, fetchRequests } from '../lib/api';
 import { GPUNode, Savings, APIKey, RequestEntry } from '../types';
 import { SetupChecklist } from '../components/SetupChecklist';
@@ -132,12 +132,9 @@ function NodeCardSkeleton() {
 // degrades to "+N more" instead of wrapping the strip into a wall of red.
 const MAX_DOWN_BADGES = 3;
 
-function HealthSegment({ color, children, label }: { color: string; children: React.ReactNode; label?: string }) {
+function HealthSegment({ color, children, title }: { color: string; children: React.ReactNode; title?: string }) {
   return (
-    <span
-      className="flex items-center gap-1.5 whitespace-nowrap"
-      {...(label ? { role: 'group', title: label, 'aria-label': label } : {})}
-    >
+    <span className="flex items-center gap-1.5 whitespace-nowrap" title={title}>
       <span className={`w-2 h-2 rounded-full shrink-0 ${color}`} />
       <span className="text-muted-foreground">{children}</span>
     </span>
@@ -178,9 +175,15 @@ function FleetHealthStrip({ nodes }: { nodes: GPUNode[] }) {
             </>
           )}
           {f.workersFailing > 0 && (
-            <HealthSegment color="bg-muted-foreground" label={`${workersText(f.workersFailing)}. A headless worker is expected to fail its probe, so it is not counted as down.`}>
-              <span className="text-foreground font-semibold font-mono">{f.workersFailing}</span> {f.workersFailing === 1 ? 'worker' : 'workers'} probe failing
-            </HealthSegment>
+            <Link
+              to={`/gpu-nodes?highlight=${encodeURIComponent(f.workerNodes.map((n) => n.name).join(','))}&from=dashboard`}
+              className="no-underline rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2"
+              title={`${workersText(f.workersFailing)}. A headless worker is expected to fail its probe, so it is not counted as down. View on GPU Nodes.`}
+            >
+              <HealthSegment color="bg-muted-foreground">
+                <span className="text-foreground font-semibold font-mono">{f.workersFailing}</span> {workersLabel(f.workersFailing)}
+              </HealthSegment>
+            </Link>
           )}
         </div>
 
@@ -342,7 +345,6 @@ export function Dashboard() {
         queueDepth: 0,
         nodesOnline: 4,
         nodesDraining: 1,
-        nodesWorkers: 1,
         totalNodes: 6,
         warmHitRatio: 0.94,
   } : {
@@ -353,7 +355,6 @@ export function Dashboard() {
     queueDepth: 0,
     nodesOnline: 0,
     nodesDraining: 0,
-    nodesWorkers: 0,
     totalNodes: 0,
     warmHitRatio: 0,
   });
@@ -423,7 +424,6 @@ export function Dashboard() {
     queueDepth: 0,
     nodesOnline: 4,
     nodesDraining: 1,
-    nodesWorkers: 1,
     totalNodes: 6,
     warmHitRatio: 0.94,
   });
@@ -768,7 +768,7 @@ export function Dashboard() {
                 <div className="flex items-start justify-between mb-4">
                   <div>
                     <div className="flex items-center gap-2">
-                      <StatusDot status={node.headlessWorker ? 'worker' : node.health} size="sm" title={node.draining ? 'Draining' : undefined} />
+                      <StatusDot status={nodeDotStatus(node)} size="sm" title={nodeDotTitle(node)} />
                       <span className="font-semibold text-foreground text-sm">{node.name}</span>
                     </div>
                     <p className="text-xs font-medium text-muted-foreground mt-1">{node.gpuModel}</p>

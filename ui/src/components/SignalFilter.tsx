@@ -17,10 +17,12 @@ interface SignalFilterProps {
   onClear: () => void;
   // e.g. "4 of 6 nodes" - announced via the live region when it changes.
   resultText: string;
+  // Optional one-line hint shown under the chips.
+  note?: string;
   label?: string;
 }
 
-export function SignalFilter({ signals, activeIds, onToggle, onClear, resultText, label = 'Filter by signal' }: SignalFilterProps) {
+export function SignalFilter({ signals, activeIds, onToggle, onClear, resultText, note, label = 'Filter by signal' }: SignalFilterProps) {
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label={label}>
@@ -59,6 +61,7 @@ export function SignalFilter({ signals, activeIds, onToggle, onClear, resultText
           </button>
         )}
       </div>
+      {note && <p className="text-xs text-muted-foreground">{note}</p>}
     </div>
   );
 }

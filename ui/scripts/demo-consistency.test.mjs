@@ -209,3 +209,23 @@ test('the agent badge never says no agent is installed for a stale agent', () =>
 test('demo confirm flow derives the blocked member from stale agents, lowest name first', () => {
   assert.ok(/replicaBlockedBy: silent/.test(api) && /agentStale\)\.sort\(\)\[0\]/.test(api));
 });
+
+test('a confirmed demo worker whose node is down becomes a headless worker, a head or healthy worker does not', () => {
+  assert.match(api, /if \(isHead \|\| n\.health !== 'down'\) return confirmed;/);
+  assert.match(api, /withDemoSignals\(\{ \.\.\.confirmed, headlessWorker: true \}\)/);
+});
+
+test('the dashboard strip and node cards render the worker state through the shared helpers', () => {
+  for (const rel of ['src/pages/Dashboard.tsx', 'src/pages/GPUNodes.tsx']) {
+    const page = read(rel);
+    assert.match(page, /status=\{nodeDotStatus\(node\)\}/, `${rel} dot`);
+    assert.match(page, /title=\{nodeDotTitle\(node\)\}/, `${rel} dot title`);
+    assert.ok(!/<StatusDot status=\{node\.health\}/.test(page), `${rel} still draws the raw health dot`);
+  }
+  const dash = read('src/pages/Dashboard.tsx');
+  assert.match(dash, /f\.total === 0 && f\.workersFailing === 0/, 'all-workers fleet must not read as empty');
+  assert.match(dash, /\(f\.total > 0 \|\| f\.workersFailing > 0\)/, 'alert row must show for an all-workers fleet');
+  const nodes = read('src/pages/GPUNodes.tsx');
+  assert.match(nodes, /A worker with a failing probe is in no health chip\./);
+  assert.match(nodes, /\{node\.headlessWorker \? \(/, 'health percentage placeholder for a worker');
+});

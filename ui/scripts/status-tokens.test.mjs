@@ -156,8 +156,10 @@ test('dark: red-400 text on the destructive 15% tint is at least 4.5:1', () => {
   assert.ok(r >= 4.5, `red-400 ${r.toFixed(2)}`);
 });
 
-test('the worker status dot is muted, not a health color', () => {
+test('the worker status dot is muted, not a health color, in every dot map', () => {
   const dot = read('components/StatusDot.tsx');
   assert.match(dot, /worker: 'bg-muted-foreground'/);
-  assert.match(dot, /worker: 'Worker host: probe failing is expected for a headless worker\. Not counted in fleet health\.'/);
+  assert.match(dot, /worker: 'shadow-\[[^\]]*--muted-foreground[^\]]*\]'/);
+  assert.match(dot, /worker: WORKER_DOT_TITLE/);
+  assert.match(read('lib/fleetHealth.ts'), /WORKER_DOT_TITLE = '[^']*probe failing[^']*'/);
 });

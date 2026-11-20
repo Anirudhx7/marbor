@@ -994,7 +994,7 @@ export const mockModelCatalog: ModelCatalog = (() => {
       family: 'llama',
       nodes: [
         { name: 'gpu-node-07', healthy: true, warm: true, vram_bytes: Math.round(61.0 * 1024 * 1024 * 1024), runtime: 'vllm' },
-        { name: 'gpu-node-08', healthy: true, warm: true, vram_bytes: Math.round(58.4 * 1024 * 1024 * 1024), runtime: 'vllm' },
+        { name: 'gpu-node-08', healthy: false, warm: true, vram_bytes: Math.round(58.4 * 1024 * 1024 * 1024), runtime: 'vllm' },
         { name: 'gpu-node-01', healthy: true, warm: true, vram_bytes: Math.round(61.0 * 1024 * 1024 * 1024), runtime: 'vllm' },
       ],
     },

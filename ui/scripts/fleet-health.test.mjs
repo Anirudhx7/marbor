@@ -4,7 +4,7 @@
 // health endpoint's totals.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { computeFleetHealth, workersText } from '../src/lib/fleetHealth.ts';
+import { computeFleetHealth, nodeDotStatus, nodeDotTitle, WORKER_DOT_TITLE, workersLabel, workersText } from '../src/lib/fleetHealth.ts';
 
 const node = (name, signals, extra = {}) => ({ id: name, name, health: 'healthy', draining: false, signals, ...extra });
 
@@ -31,10 +31,33 @@ test('a worker flagged and raw down is not a down node and not in the total', ()
   assert.equal(f.workersFailing, 1);
 });
 
-test('a draining flagged worker is only a worker, never also draining', () => {
+test('a draining flagged worker is still counted as draining and as a worker, never in the total', () => {
   const f = computeFleetHealth([node('w', ['draining'], { headlessWorker: true, health: 'down', draining: true })]);
-  assert.equal(f.draining, 0);
+  assert.equal(f.total, 0);
+  assert.equal(f.draining, 1);
   assert.equal(f.workersFailing, 1);
+});
+
+test('muting a failing probe never hides VRAM pressure or a silent agent on the worker', () => {
+  const f = computeFleetHealth([node('w', ['pressure'], { headlessWorker: true, health: 'down', agentStale: true })]);
+  assert.deepEqual(f.vramPressure.map((n) => n.name), ['w']);
+  assert.deepEqual(f.staleAgents.map((n) => n.name), ['w']);
+});
+
+test('the flag wins over stray health signals on a worker', () => {
+  const f = computeFleetHealth([node('w', ['healthy', 'degraded', 'down'], { headlessWorker: true })]);
+  assert.equal(f.healthy, 0);
+  assert.equal(f.degraded, 0);
+  assert.equal(f.downNodes.length, 0);
+  assert.equal(f.total, 0);
+});
+
+test('a degraded node is counted and a node without signals counts as nothing', () => {
+  const f = computeFleetHealth([node('a', ['degraded'], { health: 'degraded' }), { id: 'b', name: 'b', health: 'healthy' }]);
+  assert.equal(f.total, 2);
+  assert.equal(f.degraded, 1);
+  assert.equal(f.healthy, 0);
+  assert.equal(f.workersFailing, 0);
 });
 
 test('an all-workers fleet has no counted nodes and shows only the worker figure', () => {
@@ -44,6 +67,7 @@ test('an all-workers fleet has no counted nodes and shows only the worker figure
   ]);
   assert.equal(f.total, 0);
   assert.equal(f.workersFailing, 2);
+  assert.deepEqual(f.workerNodes.map((n) => n.name), ['w1', 'w2']);
 });
 
 test('a node without the flag (older server) renders as today', () => {
@@ -53,21 +77,30 @@ test('a node without the flag (older server) renders as today', () => {
   assert.equal(f.workersFailing, 0);
 });
 
-test('strip totals equal the health endpoint fixture for the same fleet', () => {
+test('every node is counted exactly once: total plus workers is the node count', () => {
   const nodes = [
     node('a', ['healthy']), node('b', ['degraded'], { health: 'degraded' }), node('c', ['down'], { health: 'down' }),
-    node('w', [], { headlessWorker: true, health: 'down' }),
+    node('d', ['draining'], { draining: true }),
+    node('w', [], { headlessWorker: true, health: 'down' }), node('x', [], { headlessWorker: true, health: 'healthy' }),
   ];
-  // Mirror of /health: total and healthy leave out the failing worker, workers counts it.
-  const healthFixture = { total: 3, healthy: 1, workers: 1 };
   const f = computeFleetHealth(nodes);
-  assert.equal(f.total, healthFixture.total);
-  assert.equal(f.healthy, healthFixture.healthy);
-  assert.equal(f.workersFailing, healthFixture.workers);
+  assert.equal(f.total + f.workersFailing, nodes.length);
+  assert.equal(f.healthy, 1);
+  assert.equal(f.workersFailing, 2);
 });
 
 test('workersText is singular, plural and empty at zero', () => {
   assert.equal(workersText(0), '');
   assert.equal(workersText(1), '1 worker probe failing');
   assert.equal(workersText(3), '3 workers probe failing');
+  assert.equal(workersLabel(1), 'worker probe failing');
+  assert.equal(workersLabel(2), 'workers probe failing');
+});
+
+test('the dot is muted for a headless worker and keeps both facts when it is draining', () => {
+  assert.equal(nodeDotStatus({ health: 'down', headlessWorker: true }), 'worker');
+  assert.equal(nodeDotStatus({ health: 'down' }), 'down');
+  assert.equal(nodeDotTitle({ draining: false }), undefined);
+  assert.equal(nodeDotTitle({ draining: true }), 'Draining');
+  assert.equal(nodeDotTitle({ draining: true, headlessWorker: true }), `Draining. ${WORKER_DOT_TITLE}`);
 });

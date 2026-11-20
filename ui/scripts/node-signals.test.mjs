@@ -146,3 +146,17 @@ test('the demo fleet carries a headless worker and a real down node', async () =
   assert.deepEqual(worker.signals, []);
   assert.ok(nodes.some((n) => n.health === 'down' && !n.headlessWorker && n.signals.includes('down')), 'no real down node left in the demo');
 });
+
+test('the demo worker has no health history to show and the model catalog agrees with every node fixture', async () => {
+  const nodes = await fixtures['mockData.ts mockGPUNodes']();
+  const worker = nodes.find((n) => n.name === 'gpu-node-08');
+  assert.ok(worker.healthHistory.every((v) => v === 0), 'worker health history is not the zero series');
+  const src = read('src/lib/mockData.ts');
+  const entries = [...src.matchAll(/\{ name: '(gpu-node-\d+)', healthy: (true|false),/g)];
+  assert.ok(entries.length > 0, 'no catalog node literals found');
+  for (const [, name, healthy] of entries) {
+    const node = nodes.find((n) => n.name === name);
+    assert.ok(node, `${name} is not a demo node`);
+    assert.equal(healthy === 'true', node.health === 'healthy', `catalog says ${name} healthy=${healthy} but the node is ${node.health}`);
+  }
+});
