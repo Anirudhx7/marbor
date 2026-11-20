@@ -154,7 +154,8 @@ test('the demo worker has no health history to show and the model catalog agrees
   const src = read('src/lib/mockData.ts');
   const entries = [...src.matchAll(/\{ name: '(gpu-node-\d+)', healthy: (true|false),/g)];
   assert.ok(entries.length > 0, 'no catalog node literals found');
-  const catalog = src.slice(src.indexOf('export const mockModelCatalog'));
+  const catalogStart = src.indexOf('export const mockModelCatalog:');
+  const catalog = src.slice(catalogStart, src.indexOf('export const mockCloudProviders', catalogStart));
   const all = [...catalog.matchAll(/\{ name: 'gpu-node-\d+',/g)];
   assert.equal(entries.length, all.length, 'a catalog node literal has a shape the health check does not read');
   for (const [, name, healthy] of entries) {

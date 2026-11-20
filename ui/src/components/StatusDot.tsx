@@ -52,12 +52,15 @@ const statusLabels: Record<StatusDotProps['status'], string> = {
 };
 
 export function StatusDot({ status, size = 'md', pulse = false, halo = false, title }: StatusDotProps) {
+  // Only a dot that was given a title, or a worker dot (whose muted color has
+  // no other cue), gets an accessible name. Other dots sit beside text that
+  // already says the same thing, and a generic label there reads twice or wrongly.
+  const accessibleName = title ?? (status === 'worker' ? statusLabels.worker : undefined);
   return (
     // role="img" with an accessible name: the colour alone told touch and
     // screen-reader users nothing, since a title tooltip never reaches them.
     <span
-      role="img"
-      aria-label={title ?? statusLabels[status]}
+      {...(accessibleName ? { role: 'img', 'aria-label': accessibleName } : {})}
       title={title ?? statusLabels[status]}
       className={`inline-block rounded-full ${statusColors[status]} ${sizeClasses[size]} ${
         pulse ? 'animate-pulse' : ''
