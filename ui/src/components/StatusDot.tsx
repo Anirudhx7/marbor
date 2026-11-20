@@ -1,3 +1,5 @@
+import { WORKER_DOT_TITLE } from '../lib/fleetHealth';
+
 interface StatusDotProps {
   status: 'healthy' | 'degraded' | 'down' | 'online' | 'offline' | 'active' | 'suspended' | 'rate-limited' | 'worker';
   size?: 'sm' | 'md' | 'lg';
@@ -48,7 +50,7 @@ const statusLabels = {
   suspended: 'Suspended',
   'rate-limited': 'Rate limited',
   // A worker's probe failing is expected; the dot is muted, not red.
-  worker: 'Worker host: probe failing is expected for a headless worker. Not counted in fleet health.',
+  worker: WORKER_DOT_TITLE,
 };
 
 export function StatusDot({ status, size = 'md', pulse = false, halo = false, title }: StatusDotProps) {

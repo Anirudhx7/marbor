@@ -35,3 +35,9 @@ test('confirmedChip ignores a worker whose probe is failing', () => {
   assert.equal(confirmedChip({ resolved: true, nodes: [{ ...head, health: 'down' }, worker] }).label, 'Down');
   assert.equal(confirmedChip({ resolved: true, nodes: [head, { ...worker, headlessWorker: false }] }).label, 'Down');
 });
+
+test('confirmedChip keeps a real degraded member and treats an all-workers group as healthy', () => {
+  const worker = { name: 'w', health: 'down', headlessWorker: true };
+  assert.equal(confirmedChip({ resolved: true, nodes: [{ name: 'h', health: 'degraded' }, worker] }).label, 'Degraded');
+  assert.equal(confirmedChip({ resolved: true, nodes: [worker] }).label, 'Healthy');
+});
