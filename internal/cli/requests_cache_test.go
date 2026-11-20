@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -34,8 +35,9 @@ func TestRun_RequestsListShowsCachedAndInputOrDash(t *testing.T) {
 	if len(lines) != 4 {
 		t.Fatalf("got %d lines: %q", len(lines), stdout.String())
 	}
-	if !strings.Contains(lines[0], "CACHED") || !strings.Contains(lines[0], "INPUT") {
-		t.Errorf("header lacks CACHED/INPUT: %q", lines[0])
+	wantHeader := []string{"TIME", "ID", "KEY", "MODEL", "NODE", "STATUS", "LATENCY", "MS", "WAIT", "MS", "CLOUD", "MS", "PREFILL", "MS", "CACHED", "INPUT", "CLOUD", "REASON"}
+	if got := strings.Fields(lines[0]); strings.Join(got, " ") != strings.Join(wantHeader, " ") {
+		t.Errorf("header = %v, want %v", got, wantHeader)
 	}
 	cols := func(line string) []string { return strings.Fields(line) }
 	for _, tc := range []struct {
@@ -74,7 +76,45 @@ func TestRun_AnalyticsShowsCacheWindowRaw(t *testing.T) {
 	if code := Run([]string{"analytics", "show", "--server", srv.URL}, &stdout, &stderr); code != ExitOK {
 		t.Fatalf("exit %d: %s", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "cache_window") || !strings.Contains(stdout.String(), "reporting_requests") {
-		t.Errorf("analytics output lacks cache_window: %s", stdout.String())
+	var out struct {
+		CacheWindow struct {
+			WindowSize        int `json:"window_size"`
+			WindowRequests    int `json:"window_requests"`
+			ReportingRequests int `json:"reporting_requests"`
+		} `json:"cache_window"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
+		t.Fatalf("analytics output is not JSON: %v\n%s", err, stdout.String())
+	}
+	if cw := out.CacheWindow; cw.WindowSize != 1000 || cw.WindowRequests != 3 || cw.ReportingRequests != 1 {
+		t.Errorf("cache_window = %+v, want 1000/3/1", cw)
+	}
+}
+
+func TestRun_AuditListShowsCachedAndInputOrDash(t *testing.T) {
+	srv := serveJSON(`{"entries":[
+		{"id":2,"time":"2026-11-20T10:00:03Z","request_id":"r-val","key_name":"k","model":"m","node":"n","status":"200","latency_ms":5,"cloud":false,"cachedTokens":1820,"inputTokens":2000},
+		{"id":1,"time":"2026-11-20T10:00:02Z","request_id":"r-none","key_name":"k","model":"m","node":"n","status":"200","latency_ms":5,"cloud":false}
+	],"total":2,"truncated":false}`)
+	defer srv.Close()
+	withTempConfigDir(t)
+	mustSaveSession(t, srv.URL, "tok")
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"audit", "--server", srv.URL}, &stdout, &stderr); code != ExitOK {
+		t.Fatalf("exit %d: %s", code, stderr.String())
+	}
+	lines := strings.Split(strings.TrimSpace(stdout.String()), "\n")
+	if len(lines) < 3 {
+		t.Fatalf("output: %q", stdout.String())
+	}
+	if !strings.Contains(lines[0], "CACHED") || !strings.Contains(lines[0], "INPUT") {
+		t.Errorf("header lacks CACHED/INPUT: %q", lines[0])
+	}
+	for i, want := range [][2]string{{"1820", "2000"}, {"-", "-"}} {
+		f := strings.Fields(lines[i+1])
+		n := len(f)
+		if f[n-3] != want[0] || f[n-2] != want[1] {
+			t.Errorf("row %q: cached/input = %q/%q, want %q/%q", lines[i+1], f[n-3], f[n-2], want[0], want[1])
+		}
 	}
 }

@@ -1369,6 +1369,8 @@ export const mockAnalytics: Analytics = {
     window_size: 1000,
     window_requests: 1000,
     reporting_requests: 412,
+    cached_tokens: 243320,
+    input_tokens: 412000,
     window_oldest: new Date(Date.now() - 6 * 3600 * 1000).toISOString(),
     by_model: [
       { model: 'llama3.3:8b', window_requests: 340, reporting_requests: 240, cached_tokens: 172800, input_tokens: 240000, hit_pct: 72 },
@@ -1376,9 +1378,9 @@ export const mockAnalytics: Analytics = {
       { model: 'deepseek-r1:7b', window_requests: 440, reporting_requests: 0, cached_tokens: 0, input_tokens: 0, hit_pct: null },
     ],
     by_key: [
-      { key: 'Engineering Team', window_requests: 520, reporting_requests: 260, cached_tokens: 171600, input_tokens: 260000, hit_pct: 66 },
+      { key: 'Engineering Team', window_requests: 520, reporting_requests: 220, cached_tokens: 157600, input_tokens: 220000, hit_pct: 71.6 },
       { key: 'Data Platform', window_requests: 310, reporting_requests: 152, cached_tokens: 71720, input_tokens: 152000, hit_pct: 47.2 },
-      { key: 'Support Bot', window_requests: 170, reporting_requests: 0, cached_tokens: 0, input_tokens: 0, hit_pct: null },
+      { key: 'Support Bot', window_requests: 170, reporting_requests: 40, cached_tokens: 14000, input_tokens: 40000, hit_pct: 35 },
     ],
   },
 };

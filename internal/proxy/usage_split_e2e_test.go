@@ -6,11 +6,13 @@ package proxy
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -39,6 +41,21 @@ func liveUsages(t *testing.T, a *admin.Server) []liveUsage {
 	return out
 }
 
+// waitLiveUsages polls the live list until it holds one entry or 5s pass;
+// logging runs after the response finishes, so the entry can lag the client.
+func waitLiveUsages(t *testing.T, a *admin.Server) []liveUsage {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	var got []liveUsage
+	for time.Now().Before(deadline) {
+		if got = liveUsages(t, a); len(got) == 1 {
+			return got
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	return got
+}
+
 const syntheticUsageJSON = `{"id":"x","choices":[],"usage":{"prompt_tokens":2000,"completion_tokens":20,"total_tokens":2020,"prompt_tokens_details":{"cached_tokens":1820}}}`
 
 // Each client-facing endpoint shape is logged through the same path; the
@@ -51,6 +68,7 @@ func TestUsageSplitLoggedPerEndpointShape(t *testing.T) {
 		{"chat completions", "/v1/chat/completions", `{"model":"mock-node","messages":[{"role":"user","content":"hi"}]}`, syntheticUsageJSON, true},
 		{"completions", "/v1/completions", `{"model":"mock-node","prompt":"hi"}`, syntheticUsageJSON, true},
 		{"embeddings", "/v1/embeddings", `{"model":"mock-node","input":"hi"}`, syntheticUsageJSON, true},
+		{"ollama v1 chat without details", "/v1/chat/completions", `{"model":"mock-node","messages":[{"role":"user","content":"hi"}]}`, `{"usage":{"prompt_tokens":26,"completion_tokens":290,"total_tokens":316}}`, false},
 		{"ollama chat", "/api/chat", `{"model":"mock-node","messages":[{"role":"user","content":"hi"}]}`, `{"done":true,"prompt_eval_count":26,"eval_count":290}`, false},
 		{"ollama generate", "/api/generate", `{"model":"mock-node","prompt":"hi"}`, `{"done":true,"prompt_eval_count":26,"eval_count":290}`, false},
 		{"ollama embed", "/api/embed", `{"model":"mock-node","input":"hi"}`, `{"embeddings":[[0.1]],"prompt_eval_count":4}`, false},
@@ -89,6 +107,9 @@ func TestUsageSplitLoggedPerEndpointShape(t *testing.T) {
 // backend is still holding the rest.
 func TestUsageSplitStreamStaysStreamingAndIsLogged(t *testing.T) {
 	release := make(chan struct{})
+	var releaseOnce sync.Once
+	closeRelease := func() { releaseOnce.Do(func() { close(release) }) }
+	t.Cleanup(closeRelease)
 	node := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f := w.(http.Flusher)
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -123,16 +144,10 @@ func TestUsageSplitStreamStaysStreamingAndIsLogged(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("first chunk was not relayed while the backend still held the rest: response is being buffered")
 	}
-	close(release)
+	closeRelease()
 	io.Copy(io.Discard, resp.Body)
 
-	var got []liveUsage
-	for i := 0; i < 50; i++ {
-		if got = liveUsages(t, a); len(got) == 1 {
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
+	got := waitLiveUsages(t, a)
 	if len(got) != 1 || got[0].CachedTokens == nil || *got[0].CachedTokens != 32 || *got[0].InputTokens != 50 {
 		t.Errorf("logged = %+v, want cached 32 input 50", got)
 	}
@@ -169,14 +184,71 @@ func TestUsageSplitGzipResponseIsUnknown(t *testing.T) {
 	if !bytes.Equal(body, gz.Bytes()) {
 		t.Errorf("client received %d bytes, want the %d compressed bytes untouched", len(body), gz.Len())
 	}
-	var got []liveUsage
-	for i := 0; i < 50; i++ {
-		if got = liveUsages(t, a); len(got) == 1 {
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
+	got := waitLiveUsages(t, a)
 	if len(got) != 1 || got[0].CachedTokens != nil || got[0].InputTokens != nil {
 		t.Errorf("logged = %+v, want one entry with no split for a compressed body", got)
+	}
+}
+
+// An upstream error response carries no usage block, so its row has no split.
+func TestUsageSplitErrorResponseLoggedWithoutSplit(t *testing.T) {
+	node := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"error":{"message":"boom"}}`))
+	}))
+	defer node.Close()
+	h, a := newStreamTestHandler(t, node.URL)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"mock-node","messages":[{"role":"user","content":"hi"}]}`)))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500 relayed", rec.Code)
+	}
+	got := waitLiveUsages(t, a)
+	if len(got) != 1 {
+		t.Fatalf("entries = %d, want 1", len(got))
+	}
+	if got[0].CachedTokens != nil || got[0].InputTokens != nil {
+		t.Errorf("split = %v/%v, want nil for an error response", got[0].CachedTokens, got[0].InputTokens)
+	}
+}
+
+// A client that goes away before the usage chunk arrives is an aborted
+// request: it logs no split.
+func TestUsageSplitAbortedStreamLoggedWithoutSplit(t *testing.T) {
+	started := make(chan struct{})
+	node := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f := w.(http.Flusher)
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\n")
+		f.Flush()
+		close(started)
+		<-r.Context().Done()
+	}))
+	defer node.Close()
+	h, a := newStreamTestHandler(t, node.URL)
+	front := httptest.NewServer(h)
+	defer front.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, front.URL+"/v1/chat/completions",
+		strings.NewReader(`{"model":"mock-node","stream":true,"messages":[{"role":"user","content":"hi"}]}`))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]byte, 16)
+	resp.Body.Read(buf)
+	<-started
+	cancel()
+	resp.Body.Close()
+
+	got := waitLiveUsages(t, a)
+	if len(got) != 1 {
+		t.Fatalf("entries = %d, want 1", len(got))
+	}
+	if got[0].CachedTokens != nil || got[0].InputTokens != nil {
+		t.Errorf("split = %v/%v, want nil for an aborted request", got[0].CachedTokens, got[0].InputTokens)
 	}
 }

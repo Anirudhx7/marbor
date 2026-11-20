@@ -1717,6 +1717,10 @@ type AuditEntry struct {
 	RoutingReason string    `json:"routing_reason,omitempty"`
 	QueueWaitMs   *int64    `json:"queue_wait_ms,omitempty"`
 	CloudMs       *int64    `json:"cloud_ms,omitempty"`
+	// CachedTokens / InputTokens are the prompt-cache split joined from the
+	// request log; nil when the runtime reported none or the row aged out.
+	CachedTokens *int64 `json:"cachedTokens,omitempty"`
+	InputTokens  *int64 `json:"inputTokens,omitempty"`
 }
 
 // AuditFilter mirrors the query params for GET /admin/audit.

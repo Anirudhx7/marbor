@@ -24,8 +24,8 @@ func TestHandleRequests_CarriesCloudTiming(t *testing.T) {
 
 	q, c := int64(1500), int64(0)
 	dec := &router.RoutingDecision{Node: "cloud:x", Reason: "saturated_sla_expired"}
-	srv.LogRequestTimed("req-a", "k", "1.2.3.4", "m", "cloud:x", "cloud", 200, 1800, 0, 0, dec, RequestUsage{}, RequestTiming{QueueWaitMs: &q, CloudMs: &c})
-	srv.LogRequest("req-b", "k", "1.2.3.4", "m", "gpu-0", "warm", 200, 50, 0, 0, nil, RequestUsage{})
+	srv.LogRequestTimed(RequestLogParams{RequestID: "req-a", APIKey: "k", SourceIP: "1.2.3.4", Model: "m", Node: "cloud:x", Status: "cloud", HTTPStatus: 200, LatencyMs: 1800, Decision: dec}, RequestTiming{QueueWaitMs: &q, CloudMs: &c})
+	srv.LogRequest(RequestLogParams{RequestID: "req-b", APIKey: "k", SourceIP: "1.2.3.4", Model: "m", Node: "gpu-0", Status: "warm", HTTPStatus: 200, LatencyMs: 50})
 
 	w := httptest.NewRecorder()
 	srv.handleRequests(w, httptest.NewRequest(http.MethodGet, "/admin/requests", nil))

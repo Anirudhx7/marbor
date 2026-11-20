@@ -1093,7 +1093,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		// rec.statusCode, not StatusCode(): a request cancelled before any
 		// response was written has no status, and must not be logged as 200.
-		h.admin.LogRequest(requestID, keyName, clientIP, loggedModel, node.Name, status, rec.statusCode, latencyMs, tokens, rec.promptEvalDurationMs(), decision, rec.usageSplit(aborted || rec.truncatedTail))
+		h.admin.LogRequest(admin.RequestLogParams{
+			RequestID: requestID, APIKey: keyName, SourceIP: clientIP, Model: loggedModel, Node: node.Name,
+			Status: status, HTTPStatus: rec.statusCode, LatencyMs: latencyMs, Tokens: tokens,
+			PrefillMs: rec.promptEvalDurationMs(), Decision: decision,
+			Usage: rec.usageSplit(aborted || rec.truncatedTail),
+		})
 		if tokens >= 0 {
 			h.admin.TrackLocalRequestModel(keyName, modelName, tokens, rec.evalDurationMs())
 			h.modelLimiter.recordTokens(modelName, node.Name, int64(tokens))
@@ -1599,7 +1604,11 @@ func (h *Handler) proxyToCloud(w http.ResponseWriter, r *http.Request, body []by
 		latencyMs := int(elapsed.Milliseconds())
 		tokens := rec.tokenCount(aborted || rec.truncatedTail)
 		clientIP := h.clientIP(r)
-		h.admin.LogRequestTimed(requestID, keyName, clientIP, loggedModel, nodeName, status, rec.statusCode, latencyMs, tokens, 0, route.decision(nodeName), admin.RequestUsage{}, admin.RequestTiming{QueueWaitMs: &queueWait, CloudMs: &cloudTime})
+		h.admin.LogRequestTimed(admin.RequestLogParams{
+			RequestID: requestID, APIKey: keyName, SourceIP: clientIP, Model: loggedModel, Node: nodeName,
+			Status: status, HTTPStatus: rec.statusCode, LatencyMs: latencyMs, Tokens: tokens,
+			Decision: route.decision(nodeName),
+		}, admin.RequestTiming{QueueWaitMs: &queueWait, CloudMs: &cloudTime})
 		if tokens >= 0 {
 			if route.isCloudOnly() {
 				// Intended cloud traffic is not overflow: cost and budget are
@@ -2130,51 +2139,79 @@ func rawNonNegInt(raw json.RawMessage) (int64, bool) {
 	return n, true
 }
 
+// malformedSplitOnce gates the single process-wide log line for a usage block
+// that carries prompt_tokens_details the split could not be read from.
+var malformedSplitOnce sync.Once
+
+// noteMalformedSplit logs once per process, never per request, that a usage
+// object had prompt_tokens_details but no usable cache split.
+func noteMalformedSplit() {
+	malformedSplitOnce.Do(func() {
+		log.Printf("proxy: a response usage block had prompt_tokens_details but no readable cached_tokens within its prompt_tokens; its cache split is recorded as not reported (logged once)")
+	})
+}
+
 // splitFromUsage turns one usage object into the cache split. Both values are
 // reported together or neither is: it needs prompt_tokens > 0 and a
 // prompt_tokens_details object that carries an integer cached_tokens no
-// larger than the prompt. Anything else is unknown, not zero.
+// larger than the prompt, both within admin.MaxSplitTokens (a larger value is
+// treated as not reported, not clamped). Anything else is unknown, not zero.
 func splitFromUsage(usage json.RawMessage) admin.RequestUsage {
 	var f usageSplitFields
 	if json.Unmarshal(usage, &f) != nil {
 		return admin.RequestUsage{}
 	}
 	input, ok := rawNonNegInt(f.PromptTokens)
-	if !ok || input <= 0 {
+	if !ok || input <= 0 || input > admin.MaxSplitTokens {
+		return admin.RequestUsage{}
+	}
+	details := bytes.TrimSpace(f.PromptTokensDetails)
+	if len(details) == 0 || bytes.Equal(details, []byte("null")) {
 		return admin.RequestUsage{}
 	}
 	var d usageSplitDetails
-	if json.Unmarshal(f.PromptTokensDetails, &d) != nil {
+	if json.Unmarshal(details, &d) != nil {
+		noteMalformedSplit()
 		return admin.RequestUsage{}
 	}
 	cached, ok := rawNonNegInt(d.CachedTokens)
 	if !ok || cached > input {
+		noteMalformedSplit()
 		return admin.RequestUsage{}
 	}
 	return admin.RequestUsage{Input: &input, Cached: &cached}
 }
 
 // usageObject returns the raw usage object a document carries, or nil when it
-// has none (absent, null, or not an object).
+// has none (absent or null). parsed is false when the document is not JSON or
+// its usage is not an object.
 func usageObject(doc []byte) (obj json.RawMessage, parsed bool) {
 	var d usageSplitDoc
 	if json.Unmarshal(doc, &d) != nil {
 		return nil, false
 	}
 	u := bytes.TrimSpace(d.Usage)
-	if len(u) == 0 || u[0] != '{' {
+	if len(u) == 0 || bytes.Equal(u, []byte("null")) {
 		return nil, true
+	}
+	if u[0] != '{' {
+		// A usage value of the wrong type is an unreadable line, like
+		// tokenCount treats it, not a line without usage.
+		return nil, false
 	}
 	return u, true
 }
 
 // usageSplit reads the prompt-cache split (prompt tokens and how many of them
-// were served from the engine's prefix cache) from the response tail, using
-// the same last-JSON-line walk as tokenCount so the two read the same
-// document. A zero value (both nil) means the response did not report a
-// split: aborted or cut-off responses, an unreadable last JSON line, a usage
-// block without prompt_tokens_details, and every runtime that never reports
-// it. Only the retained tail is read, so streaming is untouched.
+// were served from the engine's prefix cache) from the response tail. It
+// follows the same document shapes as tokenCount (one whole JSON value, or the
+// last JSON line of NDJSON/SSE) but not the same line walk: it stops at the
+// last line that carries a usage object, even one tokenCount skips for having
+// a zero total, and skips lines with no usage object (including usage:null).
+// A zero value (both nil) means the response did not report a split: aborted
+// or cut-off responses, an unreadable last JSON line, a usage block without
+// prompt_tokens_details, and every runtime that never reports it. Only the
+// retained tail is read, so streaming is untouched.
 func (r *statusRecorder) usageSplit(aborted bool) admin.RequestUsage {
 	if aborted {
 		return admin.RequestUsage{}

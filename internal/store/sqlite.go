@@ -979,11 +979,12 @@ func (s *sqliteStore) AppendRequest(r RequestRecord) error {
 	if r.IsCloud {
 		isCloud = 1
 	}
+	cached, input := sanitizeCacheSplit(r.CachedTokens, r.InputTokens)
 	_, err := s.db.Exec(
 		`INSERT OR IGNORE INTO request_log
 			(id, key_name, model, node_name, status_code, latency_ms, tokens_used, cost_usd, routed_to, is_cloud, ts, routing_reason, routing_detail, prefill_ms, queue_wait_ms, cloud_ms, cached_tokens, input_tokens)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		r.ID, r.KeyName, r.Model, r.NodeName, r.StatusCode, r.LatencyMs, r.TokensUsed, r.CostUSD, r.RoutedTo, isCloud, r.TS.Unix(), r.RoutingReason, r.RoutingDetail, r.PrefillMs, nullInt64(r.QueueWaitMs), nullInt64(r.CloudMs), nullInt64(r.CachedTokens), nullInt64(r.InputTokens),
+		r.ID, r.KeyName, r.Model, r.NodeName, r.StatusCode, r.LatencyMs, r.TokensUsed, r.CostUSD, r.RoutedTo, isCloud, r.TS.Unix(), r.RoutingReason, r.RoutingDetail, r.PrefillMs, nullInt64(r.QueueWaitMs), nullInt64(r.CloudMs), nullInt64(cached), nullInt64(input),
 	)
 	if err != nil {
 		return fmt.Errorf("store: AppendRequest: %w", err)
@@ -1004,7 +1005,7 @@ func (s *sqliteStore) AppendRequest(r RequestRecord) error {
 func (s *sqliteStore) LastRequests(n int) ([]RequestRecord, error) {
 	rows, err := s.db.Query(
 		`SELECT id, key_name, model, node_name, status_code, latency_ms, tokens_used, cost_usd, routed_to, is_cloud, ts, routing_reason, routing_detail, prefill_ms, queue_wait_ms, cloud_ms, cached_tokens, input_tokens
-		 FROM request_log ORDER BY ts DESC LIMIT ?`, n,
+		 FROM request_log ORDER BY ts DESC, rowid DESC LIMIT ?`, n,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("store: LastRequests: %w", err)
@@ -1043,12 +1044,15 @@ func (s *sqliteStore) LastRequests(n int) ([]RequestRecord, error) {
 }
 
 // CacheWindowRows reads the narrow cache-hit columns for the n most recent
-// rows. It is one short indexed read; the file-backed pool has several
-// connections in WAL mode, so it cannot block AppendRequest's writer.
+// rows. Newest first, with rowid as the tiebreaker because ts has one-second
+// resolution, so the same n rows come back for the same data. It is one short
+// bounded read (at most the table's 1000-row retention); the file-backed pool
+// has several connections in WAL mode, so it cannot block AppendRequest's
+// writer.
 func (s *sqliteStore) CacheWindowRows(n int) ([]CacheWindowRow, error) {
 	rows, err := s.db.Query(
 		`SELECT ts, model, key_name, cached_tokens, input_tokens
-		 FROM request_log ORDER BY ts DESC LIMIT ?`, n,
+		 FROM request_log ORDER BY ts DESC, rowid DESC LIMIT ?`, n,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("store: CacheWindowRows: %w", err)
@@ -1071,6 +1075,50 @@ func (s *sqliteStore) CacheWindowRows(n int) ([]CacheWindowRow, error) {
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("store: CacheWindowRows rows: %w", err)
+	}
+	return out, nil
+}
+
+// cacheSplitChunk bounds how many ids one RequestCacheSplits query binds, well
+// under SQLite's default variable limit.
+const cacheSplitChunk = 500
+
+// RequestCacheSplits returns the stored cache split for each of the given
+// request ids that still has a request_log row. A row whose split is NULL is
+// present with nil pointers; ids with no row are absent.
+func (s *sqliteStore) RequestCacheSplits(ids []string) (map[string]CacheSplit, error) {
+	out := make(map[string]CacheSplit, len(ids))
+	for start := 0; start < len(ids); start += cacheSplitChunk {
+		end := start + cacheSplitChunk
+		if end > len(ids) {
+			end = len(ids)
+		}
+		chunk := ids[start:end]
+		args := make([]interface{}, len(chunk))
+		for i, id := range chunk {
+			args[i] = id
+		}
+		rows, err := s.db.Query(
+			`SELECT id, cached_tokens, input_tokens FROM request_log WHERE id IN (`+
+				strings.TrimSuffix(strings.Repeat("?,", len(chunk)), ",")+`)`, args...,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("store: RequestCacheSplits: %w", err)
+		}
+		for rows.Next() {
+			var id string
+			var cached, input sql.NullInt64
+			if err := rows.Scan(&id, &cached, &input); err != nil {
+				rows.Close()
+				return nil, fmt.Errorf("store: RequestCacheSplits scan: %w", err)
+			}
+			out[id] = CacheSplit{Cached: ptrInt64(cached), Input: ptrInt64(input)}
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return nil, fmt.Errorf("store: RequestCacheSplits rows: %w", err)
+		}
 	}
 	return out, nil
 }
@@ -3863,6 +3911,22 @@ func (s *sqliteStore) migrateModelConfigsToNodeKeyed() error {
 }
 
 // nullInt64 maps an optional measurement to a SQL value: NULL when absent.
+// MaxCacheSplitTokens caps one request's stored prompt or cached token count;
+// a pair above it is not believable and is stored as NULL, not clamped.
+const MaxCacheSplitTokens = 1 << 40
+
+// sanitizeCacheSplit enforces the cache-split invariant at the write boundary:
+// both values present, input > 0, 0 <= cached <= input. Anything else stores
+// NULL for both, so a malformed pair can never reach the table. The returned
+// pointers are copies, not the caller's.
+func sanitizeCacheSplit(cached, input *int64) (*int64, *int64) {
+	if cached == nil || input == nil || *input <= 0 || *cached < 0 || *cached > *input || *input > MaxCacheSplitTokens {
+		return nil, nil
+	}
+	c, i := *cached, *input
+	return &c, &i
+}
+
 func nullInt64(p *int64) interface{} {
 	if p == nil {
 		return nil

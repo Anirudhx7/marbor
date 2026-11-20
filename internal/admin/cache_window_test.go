@@ -1,16 +1,20 @@
 package admin
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Anirudhx7/marbor/internal/config"
 	"github.com/Anirudhx7/marbor/internal/router"
 	"github.com/Anirudhx7/marbor/internal/store"
+	_ "modernc.org/sqlite"
 )
 
 // Rows in this file are synthetic: written by the tests, not captured from an
@@ -184,13 +188,20 @@ func TestCacheWindowOldestAndSize(t *testing.T) {
 
 func TestCacheWindowLeavesByModelUntouched(t *testing.T) {
 	srv, st := newCacheTestServer(t)
-	seedRow(t, st, "a", "k", "m1", 1, i64(1), i64(2))
+	seedRow(t, st, "a", "k", "cachewin", 1, i64(1), i64(2))
+	srv.analytics.recordLocal("served-model", 40, 0)
 	w := httptest.NewRecorder()
 	srv.handleAnalytics(w, httptest.NewRequest(http.MethodGet, "/admin/analytics", nil))
-	var out map[string]any
-	_ = json.Unmarshal(w.Body.Bytes(), &out)
-	if _, ok := out["by_model"]; !ok {
-		t.Errorf("by_model must still be present")
+	var out struct {
+		ByModel []struct {
+			Model string `json:"model"`
+		} `json:"by_model"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.ByModel) != 1 || out.ByModel[0].Model != "served-model" {
+		t.Errorf("by_model = %+v, want only the analytics model, not the cache window's", out.ByModel)
 	}
 }
 
@@ -209,14 +220,37 @@ func TestCacheWindowInJSONExport(t *testing.T) {
 }
 
 // Rows written before the cache columns existed read back as unknown, on the
-// boot restore of the request ring and on a single-row lookup, never as 0.
+// boot restore of the request ring, the ordered list read and a single-row
+// lookup, never as 0. The row is written into a real historical schema (the
+// DDL a released binary ran), then migrated by the current store.Open.
 func TestPreMigrationRowsReadNilOnBootRestoreAndGetRequest(t *testing.T) {
-	st, err := store.Open(filepath.Join(t.TempDir(), "cache.db"))
+	dbPath := filepath.Join(t.TempDir(), "old.db")
+	raw, err := os.ReadFile("../store/testdata/schema_history/v0.20.0.sql")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rawDB, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, stmt := range strings.Split(string(raw), "@@STMT@@\n") {
+		if strings.TrimSpace(stmt) == "" {
+			continue
+		}
+		if _, err := rawDB.Exec(stmt); err != nil && !strings.Contains(err.Error(), "duplicate column name") {
+			t.Fatalf("historical DDL: %v\n%s", err, stmt)
+		}
+	}
+	if _, err := rawDB.Exec(`INSERT INTO request_log (id, key_name, model, node_name, status_code, latency_ms, tokens_used, cost_usd, routed_to, is_cloud, ts) VALUES ('old','k','m1','n1',200,5,10,0,'n1',0,?)`, time.Now().Unix()-5); err != nil {
+		t.Fatal(err)
+	}
+	rawDB.Close()
+
+	st, err := store.Open(dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	seedRow(t, st, "old", "k", "m1", 1, nil, nil)
 	r := router.New(config.RoutingConfig{}, nil, nil)
 	srv := NewServer(r, nil, config.Config{}, st)
 	defer srv.Shutdown()
@@ -229,9 +263,17 @@ func TestPreMigrationRowsReadNilOnBootRestoreAndGetRequest(t *testing.T) {
 		t.Errorf("restored ring = %+v, want one row with nil cache fields", srv.requests)
 	}
 	srv.mu.RUnlock()
+	recs, err := st.LastRequests(10)
+	if err != nil || len(recs) != 1 || recs[0].CachedTokens != nil || recs[0].InputTokens != nil {
+		t.Errorf("LastRequests = %+v err=%v, want one row with nil cache fields", recs, err)
+	}
 	rec, ok, err := st.GetRequest("old")
 	if err != nil || !ok || rec.CachedTokens != nil || rec.InputTokens != nil {
 		t.Errorf("GetRequest = %+v ok=%v err=%v, want nil cache fields", rec, ok, err)
+	}
+	cw := getCacheWindow(t, srv)
+	if cw["window_requests"] != float64(1) || cw["reporting_requests"] != float64(0) {
+		t.Errorf("window over an old row = %v/%v, want 1/0", cw["window_requests"], cw["reporting_requests"])
 	}
 }
 
@@ -258,9 +300,9 @@ func TestBootRestoreCarriesCacheFields(t *testing.T) {
 
 func TestRequestsEndpointsCarryUsageAndOmitWhenNil(t *testing.T) {
 	srv, _ := newCacheTestServer(t)
-	srv.LogRequest("with", "k", "ip", "m", "gpu-0", "warm", 200, 5, 100, 0, nil, RequestUsage{Input: i64(2000), Cached: i64(1820)})
-	srv.LogRequest("zero", "k", "ip", "m", "gpu-0", "warm", 200, 5, 100, 0, nil, RequestUsage{Input: i64(1450), Cached: i64(0)})
-	srv.LogRequest("none", "k", "ip", "m", "gpu-0", "warm", 200, 5, 100, 0, nil, RequestUsage{})
+	srv.LogRequest(RequestLogParams{RequestID: "with", APIKey: "k", SourceIP: "ip", Model: "m", Node: "gpu-0", Status: "warm", HTTPStatus: 200, LatencyMs: 5, Tokens: 100, Usage: RequestUsage{Input: i64(2000), Cached: i64(1820)}})
+	srv.LogRequest(RequestLogParams{RequestID: "zero", APIKey: "k", SourceIP: "ip", Model: "m", Node: "gpu-0", Status: "warm", HTTPStatus: 200, LatencyMs: 5, Tokens: 100, Usage: RequestUsage{Input: i64(1450), Cached: i64(0)}})
+	srv.LogRequest(RequestLogParams{RequestID: "none", APIKey: "k", SourceIP: "ip", Model: "m", Node: "gpu-0", Status: "warm", HTTPStatus: 200, LatencyMs: 5, Tokens: 100})
 
 	for _, h := range []struct {
 		name string

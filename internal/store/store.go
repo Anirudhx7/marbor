@@ -42,6 +42,10 @@ type Store interface {
 	// CacheWindowRows returns up to n of the most recent request_log rows,
 	// newest first, with only the columns the cache-hit aggregation reads.
 	CacheWindowRows(n int) ([]CacheWindowRow, error)
+	// RequestCacheSplits returns the stored cache split for each given
+	// request id that still has a request_log row (ids are chunked
+	// internally). A NULL split is present with nil pointers.
+	RequestCacheSplits(ids []string) (map[string]CacheSplit, error)
 	// GetRequest looks up one request_log row by id (the explain endpoint's
 	// fallback beyond the bounded in-memory ring). ok is false if no row
 	// with that id exists (already trimmed, or never persisted).
@@ -332,6 +336,13 @@ type RequestRecord struct {
 	CachedTokens *int64    `json:"cached_tokens,omitempty"`
 	InputTokens  *int64    `json:"input_tokens,omitempty"`
 	TS           time.Time `json:"ts"`
+}
+
+// CacheSplit is one request's stored prompt-cache split; both nil when the
+// runtime reported none.
+type CacheSplit struct {
+	Cached *int64
+	Input  *int64
 }
 
 // CacheWindowRow is the narrow slice of one request_log row the cache-window
@@ -840,9 +851,12 @@ type BenchmarkRun struct {
 // NopStore satisfies Store with all no-ops. Used when db_path = "-".
 type NopStore struct{}
 
-func (NopStore) AppendRequest(_ RequestRecord) error                    { return nil }
-func (NopStore) LastRequests(_ int) ([]RequestRecord, error)            { return nil, nil }
-func (NopStore) CacheWindowRows(_ int) ([]CacheWindowRow, error)        { return nil, nil }
+func (NopStore) AppendRequest(_ RequestRecord) error             { return nil }
+func (NopStore) LastRequests(_ int) ([]RequestRecord, error)     { return nil, nil }
+func (NopStore) CacheWindowRows(_ int) ([]CacheWindowRow, error) { return nil, nil }
+func (NopStore) RequestCacheSplits(_ []string) (map[string]CacheSplit, error) {
+	return nil, nil
+}
 func (NopStore) GetRequest(_ string) (RequestRecord, bool, error)       { return RequestRecord{}, false, nil }
 func (NopStore) UpsertHourlyBucket(_ HourlyBucket) error                { return nil }
 func (NopStore) HourlyBuckets(_ time.Time) ([]HourlyBucket, error)      { return nil, nil }

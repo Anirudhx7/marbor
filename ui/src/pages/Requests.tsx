@@ -667,7 +667,9 @@ export function Requests() {
             {/*
               The table always fills its card (w-full); column sizing is in
               COLUMNS. min-w stops the flex columns collapsing on a narrow
-              card - below it the region scrolls instead of colliding headers.
+              card - below it the region scrolls instead of colliding headers. The
+              1090 is the sum of the fixed-width columns plus room for the
+              flexible ones; revisit it when a column is added to COLUMNS.
             */}
             <table className="w-full min-w-[1090px] text-sm">
               <thead>

@@ -513,7 +513,7 @@ export function Analytics() {
         )}
       </div>
 
-      <CacheWindowCard data={data} loading={loading} />
+      <CacheWindowCard data={data} loading={loading} loadError={!!error} />
 
       {/* Cloud spill - per-key, per-provider local-vs-cloud request counts */}
       <div className="bg-card border border-border shadow-sm rounded-xl overflow-hidden">

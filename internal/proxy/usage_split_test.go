@@ -4,8 +4,12 @@ package proxy
 // OpenAI-compatible shape, not captured from a running engine.
 
 import (
+	"bytes"
+	"log"
 	"net/http/httptest"
+	"os"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -162,6 +166,72 @@ func TestUsageSplit(t *testing.T) {
 			body:      `{"usage":{"prompt_tokens":"10","total_tokens":15,"prompt_tokens_details":{"cached_tokens":4}}}`,
 			wantTotal: 15,
 		},
+		{
+			name:      "synthetic cached_tokens null",
+			body:      `{"usage":{"prompt_tokens":10,"total_tokens":15,"prompt_tokens_details":{"cached_tokens":null}}}`,
+			wantTotal: 15,
+		},
+		{
+			name:      "synthetic prompt_tokens float with zero fraction",
+			body:      `{"usage":{"prompt_tokens":10.0,"total_tokens":15,"prompt_tokens_details":{"cached_tokens":4}}}`,
+			wantTotal: 15,
+		},
+		{
+			name:      "synthetic usage as string",
+			body:      `{"usage":"none"}`,
+			wantTotal: -1,
+		},
+		{
+			name:      "synthetic usage as array",
+			body:      `{"usage":[1,2]}`,
+			wantTotal: -1,
+		},
+		{
+			name:      "synthetic cached_tokens overflows int64",
+			body:      `{"usage":{"prompt_tokens":10,"total_tokens":15,"prompt_tokens_details":{"cached_tokens":99999999999999999999}}}`,
+			wantTotal: 15,
+		},
+		{
+			name:      "synthetic prompt_tokens above the per-request cap",
+			body:      `{"usage":{"prompt_tokens":9223372036854775807,"total_tokens":15,"prompt_tokens_details":{"cached_tokens":9223372036854775807}}}`,
+			wantTotal: 15,
+		},
+		{
+			name:       "synthetic cached equals prompt",
+			body:       `{"usage":{"prompt_tokens":10,"total_tokens":15,"prompt_tokens_details":{"cached_tokens":10}}}`,
+			wantInput:  ptrTo(10),
+			wantCached: ptrTo(10),
+			wantTotal:  15,
+		},
+		{
+			name:      "synthetic sse wrong-typed cached",
+			body:      "data: {\"usage\":{\"prompt_tokens\":50,\"total_tokens\":52,\"prompt_tokens_details\":{\"cached_tokens\":\"32\"}}}\n\ndata: [DONE]\n\n",
+			wantTotal: 52,
+		},
+		{
+			name:      "synthetic sse prompt_tokens without details",
+			body:      "data: {\"usage\":{\"prompt_tokens\":50,\"total_tokens\":52}}\n\ndata: [DONE]\n\n",
+			wantTotal: 52,
+		},
+		{
+			name:      "synthetic sse trailing usage null chunk is skipped, earlier usage read",
+			body:      "data: {\"usage\":{\"prompt_tokens\":50,\"total_tokens\":52,\"prompt_tokens_details\":{\"cached_tokens\":32}}}\n\ndata: {\"choices\":[],\"usage\":null}\n\ndata: [DONE]\n\n",
+			wantInput: ptrTo(50), wantCached: ptrTo(32),
+			wantTotal: 52,
+		},
+		{
+			// usageSplit stops at the last line that carries a usage object,
+			// even one tokenCount skips for a zero total: the later zero-total
+			// object is what the split describes, so it is unknown.
+			name:      "synthetic sse later zero-total usage object wins over earlier usage",
+			body:      "data: {\"usage\":{\"prompt_tokens\":50,\"total_tokens\":52,\"prompt_tokens_details\":{\"cached_tokens\":32}}}\n\ndata: {\"usage\":{\"prompt_tokens\":0,\"total_tokens\":0}}\n\ndata: [DONE]\n\n",
+			wantTotal: 52,
+		},
+		{
+			name:      "synthetic sse wrong-typed usage line is the last json line",
+			body:      "data: {\"usage\":{\"prompt_tokens\":50,\"total_tokens\":52,\"prompt_tokens_details\":{\"cached_tokens\":32}}}\n\ndata: {\"usage\":5}\n\ndata: [DONE]\n\n",
+			wantTotal: -1,
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -189,6 +259,9 @@ func TestUsageSplitOversizeTailIsUnknown(t *testing.T) {
 	rec := &statusRecorder{ResponseWriter: httptest.NewRecorder()}
 	rec.Write([]byte(huge))
 	rec.Write([]byte("data: [DONE]\n\n"))
+	if !rec.truncatedTail {
+		t.Fatalf("truncatedTail = false, want true for a line larger than the retention cap")
+	}
 	got := rec.usageSplit(rec.truncatedTail)
 	if got.Input != nil || got.Cached != nil {
 		t.Errorf("usageSplit = %v/%v, want nil for a usage line too large to retain", deref(got.Input), deref(got.Cached))
@@ -204,5 +277,29 @@ func TestUsageSplitLargeSingleDocBeyondTailMax(t *testing.T) {
 	got := recorderWith(body).usageSplit(false)
 	if got.Input == nil || *got.Input != 9 || got.Cached == nil || *got.Cached != 3 {
 		t.Errorf("usageSplit = %v/%v, want 9/3", deref(got.Input), deref(got.Cached))
+	}
+}
+
+// A usage block with unusable prompt_tokens_details is logged once per
+// process, not once per request.
+func TestMalformedSplitLoggedOnce(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	malformedSplitOnce = sync.Once{}
+	bad := []byte(`{"prompt_tokens":10,"prompt_tokens_details":{"cached_tokens":"x"}}`)
+	for i := 0; i < 5; i++ {
+		if got := splitFromUsage(bad); got.Input != nil || got.Cached != nil {
+			t.Fatalf("malformed usage produced a split: %v/%v", deref(got.Input), deref(got.Cached))
+		}
+	}
+	if n := strings.Count(buf.String(), "prompt_tokens_details"); n != 1 {
+		t.Errorf("malformed-split log lines = %d, want exactly 1:\n%s", n, buf.String())
+	}
+	buf.Reset()
+	splitFromUsage([]byte(`{"prompt_tokens":10}`))
+	splitFromUsage([]byte(`{"prompt_tokens":10,"prompt_tokens_details":null}`))
+	if buf.Len() != 0 {
+		t.Errorf("a runtime that simply does not report a split must not log, got %q", buf.String())
 	}
 }

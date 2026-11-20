@@ -4,7 +4,20 @@ import type { RequestEntry, RoutingDecision } from '../types';
 import { formatRelativeTime } from '../lib/time';
 import { waitCloudSummary } from '../lib/requestsView';
 import { cacheCell } from '../lib/cacheView';
+import type { CacheCell } from '../lib/cacheView';
 import { COLUMNS, ExplainPanel, ReasonBadge, ScrollableValue, StatusBadge } from './RequestLogParts';
+
+// The cache cell's text. An unknown split is a dash with its explanation as
+// screen-reader text, since a title alone is not reachable by keyboard or touch.
+function CacheText({ cache }: { cache: CacheCell }) {
+  if (cache.known) return <>{cache.text}</>;
+  return (
+    <>
+      <span aria-hidden="true">{cache.text}</span>
+      <span className="sr-only">{cache.title}</span>
+    </>
+  );
+}
 
 export type ExplainState = RoutingDecision | 'loading' | 'error' | undefined;
 
@@ -73,7 +86,7 @@ export const RequestRow = memo(function RequestRow({ entry, expanded, explain, o
           {entry.prefillMs ? `${entry.prefillMs} ms` : '-'}
         </td>
         <td className="px-4 py-3 whitespace-nowrap text-right font-mono text-xs text-muted-foreground" title={cache.title}>
-          {cache.text}
+          <CacheText cache={cache} />
         </td>
         <td className="px-4 py-3 whitespace-nowrap">
           <button
@@ -125,7 +138,7 @@ export const RequestCard = memo(function RequestCard({ entry, expanded, explain,
         </div>
         <div>
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Cached</div>
-          <div className="text-sm text-foreground font-mono break-words" title={cache.title}>{cache.text}</div>
+          <div className="text-sm text-foreground font-mono break-words" title={cache.title}><CacheText cache={cache} /></div>
         </div>
         <div>
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Model</div>

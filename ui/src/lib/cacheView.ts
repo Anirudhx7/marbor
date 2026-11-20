@@ -1,6 +1,7 @@
-// Display rules for prompt-cache figures. Kept free of imports so they can be
-// tested directly with node. An unreported value is always a dash: a missing
-// count is unknown, and unknown is never shown as 0.
+// Display rules for prompt-cache figures. Kept free of runtime imports so they
+// can be tested directly with node. An unreported value is always a dash: a
+// missing count is unknown, and unknown is never shown as 0.
+import type { Analytics } from '../types';
 
 function groupDigits(n: number): string {
   return n.toLocaleString('en-US');
@@ -9,20 +10,34 @@ function groupDigits(n: number): string {
 export interface CacheCell {
   text: string;
   title: string;
+  // False when the cell is the dash for an unknown split; the dash needs
+  // spoken text beside it because a title alone is not reachable by keyboard
+  // or touch.
+  known: boolean;
+}
+
+const UNKNOWN_TITLE = 'No cache split recorded for this request (not reported, or not readable)';
+
+// A share of the prompt, kept honest at both ends: a small real share is never
+// rounded down to look like zero, and a share short of everything is never
+// rounded up to 100%.
+function sharePct(cached: number, input: number): string {
+  if (cached === 0) return '0%';
+  const raw = (cached * 100) / input;
+  if (raw < 1) return '<1%';
+  if (cached < input && raw >= 99.5) return '>99%';
+  return `${Math.round(raw)}%`;
 }
 
 // One request's cache split as "cached / input (pct)".
 export function cacheCell(cached?: number | null, input?: number | null): CacheCell {
-  if (cached == null || input == null || input <= 0 || cached < 0) {
-    return {
-      text: '-',
-      title: 'Not reported: this runtime did not return a cached-token count for this request',
-    };
+  if (cached == null || input == null || input <= 0 || cached < 0 || cached > input) {
+    return { text: '-', title: UNKNOWN_TITLE, known: false };
   }
-  const pct = Math.round((cached * 100) / input);
   return {
-    text: `${groupDigits(cached)} / ${groupDigits(input)} (${pct}%)`,
+    text: `${groupDigits(cached)} / ${groupDigits(input)} (${sharePct(cached, input)})`,
     title: `${groupDigits(cached)} of ${groupDigits(input)} prompt tokens were served from the engine's prefix cache`,
+    known: true,
   };
 }
 
@@ -36,4 +51,29 @@ export function hitPctLabel(pct?: number | null): string {
 export function cacheWindowLabel(windowRequests: number, reporting: number): string {
   const noun = windowRequests === 1 ? 'request' : 'requests';
   return `last ${groupDigits(windowRequests)} ${noun}, ${groupDigits(reporting)} reported`;
+}
+
+// Which runtimes report a cache split, said only as far as it is verified.
+export const CACHE_EMPTY_HINT =
+  'No request in this window reported a cache split. vLLM reports it when started with --enable-prompt-tokens-details, and llama.cpp reports it in non-streaming responses. Ollama and MLX do not report it.';
+
+export type CacheWindowState = 'loading' | 'unavailable' | 'unsupported' | 'empty' | 'unreported' | 'ready';
+
+// Which of the card's states applies. Only a successful response with a
+// genuinely empty window is "empty"; a failed read is "unavailable" and a
+// server without the field is "unsupported", so neither reads as no traffic.
+export function cacheWindowState(
+  data: Analytics | null | undefined,
+  loading: boolean,
+  loadError: boolean,
+): CacheWindowState {
+  if (loading) return 'loading';
+  if (!data) return loadError ? 'unavailable' : 'loading';
+  if (data.cache_window_error) return 'unavailable';
+  const cw = data.cache_window;
+  if (cw === undefined) return 'unsupported';
+  if (cw === null) return 'unavailable';
+  if (cw.window_requests === 0) return 'empty';
+  if (cw.reporting_requests === 0) return 'unreported';
+  return 'ready';
 }

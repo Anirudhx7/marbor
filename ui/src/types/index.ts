@@ -334,11 +334,6 @@ export interface LiveRequest {
   // Optional measured timings for cloud-routed rows (ms); absent when unmeasured.
   queueWaitMs?: number;
   cloudMs?: number;
-  // Prompt tokens served from the engine's prefix cache, and the prompt size
-  // they are measured against. Both absent when the runtime reported no split;
-  // an absent value is unknown, never 0.
-  cachedTokens?: number;
-  inputTokens?: number;
 }
 
 export interface APIKey {
@@ -727,6 +722,9 @@ export interface ModelStat {
 // Prompt-cache reuse for one model or key over the cache window. Token sums
 // and hit_pct cover only the requests that reported a split; hit_pct is null
 // when none did.
+//
+// The token sums are over the reporting requests only and are 0 when
+// reporting_requests is 0; show them only when reporting_requests > 0.
 export interface CacheStats {
   window_requests: number;
   reporting_requests: number;
@@ -741,6 +739,9 @@ export interface CacheModelStat extends CacheStats {
 
 export interface CacheKeyStat extends CacheStats {
   key: string;
+  // True for the group of requests that carried no key name; its key is a
+  // dash that a key literally named "-" does not share.
+  no_key?: boolean;
 }
 
 // The most recent window_size requests on record, not a time period.
@@ -748,6 +749,9 @@ export interface CacheWindow {
   window_size: number;
   window_requests: number;
   reporting_requests: number;
+  // Window-wide sums over the reporting requests only.
+  cached_tokens: number;
+  input_tokens: number;
   window_oldest: string | null;
   by_model: CacheModelStat[];
   by_key: CacheKeyStat[];
@@ -764,8 +768,10 @@ export interface Analytics {
   // When the router process started. Applies to by_model only; the totals
   // above are all time. Optional for servers older than this field.
   since?: string;
-  // Optional for servers older than this field.
-  cache_window?: CacheWindow;
+  // Absent on servers older than this field; null with cache_window_error set
+  // when the server could not read the request log.
+  cache_window?: CacheWindow | null;
+  cache_window_error?: string;
 }
 
 export type FitStatus = 'green' | 'yellow' | 'red' | 'unknown';

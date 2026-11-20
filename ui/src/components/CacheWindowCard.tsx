@@ -1,13 +1,12 @@
 import type { Analytics } from '../types';
-import { cacheWindowLabel, hitPctLabel } from '../lib/cacheView';
+import { CACHE_EMPTY_HINT, cacheWindowLabel, cacheWindowState, hitPctLabel } from '../lib/cacheView';
 
 interface Props {
   data: Analytics | null;
   loading: boolean;
+  // True when the analytics request itself failed.
+  loadError?: boolean;
 }
-
-const EMPTY_HINT =
-  'No cache data reported yet - requires vLLM started with --enable-prompt-tokens-details or llama.cpp. Ollama and MLX do not report it.';
 
 const COLUMN_HEADERS = ['Requests', 'Reported', 'Cached / input tokens', 'Hit'];
 
@@ -18,6 +17,7 @@ function tokens(cached: number, input: number, reporting: number): string {
 
 interface Row {
   name: string;
+  rowKey: string;
   window_requests: number;
   reporting_requests: number;
   cached_tokens: number;
@@ -42,7 +42,7 @@ function GroupTable({ title, nameHeader, rows }: { title: string; nameHeader: st
           </thead>
           <tbody className="divide-y divide-border">
             {rows.map((r) => (
-              <tr key={r.name} className="hover:bg-secondary/30 transition-colors">
+              <tr key={r.rowKey} className="hover:bg-secondary/30 transition-colors">
                 <td className="px-3 py-2 font-mono text-foreground break-all">{r.name}</td>
                 <td className="px-3 py-2 text-right font-mono">{r.window_requests.toLocaleString('en-US')}</td>
                 <td className="px-3 py-2 text-right font-mono">{r.reporting_requests.toLocaleString('en-US')}</td>
@@ -55,7 +55,7 @@ function GroupTable({ title, nameHeader, rows }: { title: string; nameHeader: st
       </div>
       <div className="md:hidden space-y-2">
         {rows.map((r) => (
-          <div key={r.name} className="bg-card/50 border border-border/60 rounded-xl p-3">
+          <div key={r.rowKey} className="bg-card/50 border border-border/60 rounded-xl p-3">
             <p className="font-mono text-sm text-foreground mb-2 break-all">{r.name}</p>
             <div className="grid grid-cols-2 gap-x-3 gap-y-2">
               <div>
@@ -81,43 +81,44 @@ function GroupTable({ title, nameHeader, rows }: { title: string; nameHeader: st
 // Prompt-cache reuse over the most recent requests on record. It is a window
 // of requests, not a time period, and only requests whose runtime reported a
 // split count toward a hit rate, so the caption always says how many did.
-export function CacheWindowCard({ data, loading }: Props) {
-  const cw = data?.cache_window;
-  const reporting = cw?.reporting_requests ?? 0;
+export function CacheWindowCard({ data, loading, loadError = false }: Props) {
+  const state = cacheWindowState(data, loading, loadError);
+  const cw = data?.cache_window ?? undefined;
+  const note = (text: string) => (
+    <div className="px-6 py-8 text-center text-sm text-muted-foreground font-medium">{text}</div>
+  );
   return (
     <div className="bg-card border border-border shadow-sm rounded-xl overflow-hidden">
       <div className="px-6 py-4 border-b border-border bg-secondary/30">
         <h3 className="text-sm font-semibold text-foreground">Prompt cache reuse</h3>
-        {cw && cw.window_requests > 0 && (
+        {cw && (state === 'ready' || state === 'unreported') && (
           <p className="text-xs text-muted-foreground mt-0.5">
             {cacheWindowLabel(cw.window_requests, cw.reporting_requests)}. Hit rates cover only requests that reported.
+            {state === 'ready' && ` ${tokens(cw.cached_tokens, cw.input_tokens, cw.reporting_requests)} tokens cached / input in total.`}
           </p>
         )}
       </div>
-      {loading ? (
+      {state === 'loading' && (
         <div className="px-6 py-4 space-y-3 animate-pulse">
           <div className="h-4 bg-secondary rounded w-1/3" />
           <div className="h-4 bg-secondary rounded w-1/2" />
         </div>
-      ) : !cw || cw.window_requests === 0 ? (
-        <div className="px-6 py-8 text-center text-sm text-muted-foreground font-medium">
-          No requests on record yet. {EMPTY_HINT}
-        </div>
-      ) : reporting === 0 ? (
-        <div className="px-6 py-8 text-center text-sm text-muted-foreground font-medium">
-          {EMPTY_HINT}
-        </div>
-      ) : (
+      )}
+      {state === 'unavailable' && note('Cache data unavailable')}
+      {state === 'unsupported' && note('Cache reuse is not supported by this server version')}
+      {state === 'empty' && note('No requests on record yet.')}
+      {state === 'unreported' && note(CACHE_EMPTY_HINT)}
+      {state === 'ready' && cw && (
         <>
           <GroupTable
             title="By model"
             nameHeader="Model"
-            rows={cw.by_model.map((m) => ({ ...m, name: m.model }))}
+            rows={cw.by_model.map((m) => ({ ...m, name: m.model, rowKey: `m:${m.model}` }))}
           />
           <GroupTable
             title="By key"
             nameHeader="Key"
-            rows={cw.by_key.map((k) => ({ ...k, name: k.key }))}
+            rows={cw.by_key.map((k) => ({ ...k, name: k.key, rowKey: `${k.no_key ? 'none' : 'k'}:${k.key}` }))}
           />
         </>
       )}

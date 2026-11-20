@@ -46,6 +46,8 @@ VALUES ('metrics_enabled', 'true'),
 
 -- Sample request log rows showing the prompt-cache split: values where the
 -- runtime reports it, one real zero, and NULL (unknown) where it does not.
+-- Timestamps are fixed because the demo database is a checked-in fixture, not
+-- seeded at start, so a relative time would freeze at regeneration anyway.
 -- They age out of the 1000-row log once live traffic arrives.
 INSERT INTO request_log (id, key_name, model, node_name, status_code, latency_ms, tokens_used, cost_usd, routed_to, is_cloud, ts, routing_reason, routing_detail, prefill_ms, cached_tokens, input_tokens)
 VALUES ('req-demo-cache-01', 'demo-key', 'qwen2.5:7b', 'vllm-node', 200, 240, 2020, 0, 'vllm-node', 0, 1783087100, 'score_based', '', 0, 1820, 2000),
