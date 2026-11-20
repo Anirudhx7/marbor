@@ -60,6 +60,9 @@ func TestProxy_CloudRoute_RecordsReasonAndTiming(t *testing.T) {
 			if row.RoutingDetail == "" {
 				t.Error("routing_detail empty, want the synthesized decision for explain")
 			}
+			if row.CachedTokens != nil || row.InputTokens != nil {
+				t.Errorf("cloud row cache split = %v/%v, want nil (cloud usage is not read)", row.CachedTokens, row.InputTokens)
+			}
 		})
 	}
 }
@@ -84,6 +87,9 @@ func TestProxy_LocalOnlyBlocked_LogsRow(t *testing.T) {
 		t.Fatalf("status=%d cloudHits=%d, want 503 and no cloud", rec.Code, e.cloudHits.Load())
 	}
 	row := e.lastRow(t)
+	if row.CachedTokens != nil || row.InputTokens != nil {
+		t.Errorf("refused row cache split = %v/%v, want nil", row.CachedTokens, row.InputTokens)
+	}
 	if row.RoutingReason != CloudReasonLocalOnlyBlocked || row.StatusCode != http.StatusServiceUnavailable {
 		t.Errorf("row reason=%q status=%d, want local_only_blocked/503", row.RoutingReason, row.StatusCode)
 	}

@@ -184,12 +184,13 @@ type Server struct {
 	version            string
 	mu                 sync.RWMutex
 	requests           []RequestLog
-	localCount         int64   // atomic - requests served by local nodes
-	cloudCount         int64   // atomic - requests forwarded to cloud
-	localTokens        int64   // atomic - real token counts parsed from local node responses
-	cloudTokens        int64   // atomic - real token counts parsed from cloud responses
-	cloudSpentUSD      float64 // protected by mu
-	refCostPer1K       float64 // reference cloud rate used to value local tokens (immutable after construction)
+	localCount         int64       // atomic - requests served by local nodes
+	cloudCount         int64       // atomic - requests forwarded to cloud
+	localTokens        int64       // atomic - real token counts parsed from local node responses
+	cloudTokens        int64       // atomic - real token counts parsed from cloud responses
+	auditSplitFailing  atomic.Bool // audit cache-split lookup is failing (log on change only)
+	cloudSpentUSD      float64     // protected by mu
+	refCostPer1K       float64     // reference cloud rate used to value local tokens (immutable after construction)
 	startTime          time.Time
 	analytics          *analyticsStore
 	auditLog           *audit.Logger
@@ -409,6 +410,8 @@ func (s *Server) LoadFromStore() error {
 				PrefillMs:     rec.PrefillMs,
 				QueueWaitMs:   rec.QueueWaitMs,
 				CloudMs:       rec.CloudMs,
+				CachedTokens:  rec.CachedTokens,
+				InputTokens:   rec.InputTokens,
 			})
 		}
 		s.mu.Lock()
@@ -566,6 +569,13 @@ type RequestLog struct {
 	// scrape, not attributable to one request). Never a fabricated real
 	// zero - a genuine prefill always takes non-zero time.
 	PrefillMs int64 `json:"prefillMs,omitempty"`
+	// CachedTokens and InputTokens are the prompt tokens served from the
+	// engine's prefix cache and the prompt token count they are measured
+	// against, both read from the response's own usage block. They are set
+	// together or not at all: nil means the runtime did not report a cache
+	// split for this request, which is different from a reported 0.
+	CachedTokens *int64 `json:"cachedTokens,omitempty"`
+	InputTokens  *int64 `json:"inputTokens,omitempty"`
 }
 
 type nodeResp struct {
@@ -1722,6 +1732,8 @@ func (s *Server) handleRequests(w http.ResponseWriter, r *http.Request) {
 		PrefillMs     int64     `json:"prefillMs,omitempty"`
 		QueueWaitMs   *int64    `json:"queueWaitMs,omitempty"`
 		CloudMs       *int64    `json:"cloudMs,omitempty"`
+		CachedTokens  *int64    `json:"cachedTokens,omitempty"`
+		InputTokens   *int64    `json:"inputTokens,omitempty"`
 	}
 	s.mu.RLock()
 	reqs := make([]RequestLog, len(s.requests))
@@ -1750,6 +1762,8 @@ func (s *Server) handleRequests(w http.ResponseWriter, r *http.Request) {
 			PrefillMs:     req.PrefillMs,
 			QueueWaitMs:   req.QueueWaitMs,
 			CloudMs:       req.CloudMs,
+			CachedTokens:  req.CachedTokens,
+			InputTokens:   req.InputTokens,
 		}
 	}
 	// Reverse so newest entries come first.
@@ -6625,8 +6639,50 @@ func (s *Server) IncrSpill(keyName, servedBy string) {
 // decision is the routing explanation from the router for this
 // request's chosen node; nil for cloud-fallback requests, which have no
 // router.RoutingDecision.
-func (s *Server) LogRequest(requestID, apiKey, sourceIP, model, node, status string, httpStatus int, latencyMs int, tokens int64, prefillMs int64, decision *router.RoutingDecision) {
-	s.LogRequestTimed(requestID, apiKey, sourceIP, model, node, status, httpStatus, latencyMs, tokens, prefillMs, decision, RequestTiming{})
+func (s *Server) LogRequest(p RequestLogParams) {
+	s.LogRequestTimed(p, RequestTiming{})
+}
+
+// RequestLogParams is everything LogRequest records about one finished
+// request. Field meanings are documented on LogRequest.
+type RequestLogParams struct {
+	RequestID  string
+	KeyName    string
+	SourceIP   string
+	Model      string
+	Node       string
+	Status     string
+	HTTPStatus int
+	LatencyMs  int
+	Tokens     int64
+	PrefillMs  int64
+	Decision   *router.RoutingDecision
+	Usage      RequestUsage
+}
+
+// RequestUsage is the prompt-cache split a response reported: Input is the
+// prompt token count and Cached the part of it served from the engine's
+// prefix cache. Both are nil when the response reported no split; they are
+// set together or not at all, so a hit ratio always has one denominator.
+type RequestUsage struct {
+	Input  *int64
+	Cached *int64
+}
+
+// cacheSplitPtrs returns copies of the usage's values when they form a valid
+// split (see store.ValidCacheSplit) and nil, nil otherwise, so a malformed pair
+// is never recorded and the ring and the persisted record do not share
+// pointers. The order matches RequestUsage: input first, then cached.
+func cacheSplitPtrs(u RequestUsage) (input, cached *int64) {
+	return store.SanitizeCacheSplit("request log", u.Input, u.Cached)
+}
+
+func copyInt64Ptr(p *int64) *int64 {
+	if p == nil {
+		return nil
+	}
+	v := *p
+	return &v
 }
 
 // RequestTiming is the measured queue-wait and cloud-call time of a
@@ -6638,14 +6694,17 @@ type RequestTiming struct {
 }
 
 // LogRequestTimed is LogRequest plus the cloud-route timing split.
-func (s *Server) LogRequestTimed(requestID, apiKey, sourceIP, model, node, status string, httpStatus int, latencyMs int, tokens int64, prefillMs int64, decision *router.RoutingDecision, timing RequestTiming) {
+func (s *Server) LogRequestTimed(p RequestLogParams, timing RequestTiming) {
+	requestID, keyName, sourceIP, model, node, status := p.RequestID, p.KeyName, p.SourceIP, p.Model, p.Node, p.Status
+	httpStatus, latencyMs, tokens, prefillMs, decision := p.HTTPStatus, p.LatencyMs, p.Tokens, p.PrefillMs, p.Decision
+	inputTokens, cachedTokens := cacheSplitPtrs(p.Usage)
 	var tps float64
 	if tokens > 0 && latencyMs > 0 {
 		tps = float64(tokens) / (float64(latencyMs) / 1000.0)
 	}
 	// Attribute token usage to the calling key for per-key analytics + cost.
 	if s.auth != nil {
-		s.auth.AddKeyTokens(apiKey, tokens)
+		s.auth.AddKeyTokens(keyName, tokens)
 	}
 	now := time.Now()
 	id := requestID
@@ -6671,7 +6730,7 @@ func (s *Server) LogRequestTimed(requestID, apiKey, sourceIP, model, node, statu
 	s.mu.Lock()
 	s.requests = append(s.requests, RequestLog{
 		ID:            id,
-		ApiKey:        apiKey,
+		ApiKey:        keyName,
 		SourceIP:      sourceIP,
 		Model:         model,
 		Node:          node,
@@ -6686,6 +6745,8 @@ func (s *Server) LogRequestTimed(requestID, apiKey, sourceIP, model, node, statu
 		PrefillMs:     prefillMs,
 		QueueWaitMs:   timing.QueueWaitMs,
 		CloudMs:       timing.CloudMs,
+		CachedTokens:  cachedTokens,
+		InputTokens:   inputTokens,
 	})
 	if len(s.requests) > 50 {
 		s.requests = s.requests[len(s.requests)-50:]
@@ -6725,7 +6786,7 @@ func (s *Server) LogRequestTimed(requestID, apiKey, sourceIP, model, node, statu
 	select {
 	case s.logChan <- store.RequestRecord{
 		ID:            id,
-		KeyName:       apiKey,
+		KeyName:       keyName,
 		Model:         model,
 		NodeName:      node,
 		StatusCode:    httpStatus,
@@ -6737,6 +6798,8 @@ func (s *Server) LogRequestTimed(requestID, apiKey, sourceIP, model, node, statu
 		PrefillMs:     prefillMs,
 		QueueWaitMs:   timing.QueueWaitMs,
 		CloudMs:       timing.CloudMs,
+		CachedTokens:  copyInt64Ptr(cachedTokens),
+		InputTokens:   copyInt64Ptr(inputTokens),
 	}:
 	default:
 		// Prevent blocking the proxy path if SQLite writes are completely backed up.
@@ -7035,7 +7098,7 @@ func (s *Server) handleAnalytics(w http.ResponseWriter, r *http.Request) {
 	savedUSD, cloudSpent := s.savingsUSD()
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	json.NewEncoder(w).Encode(s.withCacheWindow(map[string]interface{}{
 		"hourly":          hourly,
 		"by_model":        models,
 		"total_saved_usd": savedUSD,
@@ -7043,7 +7106,7 @@ func (s *Server) handleAnalytics(w http.ResponseWriter, r *http.Request) {
 		"local_requests":  local,
 		"cloud_requests":  cloud,
 		"since":           s.startTime.UTC().Format(time.RFC3339),
-	})
+	}))
 }
 
 // savingsUSD computes savings and cloud spend from real parsed token counts.
@@ -9078,15 +9141,15 @@ func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
 		writeServerError(w, r, err)
 		return
 	}
-	entries := page.Entries
-	if entries == nil {
-		entries = []audit.Entry{}
-	}
+	entries, splitErr := s.auditEntriesWithCache(page.Entries)
 
 	resp := map[string]interface{}{
 		"entries":   entries,
 		"total":     len(entries),
 		"truncated": len(entries) == limit,
+	}
+	if splitErr != "" {
+		resp["cache_split_error"] = splitErr
 	}
 	if page.NextBeforeID > 0 {
 		resp["next_before_id"] = page.NextBeforeID
@@ -9096,6 +9159,56 @@ func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
+}
+
+// auditEntryView is an audit entry as /admin/audit returns it, plus the
+// prompt-cache split joined from request_log by request id. The split is absent
+// when request_log has no valid split for the request (not reported, or the row
+// aged out). audit.Entry must not gain a custom marshaller, or embedding it
+// would flatten away the cache fields.
+type auditEntryView struct {
+	audit.Entry
+	CachedTokens *int64 `json:"cachedTokens,omitempty"`
+	InputTokens  *int64 `json:"inputTokens,omitempty"`
+}
+
+// auditCacheSplitUnavailable is the cache_split_error value sent when the
+// split lookup failed; the detail goes to the server log only.
+const auditCacheSplitUnavailable = "cache split unavailable"
+
+// auditEntriesWithCache decorates a page of audit entries with the cache split
+// from request_log. It returns a non-empty error string when the lookup failed,
+// in which case the entries are undecorated and the caller must say so rather
+// than let it read as "not reported". The failure is logged when it starts and
+// again when it clears, not on every poll.
+func (s *Server) auditEntriesWithCache(entries []audit.Entry) ([]auditEntryView, string) {
+	out := make([]auditEntryView, len(entries))
+	ids := make([]string, 0, len(entries))
+	for i, e := range entries {
+		out[i].Entry = e
+		if e.RequestID != "" {
+			ids = append(ids, e.RequestID)
+		}
+	}
+	if len(ids) == 0 {
+		return out, ""
+	}
+	splits, err := s.st.RequestCacheSplits(ids)
+	if err != nil {
+		if s.auditSplitFailing.CompareAndSwap(false, true) {
+			log.Printf("admin: audit cache split lookup failing (%d entries): %v", len(ids), err)
+		}
+		return out, auditCacheSplitUnavailable
+	}
+	if s.auditSplitFailing.CompareAndSwap(true, false) {
+		log.Printf("admin: audit cache split lookup recovered")
+	}
+	for i := range out {
+		if sp, ok := splits[out[i].RequestID]; ok {
+			out[i].InputTokens, out[i].CachedTokens = sp.Input, sp.Cached
+		}
+	}
+	return out, ""
 }
 
 // parsePositiveID parses a row-id query value, reporting false unless it is a
@@ -9286,9 +9399,9 @@ func (s *Server) handleAnalyticsExport(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	switch exportType {
 	case "models":
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		json.NewEncoder(w).Encode(s.withCacheWindow(map[string]interface{}{
 			"by_model": s.analytics.topModels(),
-		})
+		}))
 	default: // hourly
 		buckets := s.analytics.last24hBuckets()
 		// Transform bare hour keys to RFC3339 Z for an unambiguous wire format

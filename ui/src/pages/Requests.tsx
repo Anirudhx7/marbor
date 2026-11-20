@@ -43,6 +43,7 @@ interface PageData {
   entries: RequestEntry[];
   nextBeforeId?: number;
   prevAfterId?: number;
+  cacheSplitError?: string;
 }
 
 // The bottom pager saves scrolling back up on a long page.
@@ -66,7 +67,8 @@ function reusePage(prev: PageData | null, next: PageData): PageData {
   let allSame =
     prev.entries.length === next.entries.length &&
     prev.nextBeforeId === next.nextBeforeId &&
-    prev.prevAfterId === next.prevAfterId;
+    prev.prevAfterId === next.prevAfterId &&
+    prev.cacheSplitError === next.cacheSplitError;
   const entries = next.entries.map((e, i) => {
     const before = old.get(e.id);
     const same = before !== undefined && JSON.stringify(before) === JSON.stringify(e);
@@ -661,15 +663,23 @@ export function Requests() {
         </div>
       )}
 
+      {page?.cacheSplitError && (
+        <div role="alert" className="p-3 bg-secondary/40 border border-border rounded-xl text-muted-foreground text-sm">
+          Cache data unavailable for this page. The Cached column shows a dash because the server could not read it, not because nothing was cached.
+        </div>
+      )}
+
       {isDesktop ? (
         <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto scroll-region" tabIndex={0} role="region" aria-label="Request log table: scroll horizontally for more columns">
             {/*
               The table always fills its card (w-full); column sizing is in
               COLUMNS. min-w stops the flex columns collapsing on a narrow
-              card - below it the region scrolls instead of colliding headers.
+              card - below it the region scrolls instead of colliding headers. The
+              1090 is the sum of the fixed-width columns plus room for the
+              flexible ones; revisit it when a column is added to COLUMNS.
             */}
-            <table className="w-full min-w-[960px] text-sm">
+            <table className="w-full min-w-[1090px] text-sm">
               <thead>
                 <tr className="border-b border-border bg-secondary/30">
                   {COLUMNS.map((c) => (

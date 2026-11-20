@@ -147,9 +147,11 @@ func (h *Handler) logBlocked(r *http.Request, keyName, modelName, requestID stri
 	total := time.Since(start)
 	waitMs, _ := route.split(total, 0)
 	if h.admin != nil {
-		h.admin.LogRequestTimed(requestID, keyName, h.clientIP(r), modelName, "none", "error",
-			http.StatusServiceUnavailable, int(total.Milliseconds()), 0, 0,
-			route.decision("none"), admin.RequestTiming{QueueWaitMs: &waitMs})
+		h.admin.LogRequestTimed(admin.RequestLogParams{
+			RequestID: requestID, KeyName: keyName, SourceIP: h.clientIP(r), Model: modelName, Node: "none",
+			Status: "error", HTTPStatus: http.StatusServiceUnavailable, LatencyMs: int(total.Milliseconds()),
+			Decision: route.decision("none"),
+		}, admin.RequestTiming{QueueWaitMs: &waitMs})
 	}
 	if h.audit != nil {
 		h.audit.Log(audit.Entry{

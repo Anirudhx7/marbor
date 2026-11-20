@@ -24,6 +24,7 @@ export const COLUMNS: { label: string; size: string; align: 'left' | 'right' }[]
   { label: 'Status', size: `${FIT} min-w-[80px]`, align: 'left' },
   { label: 'Latency', size: `${FIT} min-w-[90px]`, align: 'right' },
   { label: 'Prefill', size: `${FIT} min-w-[84px]`, align: 'right' },
+  { label: 'Cached', size: `${FIT} min-w-[132px]`, align: 'right' },
   { label: 'Why', size: `${FIT} min-w-[156px]`, align: 'left' },
 ];
 
@@ -244,8 +245,8 @@ export function StatusBadge({ status }: { status: number }) {
 export function SkeletonRow() {
   return (
     <tr className="border-b border-border">
-      {[...Array(7)].map((_, i) => (
-        <td key={i} className="px-4 py-3">
+      {COLUMNS.map((c, i) => (
+        <td key={c.label} className="px-4 py-3">
           <div className="h-4 bg-secondary rounded animate-pulse" style={{ width: `${40 + (i * 17) % 50}%` }} />
         </td>
       ))}

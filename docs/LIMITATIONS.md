@@ -148,6 +148,17 @@ Hourly traffic buckets (requests, tokens, local/cloud split, cost) are persisted
 
 The "By Model" table's Local/Cloud breakdown is not backfilled the same way. Per-model stats are persisted as an aggregate request count with no local/cloud split, but the dashboard needs that split - attributing the aggregate to either side on restart would fabricate a false 100%-local or 100%-cloud number, which violates the project's no-fake-data rule. So the by-model table counts only requests since the last restart (the page shows the restart time) and starts over each time marbor restarts, while the summary cards above it are all time and the charts cover the last 24 hours. No data is lost in either case - the SQLite records are intact.
 
+### Prompt cache reuse: reported by some runtimes only, over the last 1000 requests
+The Requests page, `marbor requests list` and the Analytics "Prompt cache reuse" block show how many prompt tokens were served from the engine's prefix cache, read from the response's own usage block. A request shows `-` when its runtime did not report a split; that is unknown, never 0.
+
+- **Reported:** vLLM started with `--enable-prompt-tokens-details`, and llama.cpp for non-streaming responses. llama.cpp streaming responses are not yet verified against a real server.
+- **Not reported:** Ollama and MLX responses carry no cached-token count, so they always show `-`. Cloud-routed requests also show `-` for now.
+- **Streaming needs the client to ask.** An OpenAI-style streamed reply carries usage only when the client sets `stream_options.include_usage`, and marbor does not change client request options. vLLM can also include it server-side.
+- **A window, not a period.** Hit rates cover the most recent 1000 requests on record (the size of the request log), computed only over the requests that reported. The block always says how many of the window reported, and per-model and per-key figures are not restored from older history.
+- **Very large non-streaming replies.** A single-line JSON reply larger than 1 MiB shows `-`: marbor keeps only a bounded tail of a response to read the usage block from, which is what keeps streaming unbuffered.
+- **Error responses never carry a split.** A response with status 400 or above shows `-`, even if its body includes a usage block, because a failed request is not a measurement.
+- **Clients that ask for compressed replies** (`Accept-Encoding: gzip`) get their response untouched, but marbor cannot read a split out of a compressed body, so those rows show `-`.
+
 ### Routing rules persist to SQLite
 Routing rules added via the admin API (the UI or `POST /admin/v1/routing/rules`) are written to SQLite and survive restarts.
 

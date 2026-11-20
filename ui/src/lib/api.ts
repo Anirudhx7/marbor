@@ -5,6 +5,9 @@ import { addEntry, removeEntry } from './cloudOnlyView';
 import { deepMerge, serverErrorText } from './settingsMerge';
 import { sameDeclared } from './replicaGroups';
 import { dedupeInflight } from './inflight';
+import { mapAuditEntry } from './auditEntry';
+import { parseCacheSplitError } from './cacheView';
+import type { AuditLogEntry, AuditPageEntry } from './auditEntry';
 import { checkBackupFile, describeBackupError, filenameFromDisposition, isAbortError, isNetworkFailure, isNewProcess, isValidRestoreRef, looksLikeBackup, tooBigForBrowser, MAX_MEMORY_DOWNLOAD_BYTES } from './backupUi';
 import { mockBackupResponse } from './backupMock';
 import { readStoredDemoFlag } from './demoFlag';
@@ -1047,24 +1050,8 @@ export interface AuditLogFilters {
   afterId?: number;
 }
 
-interface AuditLogEntry {
-  id?: number;
-  time: string;
-  request_id: string;
-  key_name: string;
-  model: string;
-  node: string;
-  status: string;
-  latency_ms: number;
-  cloud: boolean;
-  cloud_model?: string;
-  routing_reason?: string;
-  queue_wait_ms?: number;
-  cloud_ms?: number;
-}
-
 // AuditPageEntry is a request row plus the server row id used as the cursor.
-export type AuditPageEntry = RequestEntry & { auditId: number };
+export type { AuditPageEntry };
 
 export interface AuditPage {
   entries: AuditPageEntry[];
@@ -1075,6 +1062,9 @@ export interface AuditPage {
   // True when the page is full (not a statement that more rows exist; the
   // cursors are the exact signal).
   truncated: boolean;
+  // Set when the server could not read the cache split for this page; the
+  // cache column is then unknown for every row, not merely unreported.
+  cacheSplitError?: string;
 }
 
 // fetchAuditPage queries the server-side filterable /admin/audit endpoint
@@ -1108,7 +1098,7 @@ export async function fetchAuditPage(filters: AuditLogFilters = {}): Promise<Aud
     const detail = await res.text().then((t) => t.trim().slice(0, 200)).catch(() => '');
     throw new Error(detail ? `Failed to fetch audit log (HTTP ${res.status}): ${detail}` : `Failed to fetch audit log (HTTP ${res.status})`);
   }
-  let data: { entries?: unknown; next_before_id?: number; prev_after_id?: number; truncated?: boolean };
+  let data: { entries?: unknown; next_before_id?: number; prev_after_id?: number; truncated?: boolean; cache_split_error?: unknown };
   try {
     data = await res.json();
   } catch {
@@ -1125,23 +1115,11 @@ export async function fetchAuditPage(filters: AuditLogFilters = {}): Promise<Aud
     throw new Error('This server does not support audit cursors; upgrade marbor');
   }
   return {
-    entries: entries.map((e) => ({
-      id: e.request_id,
-      auditId: e.id ?? 0,
-      time: e.time,
-      key_name: e.key_name,
-      model: e.cloud && e.cloud_model ? e.cloud_model : e.model,
-      node: e.node,
-      status: Number(e.status) || 0,
-      latency_ms: e.latency_ms,
-      cloud: e.cloud,
-      routingReason: e.routing_reason || undefined,
-      queueWaitMs: typeof e.queue_wait_ms === 'number' ? e.queue_wait_ms : undefined,
-      cloudMs: typeof e.cloud_ms === 'number' ? e.cloud_ms : undefined,
-    })),
+    entries: entries.map(mapAuditEntry),
     nextBeforeId: data.next_before_id || undefined,
     prevAfterId: data.prev_after_id || undefined,
     truncated: Boolean(data.truncated),
+    cacheSplitError: parseCacheSplitError(data.cache_split_error),
   };
 }
 

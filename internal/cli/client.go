@@ -1636,6 +1636,11 @@ type RequestEntry struct {
 	// not cloud-routed or not measured.
 	QueueWaitMs *int64 `json:"queueWaitMs,omitempty"`
 	CloudMs     *int64 `json:"cloudMs,omitempty"`
+	// CachedTokens / InputTokens are the prompt tokens served from the engine's
+	// prefix cache and the prompt size they are measured against; nil when the
+	// runtime did not report a split.
+	CachedTokens *int64 `json:"cachedTokens,omitempty"`
+	InputTokens  *int64 `json:"inputTokens,omitempty"`
 }
 
 // Requests calls GET /admin/requests - the full in-memory request log ring,
@@ -1673,6 +1678,8 @@ type LiveRequestEntry struct {
 	RoutingReason string    `json:"routingReason,omitempty"`
 	QueueWaitMs   *int64    `json:"queueWaitMs,omitempty"`
 	CloudMs       *int64    `json:"cloudMs,omitempty"`
+	CachedTokens  *int64    `json:"cachedTokens,omitempty"`
+	InputTokens   *int64    `json:"inputTokens,omitempty"`
 }
 
 // LiveRequests calls GET /admin/requests/live - the same bounded in-memory
@@ -1710,6 +1717,10 @@ type AuditEntry struct {
 	RoutingReason string    `json:"routing_reason,omitempty"`
 	QueueWaitMs   *int64    `json:"queue_wait_ms,omitempty"`
 	CloudMs       *int64    `json:"cloud_ms,omitempty"`
+	// CachedTokens / InputTokens are the prompt-cache split joined from the
+	// request log; nil when the runtime reported none or the row aged out.
+	CachedTokens *int64 `json:"cachedTokens,omitempty"`
+	InputTokens  *int64 `json:"inputTokens,omitempty"`
 }
 
 // AuditFilter mirrors the query params for GET /admin/audit.
@@ -1737,6 +1748,9 @@ type AuditResult struct {
 	Truncated    bool         `json:"truncated"`
 	NextBeforeID int64        `json:"next_before_id,omitempty"`
 	PrevAfterID  int64        `json:"prev_after_id,omitempty"`
+	// CacheSplitError is set when the server could not read the cache split for
+	// this page; the CACHED and INPUT columns are then unknown, not unreported.
+	CacheSplitError string `json:"cache_split_error,omitempty"`
 }
 
 // AuditQuery calls GET /admin/audit with the request audit log's own filter

@@ -4,6 +4,7 @@ DELETE FROM runtime_keys;
 DELETE FROM users;
 DELETE FROM user_sessions;
 DELETE FROM settings;
+DELETE FROM request_log;
 
 -- Insert admin user (username: admin, password hash of "admin")
 -- Password hash: $2a$10$P61YB8dFDRNJZumNNZrhgeyziqeHyIJ68UsaxkpDwMMV//AMHvfbK
@@ -42,3 +43,17 @@ VALUES ('node-a', 'http://ollama-node-a:11434', 'ollama', 24576),
 INSERT INTO settings (key, value)
 VALUES ('metrics_enabled', 'true'),
        ('routing_strategy', 'warm-first');
+
+-- Sample request log rows showing the prompt-cache split: values where the
+-- runtime reports it, one real zero, and NULL (unknown) where it does not.
+-- Timestamps are fixed because the demo database is a checked-in fixture, not
+-- seeded at start, so a relative time would freeze at regeneration anyway.
+-- They age out of the 1000-row log once live traffic arrives.
+INSERT INTO request_log (id, key_name, model, node_name, status_code, latency_ms, tokens_used, cost_usd, routed_to, is_cloud, ts, routing_reason, routing_detail, prefill_ms, cached_tokens, input_tokens)
+VALUES ('req-demo-cache-01', 'demo-key', 'qwen2.5:7b', 'vllm-node', 200, 240, 2020, 0, 'vllm-node', 0, 1783087100, 'score_based', '', 0, 1820, 2000),
+       ('req-demo-cache-02', 'demo-key', 'qwen2.5:7b', 'vllm-node', 200, 310, 1455, 0, 'vllm-node', 0, 1783087120, 'score_based', '', 0, 0, 1450),
+       ('req-demo-cache-03', 'demo-key', 'qwen2.5:7b', 'vllm-node', 200, 190, 1010, 0, 'vllm-node', 0, 1783087140, 'session_affinity', '', 0, 640, 800),
+       ('req-demo-cache-04', 'demo-key', 'llama3.2:3b', 'llamacpp-node', 200, 150, 128, 0, 'llamacpp-node', 0, 1783087160, 'score_based', '', 0, 100, 120),
+       ('req-demo-cache-05', 'demo-key', 'llama3.2:3b', 'node-a', 200, 120, 316, 0, 'node-a', 0, 1783087180, 'pinned_warm', '', 9, NULL, NULL),
+       ('req-demo-cache-06', 'demo-key', 'mistral:7b', 'node-b', 200, 180, 412, 0, 'node-b', 0, 1783087200, 'score_based', '', 14, NULL, NULL),
+       ('req-demo-cache-07', 'demo-key', 'mistral:7b', 'node-b', 200, 175, 380, 0, 'node-b', 0, 1783087220, 'score_based', '', 12, NULL, NULL);

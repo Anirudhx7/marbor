@@ -653,6 +653,11 @@ export interface RequestEntry {
   // Absent when not measured - never 0 as a stand-in.
   queueWaitMs?: number;
   cloudMs?: number;
+  // Prompt tokens served from the engine's prefix cache, and the prompt size
+  // they are measured against, as the response's usage block reported them.
+  // Both absent when the runtime did not report a split - unknown, not 0.
+  cachedTokens?: number;
+  inputTokens?: number;
 }
 
 export interface ScoreComponent {
@@ -714,6 +719,44 @@ export interface ModelStat {
   saved_usd: number;
 }
 
+// Prompt-cache reuse for one model or key over the cache window. Token sums
+// and hit_pct cover only the requests that reported a split; hit_pct is null
+// when none did.
+//
+// The token sums are over the reporting requests only and are 0 when
+// reporting_requests is 0; show them only when reporting_requests > 0.
+export interface CacheStats {
+  window_requests: number;
+  reporting_requests: number;
+  cached_tokens: number;
+  input_tokens: number;
+  hit_pct: number | null;
+}
+
+export interface CacheModelStat extends CacheStats {
+  model: string;
+  // True for the group of requests that carried no model name; its model is a
+  // dash that a model literally named "-" does not share.
+  no_model?: boolean;
+}
+
+export interface CacheKeyStat extends CacheStats {
+  key: string;
+  // True for the group of requests that carried no key name; its key is a
+  // dash that a key literally named "-" does not share.
+  no_key?: boolean;
+}
+
+// The most recent window_size requests on record, not a time period.
+// The CacheStats fields are the whole window: sums and hit_pct over the
+// reporting requests only.
+export interface CacheWindow extends CacheStats {
+  window_size: number;
+  window_oldest: string | null;
+  by_model: CacheModelStat[];
+  by_key: CacheKeyStat[];
+}
+
 export interface Analytics {
   local_requests: number;
   cloud_requests: number;
@@ -725,6 +768,10 @@ export interface Analytics {
   // When the router process started. Applies to by_model only; the totals
   // above are all time. Optional for servers older than this field.
   since?: string;
+  // Absent on servers older than this field; null with cache_window_error set
+  // when the server could not read the request log.
+  cache_window?: CacheWindow | null;
+  cache_window_error?: string;
 }
 
 export type FitStatus = 'green' | 'yellow' | 'red' | 'unknown';
