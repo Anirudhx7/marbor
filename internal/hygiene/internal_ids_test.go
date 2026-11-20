@@ -241,18 +241,9 @@ var scanExtensions = map[string]bool{
 // pattern itself as their subject matter (e.g. this file, and
 // internal/cli/registry_test.go's own doc comments) - scanning them would
 // be the test flagging its own documentation of what it looks for.
-//
-// CHANGELOG.md is exempt for the same reason git commit history is exempt
-// (see this test's doc comment above): it is an append-only historical
-// record of what already shipped, dated per release, not prose describing
-// the current state of the code. Rewriting years of past release notes to
-// scrub ticket numbers would falsify the record for no safety benefit - a
-// reader of CHANGELOG.md already expects to see this project's own change
-// history, exactly as they would reading it via `git log`.
 var selfExemptFiles = map[string]bool{
 	"internal/hygiene/internal_ids_test.go": true,
 	"internal/cli/registry_test.go":         true,
-	"CHANGELOG.md":                          true,
 }
 
 // gitTrackedFiles returns the repo root and every file tracked in it
