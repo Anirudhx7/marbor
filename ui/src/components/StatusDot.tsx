@@ -1,5 +1,5 @@
 interface StatusDotProps {
-  status: 'healthy' | 'degraded' | 'down' | 'online' | 'offline' | 'active' | 'suspended' | 'rate-limited';
+  status: 'healthy' | 'degraded' | 'down' | 'online' | 'offline' | 'active' | 'suspended' | 'rate-limited' | 'worker';
   size?: 'sm' | 'md' | 'lg';
   pulse?: boolean;
   // halo renders the soft status-colored ring from the marketing site's live
@@ -17,6 +17,7 @@ const statusColors = {
   offline: 'bg-destructive',
   suspended: 'bg-muted-foreground',
   'rate-limited': 'bg-warning',
+  worker: 'bg-muted-foreground',
 };
 
 const sizeClasses = {
@@ -34,6 +35,7 @@ const haloColors: Record<StatusDotProps['status'], string> = {
   offline: 'shadow-[0_0_0_4px_hsl(var(--destructive)_/_0.18)]',
   suspended: 'shadow-[0_0_0_4px_hsl(var(--muted-foreground)_/_0.18)]',
   'rate-limited': 'shadow-[0_0_0_4px_hsl(var(--warning)_/_0.18)]',
+  worker: 'shadow-[0_0_0_4px_hsl(var(--muted-foreground)_/_0.18)]',
 };
 
 const statusLabels = {
@@ -45,6 +47,8 @@ const statusLabels = {
   offline: 'Offline',
   suspended: 'Suspended',
   'rate-limited': 'Rate limited',
+  // A worker's probe failing is expected; the dot is muted, not red.
+  worker: 'Worker host: probe failing is expected for a headless worker. Not counted in fleet health.',
 };
 
 export function StatusDot({ status, size = 'md', pulse = false, halo = false, title }: StatusDotProps) {

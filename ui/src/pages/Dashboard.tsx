@@ -21,8 +21,9 @@ import { waitCloudSummary } from '../lib/requestsView';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import { mockGPUNodes, mockSavings } from '../lib/mockData';
 import { readLastNodeCount, writeLastNodeCount } from '../lib/nodeCount';
+import { computeFleetHealth, workersText } from '../lib/fleetHealth';
 import { fetchNodes, fetchSummary, fetchSavings, fetchHealth, fetchKeys, fetchRequests } from '../lib/api';
-import { GPUNode, Savings, APIKey, RequestEntry, NodeSignalId } from '../types';
+import { GPUNode, Savings, APIKey, RequestEntry } from '../types';
 import { SetupChecklist } from '../components/SetupChecklist';
 import { EmptyState } from '../components/EmptyState';
 
@@ -131,41 +132,12 @@ function NodeCardSkeleton() {
 // degrades to "+N more" instead of wrapping the strip into a wall of red.
 const MAX_DOWN_BADGES = 3;
 
-interface FleetHealth {
-  total: number;
-  healthy: number;
-  degraded: number;
-  draining: number;
-  downNodes: GPUNode[];
-  staleAgents: GPUNode[];
-  vramPressure: GPUNode[];
-}
-
-// computeFleetHealth derives every figure from the live node list the
-// dashboard already polls (/admin/v1/nodes) - counts of real states, never
-// estimates. Which nodes are healthy, degraded, draining, down or under VRAM
-// pressure is the server's call (node.signals, the same definition behind
-// "marbor nodes --signal"); this only counts them.
-function computeFleetHealth(nodes: GPUNode[]): FleetHealth {
-  const withSignal = (id: NodeSignalId) => nodes.filter(n => (n.signals ?? []).includes(id));
-  const downNodes = withSignal('down');
-  return {
-    total: nodes.length,
-    healthy: withSignal('healthy').length,
-    degraded: withSignal('degraded').length,
-    draining: withSignal('draining').length,
-    downNodes,
-    // agentStale means an enabled agent IS configured for that host but
-    // stopped answering past the poll-failure threshold - deliberately not
-    // set for hosts that simply run agentless (see NodeState.AgentStale).
-    staleAgents: nodes.filter(n => !!n.agentStale),
-    vramPressure: withSignal('pressure'),
-  };
-}
-
-function HealthSegment({ color, children }: { color: string; children: React.ReactNode }) {
+function HealthSegment({ color, children, label }: { color: string; children: React.ReactNode; label?: string }) {
   return (
-    <span className="flex items-center gap-1.5 whitespace-nowrap">
+    <span
+      className="flex items-center gap-1.5 whitespace-nowrap"
+      {...(label ? { role: 'group', title: label, 'aria-label': label } : {})}
+    >
       <span className={`w-2 h-2 rounded-full shrink-0 ${color}`} />
       <span className="text-muted-foreground">{children}</span>
     </span>
@@ -184,9 +156,10 @@ function FleetHealthStrip({ nodes }: { nodes: GPUNode[] }) {
           <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground shrink-0">
             Fleet Health
           </span>
-          {f.total === 0 ? (
+          {f.total === 0 && f.workersFailing === 0 && (
             <span className="text-sm text-muted-foreground">No nodes registered yet.</span>
-          ) : (
+          )}
+          {f.total > 0 && (
             <>
               <HealthSegment color="bg-success">
                 <span className="text-foreground font-semibold font-mono">{f.healthy}/{f.total}</span> healthy
@@ -204,9 +177,14 @@ function FleetHealthStrip({ nodes }: { nodes: GPUNode[] }) {
               </HealthSegment>
             </>
           )}
+          {f.workersFailing > 0 && (
+            <HealthSegment color="bg-muted-foreground" label={`${workersText(f.workersFailing)}. A headless worker is expected to fail its probe, so it is not counted as down.`}>
+              <span className="text-foreground font-semibold font-mono">{f.workersFailing}</span> {f.workersFailing === 1 ? 'worker' : 'workers'} probe failing
+            </HealthSegment>
+          )}
         </div>
 
-        {f.total > 0 && (f.downNodes.length > 0 || f.staleAgents.length > 0 || f.vramPressure.length > 0) && (
+        {(f.total > 0 || f.workersFailing > 0) && (f.downNodes.length > 0 || f.staleAgents.length > 0 || f.vramPressure.length > 0) && (
           <div className="flex flex-wrap items-center gap-1.5 min-w-0">
             {shownDown.map(n => (
               <Link
@@ -364,6 +342,7 @@ export function Dashboard() {
         queueDepth: 0,
         nodesOnline: 4,
         nodesDraining: 1,
+        nodesWorkers: 1,
         totalNodes: 6,
         warmHitRatio: 0.94,
   } : {
@@ -374,6 +353,7 @@ export function Dashboard() {
     queueDepth: 0,
     nodesOnline: 0,
     nodesDraining: 0,
+    nodesWorkers: 0,
     totalNodes: 0,
     warmHitRatio: 0,
   });
@@ -443,6 +423,7 @@ export function Dashboard() {
     queueDepth: 0,
     nodesOnline: 4,
     nodesDraining: 1,
+    nodesWorkers: 1,
     totalNodes: 6,
     warmHitRatio: 0.94,
   });
@@ -787,7 +768,7 @@ export function Dashboard() {
                 <div className="flex items-start justify-between mb-4">
                   <div>
                     <div className="flex items-center gap-2">
-                      <StatusDot status={node.health} size="sm" title={node.draining ? 'Draining' : undefined} />
+                      <StatusDot status={node.headlessWorker ? 'worker' : node.health} size="sm" title={node.draining ? 'Draining' : undefined} />
                       <span className="font-semibold text-foreground text-sm">{node.name}</span>
                     </div>
                     <p className="text-xs font-medium text-muted-foreground mt-1">{node.gpuModel}</p>
