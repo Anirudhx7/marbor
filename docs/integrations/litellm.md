@@ -4,8 +4,8 @@
 
 Rather than a competitor, **marbor operates as a complementary layer alongside LiteLLM**. They can be integrated in two distinct topologies depending on your architecture:
 
-- **Option A: Upstream Gateway Setup (LiteLLM &rarr; marbor)**: LiteLLM sits in front of your applications as the entry point and routes local model requests to marbor.
-- **Option B: Cloud Fallback Gateway Setup (marbor &rarr; LiteLLM)**: marbor routes cloud fallback traffic (when all local GPUs are saturated or down) through a central LiteLLM instance instead of hitting cloud endpoints directly.
+- **Option A: Upstream Gateway Setup (LiteLLM → marbor)**: LiteLLM sits in front of your applications as the entry point and routes local model requests to marbor.
+- **Option B: Cloud Fallback Gateway Setup (marbor → LiteLLM)**: marbor routes cloud fallback traffic (when all local GPUs are saturated or down) through a central LiteLLM instance instead of hitting cloud endpoints directly.
 
 ---
 
@@ -17,7 +17,7 @@ Rather than a competitor, **marbor operates as a complementary layer alongside L
 
 ---
 
-## Option A - Upstream Gateway Setup (LiteLLM &rarr; marbor)
+## Option A - Upstream Gateway Setup (LiteLLM → marbor)
 
 This is the recommended setup when you want to use LiteLLM's enterprise controls (such as SSO, virtual keys, and multi-cloud routing) while leveraging marbor's warm-first GPU load balancing and local VRAM scheduling.
 
@@ -44,7 +44,7 @@ Replace:
 
 ---
 
-## Option B - Cloud Fallback Gateway Setup (marbor &rarr; LiteLLM)
+## Option B - Cloud Fallback Gateway Setup (marbor → LiteLLM)
 
 If you already use LiteLLM to centralize your company's cloud LLM provider credentials (OpenAI, Anthropic, Groq, etc.), you can configure marbor to use LiteLLM as its single cloud fallback endpoint when local GPU nodes are saturated or offline.
 
@@ -120,7 +120,7 @@ marbor aggregates loaded models across all healthy GPU nodes dynamically and res
 
 ## Verification
 
-### Upstream (LiteLLM &rarr; marbor)
+### Upstream (LiteLLM → marbor)
 1. Send a request to LiteLLM:
    ```bash
    curl http://localhost:4000/chat/completions \
@@ -133,7 +133,7 @@ marbor aggregates loaded models across all healthy GPU nodes dynamically and res
    ```
 2. Verify the request appears in the marbor request log at `http://<marbor-host>:8080` with the correct model and node latency.
 
-### Fallback (marbor &rarr; LiteLLM)
+### Fallback (marbor → LiteLLM)
 1. Drain or set all local nodes to offline via the marbor dashboard.
 2. Send a request to marbor for a cloud model (e.g. `gpt-4o-mini`):
    ```bash
