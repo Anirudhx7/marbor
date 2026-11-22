@@ -48,11 +48,15 @@ function ApproveModal({ user, onClose, onDone }: ApproveModalProps) {
   const [createdKey, setCreatedKey] = useState<string | null>(null);
   const [activeKeys, setActiveKeys] = useState<APIKey[]>([]);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
+  // The empty-state lines below only make sense once each list has loaded;
+  // before that they claimed "none" for data that was still on its way.
+  const [keysLoaded, setKeysLoaded] = useState(false);
+  const [modelsLoaded, setModelsLoaded] = useState(false);
 
   useEffect(() => {
     let active = true;
-    fetchKeys().then(keys => { if (active) setActiveKeys(keys.filter(k => k.status === 'active')); }).catch(() => {});
-    fetchModels().then((cat: ModelCatalog) => { if (active) setAvailableModels((cat.models ?? []).map(m => m.name)); }).catch(() => {});
+    fetchKeys().then(keys => { if (active) setActiveKeys(keys.filter(k => k.status === 'active')); }).catch(() => {}).finally(() => { if (active) setKeysLoaded(true); });
+    fetchModels().then((cat: ModelCatalog) => { if (active) setAvailableModels((cat.models ?? []).map(m => m.name)); }).catch(() => {}).finally(() => { if (active) setModelsLoaded(true); });
     return () => { active = false; };
   }, []);
 
@@ -136,7 +140,9 @@ function ApproveModal({ user, onClose, onDone }: ApproveModalProps) {
         {mode === 'assign' ? (
           <div>
             <label className="block text-xs font-medium text-muted-foreground mb-1.5">Select Active Key</label>
-            {activeKeys.length === 0 ? (
+            {!keysLoaded ? (
+              <p className="text-xs text-muted-foreground italic">Loading keys...</p>
+            ) : activeKeys.length === 0 ? (
               <p className="text-xs text-muted-foreground italic">No active keys found.</p>
             ) : (
               <CustomSelect
@@ -184,7 +190,7 @@ function ApproveModal({ user, onClose, onDone }: ApproveModalProps) {
                     <span className="text-xs font-mono text-muted-foreground">{model}</span>
                   </label>
                 ))}
-                {availableModels.length === 0 && (
+                {modelsLoaded && availableModels.length === 0 && (
                   <p className="text-xs text-muted-foreground italic p-1">No models loaded on cluster yet.</p>
                 )}
               </div>
