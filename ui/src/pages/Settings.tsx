@@ -1715,8 +1715,8 @@ export function SettingsPage() {
           </div>
 
           <div className="flex flex-col sm:flex-row gap-2">
-            <CustomCombobox value={newCtxModel} onChange={(v) => { setNewCtxModel(v); setCtxError(null); }} options={knownModelNames} placeholder="llama3.2:8b" className="sm:flex-1" />
-            <input type="number" value={newCtxTokens} onChange={(e) => { setNewCtxTokens(e.target.value); setCtxError(null); }} placeholder="8192" className="w-full sm:w-28 px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
+            <CustomCombobox value={newCtxModel} onChange={(v) => { setNewCtxModel(v); setCtxError(null); }} options={knownModelNames} placeholder="e.g. llama3.2:8b" className="sm:flex-1" />
+            <input type="number" value={newCtxTokens} onChange={(e) => { setNewCtxTokens(e.target.value); setCtxError(null); }} placeholder="e.g. 8192" className="w-full sm:w-28 px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
             <button
               onClick={() => {
                 const tokens = parseInt(newCtxTokens, 10);

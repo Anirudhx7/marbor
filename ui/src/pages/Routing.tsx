@@ -1027,8 +1027,8 @@ export function Routing() {
         )}
 
         <div className="flex flex-col sm:flex-row gap-2">
-          <CustomCombobox value={newDegModel} onChange={(v) => { setNewDegModel(v); setDegChainError(null); }} options={knownModelNames} placeholder="llama3.1:70b" className="sm:flex-1" />
-          <CustomTagCombobox value={newDegAlts} onChange={(v) => { setNewDegAlts(v); setDegChainError(null); }} options={knownModelNames} placeholder="llama3.1:8b, phi3:mini" className="sm:flex-1" />
+          <CustomCombobox value={newDegModel} onChange={(v) => { setNewDegModel(v); setDegChainError(null); }} options={knownModelNames} placeholder="e.g. llama3.1:70b" className="sm:flex-1" />
+          <CustomTagCombobox value={newDegAlts} onChange={(v) => { setNewDegAlts(v); setDegChainError(null); }} options={knownModelNames} placeholder="e.g. llama3.1:8b, phi3:mini" className="sm:flex-1" />
           <button
             onClick={handleAddDegChain}
             disabled={chainsSaving}
@@ -1064,7 +1064,7 @@ export function Routing() {
       >
         <div className="space-y-4">
           {formErrors.length > 0 && (
-            <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
+            <div role="alert" className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
               {formErrors.map((error, i) => (
                 <p key={i} className="text-sm font-medium text-destructive">{error}</p>
               ))}
@@ -1079,8 +1079,9 @@ export function Routing() {
               <input
                 type="number"
                 value={newRuleForm.priority}
-                onChange={(e) => setNewRuleForm({ ...newRuleForm, priority: e.target.value })}
-                placeholder="1"
+                onChange={(e) => { setNewRuleForm({ ...newRuleForm, priority: e.target.value }); setFormErrors([]); }}
+                aria-invalid={formErrors.some((m) => m.startsWith('Priority'))}
+                placeholder="e.g. 1"
                 min="1"
                 className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
               />
@@ -1091,7 +1092,7 @@ export function Routing() {
               </label>
               <CustomSelect
                 value={newRuleForm.targetNode}
-                onChange={(val) => setNewRuleForm({ ...newRuleForm, targetNode: val })}
+                onChange={(val) => { setNewRuleForm({ ...newRuleForm, targetNode: val }); setFormErrors([]); }}
                 placeholder="Select node..."
                 options={[
                   { value: '', label: 'Select node...' },
@@ -1109,7 +1110,8 @@ export function Routing() {
             <input
               type="text"
               value={newRuleForm.condition}
-              onChange={(e) => setNewRuleForm({ ...newRuleForm, condition: e.target.value })}
+              onChange={(e) => { setNewRuleForm({ ...newRuleForm, condition: e.target.value }); setFormErrors([]); }}
+              aria-invalid={formErrors.some((m) => m.startsWith('Condition'))}
               placeholder='e.g., model =~ "70b" or api_key == "sk-eng-*"'
               className="w-full px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
             />
