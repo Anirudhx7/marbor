@@ -1009,7 +1009,7 @@ export const mockModelCatalog: ModelCatalog = (() => {
       size_vram: Math.round(9.6 * 1024 * 1024 * 1024),
       size_disk: Math.round(4.8 * 1024 * 1024 * 1024),
       warm_count: 0, // derived from nodes[].warm below
-      total_nodes: mockGPUNodes.length,
+      total_nodes: DEMO_COUNTED_NODES,
       nodes: [{ name: 'gpu-node-02', healthy: true, warm: false, runtime: 'ollama' }],
     },
     {
@@ -1017,7 +1017,7 @@ export const mockModelCatalog: ModelCatalog = (() => {
       size_vram: Math.round(5.2 * 1024 * 1024 * 1024),
       size_disk: Math.round(4.5 * 1024 * 1024 * 1024),
       warm_count: 0, // derived from nodes[].warm below
-      total_nodes: mockGPUNodes.length,
+      total_nodes: DEMO_COUNTED_NODES,
       nodes: [
         { name: 'gpu-node-03', healthy: true, warm: false, runtime: 'vllm' },
         { name: 'gpu-node-04', healthy: false, warm: false, runtime: 'llamacpp' },
@@ -1028,7 +1028,7 @@ export const mockModelCatalog: ModelCatalog = (() => {
       size_vram: Math.round(7.8 * 1024 * 1024 * 1024),
       size_disk: Math.round(6.8 * 1024 * 1024 * 1024),
       warm_count: 0, // derived from nodes[].warm below
-      total_nodes: mockGPUNodes.length,
+      total_nodes: DEMO_COUNTED_NODES,
       nodes: [{ name: 'gpu-node-03', healthy: true, warm: false, runtime: 'vllm' }],
     },
   
