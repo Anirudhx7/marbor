@@ -459,6 +459,10 @@ ${BRAND_HTML(r)}
 </nav>
 
   <main class="doc-main" id="main">
+    <div class="doc-mobile-nav">
+      <details><summary>Docs menu</summary><div class="doc-mobile-list"><a class="doc-nav-link home" href="${r}docs/index.html">← Docs home</a>${docSidebar(slug)}</div></details>
+      ${headings.length > 1 ? `<details><summary>On this page</summary>${tocHtml(headings)}</details>` : ""}
+    </div>
     <article class="doc-content doc-card"><div class="doc-card-body">
       <nav class="breadcrumb" aria-label="Breadcrumb"><ol>${breadcrumb(slug, title)}</ol></nav>
       ${contentHtml}
