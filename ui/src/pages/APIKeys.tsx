@@ -382,7 +382,7 @@ export function APIKeys() {
       }
     } else {
       setKeys(keys.map(k =>
-        k.id === keyToRevoke.id ? { ...k, status: 'suspended' as const } : k
+        k.id === keyToRevoke.id ? { ...k, status: 'revoked' as const } : k
       ));
     }
     setIsRevokeModalOpen(false);
