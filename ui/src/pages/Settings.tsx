@@ -146,6 +146,13 @@ export function SettingsPage() {
   const navigate = useNavigate();
   const { currency, setCurrency, toDisplay, toUSD } = useCurrency();
   const roundDisplay = (n: number) => Math.round(n * 100) / 100;
+  // The FX field edits as text: committing parseFloat(...) || 1 on every
+  // keystroke rewrote "0" to 1 while the operator was still typing "0.92".
+  // Only a finite positive number is committed; the text is left alone.
+  const [fxText, setFxText] = useState(() => String(currency.fxRate));
+  useEffect(() => {
+    setFxText((prev) => (parseFloat(prev) === currency.fxRate ? prev : String(currency.fxRate)));
+  }, [currency.fxRate]);
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   // Tracks unsaved edits so the settings-load effect (re-triggered by a
   // Demo mode toggle, among other things) never silently discards them.
@@ -1288,7 +1295,15 @@ export function SettingsPage() {
                   value={currency.code}
                   onChange={(val) => {
                     const preset = CURRENCY_PRESETS.find(c => c.code === val);
-                    setCurrency({ ...currency, code: val, symbol: preset?.symbol || currency.symbol });
+                    // USD is the base unit, so its rate is always 1. Keeping the
+                    // previous currency's rate here left USD showing caps
+                    // multiplied by it.
+                    setCurrency({
+                      ...currency,
+                      code: val,
+                      symbol: preset?.symbol || currency.symbol,
+                      fxRate: val === 'USD' ? 1 : currency.fxRate,
+                    });
                   }}
                   options={CURRENCY_PRESETS.map(c => ({ value: c.code, label: c.code }))}
                 />
@@ -1299,10 +1314,17 @@ export function SettingsPage() {
                 </label>
                 <input
                   type="number"
+                  inputMode="decimal"
                   min={0.0001}
-                  step="0.0001"
-                  value={currency.fxRate}
-                  onChange={(e) => setCurrency({ ...currency, fxRate: parseFloat(e.target.value) || 1 })}
+                  step="any"
+                  value={fxText}
+                  onChange={(e) => {
+                    setFxText(e.target.value);
+                    const rate = parseFloat(e.target.value);
+                    if (Number.isFinite(rate) && rate > 0) setCurrency({ ...currency, fxRate: rate });
+                  }}
+                  onBlur={() => setFxText(String(currency.fxRate))}
+                  aria-invalid={!(parseFloat(fxText) > 0)}
                   disabled={currency.code === 'USD'}
                   className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50 disabled:opacity-50"
                 />
