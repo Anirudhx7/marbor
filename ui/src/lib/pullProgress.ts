@@ -148,9 +148,13 @@ const DEMO = import.meta.env.VITE_FORCE_DEMO === 'true';
 // takes 3 to 22 seconds on screen (speeds stay under about 1.1 GB/s).
 export function demoPullProfile(model: string): { total: number; bytesPerSec: number } {
   const params = /(\d+(?:\.\d+)?)\s*b\b/i.exec(model);
-  const total = params ? Math.min(24e9, Math.round(parseFloat(params[1]) * 0.6e9)) : 2_400_000_000;
   let h = 0;
   for (let i = 0; i < model.length; i++) h = (h * 31 + model.charCodeAt(i)) >>> 0;
+  // Two models with the same parameter count still differ on disk (vocabulary,
+  // embeddings, quantisation mix), so the name also nudges the size by up to
+  // about 20 percent. Without it every 7B pull reported exactly the same size.
+  const nudge = 0.9 + (((h >>> 8) % 21) / 100);
+  const total = params ? Math.min(24e9, Math.round(parseFloat(params[1]) * 0.6e9 * nudge)) : 2_400_000_000;
   const wantedBps = 150e6 + (h % 750) * 1e6;
   const seconds = Math.min(22, Math.max(3, total / wantedBps));
   return { total, bytesPerSec: total / seconds };
