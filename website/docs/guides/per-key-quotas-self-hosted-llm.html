@@ -182,12 +182,14 @@ h1 em{font-style:italic;color:var(--accent);font-weight:600}
 .doc-content pre.code{background:var(--bg);border:1px solid var(--border);border-radius:var(--r-md);padding:16px;overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0;position:relative}
 .doc-content pre.code code{background:none;border:none;padding:0;font-size:12.5px;line-height:1.7;color:var(--text)}
 .doc-content .code-wrap{position:relative;margin:0 0 18px}
-.doc-content .code-wrap pre.code{padding-right:90px;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+.doc-content pre.code.wrap code{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}
+.doc-content .code-head{display:flex;justify-content:flex-end;align-items:center;padding:6px 8px;background:var(--bg-surface);border:1px solid var(--border);border-bottom:0;border-radius:var(--r-md) var(--r-md) 0 0}
+.doc-content .code-wrap pre.code{border-top-left-radius:0;border-top-right-radius:0;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
 .doc-content .code-wrap pre.code::-webkit-scrollbar{height:8px;width:8px}
 .doc-content .code-wrap pre.code::-webkit-scrollbar-track{background:transparent}
 .doc-content .code-wrap pre.code::-webkit-scrollbar-thumb{background:var(--border);border-radius:99px}
 .doc-content .code-wrap pre.code::-webkit-scrollbar-thumb:hover{background:var(--text-faint)}
-.doc-content .copy-btn{position:absolute;top:10px;right:10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:44px;min-height:44px;padding:7px 13px;cursor:pointer;background:var(--bg-surface);border:1px solid var(--border);border-radius:99px;color:var(--text-muted);font-family:var(--font-sans);font-weight:650;font-size:12px;line-height:1;box-shadow:var(--shadow);transition:color .15s,border-color .15s,background .15s,transform .15s}
+.doc-content .copy-btn{position:static;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:44px;min-height:44px;padding:7px 13px;cursor:pointer;background:var(--bg-surface);border:1px solid var(--border);border-radius:99px;color:var(--text-muted);font-family:var(--font-sans);font-weight:650;font-size:12px;line-height:1;box-shadow:var(--shadow);transition:color .15s,border-color .15s,background .15s,transform .15s}
 .doc-content .copy-btn:hover{color:var(--accent);border-color:var(--accent);background:var(--bg-input)}
 .doc-content .copy-btn svg{width:13px;height:13px}
 .doc-content .copy-btn.copied{color:var(--accent2);border-color:var(--accent2);transform:scale(1.06)}
@@ -273,6 +275,18 @@ footer a{display:inline-flex;align-items:center;min-height:44px}
 .doc-content td:first-child,.doc-content th:first-child{position:sticky;left:0;z-index:1;background:var(--bg-elevated)}
 .doc-content thead th:first-child{background:linear-gradient(var(--accent-bg),var(--accent-bg)),var(--bg-elevated)}
 }
+
+/* Phone and tablet: the sidebar and the page contents are hidden above, so the
+   same two lists are reachable as disclosures at the top of the page. */
+.doc-mobile-nav{display:none}
+@media(max-width:900px){
+.doc-mobile-nav{display:grid;gap:8px;margin:0 0 14px}
+.doc-mobile-nav details{border:1px solid var(--border);border-radius:var(--r-md);background:var(--bg-elevated)}
+.doc-mobile-nav summary{display:flex;align-items:center;min-height:44px;padding:0 14px;cursor:pointer;font-weight:650;font-size:14px;color:var(--text)}
+.doc-mobile-nav details[open] summary{border-bottom:1px solid var(--border-subtle)}
+.doc-mobile-list,.doc-mobile-nav details>ul,.doc-mobile-nav details>ol{padding:6px 14px 12px;margin:0;list-style:none}
+.doc-mobile-nav .doc-nav-link,.doc-mobile-nav details a{display:flex;align-items:center;min-height:44px}
+}
 </style>
 </head>
 <body>
@@ -316,23 +330,51 @@ footer a{display:inline-flex;align-items:center;min-height:44px}
 </nav>
 
   <main class="doc-main" id="main">
+    <div class="doc-mobile-nav">
+      <details><summary>Docs menu</summary><div class="doc-mobile-list"><a class="doc-nav-link home" href="../../docs/index.html">← Docs home</a>
+    <div class="nav-group">
+      <div class="nav-group-title">Runtimes</div>
+      <a class="doc-nav-link" href="../../docs/ollama.html">Ollama</a><a class="doc-nav-link" href="../../docs/vllm.html">vLLM without Kubernetes</a><a class="doc-nav-link" href="../../docs/mlx.html">MLX on Mac</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Guides</div>
+      <a class="doc-nav-link" href="../../docs/INTEGRATIONS.html">Integrations</a><a class="doc-nav-link" href="../../docs/LIMITATIONS.html">Known limitations</a><a class="doc-nav-link" href="../../docs/SAVINGS-MATH.html">Savings math</a><a class="doc-nav-link" href="../../docs/USE-CASES.html">Ollama alternatives & use cases</a><a class="doc-nav-link" href="../../docs/REVERSE-PROXY.html">vLLM/Ollama reverse proxy</a><a class="doc-nav-link" href="../../docs/backup.html">Backup & Restore</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">How-to guides</div>
+      <a class="doc-nav-link" href="../../docs/guides/load-balance-vllm-servers.html">Load balance multiple vLLM servers</a><a class="doc-nav-link" href="../../docs/guides/one-endpoint-for-several-ollama-machines.html">One endpoint for several Ollama machines</a><a class="doc-nav-link" href="../../docs/guides/several-llama-cpp-servers-one-endpoint.html">Several llama.cpp servers, one endpoint</a><a class="doc-nav-link" href="../../docs/guides/mac-fleet-mlx-one-endpoint.html">Several Macs as one MLX endpoint</a><a class="doc-nav-link active" aria-current="page" href="../../docs/guides/per-key-quotas-self-hosted-llm.html">Per-key quotas and rate limits</a><a class="doc-nav-link" href="../../docs/guides/when-every-gpu-is-busy.html">When every GPU is busy</a><a class="doc-nav-link" href="../../docs/guides/monitor-llm-fleet-prometheus-grafana.html">Monitor the fleet with Prometheus</a><a class="doc-nav-link" href="../../docs/guides/drain-gpu-node-without-downtime.html">Drain a GPU node without downtime</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Deployment</div>
+      <a class="doc-nav-link" href="../../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../../docs/deploy/aws-ec2.html">AWS EC2</a><a class="doc-nav-link" href="../../docs/deploy/gpu-node-registration.html">GPU node registration</a><a class="doc-nav-link" href="../../docs/deploy/marbor-agent-enrollment.html">marbor agent enrollment</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Integrations</div>
+      <a class="doc-nav-link" href="../../docs/integrations/continue.html">Continue</a><a class="doc-nav-link" href="../../docs/integrations/librechat.html">LibreChat</a><a class="doc-nav-link" href="../../docs/integrations/litellm.html">LiteLLM</a><a class="doc-nav-link" href="../../docs/integrations/open-webui.html">Open WebUI</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Reference</div>
+      <a class="doc-nav-link" href="../../docs/cli.html">CLI reference</a><a class="doc-nav-link" href="../../docs/COMPATIBILITY.html">Compatibility & Guarantees</a>
+    </div></div></details>
+      <details><summary>On this page</summary><ul class="toc"><li class="lvl-2"><a href="#create-a-key-with-limits">Create a key with limits</a></li><li class="lvl-2"><a href="#what-clients-see-when-a-limit-trips">What clients see when a limit trips</a></li><li class="lvl-2"><a href="#spend-caps-are-for-cloud-overflow-only">Spend caps are for cloud overflow only</a></li><li class="lvl-2"><a href="#watch-rejections">Watch rejections</a></li><li class="lvl-2"><a href="#a-common-layout">A common layout</a></li><li class="lvl-2"><a href="#what-to-set-up-next">What to set up next</a></li></ul></details>
+    </div>
     <article class="doc-content doc-card"><div class="doc-card-body">
       <nav class="breadcrumb" aria-label="Breadcrumb"><ol><li><a href="../../index.html">Home</a></li><li aria-hidden="true"><span class="sep">/</span></li><li><a href="../../docs/index.html">Docs</a></li><li aria-hidden="true"><span class="sep">/</span></li><li><span>guides</span></li><li aria-hidden="true"><span class="sep">/</span></li><li><span class="current" aria-current="page">Per-key quotas and rate limits for a self-hosted LLM gateway</span></li></ol></nav>
       <h1 id="per-key-quotas-and-rate-limits-for-a-self-hosted-llm-gateway">Per-key quotas and rate limits for a self-hosted LLM gateway<a class="anchor" href="#per-key-quotas-and-rate-limits-for-a-self-hosted-llm-gateway" aria-label="Link to section">#</a></h1>
 <p>Marbor issues its own API keys in front of your GPU servers, and each key can carry an hourly rate limit, daily and monthly request quotas, a model allow-list, and an expiry date. Your vLLM, Ollama, llama.cpp or MLX servers never see the keys; Marbor checks them before a request is placed on any node, so one noisy app or teammate cannot take the whole fleet.</p>
 <p>This guide assumes Marbor is installed and logged in (<code>marbor login</code>). If not, start with <a href="load-balance-vllm-servers.html">Load balance multiple vLLM servers</a> or <a href="one-endpoint-for-several-ollama-machines.html">One endpoint for several Ollama machines</a>.</p>
 <h2 id="create-a-key-with-limits">Create a key with limits<a class="anchor" href="#create-a-key-with-limits" aria-label="Link to section">#</a></h2>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>marbor key create --name data-team \
-  --rate-limit 600 \
-  --daily-limit 5000 \
-  --monthly-limit 100000 \
-  --models "meta-llama/Llama-3.1-8B-Instruct,qwen2.5:7b" \
-  --expires-at 2027-03-31</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="marbor key create --name data-team \
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="marbor key create --name data-team \
   --rate-limit 600 \
   --daily-limit 5000 \
   --monthly-limit 100000 \
   --models &quot;meta-llama/Llama-3.1-8B-Instruct,qwen2.5:7b&quot; \
-  --expires-at 2027-03-31"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+  --expires-at 2027-03-31"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="bash"><code>marbor key create --name data-team \
+  --rate-limit 600 \
+  --daily-limit 5000 \
+  --monthly-limit 100000 \
+  --models "meta-llama/Llama-3.1-8B-Instruct,qwen2.5:7b" \
+  --expires-at 2027-03-31</code></pre></div>
 <p>The plaintext key (<code>sk-data-team-...</code>) prints once and is stored encrypted afterwards, so copy it now. Flags, all optional:</p>
 <div class="table-scroll" tabindex="0" role="region" aria-label="Data table: scroll horizontally on small screens"><table>
 <thead><tr><th>Flag</th><th>Meaning</th></tr></thead>
@@ -343,11 +385,11 @@ footer a{display:inline-flex;align-items:center;min-height:44px}
 <tr><td><code>--key</code></td><td>Supply your own secret instead of a generated one</td></tr></tbody>
 </table></div>
 <p>Change a key later without reissuing it, and revoke one when someone leaves:</p>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>marbor key patch data-team --daily-limit 10000
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="marbor key patch data-team --daily-limit 10000
 marbor key revoke data-team --yes
-marbor key list</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="marbor key patch data-team --daily-limit 10000
+marbor key list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="bash"><code>marbor key patch data-team --daily-limit 10000
 marbor key revoke data-team --yes
-marbor key list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+marbor key list</code></pre></div>
 <h2 id="what-clients-see-when-a-limit-trips">What clients see when a limit trips<a class="anchor" href="#what-clients-see-when-a-limit-trips" aria-label="Link to section">#</a></h2>
 <p>Marbor answers with an OpenAI-style error body, so SDKs surface a readable message:</p>
 <div class="table-scroll" tabindex="0" role="region" aria-label="Data table: scroll horizontally on small screens"><table>
@@ -358,15 +400,15 @@ marbor key list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stro
 <tr><td>Model not on the key's allow-list</td><td>403</td><td><code>model_not_allowed</code></td></tr></tbody>
 </table></div>
 <p>Test it before you hand a key out. A key created with <code>--daily-limit 3</code> accepts three requests and rejects the fourth:</p>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>for i in 1 2 3 4; do
-  curl -s -o /dev/null -w "%{http_code}\n" http://&lt;marbor-host&gt;:11434/v1/chat/completions \
-    -H "Authorization: Bearer sk-data-team-..." -H "Content-Type: application/json" \
-    -d '{"model":"meta-llama/Llama-3.1-8B-Instruct","messages":[{"role":"user","content":"hi"}]}'
-done</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="for i in 1 2 3 4; do
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="for i in 1 2 3 4; do
   curl -s -o /dev/null -w &quot;%{http_code}\n&quot; http://&lt;marbor-host&gt;:11434/v1/chat/completions \
     -H &quot;Authorization: Bearer sk-data-team-...&quot; -H &quot;Content-Type: application/json&quot; \
     -d '{&quot;model&quot;:&quot;meta-llama/Llama-3.1-8B-Instruct&quot;,&quot;messages&quot;:[{&quot;role&quot;:&quot;user&quot;,&quot;content&quot;:&quot;hi&quot;}]}'
-done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="bash"><code>for i in 1 2 3 4; do
+  curl -s -o /dev/null -w "%{http_code}\n" http://&lt;marbor-host&gt;:11434/v1/chat/completions \
+    -H "Authorization: Bearer sk-data-team-..." -H "Content-Type: application/json" \
+    -d '{"model":"meta-llama/Llama-3.1-8B-Instruct","messages":[{"role":"user","content":"hi"}]}'
+done</code></pre></div>
 <p>Expect <code>200 200 200 429</code>.</p>
 <h2 id="spend-caps-are-for-cloud-overflow-only">Spend caps are for cloud overflow only<a class="anchor" href="#spend-caps-are-for-cloud-overflow-only" aria-label="Link to section">#</a></h2>
 <p><code>--daily-usd-cap</code> and <code>--monthly-usd-cap</code> cap what a key may spend on cloud overflow providers, not on your own GPUs. They matter only if you have configured a cloud fallback (see <a href="when-every-gpu-is-busy.html">When every GPU is busy</a>). Local requests are limited by the request counts above.</p>

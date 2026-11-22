@@ -179,12 +179,14 @@ h1 em{font-style:italic;color:var(--accent);font-weight:600}
 .doc-content pre.code{background:var(--bg);border:1px solid var(--border);border-radius:var(--r-md);padding:16px;overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0;position:relative}
 .doc-content pre.code code{background:none;border:none;padding:0;font-size:12.5px;line-height:1.7;color:var(--text)}
 .doc-content .code-wrap{position:relative;margin:0 0 18px}
-.doc-content .code-wrap pre.code{padding-right:90px;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+.doc-content pre.code.wrap code{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}
+.doc-content .code-head{display:flex;justify-content:flex-end;align-items:center;padding:6px 8px;background:var(--bg-surface);border:1px solid var(--border);border-bottom:0;border-radius:var(--r-md) var(--r-md) 0 0}
+.doc-content .code-wrap pre.code{border-top-left-radius:0;border-top-right-radius:0;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
 .doc-content .code-wrap pre.code::-webkit-scrollbar{height:8px;width:8px}
 .doc-content .code-wrap pre.code::-webkit-scrollbar-track{background:transparent}
 .doc-content .code-wrap pre.code::-webkit-scrollbar-thumb{background:var(--border);border-radius:99px}
 .doc-content .code-wrap pre.code::-webkit-scrollbar-thumb:hover{background:var(--text-faint)}
-.doc-content .copy-btn{position:absolute;top:10px;right:10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:44px;min-height:44px;padding:7px 13px;cursor:pointer;background:var(--bg-surface);border:1px solid var(--border);border-radius:99px;color:var(--text-muted);font-family:var(--font-sans);font-weight:650;font-size:12px;line-height:1;box-shadow:var(--shadow);transition:color .15s,border-color .15s,background .15s,transform .15s}
+.doc-content .copy-btn{position:static;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:44px;min-height:44px;padding:7px 13px;cursor:pointer;background:var(--bg-surface);border:1px solid var(--border);border-radius:99px;color:var(--text-muted);font-family:var(--font-sans);font-weight:650;font-size:12px;line-height:1;box-shadow:var(--shadow);transition:color .15s,border-color .15s,background .15s,transform .15s}
 .doc-content .copy-btn:hover{color:var(--accent);border-color:var(--accent);background:var(--bg-input)}
 .doc-content .copy-btn svg{width:13px;height:13px}
 .doc-content .copy-btn.copied{color:var(--accent2);border-color:var(--accent2);transform:scale(1.06)}
@@ -270,6 +272,18 @@ footer a{display:inline-flex;align-items:center;min-height:44px}
 .doc-content td:first-child,.doc-content th:first-child{position:sticky;left:0;z-index:1;background:var(--bg-elevated)}
 .doc-content thead th:first-child{background:linear-gradient(var(--accent-bg),var(--accent-bg)),var(--bg-elevated)}
 }
+
+/* Phone and tablet: the sidebar and the page contents are hidden above, so the
+   same two lists are reachable as disclosures at the top of the page. */
+.doc-mobile-nav{display:none}
+@media(max-width:900px){
+.doc-mobile-nav{display:grid;gap:8px;margin:0 0 14px}
+.doc-mobile-nav details{border:1px solid var(--border);border-radius:var(--r-md);background:var(--bg-elevated)}
+.doc-mobile-nav summary{display:flex;align-items:center;min-height:44px;padding:0 14px;cursor:pointer;font-weight:650;font-size:14px;color:var(--text)}
+.doc-mobile-nav details[open] summary{border-bottom:1px solid var(--border-subtle)}
+.doc-mobile-list,.doc-mobile-nav details>ul,.doc-mobile-nav details>ol{padding:6px 14px 12px;margin:0;list-style:none}
+.doc-mobile-nav .doc-nav-link,.doc-mobile-nav details a{display:flex;align-items:center;min-height:44px}
+}
 </style>
 </head>
 <body>
@@ -313,6 +327,34 @@ footer a{display:inline-flex;align-items:center;min-height:44px}
 </nav>
 
   <main class="doc-main" id="main">
+    <div class="doc-mobile-nav">
+      <details><summary>Docs menu</summary><div class="doc-mobile-list"><a class="doc-nav-link home" href="../docs/index.html">← Docs home</a>
+    <div class="nav-group">
+      <div class="nav-group-title">Runtimes</div>
+      <a class="doc-nav-link" href="../docs/ollama.html">Ollama</a><a class="doc-nav-link" href="../docs/vllm.html">vLLM without Kubernetes</a><a class="doc-nav-link" href="../docs/mlx.html">MLX on Mac</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Guides</div>
+      <a class="doc-nav-link" href="../docs/INTEGRATIONS.html">Integrations</a><a class="doc-nav-link" href="../docs/LIMITATIONS.html">Known limitations</a><a class="doc-nav-link" href="../docs/SAVINGS-MATH.html">Savings math</a><a class="doc-nav-link" href="../docs/USE-CASES.html">Ollama alternatives & use cases</a><a class="doc-nav-link" href="../docs/REVERSE-PROXY.html">vLLM/Ollama reverse proxy</a><a class="doc-nav-link active" aria-current="page" href="../docs/backup.html">Backup & Restore</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">How-to guides</div>
+      <a class="doc-nav-link" href="../docs/guides/load-balance-vllm-servers.html">Load balance multiple vLLM servers</a><a class="doc-nav-link" href="../docs/guides/one-endpoint-for-several-ollama-machines.html">One endpoint for several Ollama machines</a><a class="doc-nav-link" href="../docs/guides/several-llama-cpp-servers-one-endpoint.html">Several llama.cpp servers, one endpoint</a><a class="doc-nav-link" href="../docs/guides/mac-fleet-mlx-one-endpoint.html">Several Macs as one MLX endpoint</a><a class="doc-nav-link" href="../docs/guides/per-key-quotas-self-hosted-llm.html">Per-key quotas and rate limits</a><a class="doc-nav-link" href="../docs/guides/when-every-gpu-is-busy.html">When every GPU is busy</a><a class="doc-nav-link" href="../docs/guides/monitor-llm-fleet-prometheus-grafana.html">Monitor the fleet with Prometheus</a><a class="doc-nav-link" href="../docs/guides/drain-gpu-node-without-downtime.html">Drain a GPU node without downtime</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Deployment</div>
+      <a class="doc-nav-link" href="../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../docs/deploy/aws-ec2.html">AWS EC2</a><a class="doc-nav-link" href="../docs/deploy/gpu-node-registration.html">GPU node registration</a><a class="doc-nav-link" href="../docs/deploy/marbor-agent-enrollment.html">marbor agent enrollment</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Integrations</div>
+      <a class="doc-nav-link" href="../docs/integrations/continue.html">Continue</a><a class="doc-nav-link" href="../docs/integrations/librechat.html">LibreChat</a><a class="doc-nav-link" href="../docs/integrations/litellm.html">LiteLLM</a><a class="doc-nav-link" href="../docs/integrations/open-webui.html">Open WebUI</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Reference</div>
+      <a class="doc-nav-link" href="../docs/cli.html">CLI reference</a><a class="doc-nav-link" href="../docs/COMPATIBILITY.html">Compatibility & Guarantees</a>
+    </div></div></details>
+      <details><summary>On this page</summary><ul class="toc"><li class="lvl-2"><a href="#taking-backups">Taking backups</a></li><li class="lvl-3"><a href="#how-a-backup-is-written">How a backup is written</a></li><li class="lvl-3"><a href="#downloading-a-stored-backup">Downloading a stored backup</a></li><li class="lvl-3"><a href="#what-ok-means-and-when-it-is-re-checked">What "ok" means, and when it is re-checked</a></li><li class="lvl-3"><a href="#space-planning-upload-pool-and-limits">Space planning, upload pool and limits</a></li><li class="lvl-2"><a href="#restoring-a-backup">Restoring a backup</a></li><li class="lvl-3"><a href="#restoring-from-a-file-that-isnt-already-on-the-server">Restoring from a file that isn't already on the server</a></li><li class="lvl-3"><a href="#fully-manual-alternative">Fully manual alternative</a></li><li class="lvl-2"><a href="#downgrading-after-an-upgrade">Downgrading after an upgrade</a></li><li class="lvl-3"><a href="#the-procedure">The procedure</a></li><li class="lvl-2"><a href="#the-encryption-key---back-it-up-like-the-database">The encryption key - back it up like the database</a></li><li class="lvl-3"><a href="#what-happens-if-the-key-is-lost">What happens if the key is lost</a></li><li class="lvl-3"><a href="#known-gap---silent-key-regeneration-on-loss">Known gap - silent key regeneration on loss</a></li><li class="lvl-3"><a href="#prevention">Prevention</a></li></ul></details>
+    </div>
     <article class="doc-content doc-card"><div class="doc-card-body">
       <nav class="breadcrumb" aria-label="Breadcrumb"><ol><li><a href="../index.html">Home</a></li><li aria-hidden="true"><span class="sep">/</span></li><li><a href="../docs/index.html">Docs</a></li><li aria-hidden="true"><span class="sep">/</span></li><li><span class="current" aria-current="page">Backup &amp; Restore</span></li></ol></nav>
       <h1 id="backup-restore">Backup &amp; Restore<a class="anchor" href="#backup-restore" aria-label="Link to section">#</a></h1>
@@ -379,9 +421,9 @@ footer a{display:inline-flex;align-items:center;min-height:44px}
 <p>The last outcome of the scheduled and of the on-demand backup are tracked separately (so a failed download cannot hide a healthy schedule, or the reverse): the time of the last success, or the failure, refusal or cancellation with its reason. They are shown on the same Settings card and in <code>marbor backup list</code>, together with the last restore result, whether a backup is running, whether the backup directory exists, any permission warning, a failure to prune old files, leftover temporary files that could not be removed, and the number of directory entries that could not be listed. The status is kept in a small file in the backup directory, not in the database, so that a backup of an unchanged database is byte-for-byte reproducible; if that file cannot be written the card says so and the status then lives in memory until restart. A failed backup (bad path, full disk, permissions) is never silently swallowed; the error stays visible until a run succeeds.</p>
 <h3 id="downloading-a-stored-backup">Downloading a stored backup<a class="anchor" href="#downloading-a-stored-backup" aria-label="Link to section">#</a></h3>
 <p>The restore list has a download button next to the selected file, and from a terminal:</p>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>marbor backup list
-marbor backup download marbor-backup-20260730-140000.db.gz --output ./saved.db.gz</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="marbor backup list
-marbor backup download marbor-backup-20260730-140000.db.gz --output ./saved.db.gz"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="marbor backup list
+marbor backup download marbor-backup-20260730-140000.db.gz --output ./saved.db.gz"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="bash"><code>marbor backup list
+marbor backup download marbor-backup-20260730-140000.db.gz --output ./saved.db.gz</code></pre></div>
 <p>Both stream the file to disk; the CLI writes through a temporary file and moves it into place only when the transfer completed, and refuses to replace an existing file without <code>--force</code>. Without <code>--output</code>, the file is saved under its own name, which must be a valid backup name. The Admin API route is <code>GET /admin/backup/download?name=&lt;file name&gt;</code>; the name must be a bare <code>marbor-backup-&lt;date&gt;-&lt;time&gt;.db</code>, <code>.db.gz</code> or <code>-upload</code> variant of those that already exists in the backup directory. The browser fetches the file through the save dialog where there is one (a transfer that breaks is discarded, not left as a short file); where there is none, or the click is no longer fresh, it falls back to memory with the same 512 MiB limit, checked before anything is read. A failure is shown instead of saving an error page.</p>
 <p>To remove a stored backup, use the delete button next to the selected file (it asks first) or <code>marbor backup delete &lt;name&gt;</code> (it asks first); the route is <code>DELETE /admin/backup?name=&lt;file name&gt;</code> and answers <code>204</code>, <code>404</code> when the file is gone, or <code>409</code> while a restore or another operation is using it. Deleting frees the space for the next run and, like retention, never touches a file that is being read.</p>
 <p>A transfer that stalls is cut off: the server gives up on a client that sends or reads nothing for two minutes (the CLI gives up an upload that makes no progress for the same time), while a slow but steady transfer is never cut short. Ctrl-C during a CLI download removes the partial file. If the final directory sync fails after the file is in place, the CLI prints a warning and still exits 0, because the file is complete.</p>
@@ -423,33 +465,33 @@ marbor backup download marbor-backup-20260730-140000.db.gz --output ./saved.db.g
 <p>Restore doesn't have to go through the dashboard. Stopping the marbor, swapping the file, and starting it again works identically and isn't restricted to files in the scheduled backup directory - <strong>any</strong> <code>.db</code> file that was itself produced by a backup of this marbor (scheduled, manual download, or a straight file copy taken while the process was stopped) can be restored from, regardless of where it currently lives.</p>
 <p>A compressed backup is unpacked first with <code>gunzip -k marbor-backup-20260730-140000.db.gz</code> (or <code>gzip -dc file.db.gz &gt; marbor.db</code>); everything below then works on the resulting <code>.db</code>.</p>
 <p><strong>Bare metal / systemd:</strong></p>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>sudo systemctl stop marbor
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="sudo systemctl stop marbor
 sudo cp /path/to/marbor-backup-20260730-140000.db /opt/marbor/marbor.db
-sudo systemctl start marbor</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="sudo systemctl stop marbor
+sudo systemctl start marbor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="bash"><code>sudo systemctl stop marbor
 sudo cp /path/to/marbor-backup-20260730-140000.db /opt/marbor/marbor.db
-sudo systemctl start marbor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+sudo systemctl start marbor</code></pre></div>
 <p>Replace <code>/opt/marbor/marbor.db</code> with whatever path you actually run with (<code>--db</code> flag or <code>MARBOR_DB_PATH</code>) - not necessarily this exact path.</p>
 <p><strong>Docker / Docker Compose:</strong></p>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>docker compose stop marbor
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="docker compose stop marbor
 docker cp ./marbor-backup-20260730-140000.db marbor:/data/marbor.db
-docker compose start marbor</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="docker compose stop marbor
+docker compose start marbor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="bash"><code>docker compose stop marbor
 docker cp ./marbor-backup-20260730-140000.db marbor:/data/marbor.db
-docker compose start marbor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+docker compose start marbor</code></pre></div>
 <p>If the file is already inside the container (e.g. a scheduled backup under <code>/backups</code>), copy it inside instead of using <code>docker cp</code>:</p>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>docker compose stop marbor
-docker compose run --rm --entrypoint sh marbor -c "cp /backups/marbor-backup-20260730-140000.db /data/marbor.db"
-docker compose start marbor</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="docker compose stop marbor
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="docker compose stop marbor
 docker compose run --rm --entrypoint sh marbor -c &quot;cp /backups/marbor-backup-20260730-140000.db /data/marbor.db&quot;
-docker compose start marbor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+docker compose start marbor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="bash"><code>docker compose stop marbor
+docker compose run --rm --entrypoint sh marbor -c "cp /backups/marbor-backup-20260730-140000.db /data/marbor.db"
+docker compose start marbor</code></pre></div>
 <p>Either way, the container must be <strong>stopped</strong> first, since SQLite's WAL sidecar files (<code>marbor.db-wal</code>, <code>marbor.db-shm</code>) would otherwise still be attached to the old database.</p>
 <p><strong>Kubernetes:</strong> scale the deployment to 0 replicas, copy the backup file onto the PVC (e.g. via a temporary debug pod with the same PVC mounted, or <code>kubectl cp</code> into that pod), then scale back to 1.</p>
 <hr/>
 <h2 id="downgrading-after-an-upgrade">Downgrading after an upgrade<a class="anchor" href="#downgrading-after-an-upgrade" aria-label="Link to section">#</a></h2>
 <p><strong>Downgrade is not automatically supported.</strong> If you upgrade marbor and hit a problem, the only real path back to an older binary is restoring a backup taken <em>before</em> the upgrade - there is no in-place backward migration.</p>
 <p>Why: <code>marbor.db</code> carries a <code>schema_version</code> setting, stamped on every successful startup by the binary that opened it. <code>migrate()</code> in <code>internal/store/sqlite.go</code> is forward-only and refuses to start if the stored <code>schema_version</code> is newer than the one the running binary understands (<code>internal/store/sqlite.go:158-160</code>):</p>
-<div class="code-wrap"><pre class="code"><code>marbor.db schema_version 2 is newer than this binary supports (1) - refusing to start;
-upgrade the binary or restore an older marbor.db backup</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="marbor.db schema_version 2 is newer than this binary supports (1) - refusing to start;
-upgrade the binary or restore an older marbor.db backup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="marbor.db schema_version 2 is newer than this binary supports (1) - refusing to start;
+upgrade the binary or restore an older marbor.db backup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code"><code>marbor.db schema_version 2 is newer than this binary supports (1) - refusing to start;
+upgrade the binary or restore an older marbor.db backup</code></pre></div>
 <p>This is deliberate, not a bug - it exists specifically to stop an older binary from silently running unmigrated logic against a database a newer release already wrote to. There is no code path that lets an older binary "downgrade" a database in place; the schema check fails closed and the process exits without touching the file.</p>
 <p><strong>Tested</strong> (<code>internal/store/schema_version_test.go</code>'s <code>TestOpenRefusesNewerSchemaVersion</code>, and a manual end-to-end drill: create a DB, back it up, stamp it with a schema version one ahead of <code>CurrentSchemaVersion</code> to stand in for "a newer release already touched this file," confirm the same binary refuses to reopen it with the exact error above - no crash, no silent corruption - then copy the pre-upgrade backup back over the live path and confirm the binary opens it cleanly with all data intact). Both directions behave as documented.</p>
 <h3 id="the-procedure">The procedure<a class="anchor" href="#the-procedure" aria-label="Link to section">#</a></h3>
@@ -459,15 +501,15 @@ upgrade the binary or restore an older marbor.db backup"><svg viewBox="0 0 24 24
 <ul><li><code>marbor.db.key</code> alongside it, or your <code>MARBOR_ENCRYPTION_KEY</code> value recorded somewhere durable -</li></ul>
 <p>  see "The encryption key" below. A <code>marbor.db</code> backup without its matching key restores as   unreadable ciphertext for every secret field (cloud provider keys, runtime API keys, marbor-agent   enrollment tokens).</p>
 <p><strong>If a problem surfaces after upgrading</strong>, roll back using the same manual restore steps as any other restore (see "Fully manual alternative" above), pointed at your pre-upgrade backup instead of a later one:</p>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code># bare metal / systemd - swap in both the pre-upgrade db AND its matching key
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="# bare metal / systemd - swap in both the pre-upgrade db AND its matching key
 sudo systemctl stop marbor
 sudo cp /path/to/pre-upgrade-marbor-backup.db /opt/marbor/marbor.db
 sudo cp /path/to/pre-upgrade-marbor-backup.db.key /opt/marbor/marbor.db.key
-sudo systemctl start marbor    # now running the OLDER binary against the OLDER schema</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="# bare metal / systemd - swap in both the pre-upgrade db AND its matching key
+sudo systemctl start marbor    # now running the OLDER binary against the OLDER schema"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="bash"><code># bare metal / systemd - swap in both the pre-upgrade db AND its matching key
 sudo systemctl stop marbor
 sudo cp /path/to/pre-upgrade-marbor-backup.db /opt/marbor/marbor.db
 sudo cp /path/to/pre-upgrade-marbor-backup.db.key /opt/marbor/marbor.db.key
-sudo systemctl start marbor    # now running the OLDER binary against the OLDER schema"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+sudo systemctl start marbor    # now running the OLDER binary against the OLDER schema</code></pre></div>
 <p>The same pattern applies to Docker/Compose and Kubernetes - stop the process, replace both <code>marbor.db</code> and <code>marbor.db.key</code>, start the older binary. The dashboard's one-click <strong>Restore</strong> also works for this (it validates and swaps <code>marbor.db</code> the same way) but only handles the database file</p>
 <ul><li>if the upgrade rotated or regenerated the key, you still need to manually restore</li></ul>
 <p><code>marbor.db.key</code> alongside it.</p>

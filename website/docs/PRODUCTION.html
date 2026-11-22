@@ -179,12 +179,14 @@ h1 em{font-style:italic;color:var(--accent);font-weight:600}
 .doc-content pre.code{background:var(--bg);border:1px solid var(--border);border-radius:var(--r-md);padding:16px;overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0;position:relative}
 .doc-content pre.code code{background:none;border:none;padding:0;font-size:12.5px;line-height:1.7;color:var(--text)}
 .doc-content .code-wrap{position:relative;margin:0 0 18px}
-.doc-content .code-wrap pre.code{padding-right:90px;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+.doc-content pre.code.wrap code{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}
+.doc-content .code-head{display:flex;justify-content:flex-end;align-items:center;padding:6px 8px;background:var(--bg-surface);border:1px solid var(--border);border-bottom:0;border-radius:var(--r-md) var(--r-md) 0 0}
+.doc-content .code-wrap pre.code{border-top-left-radius:0;border-top-right-radius:0;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
 .doc-content .code-wrap pre.code::-webkit-scrollbar{height:8px;width:8px}
 .doc-content .code-wrap pre.code::-webkit-scrollbar-track{background:transparent}
 .doc-content .code-wrap pre.code::-webkit-scrollbar-thumb{background:var(--border);border-radius:99px}
 .doc-content .code-wrap pre.code::-webkit-scrollbar-thumb:hover{background:var(--text-faint)}
-.doc-content .copy-btn{position:absolute;top:10px;right:10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:44px;min-height:44px;padding:7px 13px;cursor:pointer;background:var(--bg-surface);border:1px solid var(--border);border-radius:99px;color:var(--text-muted);font-family:var(--font-sans);font-weight:650;font-size:12px;line-height:1;box-shadow:var(--shadow);transition:color .15s,border-color .15s,background .15s,transform .15s}
+.doc-content .copy-btn{position:static;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:44px;min-height:44px;padding:7px 13px;cursor:pointer;background:var(--bg-surface);border:1px solid var(--border);border-radius:99px;color:var(--text-muted);font-family:var(--font-sans);font-weight:650;font-size:12px;line-height:1;box-shadow:var(--shadow);transition:color .15s,border-color .15s,background .15s,transform .15s}
 .doc-content .copy-btn:hover{color:var(--accent);border-color:var(--accent);background:var(--bg-input)}
 .doc-content .copy-btn svg{width:13px;height:13px}
 .doc-content .copy-btn.copied{color:var(--accent2);border-color:var(--accent2);transform:scale(1.06)}
@@ -270,6 +272,18 @@ footer a{display:inline-flex;align-items:center;min-height:44px}
 .doc-content td:first-child,.doc-content th:first-child{position:sticky;left:0;z-index:1;background:var(--bg-elevated)}
 .doc-content thead th:first-child{background:linear-gradient(var(--accent-bg),var(--accent-bg)),var(--bg-elevated)}
 }
+
+/* Phone and tablet: the sidebar and the page contents are hidden above, so the
+   same two lists are reachable as disclosures at the top of the page. */
+.doc-mobile-nav{display:none}
+@media(max-width:900px){
+.doc-mobile-nav{display:grid;gap:8px;margin:0 0 14px}
+.doc-mobile-nav details{border:1px solid var(--border);border-radius:var(--r-md);background:var(--bg-elevated)}
+.doc-mobile-nav summary{display:flex;align-items:center;min-height:44px;padding:0 14px;cursor:pointer;font-weight:650;font-size:14px;color:var(--text)}
+.doc-mobile-nav details[open] summary{border-bottom:1px solid var(--border-subtle)}
+.doc-mobile-list,.doc-mobile-nav details>ul,.doc-mobile-nav details>ol{padding:6px 14px 12px;margin:0;list-style:none}
+.doc-mobile-nav .doc-nav-link,.doc-mobile-nav details a{display:flex;align-items:center;min-height:44px}
+}
 </style>
 </head>
 <body>
@@ -313,6 +327,34 @@ footer a{display:inline-flex;align-items:center;min-height:44px}
 </nav>
 
   <main class="doc-main" id="main">
+    <div class="doc-mobile-nav">
+      <details><summary>Docs menu</summary><div class="doc-mobile-list"><a class="doc-nav-link home" href="../docs/index.html">← Docs home</a>
+    <div class="nav-group">
+      <div class="nav-group-title">Runtimes</div>
+      <a class="doc-nav-link" href="../docs/ollama.html">Ollama</a><a class="doc-nav-link" href="../docs/vllm.html">vLLM without Kubernetes</a><a class="doc-nav-link" href="../docs/mlx.html">MLX on Mac</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Guides</div>
+      <a class="doc-nav-link" href="../docs/INTEGRATIONS.html">Integrations</a><a class="doc-nav-link" href="../docs/LIMITATIONS.html">Known limitations</a><a class="doc-nav-link" href="../docs/SAVINGS-MATH.html">Savings math</a><a class="doc-nav-link" href="../docs/USE-CASES.html">Ollama alternatives & use cases</a><a class="doc-nav-link" href="../docs/REVERSE-PROXY.html">vLLM/Ollama reverse proxy</a><a class="doc-nav-link" href="../docs/backup.html">Backup & Restore</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">How-to guides</div>
+      <a class="doc-nav-link" href="../docs/guides/load-balance-vllm-servers.html">Load balance multiple vLLM servers</a><a class="doc-nav-link" href="../docs/guides/one-endpoint-for-several-ollama-machines.html">One endpoint for several Ollama machines</a><a class="doc-nav-link" href="../docs/guides/several-llama-cpp-servers-one-endpoint.html">Several llama.cpp servers, one endpoint</a><a class="doc-nav-link" href="../docs/guides/mac-fleet-mlx-one-endpoint.html">Several Macs as one MLX endpoint</a><a class="doc-nav-link" href="../docs/guides/per-key-quotas-self-hosted-llm.html">Per-key quotas and rate limits</a><a class="doc-nav-link" href="../docs/guides/when-every-gpu-is-busy.html">When every GPU is busy</a><a class="doc-nav-link" href="../docs/guides/monitor-llm-fleet-prometheus-grafana.html">Monitor the fleet with Prometheus</a><a class="doc-nav-link" href="../docs/guides/drain-gpu-node-without-downtime.html">Drain a GPU node without downtime</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Deployment</div>
+      <a class="doc-nav-link active" aria-current="page" href="../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../docs/deploy/aws-ec2.html">AWS EC2</a><a class="doc-nav-link" href="../docs/deploy/gpu-node-registration.html">GPU node registration</a><a class="doc-nav-link" href="../docs/deploy/marbor-agent-enrollment.html">marbor agent enrollment</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Integrations</div>
+      <a class="doc-nav-link" href="../docs/integrations/continue.html">Continue</a><a class="doc-nav-link" href="../docs/integrations/librechat.html">LibreChat</a><a class="doc-nav-link" href="../docs/integrations/litellm.html">LiteLLM</a><a class="doc-nav-link" href="../docs/integrations/open-webui.html">Open WebUI</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Reference</div>
+      <a class="doc-nav-link" href="../docs/cli.html">CLI reference</a><a class="doc-nav-link" href="../docs/COMPATIBILITY.html">Compatibility & Guarantees</a>
+    </div></div></details>
+      <details><summary>On this page</summary><ul class="toc"><li class="lvl-2"><a href="#ports">Ports</a></li><li class="lvl-2"><a href="#systemd">systemd</a></li><li class="lvl-2"><a href="#docker-compose">Docker Compose</a></li><li class="lvl-3"><a href="#docker-networking-and-node-discovery">Docker Networking and Node Discovery</a></li><li class="lvl-2"><a href="#kubernetes">Kubernetes</a></li><li class="lvl-2"><a href="#nginx-tls-termination">nginx TLS Termination</a></li><li class="lvl-2"><a href="#health-check">Health Check</a></li><li class="lvl-2"><a href="#graceful-shutdown">Graceful Shutdown</a></li><li class="lvl-2"><a href="#resource-sizing">Resource Sizing</a></li><li class="lvl-2"><a href="#durability-notes">Durability Notes</a></li><li class="lvl-2"><a href="#write-path-capacity">Write-Path Capacity</a></li><li class="lvl-3"><a href="#node-count-sensitivity-measured-2026-09-05">Node-count sensitivity (measured 2026-09-05)</a></li></ul></details>
+    </div>
     <article class="doc-content doc-card"><div class="doc-card-body">
       <nav class="breadcrumb" aria-label="Breadcrumb"><ol><li><a href="../index.html">Home</a></li><li aria-hidden="true"><span class="sep">/</span></li><li><a href="../docs/index.html">Docs</a></li><li aria-hidden="true"><span class="sep">/</span></li><li><span class="current" aria-current="page">Production Deployment Guide</span></li></ol></nav>
       <h1 id="production-deployment-guide">Production Deployment Guide<a class="anchor" href="#production-deployment-guide" aria-label="Link to section">#</a></h1>
@@ -329,7 +371,7 @@ footer a{display:inline-flex;align-items:center;min-height:44px}
 <hr/>
 <h2 id="systemd">systemd<a class="anchor" href="#systemd" aria-label="Link to section">#</a></h2>
 <p>Create <code>/etc/systemd/system/marbor.service</code>:</p>
-<div class="code-wrap"><pre class="code" data-lang="ini"><code>[Unit]
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="[Unit]
 Description=marbor LLM control plane
 After=network.target
 Wants=network.target
@@ -354,7 +396,7 @@ ProtectSystem=strict
 ReadWritePaths=/opt/marbor
 
 [Install]
-WantedBy=multi-user.target</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="[Unit]
+WantedBy=multi-user.target"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="ini"><code>[Unit]
 Description=marbor LLM control plane
 After=network.target
 Wants=network.target
@@ -379,43 +421,25 @@ ProtectSystem=strict
 ReadWritePaths=/opt/marbor
 
 [Install]
-WantedBy=multi-user.target"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>sudo useradd -r -s /sbin/nologin marbor
+WantedBy=multi-user.target</code></pre></div>
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="sudo useradd -r -s /sbin/nologin marbor
 sudo mkdir -p /opt/marbor
 sudo cp marbor /opt/marbor/
 sudo chown -R marbor:marbor /opt/marbor
 sudo systemctl daemon-reload
 sudo systemctl enable --now marbor
-sudo journalctl -u marbor -f</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="sudo useradd -r -s /sbin/nologin marbor
+sudo journalctl -u marbor -f"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="bash"><code>sudo useradd -r -s /sbin/nologin marbor
 sudo mkdir -p /opt/marbor
 sudo cp marbor /opt/marbor/
 sudo chown -R marbor:marbor /opt/marbor
 sudo systemctl daemon-reload
 sudo systemctl enable --now marbor
-sudo journalctl -u marbor -f"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+sudo journalctl -u marbor -f</code></pre></div>
 <p>First boot creates <code>/opt/marbor/marbor.db</code> blank-slate. Log in at <code>http://&lt;host&gt;:8080</code> as <code>admin</code> / <code>admin</code>. You are required to set a new password immediately and that first-login change cannot be skipped; until then the dashboard (plain HTTP) accepts the default login from anyone who can reach it, so do this right after install. Then add your nodes/API keys from the dashboard - or run <code>install.sh</code>'s network-discovery wizard beforehand to seed nodes automatically.</p>
 <hr/>
 <h2 id="docker-compose">Docker Compose<a class="anchor" href="#docker-compose" aria-label="Link to section">#</a></h2>
 <p>The repo ships a working <code>docker-compose.yml</code>. It mounts <strong>two</strong> named volumes:</p>
-<div class="code-wrap"><pre class="code" data-lang="yaml"><code># docker-compose.yml (reference - already in repo)
-services:
-  marbor:
-    image: ghcr.io/anirudhx7/marbor:latest
-    ports:
-      - "11434:11434"
-      - "8080:8080"
-      - "9090:9090"
-    volumes:
-      - marbor-data:/data       # persists marbor.db across restarts
-      - marbor-backups:/backups # scheduled backups (Settings &gt; Backup &amp; Restore)
-    environment:
-      - MARBOR_DB_PATH=/data/marbor.db
-      - MARBOR_BACKUP_DIR=/backups
-    restart: unless-stopped
-
-volumes:
-  marbor-data:
-  marbor-backups:</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="# docker-compose.yml (reference - already in repo)
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="# docker-compose.yml (reference - already in repo)
 services:
   marbor:
     image: ghcr.io/anirudhx7/marbor:latest
@@ -433,7 +457,25 @@ services:
 
 volumes:
   marbor-data:
-  marbor-backups:"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+  marbor-backups:"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="yaml"><code># docker-compose.yml (reference - already in repo)
+services:
+  marbor:
+    image: ghcr.io/anirudhx7/marbor:latest
+    ports:
+      - "11434:11434"
+      - "8080:8080"
+      - "9090:9090"
+    volumes:
+      - marbor-data:/data       # persists marbor.db across restarts
+      - marbor-backups:/backups # scheduled backups (Settings &gt; Backup &amp; Restore)
+    environment:
+      - MARBOR_DB_PATH=/data/marbor.db
+      - MARBOR_BACKUP_DIR=/backups
+    restart: unless-stopped
+
+volumes:
+  marbor-data:
+  marbor-backups:</code></pre></div>
 <p>The <code>marbor-data</code> volume mount is important: without it, nodes, API keys, quota counters, and every other setting reset on every container restart. First boot creates a blank-slate <code>marbor.db</code> inside the volume - configure it via the dashboard at <code>http://localhost:8080</code> (<code>admin</code>/<code>admin</code>, forced password change on first login).</p>
 <p><code>marbor-backups</code> is a <strong>separate</strong> volume from <code>marbor-data</code>, on purpose: enable scheduled backups from the dashboard's Settings &gt; Backup &amp; Restore card (interval + retention count are configurable there), and a <code>docker volume rm marbor-data</code> or <code>docker-compose down -v</code> that wipes the live database still leaves every backup intact, and vice versa. For real protection against losing the whole Docker host (not just a container or a single volume), point <code>marbor-backups</code> at storage that lives elsewhere - a different physical disk, an NFS/SMB mount, or a bind mount synced off-host - rather than leaving it as a second volume on the same disk as <code>marbor-data</code>. A manual "Download Backup Now" button on the same Settings card streams a gzip-compressed on-demand copy to your browser at any time (scheduled backups are compressed <code>.db.gz</code> files too). The same card also lists scheduled backups and can restore one with a click - which stops and restarts the marbor process, so it requires <code>restart: unless-stopped</code> (already set above) or an equivalent supervisor. See <a href="backup.html"><code>backup.md</code></a> for the full restore flow, the supervisor requirement, and the fully-manual fallback (not limited to files under <code>/backups</code> - any <code>.db</code> file works, or a <code>.db.gz</code> after <code>gunzip</code>, on Docker or bare metal alike).</p>
 <h3 id="docker-networking-and-node-discovery">Docker Networking and Node Discovery<a class="anchor" href="#docker-networking-and-node-discovery" aria-label="Link to section">#</a></h3>
@@ -442,78 +484,7 @@ volumes:
 <hr/>
 <h2 id="kubernetes">Kubernetes<a class="anchor" href="#kubernetes" aria-label="Link to section">#</a></h2>
 <p>Minimal manifest. Adjust resource limits and image tag for your cluster. There is no ConfigMap - <code>marbor.db</code> lives on the PVC below, and nodes/keys/routing are set via the dashboard or <code>/admin/v1/...</code> REST API after the pod is up. GitOps-style operators can drive that same REST API from a post-deploy Job instead of hand-editing a file.</p>
-<div class="code-wrap"><pre class="code" data-lang="yaml"><code>apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: marbor
-  namespace: ai-infra
-spec:
-  replicas: 1        # single instance - marbor.db on the PVC is not a shared datastore
-  selector:
-    matchLabels:
-      app: marbor
-  template:
-    metadata:
-      labels:
-        app: marbor
-      annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "9090"
-        prometheus.io/path: "/metrics"
-    spec:
-      containers:
-        - name: marbor
-          image: ghcr.io/anirudhx7/marbor:latest
-          args: ["--db", "/data/marbor.db"]
-          ports:
-            - containerPort: 11434   # endpoint
-            - containerPort: 8080    # admin
-            - containerPort: 9090    # metrics
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 11434
-            initialDelaySeconds: 5
-            periodSeconds: 10
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 11434
-            initialDelaySeconds: 2
-            periodSeconds: 5
-          resources:
-            requests:
-              memory: "64Mi"
-              cpu: "50m"
-            limits:
-              memory: "256Mi"
-              cpu: "500m"
-          volumeMounts:
-            - name: data
-              mountPath: /data
-      volumes:
-        - name: data
-          persistentVolumeClaim:
-            claimName: marbor-data
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: marbor
-  namespace: ai-infra
-spec:
-  selector:
-    app: marbor
-  ports:
-    - name: proxy
-      port: 11434
-      targetPort: 11434
-    - name: admin
-      port: 8080
-      targetPort: 8080
-    - name: metrics
-      port: 9090
-      targetPort: 9090</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="apiVersion: apps/v1
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: marbor
@@ -584,59 +555,83 @@ spec:
       targetPort: 8080
     - name: metrics
       port: 9090
-      targetPort: 9090"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+      targetPort: 9090"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="yaml"><code>apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: marbor
+  namespace: ai-infra
+spec:
+  replicas: 1        # single instance - marbor.db on the PVC is not a shared datastore
+  selector:
+    matchLabels:
+      app: marbor
+  template:
+    metadata:
+      labels:
+        app: marbor
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: marbor
+          image: ghcr.io/anirudhx7/marbor:latest
+          args: ["--db", "/data/marbor.db"]
+          ports:
+            - containerPort: 11434   # endpoint
+            - containerPort: 8080    # admin
+            - containerPort: 9090    # metrics
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 11434
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 11434
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: marbor-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: marbor
+  namespace: ai-infra
+spec:
+  selector:
+    app: marbor
+  ports:
+    - name: proxy
+      port: 11434
+      targetPort: 11434
+    - name: admin
+      port: 8080
+      targetPort: 8080
+    - name: metrics
+      port: 9090
+      targetPort: 9090</code></pre></div>
 <p>Note: the Kubernetes deployment above runs a single replica because <code>marbor.db</code> (SQLite) is the sole datastore and is not shared across instances. Running multiple replicas would split state across separate, inconsistent databases.</p>
 <hr/>
 <h2 id="nginx-tls-termination">nginx TLS Termination<a class="anchor" href="#nginx-tls-termination" aria-label="Link to section">#</a></h2>
 <p>marbor does not handle TLS directly - that is delegated to nginx (or any other reverse proxy). Example nginx snippet for TLS termination:</p>
-<div class="code-wrap"><pre class="code" data-lang="nginx"><code>upstream marbor_proxy {
-    server 127.0.0.1:11434;
-}
-
-upstream marbor_admin {
-    server 127.0.0.1:8080;
-}
-
-# Control plane endpoint - clients point OPENAI_BASE_URL here
-server {
-    listen 443 ssl http2;
-    server_name llm.example.com;
-
-    ssl_certificate     /etc/ssl/certs/llm.example.com.pem;
-    ssl_certificate_key /etc/ssl/private/llm.example.com.key;
-
-    location / {
-        proxy_pass         http://marbor_proxy;
-        proxy_http_version 1.1;
-        proxy_set_header   Host $host;
-        proxy_set_header   X-Real-IP $remote_addr;
-        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header   Connection "";
-
-        # Streaming: disable buffering so tokens reach clients immediately
-        proxy_buffering    off;
-        proxy_read_timeout 300s;
-        proxy_send_timeout 300s;
-    }
-}
-
-# Admin dashboard - restrict to internal network
-server {
-    listen 443 ssl http2;
-    server_name llm-admin.example.com;
-
-    ssl_certificate     /etc/ssl/certs/llm-admin.example.com.pem;
-    ssl_certificate_key /etc/ssl/private/llm-admin.example.com.key;
-
-    # Restrict to your VPN/office CIDR
-    allow 10.0.0.0/8;
-    deny  all;
-
-    location / {
-        proxy_pass http://marbor_admin;
-        proxy_set_header Host $host;
-    }
-}</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="upstream marbor_proxy {
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="upstream marbor_proxy {
     server 127.0.0.1:11434;
 }
 
@@ -683,14 +678,61 @@ server {
         proxy_pass http://marbor_admin;
         proxy_set_header Host $host;
     }
-}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="nginx"><code>upstream marbor_proxy {
+    server 127.0.0.1:11434;
+}
+
+upstream marbor_admin {
+    server 127.0.0.1:8080;
+}
+
+# Control plane endpoint - clients point OPENAI_BASE_URL here
+server {
+    listen 443 ssl http2;
+    server_name llm.example.com;
+
+    ssl_certificate     /etc/ssl/certs/llm.example.com.pem;
+    ssl_certificate_key /etc/ssl/private/llm.example.com.key;
+
+    location / {
+        proxy_pass         http://marbor_proxy;
+        proxy_http_version 1.1;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   Connection "";
+
+        # Streaming: disable buffering so tokens reach clients immediately
+        proxy_buffering    off;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+}
+
+# Admin dashboard - restrict to internal network
+server {
+    listen 443 ssl http2;
+    server_name llm-admin.example.com;
+
+    ssl_certificate     /etc/ssl/certs/llm-admin.example.com.pem;
+    ssl_certificate_key /etc/ssl/private/llm-admin.example.com.key;
+
+    # Restrict to your VPN/office CIDR
+    allow 10.0.0.0/8;
+    deny  all;
+
+    location / {
+        proxy_pass http://marbor_admin;
+        proxy_set_header Host $host;
+    }
+}</code></pre></div>
 <p><code>proxy_buffering off</code> is required. Buffering the endpoint port will break streaming responses.</p>
 <hr/>
 <h2 id="health-check">Health Check<a class="anchor" href="#health-check" aria-label="Link to section">#</a></h2>
 <p><code>GET /health</code> on the endpoint port (11434) returns HTTP 200 when the process is up and ready to accept connections. It requires no authentication. Use it for load balancer health checks, container liveness/readiness probes, and uptime monitors.</p>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>curl http://localhost:11434/health
-# 200 OK</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="curl http://localhost:11434/health
-# 200 OK"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="curl http://localhost:11434/health
+# 200 OK"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="bash"><code>curl http://localhost:11434/health
+# 200 OK</code></pre></div>
 <hr/>
 <h2 id="graceful-shutdown">Graceful Shutdown<a class="anchor" href="#graceful-shutdown" aria-label="Link to section">#</a></h2>
 <p>On SIGTERM, marbor starts a 15-second graceful shutdown:</p>

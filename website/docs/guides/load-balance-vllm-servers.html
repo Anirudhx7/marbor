@@ -182,12 +182,14 @@ h1 em{font-style:italic;color:var(--accent);font-weight:600}
 .doc-content pre.code{background:var(--bg);border:1px solid var(--border);border-radius:var(--r-md);padding:16px;overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0;position:relative}
 .doc-content pre.code code{background:none;border:none;padding:0;font-size:12.5px;line-height:1.7;color:var(--text)}
 .doc-content .code-wrap{position:relative;margin:0 0 18px}
-.doc-content .code-wrap pre.code{padding-right:90px;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+.doc-content pre.code.wrap code{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}
+.doc-content .code-head{display:flex;justify-content:flex-end;align-items:center;padding:6px 8px;background:var(--bg-surface);border:1px solid var(--border);border-bottom:0;border-radius:var(--r-md) var(--r-md) 0 0}
+.doc-content .code-wrap pre.code{border-top-left-radius:0;border-top-right-radius:0;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
 .doc-content .code-wrap pre.code::-webkit-scrollbar{height:8px;width:8px}
 .doc-content .code-wrap pre.code::-webkit-scrollbar-track{background:transparent}
 .doc-content .code-wrap pre.code::-webkit-scrollbar-thumb{background:var(--border);border-radius:99px}
 .doc-content .code-wrap pre.code::-webkit-scrollbar-thumb:hover{background:var(--text-faint)}
-.doc-content .copy-btn{position:absolute;top:10px;right:10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:44px;min-height:44px;padding:7px 13px;cursor:pointer;background:var(--bg-surface);border:1px solid var(--border);border-radius:99px;color:var(--text-muted);font-family:var(--font-sans);font-weight:650;font-size:12px;line-height:1;box-shadow:var(--shadow);transition:color .15s,border-color .15s,background .15s,transform .15s}
+.doc-content .copy-btn{position:static;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:44px;min-height:44px;padding:7px 13px;cursor:pointer;background:var(--bg-surface);border:1px solid var(--border);border-radius:99px;color:var(--text-muted);font-family:var(--font-sans);font-weight:650;font-size:12px;line-height:1;box-shadow:var(--shadow);transition:color .15s,border-color .15s,background .15s,transform .15s}
 .doc-content .copy-btn:hover{color:var(--accent);border-color:var(--accent);background:var(--bg-input)}
 .doc-content .copy-btn svg{width:13px;height:13px}
 .doc-content .copy-btn.copied{color:var(--accent2);border-color:var(--accent2);transform:scale(1.06)}
@@ -273,6 +275,18 @@ footer a{display:inline-flex;align-items:center;min-height:44px}
 .doc-content td:first-child,.doc-content th:first-child{position:sticky;left:0;z-index:1;background:var(--bg-elevated)}
 .doc-content thead th:first-child{background:linear-gradient(var(--accent-bg),var(--accent-bg)),var(--bg-elevated)}
 }
+
+/* Phone and tablet: the sidebar and the page contents are hidden above, so the
+   same two lists are reachable as disclosures at the top of the page. */
+.doc-mobile-nav{display:none}
+@media(max-width:900px){
+.doc-mobile-nav{display:grid;gap:8px;margin:0 0 14px}
+.doc-mobile-nav details{border:1px solid var(--border);border-radius:var(--r-md);background:var(--bg-elevated)}
+.doc-mobile-nav summary{display:flex;align-items:center;min-height:44px;padding:0 14px;cursor:pointer;font-weight:650;font-size:14px;color:var(--text)}
+.doc-mobile-nav details[open] summary{border-bottom:1px solid var(--border-subtle)}
+.doc-mobile-list,.doc-mobile-nav details>ul,.doc-mobile-nav details>ol{padding:6px 14px 12px;margin:0;list-style:none}
+.doc-mobile-nav .doc-nav-link,.doc-mobile-nav details a{display:flex;align-items:center;min-height:44px}
+}
 </style>
 </head>
 <body>
@@ -316,6 +330,34 @@ footer a{display:inline-flex;align-items:center;min-height:44px}
 </nav>
 
   <main class="doc-main" id="main">
+    <div class="doc-mobile-nav">
+      <details><summary>Docs menu</summary><div class="doc-mobile-list"><a class="doc-nav-link home" href="../../docs/index.html">← Docs home</a>
+    <div class="nav-group">
+      <div class="nav-group-title">Runtimes</div>
+      <a class="doc-nav-link" href="../../docs/ollama.html">Ollama</a><a class="doc-nav-link" href="../../docs/vllm.html">vLLM without Kubernetes</a><a class="doc-nav-link" href="../../docs/mlx.html">MLX on Mac</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Guides</div>
+      <a class="doc-nav-link" href="../../docs/INTEGRATIONS.html">Integrations</a><a class="doc-nav-link" href="../../docs/LIMITATIONS.html">Known limitations</a><a class="doc-nav-link" href="../../docs/SAVINGS-MATH.html">Savings math</a><a class="doc-nav-link" href="../../docs/USE-CASES.html">Ollama alternatives & use cases</a><a class="doc-nav-link" href="../../docs/REVERSE-PROXY.html">vLLM/Ollama reverse proxy</a><a class="doc-nav-link" href="../../docs/backup.html">Backup & Restore</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">How-to guides</div>
+      <a class="doc-nav-link active" aria-current="page" href="../../docs/guides/load-balance-vllm-servers.html">Load balance multiple vLLM servers</a><a class="doc-nav-link" href="../../docs/guides/one-endpoint-for-several-ollama-machines.html">One endpoint for several Ollama machines</a><a class="doc-nav-link" href="../../docs/guides/several-llama-cpp-servers-one-endpoint.html">Several llama.cpp servers, one endpoint</a><a class="doc-nav-link" href="../../docs/guides/mac-fleet-mlx-one-endpoint.html">Several Macs as one MLX endpoint</a><a class="doc-nav-link" href="../../docs/guides/per-key-quotas-self-hosted-llm.html">Per-key quotas and rate limits</a><a class="doc-nav-link" href="../../docs/guides/when-every-gpu-is-busy.html">When every GPU is busy</a><a class="doc-nav-link" href="../../docs/guides/monitor-llm-fleet-prometheus-grafana.html">Monitor the fleet with Prometheus</a><a class="doc-nav-link" href="../../docs/guides/drain-gpu-node-without-downtime.html">Drain a GPU node without downtime</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Deployment</div>
+      <a class="doc-nav-link" href="../../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../../docs/deploy/aws-ec2.html">AWS EC2</a><a class="doc-nav-link" href="../../docs/deploy/gpu-node-registration.html">GPU node registration</a><a class="doc-nav-link" href="../../docs/deploy/marbor-agent-enrollment.html">marbor agent enrollment</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Integrations</div>
+      <a class="doc-nav-link" href="../../docs/integrations/continue.html">Continue</a><a class="doc-nav-link" href="../../docs/integrations/librechat.html">LibreChat</a><a class="doc-nav-link" href="../../docs/integrations/litellm.html">LiteLLM</a><a class="doc-nav-link" href="../../docs/integrations/open-webui.html">Open WebUI</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Reference</div>
+      <a class="doc-nav-link" href="../../docs/cli.html">CLI reference</a><a class="doc-nav-link" href="../../docs/COMPATIBILITY.html">Compatibility & Guarantees</a>
+    </div></div></details>
+      <details><summary>On this page</summary><ul class="toc"><li class="lvl-2"><a href="#1-start-vllm-on-each-gpu-host">1. Start vLLM on each GPU host</a></li><li class="lvl-3"><a href="#faster-weight-loading-with-runai-model-streamer">Faster weight loading with Run:ai Model Streamer</a></li><li class="lvl-2"><a href="#2-install-marbor-on-one-machine">2. Install Marbor on one machine</a></li><li class="lvl-2"><a href="#3-register-each-vllm-server">3. Register each vLLM server</a></li><li class="lvl-2"><a href="#4-point-clients-at-one-endpoint">4. Point clients at one endpoint</a></li><li class="lvl-2"><a href="#how-requests-are-placed">How requests are placed</a></li><li class="lvl-2"><a href="#what-to-set-up-next">What to set up next</a></li></ul></details>
+    </div>
     <article class="doc-content doc-card"><div class="doc-card-body">
       <nav class="breadcrumb" aria-label="Breadcrumb"><ol><li><a href="../../index.html">Home</a></li><li aria-hidden="true"><span class="sep">/</span></li><li><a href="../../docs/index.html">Docs</a></li><li aria-hidden="true"><span class="sep">/</span></li><li><span>guides</span></li><li aria-hidden="true"><span class="sep">/</span></li><li><span class="current" aria-current="page">Load balance multiple vLLM servers behind one OpenAI-compatible endpoint</span></li></ol></nav>
       <h1 id="load-balance-multiple-vllm-servers-behind-one-openai-compatible-endpoint">Load balance multiple vLLM servers behind one OpenAI-compatible endpoint<a class="anchor" href="#load-balance-multiple-vllm-servers-behind-one-openai-compatible-endpoint" aria-label="Link to section">#</a></h1>
@@ -323,54 +365,54 @@ footer a{display:inline-flex;align-items:center;min-height:44px}
 <p>This guide ends with working requests going through one endpoint to two vLLM servers. It takes about ten minutes.</p>
 <h2 id="1-start-vllm-on-each-gpu-host">1. Start vLLM on each GPU host<a class="anchor" href="#1-start-vllm-on-each-gpu-host" aria-label="Link to section">#</a></h2>
 <p>On every GPU host, serve one model per vLLM process and bind to a reachable address. Pick a port that does not collide with Marbor (8080 admin, 11434 proxy):</p>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>pip install vllm
-vllm serve meta-llama/Llama-3.1-8B-Instruct --host 0.0.0.0 --port 8000</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="pip install vllm
-vllm serve meta-llama/Llama-3.1-8B-Instruct --host 0.0.0.0 --port 8000"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="pip install vllm
+vllm serve meta-llama/Llama-3.1-8B-Instruct --host 0.0.0.0 --port 8000"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="bash"><code>pip install vllm
+vllm serve meta-llama/Llama-3.1-8B-Instruct --host 0.0.0.0 --port 8000</code></pre></div>
 <p>Or with Docker:</p>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>docker run -d --gpus all --ipc=host -p 8000:8000 \
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="docker run -d --gpus all --ipc=host -p 8000:8000 \
   -v ~/.cache/huggingface:/root/.cache/huggingface \
-  vllm/vllm-openai:latest --model meta-llama/Llama-3.1-8B-Instruct</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="docker run -d --gpus all --ipc=host -p 8000:8000 \
+  vllm/vllm-openai:latest --model meta-llama/Llama-3.1-8B-Instruct"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="bash"><code>docker run -d --gpus all --ipc=host -p 8000:8000 \
   -v ~/.cache/huggingface:/root/.cache/huggingface \
-  vllm/vllm-openai:latest --model meta-llama/Llama-3.1-8B-Instruct"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+  vllm/vllm-openai:latest --model meta-llama/Llama-3.1-8B-Instruct</code></pre></div>
 <p>Check it from another machine: <code>curl http://10.0.1.20:8000/health</code> should return HTTP 200 (this is the same endpoint Marbor uses for its health probe).</p>
 <p>vLLM serves one model per process. To serve a second model on the same host, start a second vLLM on another port and register it as its own node (below).</p>
 <h3 id="faster-weight-loading-with-runai-model-streamer">Faster weight loading with Run:ai Model Streamer<a class="anchor" href="#faster-weight-loading-with-runai-model-streamer" aria-label="Link to section">#</a></h3>
 <p>When serving safetensors weights from local storage or cloud object storage (S3, GCS, Azure Blob), vLLM supports streaming tensors directly into GPU memory using the Run:ai Model Streamer (<code>pip install vllm[runai]</code>, Apache-2.0). Adding <code>--load-format runai_streamer</code> enables concurrent weight reading on plain bare-metal hosts without Kubernetes. Other runtimes supported by Marbor (Ollama, llama.cpp, MLX) do not use this loader.</p>
 <h2 id="2-install-marbor-on-one-machine">2. Install Marbor on one machine<a class="anchor" href="#2-install-marbor-on-one-machine" aria-label="Link to section">#</a></h2>
 <p>Pick any host that can reach your GPU hosts. Install it as a service:</p>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>curl -fsSL raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | SERVICE=1 sh</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="curl -fsSL raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | SERVICE=1 sh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="curl -fsSL raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | SERVICE=1 sh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code wrap" data-lang="bash"><code>curl -fsSL raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | SERVICE=1 sh</code></pre></div>
 <p>The installer scans your network for backends and asks which to add. Type <code>skip</code> to add nodes yourself in the next step. Prefer Docker? <code>git clone https://github.com/Anirudhx7/marbor &amp;&amp; cd marbor &amp;&amp; docker compose up -d</code>.</p>
 <p>Open <code>http://&lt;marbor-host&gt;:8080</code>, sign in as <code>admin</code> / <code>admin</code>, and set a new password when prompted (the first-login change cannot be skipped). Then log the CLI in once:</p>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>marbor login --server http://&lt;marbor-host&gt;:8080</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="marbor login --server http://&lt;marbor-host&gt;:8080"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="marbor login --server http://&lt;marbor-host&gt;:8080"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="bash"><code>marbor login --server http://&lt;marbor-host&gt;:8080</code></pre></div>
 <h2 id="3-register-each-vllm-server">3. Register each vLLM server<a class="anchor" href="#3-register-each-vllm-server" aria-label="Link to section">#</a></h2>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>marbor nodes add vllm-a http://10.0.1.20:8000 --runtime vllm --gpu-model "RTX 4090" --vram-total-mb 24576
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="marbor nodes add vllm-a http://10.0.1.20:8000 --runtime vllm --gpu-model &quot;RTX 4090&quot; --vram-total-mb 24576
 marbor nodes add vllm-b http://10.0.1.21:8000 --runtime vllm --vram-total-mb 24576
-marbor nodes</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="marbor nodes add vllm-a http://10.0.1.20:8000 --runtime vllm --gpu-model &quot;RTX 4090&quot; --vram-total-mb 24576
+marbor nodes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="bash"><code>marbor nodes add vllm-a http://10.0.1.20:8000 --runtime vllm --gpu-model "RTX 4090" --vram-total-mb 24576
 marbor nodes add vllm-b http://10.0.1.21:8000 --runtime vllm --vram-total-mb 24576
-marbor nodes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+marbor nodes</code></pre></div>
 <p>Within a few seconds both nodes show <code>healthy</code> with runtime <code>vllm</code>. Marbor polls each node's <code>/health</code> and <code>/v1/models</code> to learn which model it serves.</p>
 <h2 id="4-point-clients-at-one-endpoint">4. Point clients at one endpoint<a class="anchor" href="#4-point-clients-at-one-endpoint" aria-label="Link to section">#</a></h2>
 <p>Create a key (it prints once, store it):</p>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>marbor key create --name app</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="marbor key create --name app"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="marbor key create --name app"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="bash"><code>marbor key create --name app</code></pre></div>
 <p>Then use any OpenAI client against Marbor's proxy port:</p>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>curl http://&lt;marbor-host&gt;:11434/v1/chat/completions \
-  -H "Authorization: Bearer sk-app-..." \
-  -H "Content-Type: application/json" \
-  -d '{"model":"meta-llama/Llama-3.1-8B-Instruct","messages":[{"role":"user","content":"hello"}]}'</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="curl http://&lt;marbor-host&gt;:11434/v1/chat/completions \
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="curl http://&lt;marbor-host&gt;:11434/v1/chat/completions \
   -H &quot;Authorization: Bearer sk-app-...&quot; \
   -H &quot;Content-Type: application/json&quot; \
-  -d '{&quot;model&quot;:&quot;meta-llama/Llama-3.1-8B-Instruct&quot;,&quot;messages&quot;:[{&quot;role&quot;:&quot;user&quot;,&quot;content&quot;:&quot;hello&quot;}]}'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-<div class="code-wrap"><pre class="code" data-lang="python"><code>from openai import OpenAI
-client = OpenAI(base_url="http://&lt;marbor-host&gt;:11434/v1", api_key="sk-app-...")
-print(client.chat.completions.create(
-    model="meta-llama/Llama-3.1-8B-Instruct",
-    messages=[{"role": "user", "content": "hello"}],
-).choices[0].message.content)</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="from openai import OpenAI
+  -d '{&quot;model&quot;:&quot;meta-llama/Llama-3.1-8B-Instruct&quot;,&quot;messages&quot;:[{&quot;role&quot;:&quot;user&quot;,&quot;content&quot;:&quot;hello&quot;}]}'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="bash"><code>curl http://&lt;marbor-host&gt;:11434/v1/chat/completions \
+  -H "Authorization: Bearer sk-app-..." \
+  -H "Content-Type: application/json" \
+  -d '{"model":"meta-llama/Llama-3.1-8B-Instruct","messages":[{"role":"user","content":"hello"}]}'</code></pre></div>
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="from openai import OpenAI
 client = OpenAI(base_url=&quot;http://&lt;marbor-host&gt;:11434/v1&quot;, api_key=&quot;sk-app-...&quot;)
 print(client.chat.completions.create(
     model=&quot;meta-llama/Llama-3.1-8B-Instruct&quot;,
     messages=[{&quot;role&quot;: &quot;user&quot;, &quot;content&quot;: &quot;hello&quot;}],
-).choices[0].message.content)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+).choices[0].message.content)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="python"><code>from openai import OpenAI
+client = OpenAI(base_url="http://&lt;marbor-host&gt;:11434/v1", api_key="sk-app-...")
+print(client.chat.completions.create(
+    model="meta-llama/Llama-3.1-8B-Instruct",
+    messages=[{"role": "user", "content": "hello"}],
+).choices[0].message.content)</code></pre></div>
 <p><code>GET /v1/models</code> through Marbor lists the models of the whole fleet, and <code>marbor models fleet</code> shows which nodes hold each one.</p>
 <h2 id="how-requests-are-placed">How requests are placed<a class="anchor" href="#how-requests-are-placed" aria-label="Link to section">#</a></h2>
 <p>The default strategy is <code>warm-first</code>: if the model is loaded on a healthy node, the request goes to the warm node with the fewest active connections. If not, Marbor falls back to least-connections. It is not round-robin, so do not expect an even request split between nodes. Read the current strategy with <code>marbor routing strategy get</code>, and see the <a href="../PRODUCTION.html">production guide</a> for running Marbor as a service.</p>

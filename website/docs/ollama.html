@@ -179,12 +179,14 @@ h1 em{font-style:italic;color:var(--accent);font-weight:600}
 .doc-content pre.code{background:var(--bg);border:1px solid var(--border);border-radius:var(--r-md);padding:16px;overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0;position:relative}
 .doc-content pre.code code{background:none;border:none;padding:0;font-size:12.5px;line-height:1.7;color:var(--text)}
 .doc-content .code-wrap{position:relative;margin:0 0 18px}
-.doc-content .code-wrap pre.code{padding-right:90px;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+.doc-content pre.code.wrap code{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}
+.doc-content .code-head{display:flex;justify-content:flex-end;align-items:center;padding:6px 8px;background:var(--bg-surface);border:1px solid var(--border);border-bottom:0;border-radius:var(--r-md) var(--r-md) 0 0}
+.doc-content .code-wrap pre.code{border-top-left-radius:0;border-top-right-radius:0;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
 .doc-content .code-wrap pre.code::-webkit-scrollbar{height:8px;width:8px}
 .doc-content .code-wrap pre.code::-webkit-scrollbar-track{background:transparent}
 .doc-content .code-wrap pre.code::-webkit-scrollbar-thumb{background:var(--border);border-radius:99px}
 .doc-content .code-wrap pre.code::-webkit-scrollbar-thumb:hover{background:var(--text-faint)}
-.doc-content .copy-btn{position:absolute;top:10px;right:10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:44px;min-height:44px;padding:7px 13px;cursor:pointer;background:var(--bg-surface);border:1px solid var(--border);border-radius:99px;color:var(--text-muted);font-family:var(--font-sans);font-weight:650;font-size:12px;line-height:1;box-shadow:var(--shadow);transition:color .15s,border-color .15s,background .15s,transform .15s}
+.doc-content .copy-btn{position:static;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:44px;min-height:44px;padding:7px 13px;cursor:pointer;background:var(--bg-surface);border:1px solid var(--border);border-radius:99px;color:var(--text-muted);font-family:var(--font-sans);font-weight:650;font-size:12px;line-height:1;box-shadow:var(--shadow);transition:color .15s,border-color .15s,background .15s,transform .15s}
 .doc-content .copy-btn:hover{color:var(--accent);border-color:var(--accent);background:var(--bg-input)}
 .doc-content .copy-btn svg{width:13px;height:13px}
 .doc-content .copy-btn.copied{color:var(--accent2);border-color:var(--accent2);transform:scale(1.06)}
@@ -270,6 +272,18 @@ footer a{display:inline-flex;align-items:center;min-height:44px}
 .doc-content td:first-child,.doc-content th:first-child{position:sticky;left:0;z-index:1;background:var(--bg-elevated)}
 .doc-content thead th:first-child{background:linear-gradient(var(--accent-bg),var(--accent-bg)),var(--bg-elevated)}
 }
+
+/* Phone and tablet: the sidebar and the page contents are hidden above, so the
+   same two lists are reachable as disclosures at the top of the page. */
+.doc-mobile-nav{display:none}
+@media(max-width:900px){
+.doc-mobile-nav{display:grid;gap:8px;margin:0 0 14px}
+.doc-mobile-nav details{border:1px solid var(--border);border-radius:var(--r-md);background:var(--bg-elevated)}
+.doc-mobile-nav summary{display:flex;align-items:center;min-height:44px;padding:0 14px;cursor:pointer;font-weight:650;font-size:14px;color:var(--text)}
+.doc-mobile-nav details[open] summary{border-bottom:1px solid var(--border-subtle)}
+.doc-mobile-list,.doc-mobile-nav details>ul,.doc-mobile-nav details>ol{padding:6px 14px 12px;margin:0;list-style:none}
+.doc-mobile-nav .doc-nav-link,.doc-mobile-nav details a{display:flex;align-items:center;min-height:44px}
+}
 </style>
 </head>
 <body>
@@ -313,6 +327,34 @@ footer a{display:inline-flex;align-items:center;min-height:44px}
 </nav>
 
   <main class="doc-main" id="main">
+    <div class="doc-mobile-nav">
+      <details><summary>Docs menu</summary><div class="doc-mobile-list"><a class="doc-nav-link home" href="../docs/index.html">← Docs home</a>
+    <div class="nav-group">
+      <div class="nav-group-title">Runtimes</div>
+      <a class="doc-nav-link active" aria-current="page" href="../docs/ollama.html">Ollama</a><a class="doc-nav-link" href="../docs/vllm.html">vLLM without Kubernetes</a><a class="doc-nav-link" href="../docs/mlx.html">MLX on Mac</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Guides</div>
+      <a class="doc-nav-link" href="../docs/INTEGRATIONS.html">Integrations</a><a class="doc-nav-link" href="../docs/LIMITATIONS.html">Known limitations</a><a class="doc-nav-link" href="../docs/SAVINGS-MATH.html">Savings math</a><a class="doc-nav-link" href="../docs/USE-CASES.html">Ollama alternatives & use cases</a><a class="doc-nav-link" href="../docs/REVERSE-PROXY.html">vLLM/Ollama reverse proxy</a><a class="doc-nav-link" href="../docs/backup.html">Backup & Restore</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">How-to guides</div>
+      <a class="doc-nav-link" href="../docs/guides/load-balance-vllm-servers.html">Load balance multiple vLLM servers</a><a class="doc-nav-link" href="../docs/guides/one-endpoint-for-several-ollama-machines.html">One endpoint for several Ollama machines</a><a class="doc-nav-link" href="../docs/guides/several-llama-cpp-servers-one-endpoint.html">Several llama.cpp servers, one endpoint</a><a class="doc-nav-link" href="../docs/guides/mac-fleet-mlx-one-endpoint.html">Several Macs as one MLX endpoint</a><a class="doc-nav-link" href="../docs/guides/per-key-quotas-self-hosted-llm.html">Per-key quotas and rate limits</a><a class="doc-nav-link" href="../docs/guides/when-every-gpu-is-busy.html">When every GPU is busy</a><a class="doc-nav-link" href="../docs/guides/monitor-llm-fleet-prometheus-grafana.html">Monitor the fleet with Prometheus</a><a class="doc-nav-link" href="../docs/guides/drain-gpu-node-without-downtime.html">Drain a GPU node without downtime</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Deployment</div>
+      <a class="doc-nav-link" href="../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../docs/deploy/aws-ec2.html">AWS EC2</a><a class="doc-nav-link" href="../docs/deploy/gpu-node-registration.html">GPU node registration</a><a class="doc-nav-link" href="../docs/deploy/marbor-agent-enrollment.html">marbor agent enrollment</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Integrations</div>
+      <a class="doc-nav-link" href="../docs/integrations/continue.html">Continue</a><a class="doc-nav-link" href="../docs/integrations/librechat.html">LibreChat</a><a class="doc-nav-link" href="../docs/integrations/litellm.html">LiteLLM</a><a class="doc-nav-link" href="../docs/integrations/open-webui.html">Open WebUI</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Reference</div>
+      <a class="doc-nav-link" href="../docs/cli.html">CLI reference</a><a class="doc-nav-link" href="../docs/COMPATIBILITY.html">Compatibility & Guarantees</a>
+    </div></div></details>
+      <details><summary>On this page</summary><ul class="toc"><li class="lvl-2"><a href="#quick-start-for-ollama-fleets">Quick start for Ollama fleets</a></li><li class="lvl-3"><a href="#1-run-marbor-with-auto-discovery-systemd-service">1. Run Marbor with auto-discovery (systemd service)</a></li><li class="lvl-3"><a href="#2-connect-open-webui-in-one-line">2. Connect Open WebUI in one line</a></li><li class="lvl-3"><a href="#alternative-docker-deployment">Alternative: Docker deployment</a></li><li class="lvl-2"><a href="#three-operational-outcomes-shipped-today">Three operational outcomes shipped today</a></li><li class="lvl-2"><a href="#roadmap">Roadmap</a></li><li class="lvl-2"><a href="#when-not-to-use-marbor">When NOT to use Marbor</a></li><li class="lvl-2"><a href="#getting-started">Getting started</a></li></ul></details>
+    </div>
     <article class="doc-content doc-card"><div class="doc-card-body">
       <nav class="breadcrumb" aria-label="Breadcrumb"><ol><li><a href="../index.html">Home</a></li><li aria-hidden="true"><span class="sep">/</span></li><li><a href="../docs/index.html">Docs</a></li><li aria-hidden="true"><span class="sep">/</span></li><li><span class="current" aria-current="page">Ollama is great. Until you have eight GPUs.</span></li></ol></nav>
       <h1 id="ollama-is-great-until-you-have-eight-gpus">Ollama is great. Until you have eight GPUs.<a class="anchor" href="#ollama-is-great-until-you-have-eight-gpus" aria-label="Link to section">#</a></h1>
@@ -322,20 +364,20 @@ footer a{display:inline-flex;align-items:center;min-height:44px}
 <h2 id="quick-start-for-ollama-fleets">Quick start for Ollama fleets<a class="anchor" href="#quick-start-for-ollama-fleets" aria-label="Link to section">#</a></h2>
 <h3 id="1-run-marbor-with-auto-discovery-systemd-service">1. Run Marbor with auto-discovery (systemd service)<a class="anchor" href="#1-run-marbor-with-auto-discovery-systemd-service" aria-label="Link to section">#</a></h3>
 <p>Run this on your gateway or control host:</p>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>curl -fsSL raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | SERVICE=1 sh</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="curl -fsSL raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | SERVICE=1 sh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="curl -fsSL raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | SERVICE=1 sh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code wrap" data-lang="bash"><code>curl -fsSL raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | SERVICE=1 sh</code></pre></div>
 <p>The installer scans your local subnet for running Ollama instances on port 11434, prompts you to select discovered nodes, and starts Marbor as a managed systemd service that survives reboots.</p>
 <h3 id="2-connect-open-webui-in-one-line">2. Connect Open WebUI in one line<a class="anchor" href="#2-connect-open-webui-in-one-line" aria-label="Link to section">#</a></h3>
 <p>If you use Open WebUI, point it at Marbor instead of a single Ollama box:</p>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>OPENAI_BASE_URL=http://&lt;marbor-host&gt;:11434/v1</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="OPENAI_BASE_URL=http://&lt;marbor-host&gt;:11434/v1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="OPENAI_BASE_URL=http://&lt;marbor-host&gt;:11434/v1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="bash"><code>OPENAI_BASE_URL=http://&lt;marbor-host&gt;:11434/v1</code></pre></div>
 <p>All existing models across your entire fleet become immediately visible and callable through Open WebUI.</p>
 <h3 id="alternative-docker-deployment">Alternative: Docker deployment<a class="anchor" href="#alternative-docker-deployment" aria-label="Link to section">#</a></h3>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>docker run -d --restart=unless-stopped \
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="docker run -d --restart=unless-stopped \
   -p 11434:11434 -p 8080:8080 \
   -v marbor-data:/data \
-  ghcr.io/anirudhx7/marbor:latest</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="docker run -d --restart=unless-stopped \
+  ghcr.io/anirudhx7/marbor:latest"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="bash"><code>docker run -d --restart=unless-stopped \
   -p 11434:11434 -p 8080:8080 \
   -v marbor-data:/data \
-  ghcr.io/anirudhx7/marbor:latest"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+  ghcr.io/anirudhx7/marbor:latest</code></pre></div>
 <h2 id="three-operational-outcomes-shipped-today">Three operational outcomes shipped today<a class="anchor" href="#three-operational-outcomes-shipped-today" aria-label="Link to section">#</a></h2>
 <ol><li><strong>One endpoint across your fleet</strong>: Exposes both the native Ollama API (<code>/api/*</code>) and the OpenAI-compatible API (<code>/v1/*</code>) on port 11434. Apps and SDKs send requests to one address, and Marbor sends each request to a node that already holds the model in memory.</li><li><strong>Remote operations without SSH</strong>: Pull, unload, and delete models across nodes via the admin dashboard or CLI (<code>marbor models pull &lt;model&gt; --node &lt;node&gt;</code>). Drain a node (<code>marbor runtime drain &lt;node&gt;</code>) before system updates so it stops receiving new requests; wait for its active requests to reach zero before you stop it.</li><li><strong>Fleet-wide visibility</strong>: View live per-model replicas, active requests, queue depth, and time-to-first-token (TTFT) across every host. Pre-flight disk fit checks hard-block pulls (HTTP 507) before dispatching to a node without enough disk space. Per-key rate limits and token quotas enforce usage limits (HTTP 429).</li></ol>
 <h2 id="roadmap">Roadmap<a class="anchor" href="#roadmap" aria-label="Link to section">#</a></h2>

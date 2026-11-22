@@ -95,7 +95,8 @@ function renderMarkdown(md) {
       while (i < lines.length && !/^```/.test(lines[i])) { buf.push(lines[i]); i++; }
       i++; // closing fence
       const raw = buf.join("\n");
-      html += `<div class="code-wrap"><pre class="code"${lang ? ` data-lang="${lang}"` : ""}><code>${escapeHtml(raw)}</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="${escapeAttr(raw)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>\n`;
+      const oneLong = !raw.includes("\n") && raw.length > 48;
+      html += `<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="${escapeAttr(raw)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code${oneLong ? " wrap" : ""}"${lang ? ` data-lang="${lang}"` : ""}><code>${escapeHtml(raw)}</code></pre></div>\n`;
       continue;
     }
 
@@ -171,9 +172,12 @@ const EXT_IC = `<svg class="ext-ic" viewBox="0 0 24 24" fill="none" stroke="curr
 function excerpt(s, n) {
   const t = String(s).replace(/\s+/g, " ").trim();
   if (t.length <= n) return t;
-  const cut = t.slice(0, n);
-  const at = cut.lastIndexOf(" ");
-  return (at > 1 ? cut.slice(0, at) : cut).trimEnd() + "...";
+  // Whole sentences only, so the full text of a card is in the page: the
+  // first sentence always, then more while they fit within n characters.
+  const sentences = t.match(/[^.!?]+[.!?]+(?=\s|$)|[^.!?]+$/g) || [t];
+  let out = sentences[0].trim();
+  for (let i = 1; i < sentences.length && (out + " " + sentences[i].trim()).length <= n; i++) out += " " + sentences[i].trim();
+  return out;
 }
 
 // Shared footer - identical to the landing page footer (paths relative via r).
@@ -455,6 +459,10 @@ ${BRAND_HTML(r)}
 </nav>
 
   <main class="doc-main" id="main">
+    <div class="doc-mobile-nav">
+      <details><summary>Docs menu</summary><div class="doc-mobile-list"><a class="doc-nav-link home" href="${r}docs/index.html">← Docs home</a>${docSidebar(slug)}</div></details>
+      ${headings.length > 1 ? `<details><summary>On this page</summary>${tocHtml(headings)}</details>` : ""}
+    </div>
     <article class="doc-content doc-card"><div class="doc-card-body">
       <nav class="breadcrumb" aria-label="Breadcrumb"><ol>${breadcrumb(slug, title)}</ol></nav>
       ${contentHtml}
@@ -534,6 +542,7 @@ ${BRAND_HTML(r)}
 <div class="hero" data-reveal>
   <h1>Run it, <em>route it</em>, read the numbers.</h1>
   <p class="lede">Everything you need to put Marbor in front of your cluster -- connect your tools, ship to production, and understand exactly what it's saving you.</p>
+  <p><a class="btn btn-gold" href="https://marbor.in/demo/" target="_blank" rel="noopener">Live demo</a></p>
   <nav class="breadcrumb" aria-label="Breadcrumb"><ol><li><a href="../index.html">Home</a></li><li aria-hidden="true"><span class="sep">/</span></li><li><span class="current" aria-current="page">Docs</span></li></ol></nav>
 </div>
 <div class="doc-shell two-col">

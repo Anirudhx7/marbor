@@ -179,12 +179,14 @@ h1 em{font-style:italic;color:var(--accent);font-weight:600}
 .doc-content pre.code{background:var(--bg);border:1px solid var(--border);border-radius:var(--r-md);padding:16px;overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0;position:relative}
 .doc-content pre.code code{background:none;border:none;padding:0;font-size:12.5px;line-height:1.7;color:var(--text)}
 .doc-content .code-wrap{position:relative;margin:0 0 18px}
-.doc-content .code-wrap pre.code{padding-right:90px;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+.doc-content pre.code.wrap code{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}
+.doc-content .code-head{display:flex;justify-content:flex-end;align-items:center;padding:6px 8px;background:var(--bg-surface);border:1px solid var(--border);border-bottom:0;border-radius:var(--r-md) var(--r-md) 0 0}
+.doc-content .code-wrap pre.code{border-top-left-radius:0;border-top-right-radius:0;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
 .doc-content .code-wrap pre.code::-webkit-scrollbar{height:8px;width:8px}
 .doc-content .code-wrap pre.code::-webkit-scrollbar-track{background:transparent}
 .doc-content .code-wrap pre.code::-webkit-scrollbar-thumb{background:var(--border);border-radius:99px}
 .doc-content .code-wrap pre.code::-webkit-scrollbar-thumb:hover{background:var(--text-faint)}
-.doc-content .copy-btn{position:absolute;top:10px;right:10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:44px;min-height:44px;padding:7px 13px;cursor:pointer;background:var(--bg-surface);border:1px solid var(--border);border-radius:99px;color:var(--text-muted);font-family:var(--font-sans);font-weight:650;font-size:12px;line-height:1;box-shadow:var(--shadow);transition:color .15s,border-color .15s,background .15s,transform .15s}
+.doc-content .copy-btn{position:static;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:44px;min-height:44px;padding:7px 13px;cursor:pointer;background:var(--bg-surface);border:1px solid var(--border);border-radius:99px;color:var(--text-muted);font-family:var(--font-sans);font-weight:650;font-size:12px;line-height:1;box-shadow:var(--shadow);transition:color .15s,border-color .15s,background .15s,transform .15s}
 .doc-content .copy-btn:hover{color:var(--accent);border-color:var(--accent);background:var(--bg-input)}
 .doc-content .copy-btn svg{width:13px;height:13px}
 .doc-content .copy-btn.copied{color:var(--accent2);border-color:var(--accent2);transform:scale(1.06)}
@@ -270,6 +272,18 @@ footer a{display:inline-flex;align-items:center;min-height:44px}
 .doc-content td:first-child,.doc-content th:first-child{position:sticky;left:0;z-index:1;background:var(--bg-elevated)}
 .doc-content thead th:first-child{background:linear-gradient(var(--accent-bg),var(--accent-bg)),var(--bg-elevated)}
 }
+
+/* Phone and tablet: the sidebar and the page contents are hidden above, so the
+   same two lists are reachable as disclosures at the top of the page. */
+.doc-mobile-nav{display:none}
+@media(max-width:900px){
+.doc-mobile-nav{display:grid;gap:8px;margin:0 0 14px}
+.doc-mobile-nav details{border:1px solid var(--border);border-radius:var(--r-md);background:var(--bg-elevated)}
+.doc-mobile-nav summary{display:flex;align-items:center;min-height:44px;padding:0 14px;cursor:pointer;font-weight:650;font-size:14px;color:var(--text)}
+.doc-mobile-nav details[open] summary{border-bottom:1px solid var(--border-subtle)}
+.doc-mobile-list,.doc-mobile-nav details>ul,.doc-mobile-nav details>ol{padding:6px 14px 12px;margin:0;list-style:none}
+.doc-mobile-nav .doc-nav-link,.doc-mobile-nav details a{display:flex;align-items:center;min-height:44px}
+}
 </style>
 </head>
 <body>
@@ -313,6 +327,34 @@ footer a{display:inline-flex;align-items:center;min-height:44px}
 </nav>
 
   <main class="doc-main" id="main">
+    <div class="doc-mobile-nav">
+      <details><summary>Docs menu</summary><div class="doc-mobile-list"><a class="doc-nav-link home" href="../docs/index.html">← Docs home</a>
+    <div class="nav-group">
+      <div class="nav-group-title">Runtimes</div>
+      <a class="doc-nav-link" href="../docs/ollama.html">Ollama</a><a class="doc-nav-link" href="../docs/vllm.html">vLLM without Kubernetes</a><a class="doc-nav-link" href="../docs/mlx.html">MLX on Mac</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Guides</div>
+      <a class="doc-nav-link" href="../docs/INTEGRATIONS.html">Integrations</a><a class="doc-nav-link" href="../docs/LIMITATIONS.html">Known limitations</a><a class="doc-nav-link active" aria-current="page" href="../docs/SAVINGS-MATH.html">Savings math</a><a class="doc-nav-link" href="../docs/USE-CASES.html">Ollama alternatives & use cases</a><a class="doc-nav-link" href="../docs/REVERSE-PROXY.html">vLLM/Ollama reverse proxy</a><a class="doc-nav-link" href="../docs/backup.html">Backup & Restore</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">How-to guides</div>
+      <a class="doc-nav-link" href="../docs/guides/load-balance-vllm-servers.html">Load balance multiple vLLM servers</a><a class="doc-nav-link" href="../docs/guides/one-endpoint-for-several-ollama-machines.html">One endpoint for several Ollama machines</a><a class="doc-nav-link" href="../docs/guides/several-llama-cpp-servers-one-endpoint.html">Several llama.cpp servers, one endpoint</a><a class="doc-nav-link" href="../docs/guides/mac-fleet-mlx-one-endpoint.html">Several Macs as one MLX endpoint</a><a class="doc-nav-link" href="../docs/guides/per-key-quotas-self-hosted-llm.html">Per-key quotas and rate limits</a><a class="doc-nav-link" href="../docs/guides/when-every-gpu-is-busy.html">When every GPU is busy</a><a class="doc-nav-link" href="../docs/guides/monitor-llm-fleet-prometheus-grafana.html">Monitor the fleet with Prometheus</a><a class="doc-nav-link" href="../docs/guides/drain-gpu-node-without-downtime.html">Drain a GPU node without downtime</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Deployment</div>
+      <a class="doc-nav-link" href="../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../docs/deploy/aws-ec2.html">AWS EC2</a><a class="doc-nav-link" href="../docs/deploy/gpu-node-registration.html">GPU node registration</a><a class="doc-nav-link" href="../docs/deploy/marbor-agent-enrollment.html">marbor agent enrollment</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Integrations</div>
+      <a class="doc-nav-link" href="../docs/integrations/continue.html">Continue</a><a class="doc-nav-link" href="../docs/integrations/librechat.html">LibreChat</a><a class="doc-nav-link" href="../docs/integrations/litellm.html">LiteLLM</a><a class="doc-nav-link" href="../docs/integrations/open-webui.html">Open WebUI</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Reference</div>
+      <a class="doc-nav-link" href="../docs/cli.html">CLI reference</a><a class="doc-nav-link" href="../docs/COMPATIBILITY.html">Compatibility & Guarantees</a>
+    </div></div></details>
+      <details><summary>On this page</summary><ul class="toc"><li class="lvl-2"><a href="#executive-summary">Executive Summary</a></li><li class="lvl-2"><a href="#the-formulas">The Formulas</a></li><li class="lvl-3"><a href="#local-request-savings">Local Request Savings</a></li><li class="lvl-3"><a href="#cloud-overflow-spend">Cloud Overflow Spend</a></li><li class="lvl-3"><a href="#net-savings">Net Savings</a></li><li class="lvl-2"><a href="#enterprise-workload-projections">Enterprise Workload Projections</a></li><li class="lvl-3"><a href="#scenario-a-engineering-copilot-50-person-team">Scenario A: Engineering Copilot (50-Person Team)</a></li><li class="lvl-3"><a href="#scenario-b-multi-agent-rag-pipeline-production">Scenario B: Multi-Agent RAG Pipeline (Production)</a></li><li class="lvl-3"><a href="#scenario-c-internal-platform-200-person-organization">Scenario C: Internal Platform (200-Person Organization)</a></li><li class="lvl-2"><a href="#hardware-roi-calculator">Hardware ROI Calculator</a></li><li class="lvl-3"><a href="#break-even-analysis">Break-Even Analysis</a></li><li class="lvl-2"><a href="#how-the-dashboard-computes-these-numbers">How the Dashboard Computes These Numbers</a></li><li class="lvl-3"><a href="#data-sources">Data Sources</a></li><li class="lvl-3"><a href="#what---means">What "-" Means</a></li><li class="lvl-3"><a href="#counter-lifecycle">Counter Lifecycle</a></li><li class="lvl-2"><a href="#configuration">Configuration</a></li><li class="lvl-3"><a href="#setting-the-reference-rate">Setting the Reference Rate</a></li><li class="lvl-3"><a href="#per-provider-cloud-rates">Per-Provider Cloud Rates</a></li><li class="lvl-2"><a href="#known-limitations">Known Limitations</a></li><li class="lvl-2"><a href="#audit-trail-for-financial-verification">Audit Trail for Financial Verification</a></li></ul></details>
+    </div>
     <article class="doc-content doc-card"><div class="doc-card-body">
       <nav class="breadcrumb" aria-label="Breadcrumb"><ol><li><a href="../index.html">Home</a></li><li aria-hidden="true"><span class="sep">/</span></li><li><a href="../docs/index.html">Docs</a></li><li aria-hidden="true"><span class="sep">/</span></li><li><span class="current" aria-current="page">Cost Deflection: GPU vs Cloud API Spend</span></li></ol></nav>
       <h1 id="cost-deflection-gpu-vs-cloud-api-spend">Cost Deflection: GPU vs Cloud API Spend<a class="anchor" href="#cost-deflection-gpu-vs-cloud-api-spend" aria-label="Link to section">#</a></h1>
@@ -329,14 +371,14 @@ footer a{display:inline-flex;align-items:center;min-height:44px}
 <p>When a request is served by a local Ollama node, marbor parses the real token count from the upstream response:</p>
 <ul><li><strong>Ollama NDJSON responses:</strong> <code>eval_count</code> (completion tokens) + <code>prompt_eval_count</code> (input tokens) from the final streamed object</li><li><strong>OpenAI-compatible SSE responses:</strong> <code>usage.total_tokens</code> from the terminal <code>[DONE]</code>-adjacent chunk</li></ul>
 <p>Savings for each locally-served request:</p>
-<div class="code-wrap"><pre class="code"><code>saved_usd = (prompt_tokens + completion_tokens) / 1000 × reference_cost_per_1k</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="saved_usd = (prompt_tokens + completion_tokens) / 1000 × reference_cost_per_1k"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="saved_usd = (prompt_tokens + completion_tokens) / 1000 × reference_cost_per_1k"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code wrap"><code>saved_usd = (prompt_tokens + completion_tokens) / 1000 × reference_cost_per_1k</code></pre></div>
 <p>The <code>reference_cost_per_1k</code> is operator-configured and represents the blended cloud rate the organization would otherwise pay. Default: <strong>$0.002/1K tokens</strong> (deliberately conservative - adjust to match your actual cloud provider rate).</p>
 <h3 id="cloud-overflow-spend">Cloud Overflow Spend<a class="anchor" href="#cloud-overflow-spend" aria-label="Link to section">#</a></h3>
 <p>When a request overflows to a configured cloud provider (OpenAI, Anthropic), spend is computed from the real token count parsed from the provider's response:</p>
-<div class="code-wrap"><pre class="code"><code>spent_usd = parsed_tokens / 1000 × cost_per_1k_tokens</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="spent_usd = parsed_tokens / 1000 × cost_per_1k_tokens"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="spent_usd = parsed_tokens / 1000 × cost_per_1k_tokens"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code wrap"><code>spent_usd = parsed_tokens / 1000 × cost_per_1k_tokens</code></pre></div>
 <p><code>cost_per_1k_tokens</code> is set per cloud provider on the dashboard's <strong>Settings &gt; Cloud Providers</strong> page. Local requests are always $0 spend.</p>
 <h3 id="net-savings">Net Savings<a class="anchor" href="#net-savings" aria-label="Link to section">#</a></h3>
-<div class="code-wrap"><pre class="code"><code>net_savings_usd = Σ saved_usd (all local requests) - Σ spent_usd (all cloud requests)</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="net_savings_usd = Σ saved_usd (all local requests) - Σ spent_usd (all cloud requests)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="net_savings_usd = Σ saved_usd (all local requests) - Σ spent_usd (all cloud requests)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code wrap"><code>net_savings_usd = Σ saved_usd (all local requests) - Σ spent_usd (all cloud requests)</code></pre></div>
 <p>This is the number displayed on the dashboard savings widget. It represents the actual dollar amount the organization avoided paying to cloud providers by serving traffic locally.</p>
 <hr/>
 <h2 id="enterprise-workload-projections">Enterprise Workload Projections<a class="anchor" href="#enterprise-workload-projections" aria-label="Link to section">#</a></h2>
@@ -393,7 +435,7 @@ footer a{display:inline-flex;align-items:center;min-height:44px}
 <h2 id="hardware-roi-calculator">Hardware ROI Calculator<a class="anchor" href="#hardware-roi-calculator" aria-label="Link to section">#</a></h2>
 <h3 id="break-even-analysis">Break-Even Analysis<a class="anchor" href="#break-even-analysis" aria-label="Link to section">#</a></h3>
 <p>The break-even point is when cumulative cloud savings equal the upfront GPU hardware investment:</p>
-<div class="code-wrap"><pre class="code"><code>break_even_months = hardware_cost / (monthly_cloud_savings - monthly_hardware_opex)</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="break_even_months = hardware_cost / (monthly_cloud_savings - monthly_hardware_opex)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="break_even_months = hardware_cost / (monthly_cloud_savings - monthly_hardware_opex)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code wrap"><code>break_even_months = hardware_cost / (monthly_cloud_savings - monthly_hardware_opex)</code></pre></div>
 <p>Monthly hardware opex = amortized purchase price (3yr) + power + rack/cooling. At $0.015/1K (Claude Sonnet 4 output-heavy workloads):</p>
 <div class="table-scroll" tabindex="0" role="region" aria-label="Data table: scroll horizontally on small screens"><table>
 <thead><tr><th>GPU Configuration</th><th>Hardware Cost</th><th>Monthly Opex (amort+power)</th><th>Monthly Cloud Equivalent</th><th>Break-Even</th></tr></thead>
