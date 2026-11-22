@@ -605,7 +605,7 @@ export function Activity() {
           <FilterField label="Source IP contains">
             <ClearableInput
               type="text"
-              placeholder="192.168.1.5"
+              placeholder="e.g. 192.168.1.5"
               value={sourceIpInput}
               onChange={(e) => setSourceIpInput(e.target.value)}
               onClear={() => setSourceIpInput('')}

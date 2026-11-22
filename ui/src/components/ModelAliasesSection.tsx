@@ -221,7 +221,7 @@ export function ModelAliasesSection({ demoMode, knownModelNames }: ModelAliasesS
           type="text"
           value={newAlias}
           onChange={(e) => { setNewAlias(e.target.value); setError(null); }}
-          placeholder="gpt-4"
+          placeholder="e.g. gpt-4"
           aria-label="Alias name"
           className="w-full sm:flex-1 px-3 py-2 bg-secondary border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50"
         />
@@ -229,7 +229,7 @@ export function ModelAliasesSection({ demoMode, knownModelNames }: ModelAliasesS
           value={newTarget}
           onChange={(v) => { setNewTarget(v); setError(null); }}
           options={knownModelNames}
-          placeholder="llama3.2:8b"
+          placeholder="e.g. llama3.2:8b"
           className="sm:flex-1"
         />
         <button
