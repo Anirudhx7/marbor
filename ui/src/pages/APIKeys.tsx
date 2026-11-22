@@ -646,6 +646,7 @@ export function APIKeys() {
       {/* Create Key Modal */}
       <Modal
         isOpen={isCreateModalOpen}
+        dirty={JSON.stringify(newKeyForm) !== JSON.stringify(EMPTY_KEY_FORM)}
         onClose={closeCreateModal}
         title="Create new API key"
       >

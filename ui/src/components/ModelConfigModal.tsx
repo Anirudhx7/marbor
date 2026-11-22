@@ -416,6 +416,8 @@ export function ModelConfigModal({
   onClose: () => void;
 }) {
   const [form, setForm] = useState<FormState | null>(null);
+  // The form as last loaded or saved; any difference is an unsaved change.
+  const [baseline, setBaseline] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -482,10 +484,13 @@ export function ModelConfigModal({
       const fs = toFormState(model, selectedNode, cfg);
       if (!cfg && presetNumCtx !== undefined) fs.num_ctx = presetNumCtx;
       setForm(fs);
+      setBaseline(JSON.stringify(fs));
     } catch (e: unknown) {
       if (isCancelled()) return;
       setError(e instanceof Error ? e.message : 'Failed to load model config');
-      setForm(toFormState(model, selectedNode, null));
+      const empty = toFormState(model, selectedNode, null);
+      setForm(empty);
+      setBaseline(JSON.stringify(empty));
     } finally {
       if (!isCancelled()) setLoading(false);
     }
@@ -514,6 +519,7 @@ export function ModelConfigModal({
       } else {
         await saveModelConfig(cfg);
       }
+      setBaseline(JSON.stringify(form));
       setSuccess(true);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to save model config');
@@ -533,7 +539,9 @@ export function ModelConfigModal({
       } else {
         await deleteModelConfig(model, selectedNode);
       }
-      setForm(toFormState(model, selectedNode, null));
+      const cleared = toFormState(model, selectedNode, null);
+      setForm(cleared);
+      setBaseline(JSON.stringify(cleared));
       setSuccess(true);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to reset model config');
@@ -550,6 +558,7 @@ export function ModelConfigModal({
       onClose={onClose}
       title={model ? `Advanced Settings - ${model}` : 'Advanced Settings'}
       maxWidth="4xl"
+      dirty={form !== null && baseline !== null && JSON.stringify(form) !== baseline}
     >
       {loading || !form ? (
         <div className="flex items-center justify-center py-12 gap-2 text-sm text-muted-foreground">

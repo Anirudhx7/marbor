@@ -1070,6 +1070,7 @@ export function Routing() {
       {/* Create rule modal */}
       <Modal
         isOpen={isCreateModalOpen}
+        dirty={newRuleForm.priority !== '' || newRuleForm.condition !== '' || newRuleForm.targetNode !== ''}
         onClose={() => {
           setIsCreateModalOpen(false);
           setFormErrors([]);

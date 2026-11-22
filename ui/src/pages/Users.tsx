@@ -307,7 +307,7 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
   }
 
   return (
-    <Modal isOpen={true} onClose={onClose} title="Create user">
+    <Modal isOpen={true} onClose={onClose} title="Create user" dirty={username.trim() !== '' || email.trim() !== ''}>
       <div className="space-y-4">
         <div className="space-y-3">
           <div>

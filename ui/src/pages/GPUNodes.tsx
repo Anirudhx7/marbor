@@ -2641,6 +2641,7 @@ export function GPUNodes() {
       {/* Add Node Modal */}
       <Modal
         isOpen={isAddModalOpen}
+        dirty={JSON.stringify(newNode) !== JSON.stringify(EMPTY_NEW_NODE)}
         onClose={closeAddModal}
         title="Add GPU node"
       >
