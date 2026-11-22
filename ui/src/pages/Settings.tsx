@@ -11,7 +11,7 @@ import { formatBackupSize, backupStatusLines, backupFileNameFor, errorText, isAb
 import type { Settings, BackupFileInfo, BackupStatus } from '../types';
 
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
-import { useCurrency, CURRENCY_PRESETS } from '../hooks/useCurrency';
+import { useCurrency, CURRENCY_PRESETS, applyCurrencyCode, parseFxRate } from '../hooks/useCurrency';
 import { CustomSelect, CustomCombobox } from '../components/Select';
 import { Toggle } from '../components/Toggle';
 import { useTimezone } from '../hooks/useTimezone';
@@ -1294,16 +1294,7 @@ export function SettingsPage() {
                 <CustomSelect
                   value={currency.code}
                   onChange={(val) => {
-                    const preset = CURRENCY_PRESETS.find(c => c.code === val);
-                    // USD is the base unit, so its rate is always 1. Keeping the
-                    // previous currency's rate here left USD showing caps
-                    // multiplied by it.
-                    setCurrency({
-                      ...currency,
-                      code: val,
-                      symbol: preset?.symbol || currency.symbol,
-                      fxRate: val === 'USD' ? 1 : currency.fxRate,
-                    });
+                    setCurrency(applyCurrencyCode(currency, val));
                   }}
                   options={CURRENCY_PRESETS.map(c => ({ value: c.code, label: c.code }))}
                 />
@@ -1320,11 +1311,11 @@ export function SettingsPage() {
                   value={fxText}
                   onChange={(e) => {
                     setFxText(e.target.value);
-                    const rate = parseFloat(e.target.value);
-                    if (Number.isFinite(rate) && rate > 0) setCurrency({ ...currency, fxRate: rate });
+                    const rate = parseFxRate(e.target.value);
+                    if (rate !== null) setCurrency({ ...currency, fxRate: rate });
                   }}
                   onBlur={() => setFxText(String(currency.fxRate))}
-                  aria-invalid={!(parseFloat(fxText) > 0)}
+                  aria-invalid={parseFxRate(fxText) === null}
                   disabled={currency.code === 'USD'}
                   className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50 disabled:opacity-50"
                 />
