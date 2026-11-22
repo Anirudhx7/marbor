@@ -1105,7 +1105,7 @@ export function getMockModelCatalog(): ModelCatalog {
         size_vram: 0,
         size_disk: pull.sizeBytes,
         warm_count: 0,
-        total_nodes: mockGPUNodes.length,
+        total_nodes: DEMO_COUNTED_NODES,
         nodes: [entry],
       });
     }

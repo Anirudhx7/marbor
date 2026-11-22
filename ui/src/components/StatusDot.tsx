@@ -57,8 +57,9 @@ export function StatusDot({ status, size = 'md', pulse = false, halo = false, ti
   // already says the same thing, and a generic label there reads twice or wrongly.
   const accessibleName = title ?? (status === 'worker' ? statusLabels.worker : undefined);
   return (
-    // role="img" with an accessible name: the colour alone told touch and
-    // screen-reader users nothing, since a title tooltip never reaches them.
+    // With an accessible name the dot is exposed as an image: the colour alone
+    // told touch and screen-reader users nothing, since a title tooltip never
+    // reaches them.
     <span
       {...(accessibleName ? { role: 'img', 'aria-label': accessibleName } : {})}
       title={title ?? statusLabels[status]}
