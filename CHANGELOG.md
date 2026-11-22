@@ -32,6 +32,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Tab rows on Models, Warmup, Users, Advisor and GPU Nodes are real tabs** with arrow-key navigation, and one-time secrets (new user passwords, reset links, approvals) now have a Copy button like API keys do.
 - **Add Rule examples are labelled as examples and its errors clear as you edit.** Demo: Logout is disabled instead of doing nothing, and a revoked key shows as revoked.
 - **The FX rate field no longer flags itself invalid while a rate such as 0.5 is being typed,** and the open dropdown's keys no longer fire while focus is in another field.
+- **Site: the mobile menu closes on an outside tap and fades in, the header is opaque, copy buttons all confirm with a check and "Copied", trace signals that are off no longer show a check, docs anchors, breadcrumbs and footer links have 44px tap areas on touch, table code tokens no longer wrap mid-word, docs tables keep their first column on phones and show a scroll fade, the TOC highlights the right section and puts the section in the URL, and decorative icons are hidden from screen readers.** The page reveal is 280ms and the page-to-page fade 180ms.
 
 ### Changed
 - **`marbor nodes fit --json` now prints `{"nodes": [...]}`, the same object `GET /admin/nodes/model-fit` returns (Breaking for scripts).** It used to print a bare array. The bare array is gone and no flag restores it: use `jq '.nodes[]'` where you used `jq '.[]'`. Fields the CLI does not list are now kept. The human table is unchanged.
