@@ -1890,6 +1890,11 @@ export const mockFavorites = [
   'Qwen/Qwen2.5-Coder-7B-Instruct-GGUF',
 ];
 
+// The demo's favourites for this page load. The Advisor is remounted on every
+// visit, so the stars live here rather than in component state; a reload
+// resets them like the rest of the demo data.
+export const demoFavoriteIds = new Set<string>(mockFavorites);
+
 export const mockHFModels = [
   {
     id: 'bartowski/Llama-3.2-3B-Instruct-GGUF',

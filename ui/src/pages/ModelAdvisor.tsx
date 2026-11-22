@@ -25,7 +25,7 @@ import { startPull, isPullActive, subscribe as subscribePullProgress, getSnapsho
 import { browseHelpClaim, browseEmptyCopy, isGGUFSearch, nodeVramUnknown, curatedFitTitle, VRAM_UNKNOWN_NOTE } from '../lib/advisorCopy';
 import { isDownloadOnlyRuntime, pullOptionsFor, sizeNotCurated as isSizeNotCurated } from '../lib/downloadOnly';
 import { useDemoMode } from '../hooks/useDemoMode';
-import { mockHFModels, mockHFSafetensorsModels, mockSafetensorsDetails,mockHFRepoDetails, mockSystemInfo, mockModelCatalogResponse, mockFavorites, pickQuant } from '../lib/mockData';
+import { mockHFModels, mockHFSafetensorsModels, mockSafetensorsDetails,mockHFRepoDetails, mockSystemInfo, mockModelCatalogResponse, demoFavoriteIds, pickQuant } from '../lib/mockData';
 import type { CatalogModelFit } from '../types';
 import { readLastModelCount, writeLastModelCount, readLastNodeCount } from '../lib/nodeCount';
 import { CustomDatePicker } from '../components/DateTimePicker';
@@ -1075,7 +1075,7 @@ export function ModelAdvisor() {
 
   useEffect(() => {
     if (demoMode) {
-      setFavoriteIds(new Set(mockFavorites));
+      setFavoriteIds(new Set(demoFavoriteIds));
       return;
     }
     fetchFavorites().then(ids => setFavoriteIds(new Set(ids))).catch(() => {});
@@ -1094,7 +1094,10 @@ export function ModelAdvisor() {
     if (wasFavorite) next.delete(modelId); else next.add(modelId);
     favoriteIdsRef.current = next;
     setFavoriteIds(next);
-    if (demoMode) return;
+    if (demoMode) {
+      if (wasFavorite) demoFavoriteIds.delete(modelId); else demoFavoriteIds.add(modelId);
+      return;
+    }
     const revert = () => setFavoriteIds(prev => {
       const reverted = new Set(prev);
       if (wasFavorite) reverted.add(modelId); else reverted.delete(modelId);
