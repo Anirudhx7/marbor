@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { portalTarget, showAsPopover } from './topLayer';
+import { popupBounds, portalTarget, showAsPopover, useEscapeDismiss } from './topLayer';
 import { Calendar as CalendarIcon, Clock, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, X } from 'lucide-react';
 import { useTimezone } from '../hooks/useTimezone';
 import { formatWallInZone, nowWallInZone, wallDateTimeToUtcIso, formatInTimezone } from '../lib/time';
@@ -49,6 +49,7 @@ export function CustomDateTimePicker({
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  useEscapeDismiss(isOpen, () => setIsOpen(false), () => containerRef.current?.querySelector('button'));
 
   // Wall parsing: value is "YYYY-MM-DDTHH:MM" wall time in `tz`, not browser local.
   function parseWall(v: string): { y: number; m: number; d: number; h: number; mi: number } | null {
@@ -90,8 +91,9 @@ export function CustomDateTimePicker({
     const updateCoords = () => {
       if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
-      const spaceBelow = window.innerHeight - rect.bottom;
-      const spaceAbove = rect.top;
+      const bounds = popupBounds(containerRef.current);
+      const spaceBelow = bounds.bottom - rect.bottom;
+      const spaceAbove = rect.top - bounds.top;
       const left = clampLeft(rect.left, 320); // w-80
       const margin = POPUP_VIEWPORT_MARGIN + 6;
       if (spaceBelow < 340 && spaceAbove > spaceBelow) {
@@ -494,6 +496,7 @@ export function CustomDatePicker({
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  useEscapeDismiss(isOpen, () => setIsOpen(false), () => containerRef.current?.querySelector('button'));
 
   function parseWallDate(v: string): { y: number; m: number; d: number } | null {
     const mm = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -527,8 +530,9 @@ export function CustomDatePicker({
     const updateCoords = () => {
       if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
-      const spaceBelow = window.innerHeight - rect.bottom;
-      const spaceAbove = rect.top;
+      const bounds = popupBounds(containerRef.current);
+      const spaceBelow = bounds.bottom - rect.bottom;
+      const spaceAbove = rect.top - bounds.top;
       const left = clampLeft(rect.left, 320); // w-80
       const margin = POPUP_VIEWPORT_MARGIN + 6;
       if (spaceBelow < 280 && spaceAbove > spaceBelow) {
@@ -821,6 +825,7 @@ export function CustomTimePicker({
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  useEscapeDismiss(isOpen, () => setIsOpen(false), () => containerRef.current?.querySelector('button'));
 
   const [hours, setHours] = useState(value ? parseInt(value.split(':')[0], 10) : 0);
   const [minutes, setMinutes] = useState(value ? parseInt(value.split(':')[1], 10) : 0);
@@ -840,8 +845,9 @@ export function CustomTimePicker({
     const updateCoords = () => {
       if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
-      const spaceBelow = window.innerHeight - rect.bottom;
-      const spaceAbove = rect.top;
+      const bounds = popupBounds(containerRef.current);
+      const spaceBelow = bounds.bottom - rect.bottom;
+      const spaceAbove = rect.top - bounds.top;
       const left = clampLeft(rect.left, 256); // w-64
       const margin = POPUP_VIEWPORT_MARGIN + 6;
       if (spaceBelow < 270 && spaceAbove > spaceBelow) {
