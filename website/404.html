@@ -90,7 +90,7 @@ h1 em{font-style:italic;color:var(--accent);font-weight:600}
   <span class="eyebrow"><span class="dot" aria-hidden="true"></span>Error · 404</span>
   <h1>Page <em>not found.</em></h1>
   <p class="lede">The page you're looking for doesn't exist. It may have moved or been removed.</p>
-  <div class="cta-row"><a class="btn btn-gold" href="https://marbor.in/">← Back to Marbor</a><a class="btn" href="https://marbor.in/docs/">Read the docs</a></div>
+  <div class="cta-row"><a class="btn btn-gold" href="https://marbor.in/">Back to Marbor</a><a class="btn" href="https://marbor.in/docs/">Read the docs</a></div>
 </div></main>
 <script>
 (function(){function syncT(){var b=document.getElementById('themeBtn');if(!b)return;var l=document.documentElement.classList.contains('light');b.setAttribute('aria-pressed',l?'true':'false');b.textContent=l?'☀':'◐';try{var cs=getComputedStyle(document.documentElement);var m=document.querySelector('meta[name="theme-color"]');if(m){var bg=cs.getPropertyValue('--bg').trim();if(bg)m.setAttribute('content',bg);}}catch(e){}}var b=document.getElementById('themeBtn');if(b)b.addEventListener('click',function(){var h=document.documentElement;h.classList.toggle('light');try{localStorage.setItem('marbor-theme',h.classList.contains('light')?'light':'dark');}catch(e){}syncT();});syncT();})();
