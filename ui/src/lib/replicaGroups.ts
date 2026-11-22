@@ -263,7 +263,9 @@ export interface CoverageSummary {
 
 export function coverageSummary(cov: readonly TopologyCoverage[]): CoverageSummary {
   const listed = cov.filter(c => c.state !== 'reporting');
-  const limitedCount = listed.filter(c => c.state === 'agent_update_needed' || c.state === 'env_unreadable').length;
+  // Every listed node has a detection gap (no agent data included), so the
+  // count matches the lines shown under it.
+  const limitedCount = listed.length;
   return { listed, limitedCount };
 }
 
