@@ -211,7 +211,7 @@ function PullJobCard({ job }: { job: PullProgressState }) {
                 <>
                   <div className="w-full h-1.5 bg-secondary rounded-full overflow-hidden mb-2">
                     <div
-                      className="h-full bg-primary transition-all duration-300"
+                      className="h-full bg-primary transition-[width] duration-300"
                       style={{ width: `${pct}%` }}
                     />
                   </div>

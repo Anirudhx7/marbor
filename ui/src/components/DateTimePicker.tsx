@@ -281,7 +281,7 @@ export function CustomDateTimePicker({
           type="button"
           disabled={disabled}
           onClick={() => setIsOpen(!isOpen)}
-          className={`flex items-center justify-between w-full border border-border bg-secondary/30 text-foreground px-3 py-2 text-sm rounded-lg text-left transition-all ${
+          className={`flex items-center justify-between w-full border border-border bg-secondary/30 text-foreground px-3 py-2 text-sm rounded-lg text-left transition-[color,background-color,border-color,box-shadow,opacity,transform] ${
             disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-secondary/50'
           }`}
         >
@@ -672,7 +672,7 @@ export function CustomDatePicker({
           type="button"
           disabled={disabled}
           onClick={() => setIsOpen(!isOpen)}
-          className={`flex items-center justify-between w-full border border-border bg-secondary/30 text-foreground px-3 py-2 text-sm rounded-lg text-left transition-all ${
+          className={`flex items-center justify-between w-full border border-border bg-secondary/30 text-foreground px-3 py-2 text-sm rounded-lg text-left transition-[color,background-color,border-color,box-shadow,opacity,transform] ${
             disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-secondary/50'
           }`}
         >
@@ -910,7 +910,7 @@ export function CustomTimePicker({
           type="button"
           disabled={disabled}
           onClick={() => setIsOpen(!isOpen)}
-          className={`flex items-center justify-between w-full border border-border bg-secondary/30 text-foreground px-3 py-2 text-sm rounded-lg text-left transition-all ${
+          className={`flex items-center justify-between w-full border border-border bg-secondary/30 text-foreground px-3 py-2 text-sm rounded-lg text-left transition-[color,background-color,border-color,box-shadow,opacity,transform] ${
             disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-secondary/50'
           }`}
         >
@@ -1141,7 +1141,7 @@ function ScrollWheel({ options, value, onChange, label }: ScrollWheelProps) {
                 onChange(opt);
                 scrollToValue(opt, true);
               }}
-              className={`block w-full py-1 text-center font-mono text-xs snap-center transition-all ${
+              className={`block w-full py-1 text-center font-mono text-xs snap-center transition-[color,background-color,border-color,box-shadow,opacity,transform] ${
                 isSelected
                   ? 'text-primary font-bold text-sm scale-110'
                   : 'text-foreground/40 hover:text-foreground/80 scale-95'
