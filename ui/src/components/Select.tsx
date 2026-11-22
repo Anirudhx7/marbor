@@ -173,6 +173,13 @@ export function CustomSelect({
       if (restoreFocus) triggerRef.current?.focus();
     };
     const onKey = (e: KeyboardEvent) => {
+      // Navigation and pick keys only belong to this list while focus is on its
+      // trigger (or nowhere). With focus in another field or on an option
+      // button, the key keeps its normal meaning there. Escape and Tab stay
+      // global so the list can always be dismissed.
+      const target = e.target as Node | null;
+      const ownsKeys = target === triggerRef.current || target === document.body || target === document.documentElement;
+      if (!ownsKeys && e.key !== 'Escape' && e.key !== 'Tab') return;
       if (e.key === 'Escape') {
         e.stopPropagation();
         e.preventDefault();
