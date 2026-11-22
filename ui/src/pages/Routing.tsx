@@ -1039,7 +1039,7 @@ export function Routing() {
             <Plus className="w-4 h-4" />
           </button>
         </div>
-        {degChainError && <p className="text-sm text-destructive mt-2">{degChainError}</p>}
+        {degChainError && <p role="alert" className="text-sm text-destructive mt-2">{degChainError}</p>}
       </div>
 
       <ModelAliasesSection demoMode={demoMode} knownModelNames={knownModelNames} />
