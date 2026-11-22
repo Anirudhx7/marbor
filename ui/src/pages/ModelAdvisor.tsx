@@ -1290,7 +1290,7 @@ export function ModelAdvisor() {
       )}
 
       {tab === 'favourites' ? (
-        <TabPanel id="advisor-favourites">
+        <TabPanel id="advisor-favourites" className="space-y-6">
           {loading && !demoMode ? (
             <div aria-hidden="true" className="bg-card border border-border rounded-xl p-5 shadow-sm animate-pulse">
               <div className="h-4 w-48 max-w-full bg-secondary rounded mb-3" />
@@ -1352,7 +1352,7 @@ export function ModelAdvisor() {
         )}
         </TabPanel>
       ) : (
-      <TabPanel id="advisor-browse">
+      <TabPanel id="advisor-browse" className="space-y-6">
       {activeNode && (
         <>
           <div className="bg-secondary/30 border border-border rounded-xl p-4 text-xs text-muted-foreground leading-relaxed shadow-sm">

@@ -20,10 +20,11 @@ export function panelProps(id: string) {
   return { role: 'tabpanel' as const, id: `${id}-panel`, 'aria-labelledby': `${id}-tab` };
 }
 
-// For content that has no single root element to spread panelProps onto. It
-// adds no box of its own.
-export function TabPanel({ id, children }: { id: string; children: ReactNode }) {
-  return <div {...panelProps(id)} className="contents">{children}</div>;
+// For content that has no single root element to spread panelProps onto. It is
+// a real box, so pass the spacing class its parent used on the children (for
+// example space-y-6); a display:contents wrapper would drop that spacing.
+export function TabPanel({ id, className, children }: { id: string; className?: string; children: ReactNode }) {
+  return <div {...panelProps(id)} className={className}>{children}</div>;
 }
 
 export function TabList({ label, className, children }: { label: string; className?: string; children: ReactNode }) {
