@@ -471,7 +471,9 @@ export function Activity() {
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Warmup Events (shown)</p>
               <h3 className="text-3xl font-extrabold mt-2 text-foreground">{warmupCount}</h3>
-              <p className="text-[10px] text-muted-foreground/60 mt-0.5">{decisions.length} predictive decisions (all loaded)</p>
+              <p className="text-[10px] text-muted-foreground/60 mt-0.5">{filteredDecisions.length === decisions.length
+                  ? `${decisions.length} predictive ${decisions.length === 1 ? 'decision' : 'decisions'}`
+                  : `${filteredDecisions.length} of ${decisions.length} predictive decisions match the filters`}</p>
             </div>
             <div className="p-2.5 bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20 rounded-lg">
               <Flame className="w-5 h-5" />
@@ -487,14 +489,16 @@ export function Activity() {
             <BrainCircuit className="w-4 h-4 text-primary" />
             <h2 className="text-sm font-semibold text-foreground">Predictive warmup decisions</h2>
             <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border ${getActivityKindColor('predictive')}`}>
-              {filteredDecisions.length} recent
+              {filteredDecisions.length === decisions.length ? `${decisions.length} recent` : `${filteredDecisions.length} of ${decisions.length}`}
             </span>
           </div>
           <span className="text-[11px] text-muted-foreground hidden sm:block">System-generated, not interleaved with operator timeline</span>
         </div>
         {filteredDecisions.length === 0 ? (
           <div className="p-6 text-center text-sm text-muted-foreground">
-            No predictive decisions recorded yet.
+            {decisions.length === 0
+              ? 'No predictive decisions recorded yet.'
+              : `No predictive decisions match the filters (${decisions.length} recorded).`}
           </div>
         ) : (
           <div className="divide-y divide-border">
