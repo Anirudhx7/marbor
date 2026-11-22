@@ -20,6 +20,7 @@ import { CustomTimePicker } from '../components/DateTimePicker';
 import { useTimezone } from '../hooks/useTimezone';
 import { formatDateTimeInZone, formatTimeInZone, formatInTimezone, wallDateTimeToUtcIso, decisionHourLabel } from '../lib/time';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
+import { TabList, tabProps } from '../components/TabList';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -1037,23 +1038,23 @@ export function Warmup() {
             <span className={`text-xs ${pingMessage.error ? 'text-destructive' : 'text-success'}`}>{pingMessage.text}</span>
           )}
         </div>
-        <div className="flex items-center bg-secondary rounded-lg p-0.5 text-sm w-full sm:w-auto overflow-x-auto no-scrollbar">
-          <button onClick={() => setTab('warmup')}
+        <TabList label="Warmup views" className="flex items-center bg-secondary rounded-lg p-0.5 text-sm w-full sm:w-auto overflow-x-auto no-scrollbar">
+          <button {...tabProps(tab === 'warmup')} onClick={() => setTab('warmup')}
             className={`flex-1 sm:flex-none flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-md font-medium transition-colors whitespace-nowrap min-w-0 ${tab === 'warmup' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
             <Flame className="w-3.5 h-3.5 shrink-0" /> Warmup
           </button>
-          <button onClick={() => setTab('schedules')}
+          <button {...tabProps(tab === 'schedules')} onClick={() => setTab('schedules')}
             className={`flex-1 sm:flex-none flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-md font-medium transition-colors whitespace-nowrap min-w-0 ${tab === 'schedules' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
             <Clock className="w-3.5 h-3.5 shrink-0" /> Schedules
             {schedules.length > 0 && (
               <span className="px-1 py-0.5 sm:px-1.5 bg-primary/10 text-primary rounded text-[10px] font-mono shrink-0">{schedules.length}</span>
             )}
           </button>
-          <button onClick={() => setTab('predictions')}
+          <button {...tabProps(tab === 'predictions')} onClick={() => setTab('predictions')}
             className={`flex-1 sm:flex-none flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-md font-medium transition-colors whitespace-nowrap min-w-0 ${tab === 'predictions' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
             <BrainCircuit className="w-3.5 h-3.5" /> Predictions
           </button>
-        </div>
+        </TabList>
       </div>
 
       {error && <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-3 text-sm text-destructive">{error}</div>}

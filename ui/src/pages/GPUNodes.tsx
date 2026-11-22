@@ -869,6 +869,7 @@ function NodeCard({ node, pinnedModels, replicaWorkers, onRemove, onDrain, onUnd
 }
 
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
+import { TabList, tabProps } from '../components/TabList';
 
 // Which input to focus for the first invalid field after a failed submit.
 const ADD_NODE_FIELD_IDS: Record<string, string> = { name: 'add-node-name', host: 'add-node-host', port: 'add-node-port' };
@@ -2440,11 +2441,11 @@ export function GPUNodes() {
       )}
 
       {(showReplicaTab || view === 'replicas') && (
-        <div role="group" aria-label="GPU nodes views" className="flex items-center gap-1 p-1 bg-secondary rounded-lg w-fit">
+        <TabList label="GPU nodes views" className="flex items-center gap-1 p-1 bg-secondary rounded-lg w-fit">
           {(['nodes', 'replicas'] as const).map((v) => (
             <button
               key={v}
-              aria-pressed={view === v}
+              {...tabProps(view === v)}
               onClick={() => setView(v)}
               className={`px-4 py-1.5 min-h-[40px] sm:min-h-0 text-sm font-medium rounded-md transition-colors duration-200 ease-out ${view === v ? 'bg-card shadow-sm text-foreground border border-border' : 'text-muted-foreground hover:text-foreground'}`}
             >
@@ -2454,7 +2455,7 @@ export function GPUNodes() {
               )}
             </button>
           ))}
-        </div>
+        </TabList>
       )}
 
       {view === 'nodes' && readyLineVisible(readyIds, dismissedReady) && (

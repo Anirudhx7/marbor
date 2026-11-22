@@ -14,6 +14,7 @@ import { CustomSelect } from '../components/Select';
 import { currentAppPath } from '../hooks/useDemoMode';
 import { useTimezone } from '../hooks/useTimezone';
 import { formatDateInZone } from '../lib/time';
+import { TabList, tabProps } from '../components/TabList';
 
 const STATUS_BADGE: Record<string, { variant: 'warning' | 'success' | 'destructive' | 'muted'; label: string }> = {
   pending:   { variant: 'warning',     label: 'Pending' },
@@ -123,14 +124,14 @@ function ApproveModal({ user, onClose, onDone }: ApproveModalProps) {
   return (
     <Modal isOpen={true} onClose={onClose} title={`Approve ${user.username}`}>
       <div className="space-y-4">
-        <div className="flex gap-2">
+        <TabList label="Key source" className="flex gap-2">
           {(['create', 'assign'] as const).map(m => (
-            <button key={m} onClick={() => setMode(m)}
+            <button key={m} {...tabProps(mode === m)} onClick={() => setMode(m)}
               className={`flex-1 py-1.5 text-xs font-medium rounded-lg border transition-colors ${mode === m ? 'bg-primary/10 border-primary text-primary' : 'border-border text-muted-foreground hover:bg-secondary'}`}>
               {m === 'create' ? 'Create New Key' : 'Assign Existing Key'}
             </button>
           ))}
-        </div>
+        </TabList>
 
         {mode === 'assign' ? (
           <div>
