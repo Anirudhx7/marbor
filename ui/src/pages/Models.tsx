@@ -471,7 +471,7 @@ function ModelFleetCard({ model, demoMode, replicaByNode, nodeStates, deleteGuar
                 onClick={handleDeleteTrashClick}
                 disabled={!deleteNode}
                 title={deleteBlockedReason ? `${deleteNode} is part of a multi-node replica - manage this from GPU Nodes` : `Delete ${model.name} from ${deleteNode}`}
-                className="px-3 py-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-xs font-medium bg-secondary border border-border rounded-md text-destructive hover:bg-destructive/10 hover:border-destructive/50 transition-all duration-200 ease-out disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0"
+                className="px-3 py-2 min-h-[44px] min-w-[44px] flex items-center justify-center text-xs font-medium bg-secondary border border-border rounded-md text-destructive hover:bg-destructive/10 hover:border-destructive/50 transition-[color,background-color,border-color,box-shadow,opacity,transform] duration-200 ease-out disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0"
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
@@ -899,7 +899,7 @@ export function Models() {
 
           {/* Filters - search + toggles, smooth picking/clearing like sidenav 200ms ease */}
           <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-            <div className="w-full sm:max-w-md transition-all duration-200 ease-out">
+            <div className="w-full sm:max-w-md transition-[color,background-color,border-color,box-shadow,opacity,transform] duration-200 ease-out">
               <SearchInput
                 value={searchQuery}
                 onChange={setSearchQuery}

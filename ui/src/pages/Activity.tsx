@@ -411,7 +411,7 @@ export function Activity() {
           <button
             onClick={() => loadActivity({ mode: 'refresh', manual: true })}
             disabled={loading}
-            className="flex items-center gap-2 px-3 py-2 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer disabled:opacity-50"
+            className="flex items-center gap-2 px-3 py-2 bg-secondary text-foreground hover:bg-secondary/80 rounded-lg text-sm font-medium transition-[color,background-color,border-color,box-shadow,opacity,transform] duration-200 cursor-pointer disabled:opacity-50"
           >
             <RefreshCw className={`w-4 h-4 ${refreshSpin ? 'animate-spin' : ''}`} />
             Refresh
@@ -421,7 +421,7 @@ export function Activity() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-5 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group">
+        <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-5 shadow-sm hover:shadow-md transition-[color,background-color,border-color,box-shadow,opacity,transform] duration-300 relative overflow-hidden group">
           <div className="absolute right-0 top-0 w-24 h-24 bg-gradient-to-br from-blue-500/10 to-transparent rounded-bl-full group-hover:scale-110 transition-transform duration-300" />
           <div className="flex items-start justify-between">
             <div>
@@ -438,7 +438,7 @@ export function Activity() {
           </div>
         </div>
 
-        <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-5 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group">
+        <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-5 shadow-sm hover:shadow-md transition-[color,background-color,border-color,box-shadow,opacity,transform] duration-300 relative overflow-hidden group">
           <div className="absolute right-0 top-0 w-24 h-24 bg-gradient-to-br from-purple-500/10 to-transparent rounded-bl-full group-hover:scale-110 transition-transform duration-300" />
           <div className="flex items-start justify-between">
             <div>
@@ -452,7 +452,7 @@ export function Activity() {
           </div>
         </div>
 
-        <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-5 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group">
+        <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-5 shadow-sm hover:shadow-md transition-[color,background-color,border-color,box-shadow,opacity,transform] duration-300 relative overflow-hidden group">
           <div className="absolute right-0 top-0 w-24 h-24 bg-gradient-to-br from-amber-500/10 to-transparent rounded-bl-full group-hover:scale-110 transition-transform duration-300" />
           <div className="flex items-start justify-between">
             <div>
@@ -465,7 +465,7 @@ export function Activity() {
           </div>
         </div>
 
-        <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-5 shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group">
+        <div className="bg-card/50 backdrop-blur-sm border border-border/80 rounded-xl p-5 shadow-sm hover:shadow-md transition-[color,background-color,border-color,box-shadow,opacity,transform] duration-300 relative overflow-hidden group">
           <div className="absolute right-0 top-0 w-24 h-24 bg-gradient-to-br from-orange-500/10 to-transparent rounded-bl-full group-hover:scale-110 transition-transform duration-300" />
           <div className="flex items-start justify-between">
             <div>

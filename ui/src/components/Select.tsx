@@ -237,7 +237,7 @@ export function CustomSelect({
             toggleOpen();
           }
         }}
-        className={`flex items-center justify-between w-full border border-border bg-secondary/30 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 text-left transition-all ${sizeClasses} ${
+        className={`flex items-center justify-between w-full border border-border bg-secondary/30 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 text-left transition-[color,background-color,border-color,box-shadow,opacity,transform] ${sizeClasses} ${
           disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-secondary/50'
         }`}
       >
@@ -389,7 +389,7 @@ export function CustomCombobox({
               else { setSearchTerm(''); setIsOpen(true); }
             }
           }}
-          className={`w-full pr-8 px-3 py-2 text-sm rounded-lg border border-border bg-secondary/30 text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all ${
+          className={`w-full pr-8 px-3 py-2 text-sm rounded-lg border border-border bg-secondary/30 text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40 transition-[color,background-color,border-color,box-shadow,opacity,transform] ${
             disabled ? 'opacity-50 cursor-not-allowed' : isCoarse ? 'cursor-pointer hover:bg-secondary/40' : 'cursor-text hover:bg-secondary/40'
           }`}
         />
@@ -567,7 +567,7 @@ export function CustomTagCombobox({
               else setIsOpen(true);
             }
           }}
-          className={`w-full pr-8 px-3 py-2 text-sm rounded-lg border border-border bg-secondary/30 text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all ${
+          className={`w-full pr-8 px-3 py-2 text-sm rounded-lg border border-border bg-secondary/30 text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/40 transition-[color,background-color,border-color,box-shadow,opacity,transform] ${
             disabled ? 'opacity-50 cursor-not-allowed' : isCoarseTag ? 'cursor-pointer hover:bg-secondary/40' : 'cursor-text hover:bg-secondary/40'
           }`}
         />

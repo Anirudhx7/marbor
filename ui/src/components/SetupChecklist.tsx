@@ -136,7 +136,7 @@ export function SetupChecklist({
       <div className="mt-5">
         <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
           <div
-            className="bg-primary h-2 rounded-full transition-all duration-500 ease-out"
+            className="bg-primary h-2 rounded-full transition-[width] duration-500 ease-out"
             style={{ width: `${progressPct}%` }}
           />
         </div>

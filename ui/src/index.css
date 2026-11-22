@@ -243,7 +243,7 @@ html {
 
 /* Base Shadow styles to prevent 'flatness' in light mode - warm ink shadow */
 .glass-panel {
-  @apply bg-card border border-border dark:shadow-none transition-all duration-200;
+  @apply bg-card border border-border dark:shadow-none transition-[color,background-color,border-color,box-shadow,opacity,transform] duration-200;
   box-shadow: 0 1px 3px rgba(28,24,12,0.06), 0 1px 2px rgba(28,24,12,0.04);
 }
 .dark .glass-panel {
@@ -347,7 +347,7 @@ input[type="checkbox"] {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
+  transition: color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease, transform 0.2s ease;
   position: relative;
   flex-shrink: 0;
 }
