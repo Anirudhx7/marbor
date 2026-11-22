@@ -216,3 +216,11 @@ section,#install{scroll-margin-top:96px}
 @media (pointer:coarse){.btn{min-height:48px}.icon-btn{width:44px;height:44px}.doc-nav-link{min-height:44px}.toc li a{min-height:44px}}
 /* Narrow screens: wrap long code lines instead of forcing sideways scrolling. */
 @media(max-width:640px){.doc-content pre.code code{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}}
+
+/* Touch hit areas: the visuals stay small, the tappable area reaches 44px. */
+@media (pointer:coarse){
+.doc-content a.anchor,.crumbs a,.breadcrumb a{position:relative}
+.doc-content a.anchor::after{content:"";position:absolute;inset:-14px}
+.crumbs a::after,.breadcrumb a::after{content:"";position:absolute;inset:-14px -6px}
+footer a{display:inline-flex;align-items:center;min-height:44px}
+}
