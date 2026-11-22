@@ -272,6 +272,18 @@ footer a{display:inline-flex;align-items:center;min-height:44px}
 .doc-content td:first-child,.doc-content th:first-child{position:sticky;left:0;z-index:1;background:var(--bg-elevated)}
 .doc-content thead th:first-child{background:linear-gradient(var(--accent-bg),var(--accent-bg)),var(--bg-elevated)}
 }
+
+/* Phone and tablet: the sidebar and the page contents are hidden above, so the
+   same two lists are reachable as disclosures at the top of the page. */
+.doc-mobile-nav{display:none}
+@media(max-width:900px){
+.doc-mobile-nav{display:grid;gap:8px;margin:0 0 14px}
+.doc-mobile-nav details{border:1px solid var(--border);border-radius:var(--r-md);background:var(--bg-elevated)}
+.doc-mobile-nav summary{display:flex;align-items:center;min-height:44px;padding:0 14px;cursor:pointer;font-weight:650;font-size:14px;color:var(--text)}
+.doc-mobile-nav details[open] summary{border-bottom:1px solid var(--border-subtle)}
+.doc-mobile-list,.doc-mobile-nav details>ul,.doc-mobile-nav details>ol{padding:6px 14px 12px;margin:0;list-style:none}
+.doc-mobile-nav .doc-nav-link,.doc-mobile-nav details a{display:flex;align-items:center;min-height:44px}
+}
 </style>
 </head>
 <body>
@@ -315,6 +327,34 @@ footer a{display:inline-flex;align-items:center;min-height:44px}
 </nav>
 
   <main class="doc-main" id="main">
+    <div class="doc-mobile-nav">
+      <details><summary>Docs menu</summary><div class="doc-mobile-list"><a class="doc-nav-link home" href="../docs/index.html">← Docs home</a>
+    <div class="nav-group">
+      <div class="nav-group-title">Runtimes</div>
+      <a class="doc-nav-link" href="../docs/ollama.html">Ollama</a><a class="doc-nav-link active" aria-current="page" href="../docs/vllm.html">vLLM without Kubernetes</a><a class="doc-nav-link" href="../docs/mlx.html">MLX on Mac</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Guides</div>
+      <a class="doc-nav-link" href="../docs/INTEGRATIONS.html">Integrations</a><a class="doc-nav-link" href="../docs/LIMITATIONS.html">Known limitations</a><a class="doc-nav-link" href="../docs/SAVINGS-MATH.html">Savings math</a><a class="doc-nav-link" href="../docs/USE-CASES.html">Ollama alternatives & use cases</a><a class="doc-nav-link" href="../docs/REVERSE-PROXY.html">vLLM/Ollama reverse proxy</a><a class="doc-nav-link" href="../docs/backup.html">Backup & Restore</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">How-to guides</div>
+      <a class="doc-nav-link" href="../docs/guides/load-balance-vllm-servers.html">Load balance multiple vLLM servers</a><a class="doc-nav-link" href="../docs/guides/one-endpoint-for-several-ollama-machines.html">One endpoint for several Ollama machines</a><a class="doc-nav-link" href="../docs/guides/several-llama-cpp-servers-one-endpoint.html">Several llama.cpp servers, one endpoint</a><a class="doc-nav-link" href="../docs/guides/mac-fleet-mlx-one-endpoint.html">Several Macs as one MLX endpoint</a><a class="doc-nav-link" href="../docs/guides/per-key-quotas-self-hosted-llm.html">Per-key quotas and rate limits</a><a class="doc-nav-link" href="../docs/guides/when-every-gpu-is-busy.html">When every GPU is busy</a><a class="doc-nav-link" href="../docs/guides/monitor-llm-fleet-prometheus-grafana.html">Monitor the fleet with Prometheus</a><a class="doc-nav-link" href="../docs/guides/drain-gpu-node-without-downtime.html">Drain a GPU node without downtime</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Deployment</div>
+      <a class="doc-nav-link" href="../docs/PRODUCTION.html">Production</a><a class="doc-nav-link" href="../docs/deploy/aws-ec2.html">AWS EC2</a><a class="doc-nav-link" href="../docs/deploy/gpu-node-registration.html">GPU node registration</a><a class="doc-nav-link" href="../docs/deploy/marbor-agent-enrollment.html">marbor agent enrollment</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Integrations</div>
+      <a class="doc-nav-link" href="../docs/integrations/continue.html">Continue</a><a class="doc-nav-link" href="../docs/integrations/librechat.html">LibreChat</a><a class="doc-nav-link" href="../docs/integrations/litellm.html">LiteLLM</a><a class="doc-nav-link" href="../docs/integrations/open-webui.html">Open WebUI</a>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title">Reference</div>
+      <a class="doc-nav-link" href="../docs/cli.html">CLI reference</a><a class="doc-nav-link" href="../docs/COMPATIBILITY.html">Compatibility & Guarantees</a>
+    </div></div></details>
+      <details><summary>On this page</summary><ul class="toc"><li class="lvl-2"><a href="#quick-start-for-vllm-clusters">Quick start for vLLM clusters</a></li><li class="lvl-3"><a href="#1-start-marbor-via-docker-compose">1. Start Marbor via Docker Compose</a></li><li class="lvl-3"><a href="#2-register-your-vllm-nodes">2. Register your vLLM nodes</a></li><li class="lvl-3"><a href="#3-point-your-application-at-the-unified-endpoint">3. Point your application at the unified endpoint</a></li><li class="lvl-2"><a href="#architecture-marbor-alongside-litellm">Architecture: Marbor alongside LiteLLM</a></li><li class="lvl-2"><a href="#three-operational-outcomes-shipped-today">Three operational outcomes shipped today</a></li><li class="lvl-2"><a href="#roadmap">Roadmap</a></li><li class="lvl-2"><a href="#when-not-to-use-marbor">When NOT to use Marbor</a></li><li class="lvl-2"><a href="#next-steps">Next steps</a></li></ul></details>
+    </div>
     <article class="doc-content doc-card"><div class="doc-card-body">
       <nav class="breadcrumb" aria-label="Breadcrumb"><ol><li><a href="../index.html">Home</a></li><li aria-hidden="true"><span class="sep">/</span></li><li><a href="../docs/index.html">Docs</a></li><li aria-hidden="true"><span class="sep">/</span></li><li><span class="current" aria-current="page">Production vLLM without Kubernetes</span></li></ol></nav>
       <h1 id="production-vllm-without-kubernetes">Production vLLM without Kubernetes<a class="anchor" href="#production-vllm-without-kubernetes" aria-label="Link to section">#</a></h1>
