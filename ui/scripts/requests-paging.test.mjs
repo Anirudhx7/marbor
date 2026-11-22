@@ -205,3 +205,11 @@ test('an empty page is named for what caused it', () => {
   assert.equal(emptyStateKind(null, true), 'filtered');
   assert.equal(emptyStateKind(null, false), 'none');
 });
+
+test('cloudNodeLabel shows the provider, or a clean Cloud label when none is recorded', async () => {
+  const { cloudNodeLabel } = await import('../src/lib/requestsView.ts');
+  assert.equal(cloudNodeLabel('cloud:openai'), 'cloud:openai');
+  assert.equal(cloudNodeLabel('cloud:'), 'Cloud');
+  assert.equal(cloudNodeLabel(''), 'Cloud');
+  assert.equal(cloudNodeLabel(undefined), 'Cloud');
+});
