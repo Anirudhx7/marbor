@@ -19,7 +19,7 @@ import { ReplicaGroupsTab } from '../components/ReplicaGroupsTab';
 import { ModelConfigModal } from '../components/ModelConfigModal';
 import { CustomSelect } from '../components/Select';
 import { RuntimeBadge } from '../components/RuntimeBadge';
-import { mockGPUNodes, mockRuntimeLogLines, withDemoSignals } from '../lib/mockData';
+import { mockGPUNodes, mockRuntimeLogLinesFor, withDemoSignals } from '../lib/mockData';
 import { SoleReplicaImpactNotice } from '../components/SoleReplicaImpactNotice';
 import { useSoleReplicaImpact } from '../lib/useSoleReplicaImpact';
 import { impactVisible, isChecking, confirmLabel, soleActionArgs, runtimeActionQuery, withoutHover, SOLE_REPLICA_CODE } from '../lib/soleReplica';
@@ -1274,7 +1274,7 @@ export function GPUNodes() {
     setLogsError(null);
     setLogsModalOpen(true);
     if (demoMode) {
-      setLogsLines(mockRuntimeLogLines);
+      setLogsLines(mockRuntimeLogLinesFor(agentNode));
       return;
     }
     setLogsBusy(true);
