@@ -49,7 +49,11 @@ const statusLabels = {
 
 export function StatusDot({ status, size = 'md', pulse = false, halo = false, title }: StatusDotProps) {
   return (
+    // role="img" with an accessible name: the colour alone told touch and
+    // screen-reader users nothing, since a title tooltip never reaches them.
     <span
+      role="img"
+      aria-label={title ?? statusLabels[status]}
       title={title ?? statusLabels[status]}
       className={`inline-block rounded-full ${statusColors[status]} ${sizeClasses[size]} ${
         pulse ? 'animate-pulse' : ''
