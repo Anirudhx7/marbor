@@ -306,6 +306,8 @@ export function APIKeys() {
         expiresAt: newKeyForm.expiresAt || null,
       };
       setKeys([demoKey, ...keys]);
+      // Show the demo key in full once with its Copy button, as a live create does.
+      setCreatedKeys((q) => [...q, demoKey.key]);
       toastKeyCreated();
       if (keyModal.finish(token)) finishCreate();
       return;
