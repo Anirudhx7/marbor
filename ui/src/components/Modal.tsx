@@ -3,6 +3,10 @@ import { X } from 'lucide-react';
 import { ReactNode, useEffect, useId, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
+// Open modals, oldest first. Every modal listens on document, so without this
+// one Escape closed every stacked dialog at once. Only the top one reacts.
+const openModalStack: symbol[] = [];
+
 interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -33,8 +37,11 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = 'md' }: Mod
     if (!isOpen) return;
     const opener = document.activeElement as HTMLElement | null;
     const dialog = dialogRef.current;
+    const self = Symbol('modal');
+    openModalStack.push(self);
     dialog?.focus();
     const onKey = (e: KeyboardEvent) => {
+      if (openModalStack[openModalStack.length - 1] !== self) return;
       if (e.key === 'Escape') {
         e.stopPropagation();
         onCloseRef.current();
@@ -58,6 +65,8 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = 'md' }: Mod
     document.addEventListener('keydown', onKey);
     return () => {
       document.removeEventListener('keydown', onKey);
+      const at = openModalStack.indexOf(self);
+      if (at >= 0) openModalStack.splice(at, 1);
       if (opener && document.contains(opener)) opener.focus();
     };
   }, [isOpen]);
