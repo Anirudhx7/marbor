@@ -27,6 +27,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **The page-change fade is opacity only and 180ms** (it was 300ms with a slide).
 - **Demo: a pulled model now appears in the fleet (marked "Pulled in demo", findable by search) and a finished benchmark run is added to History.** Demo data only; a reload resets it.
 - **Docs: the agent enrollment page no longer links to a missing page, the LiteLLM page shows real arrows, and every docs page shows its content when JavaScript is off.**
+- **Docs: Copy sits in a header row above each code block,** long single-line commands wrap instead of clipping, index cards show whole sentences with a Live demo action under the heading, and phones and tablets get a Docs menu and an On this page disclosure at the top of each page.
 - **Escape closes only the top dialog when dialogs are stacked,** the dashboard honors the system reduced-motion setting everywhere, and layout properties are no longer animated outside the sidebar.
 - **Touch screens get 44px hit areas** on switches, selects, filter clear buttons, the demo banner dismiss, date picker month chevrons and the Why this node row. The drawn controls do not change.
 - **Tab rows on Models, Warmup, Users, Advisor and GPU Nodes are real tabs** with arrow-key navigation, and one-time secrets (new user passwords, reset links, approvals) now have a Copy button like API keys do.
