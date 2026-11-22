@@ -25,6 +25,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **The FX rate field accepts rates below 1** (0.92 no longer turns into 1.92), and choosing USD resets the rate to 1 so caps are not shown multiplied by the previous currency's rate.
 - **Dropdowns on the dashboard close on Escape without closing the dialog around them, move with the arrow keys, and expose listbox semantics to screen readers.**
 - **The page-change fade is opacity only and 180ms** (it was 300ms with a slide).
+- **Demo: a pulled model now appears in the fleet (marked "Pulled in demo", findable by search) and a finished benchmark run is added to History.** Demo data only; a reload resets it.
 - **Docs: the agent enrollment page no longer links to a missing page, the LiteLLM page shows real arrows, and every docs page shows its content when JavaScript is off.**
 
 ### Changed

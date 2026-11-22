@@ -1011,6 +1011,47 @@ export const mockModelCatalog: ModelCatalog = (() => {
   };
 })();
 
+// Demo-only fleet state for models pulled during this visit. A simulated pull
+// used to report success while the model never showed up anywhere; this keeps
+// the demo consistent with itself. In memory only: a reload resets it, like
+// every other demo change.
+interface MockPull { node: string; model: string; sizeBytes: number }
+let mockPulls: readonly MockPull[] = [];
+
+export function recordMockPull(node: string, model: string, sizeBytes: number): void {
+  if (mockPulls.some(p => p.node === node && p.model === model)) return;
+  mockPulls = [...mockPulls, { node, model, sizeBytes }];
+}
+
+export function isMockPulledModel(name: string): boolean {
+  return mockPulls.some(p => p.model === name);
+}
+
+// getMockModelCatalog is the seed catalog plus the models pulled this visit.
+// A pulled model is on disk on its node but not loaded, so it is never warm.
+export function getMockModelCatalog(): ModelCatalog {
+  if (mockPulls.length === 0) return mockModelCatalog;
+  const models = mockModelCatalog.models.map(m => ({ ...m, nodes: [...(m.nodes ?? [])] }));
+  for (const pull of mockPulls) {
+    const node = mockGPUNodes.find(n => n.name === pull.node);
+    const entry = { name: pull.node, healthy: node ? node.health === 'healthy' : true, warm: false, runtime: node?.runtime };
+    const existing = models.find(m => m.name === pull.model);
+    if (existing) {
+      if (!existing.nodes.some(n => n.name === pull.node)) existing.nodes.push(entry);
+    } else {
+      models.push({
+        name: pull.model,
+        size_vram: 0,
+        size_disk: pull.sizeBytes,
+        warm_count: 0,
+        total_nodes: mockGPUNodes.length,
+        nodes: [entry],
+      });
+    }
+  }
+  return { ...mockModelCatalog, total_models: models.length, models };
+}
+
 export const mockCloudProviders: CloudProvider[] = [
   {
     name: 'openai-gpt4o',
@@ -1916,6 +1957,19 @@ export const mockBenchmarkRuns: BenchmarkRun[] = [
     created_at: '2026-07-14T11:47:00Z',
   },
 ];
+
+// Benchmark runs finished during this visit, newest first, shown ahead of the
+// seeded history so a completed run lands in History.
+let mockBenchmarkDone: readonly BenchmarkRun[] = [];
+
+export function recordMockBenchmark(run: BenchmarkRun): void {
+  const nextId = Math.max(0, ...mockBenchmarkRuns.map(r => r.id), ...mockBenchmarkDone.map(r => r.id)) + 1;
+  mockBenchmarkDone = [{ ...run, id: nextId }, ...mockBenchmarkDone];
+}
+
+export function getMockBenchmarkRuns(): BenchmarkRun[] {
+  return [...mockBenchmarkDone, ...mockBenchmarkRuns];
+}
 
 export const mockHFRepoDetails: Record<string, any> = {
   'bartowski/Llama-3.2-3B-Instruct-GGUF': {
