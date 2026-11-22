@@ -192,6 +192,7 @@ h1 em{font-style:italic;color:var(--accent);font-weight:600}
 .doc-content blockquote{margin:0 0 18px;padding:14px 18px;border:1px solid var(--border);border-left:3px solid var(--accent);background:var(--accent-bg);border-radius:0 var(--r-md) var(--r-md) 0;color:var(--text)}
 .doc-content blockquote p{margin:0;color:var(--text)}
 .table-scroll{overflow-x:auto;margin:0 0 20px;border:1px solid var(--border);border-radius:var(--r-md);background:var(--bg-elevated);scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+.table-scroll{background:linear-gradient(to right,var(--bg-elevated) 30%,transparent) left center/36px 100% no-repeat local,linear-gradient(to left,var(--bg-elevated) 30%,transparent) right center/36px 100% no-repeat local,radial-gradient(farthest-side at 0 50%,rgba(0,0,0,.16),transparent) left center/12px 100% no-repeat scroll,radial-gradient(farthest-side at 100% 50%,rgba(0,0,0,.16),transparent) right center/12px 100% no-repeat scroll,var(--bg-elevated)}
 .table-scroll:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .table-scroll::-webkit-scrollbar{height:8px;width:8px}
 .table-scroll::-webkit-scrollbar-track{background:transparent}
@@ -201,7 +202,7 @@ h1 em{font-style:italic;color:var(--accent);font-weight:600}
 .doc-content th,.doc-content td{padding:13px 18px;text-align:left;border-bottom:1px solid var(--border-subtle)}
 .doc-content thead th{background:var(--accent-bg);font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);font-weight:700}
 .doc-content tbody tr:last-child td{border-bottom:none}
-.doc-content td code{font-size:12px}
+.doc-content td code{font-size:12px;white-space:nowrap;overflow-wrap:normal}
 .doc-foot-edit{margin-top:44px;padding-top:18px;border-top:1px solid var(--border-subtle)}
 .pager{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
 .page-card{display:block;border:1px solid var(--border);border-radius:var(--r-md);background:var(--bg);padding:14px 16px;transition:border-color .18s,transform .18s var(--ease)}
