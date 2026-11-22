@@ -27,6 +27,7 @@ import { CustomDateTimePicker } from '../components/DateTimePicker';
 import { formatRateLimit } from '../lib/roundPrice';
 import { parseKeyForm } from '../lib/formValidation';
 import { useModalForm, errorMessage } from '../lib/useModalForm';
+import { copyText } from '../lib/clipboard';
 import { FormError } from '../components/FormError';
 
 // Which input to focus for the first invalid field after a failed submit.
@@ -266,35 +267,7 @@ export function APIKeys() {
   );
 
   const copyToClipboard = (key: string, id: string) => {
-    const doCopy = () => {
-      // Modern Clipboard API (HTTPS / localhost only)
-      if (navigator.clipboard && window.isSecureContext) {
-        navigator.clipboard.writeText(key).catch(() => legacyCopy(key));
-      } else {
-        legacyCopy(key);
-      }
-    };
-
-    const legacyCopy = (text: string) => {
-      // Works on plain HTTP. Must run synchronously inside a user-gesture handler.
-      const el = document.createElement('textarea');
-      el.value = text;
-      el.setAttribute('readonly', '');
-      // Off-screen but NOT opacity:0 - some browsers block copy from invisible elements.
-      el.style.cssText = 'position:absolute;left:-9999px;top:auto;width:1px;height:1px';
-      document.body.appendChild(el);
-      el.focus();
-      el.select();
-      el.setSelectionRange(0, text.length);
-      try {
-        document.execCommand('copy');
-      } catch (_) {
-        // Last resort: nothing we can do silently
-      }
-      document.body.removeChild(el);
-    };
-
-    doCopy();
+    copyText(key);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
   };
