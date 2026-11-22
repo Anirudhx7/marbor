@@ -251,7 +251,9 @@ export const Sidebar = memo(function Sidebar({ onLogout, session, pendingCount =
           <div className="relative group/nav">
             <button
               onClick={onLogout}
-              className={`flex items-center h-10 w-full rounded-lg text-sm font-medium text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] px-3 ${collapsed ? 'md:px-[17px]' : ''}`}
+              disabled={forcedDemo}
+              title={forcedDemo ? 'Logout is not available in the demo' : undefined}
+              className={`flex items-center h-10 w-full rounded-lg text-sm font-medium text-muted-foreground enabled:hover:text-destructive enabled:hover:bg-destructive/10 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] px-3 ${collapsed ? 'md:px-[17px]' : ''}`}
             >
               <LogOut className="w-[18px] h-[18px] shrink-0" strokeWidth={1.75} />
               <span className={labelClass}>Logout</span>
