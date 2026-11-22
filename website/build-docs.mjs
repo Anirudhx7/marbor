@@ -394,6 +394,11 @@ function faqJsonLd(slug) {
 
 const DOC_CSS = readFileSync(join(__dirname, "docs.css"), "utf8");
 
+const DASH_CAPTION = "The Marbor dashboard: fleet health, warm models and routing in one view.";
+function dashboardFigure(r) {
+  return `<figure class="doc-figure"><img src="${r}screenshots/dashboard.png" width="1600" height="1400" loading="lazy" alt="The Marbor dashboard showing fleet health, warm models and routing." /><figcaption>${DASH_CAPTION}</figcaption></figure>`;
+}
+
 function page({ slug, title, contentHtml, headings }) {
   const r = relRoot(slug);
   const fullTitle = TITLE_OVERRIDES[slug] || `${title} · Marbor docs`;
@@ -465,7 +470,7 @@ ${BRAND_HTML(r)}
     </div>
     <article class="doc-content doc-card"><div class="doc-card-body">
       <nav class="breadcrumb" aria-label="Breadcrumb"><ol>${breadcrumb(slug, title)}</ol></nav>
-      ${contentHtml}
+      ${slug === "PRODUCTION" ? dashboardFigure(r) : ""}${contentHtml}
       <div class="doc-foot-edit">
         ${pagerHtml(slug)}
       </div>
@@ -519,6 +524,11 @@ function docsIndexPage() {
 <title>Documentation · Marbor</title>
 <meta name="description" content="Marbor documentation -- integrations, production deployment, savings math, and use cases." />
 <link rel="canonical" href="https://marbor.in/docs/" />
+<meta property="og:image" content="https://marbor.in/screenshots/dashboard.png" />
+<meta property="og:image:alt" content="marbor admin dashboard" />
+<meta property="og:image:width" content="1600" />
+<meta property="og:image:height" content="1400" />
+<meta name="twitter:image" content="https://marbor.in/screenshots/dashboard.png" />
 <link rel="icon" type="image/svg+xml" href="${r}favicon.svg" />
 <link rel="icon" type="image/png" sizes="48x48" href="${r}favicon-48.png" />
 <link rel="icon" type="image/png" sizes="96x96" href="${r}favicon-96.png" />
@@ -554,6 +564,7 @@ ${DOC_GROUPS.map((g) => `
 </div>
 </nav>
 <div class="doc-main">
+  ${dashboardFigure(r)}
   ${DOC_GROUPS.map((g) => `
     <section class="doc-card" data-reveal>
       <div class="doc-card-head"><h2 class="t"><span class="fact">${g.title}</span><span class="fact"><b>${g.items.length} page${g.items.length === 1 ? "" : "s"}</b></span></h2></div>
