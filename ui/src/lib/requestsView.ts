@@ -268,3 +268,11 @@ export function waitCloudSummary(queueWaitMs: number | undefined, cloudMs: numbe
   if (queueWaitMs === undefined && cloudMs === undefined) return undefined;
   return `waited ${formatDurationMs(queueWaitMs)}, cloud ${formatDurationMs(cloudMs)}`;
 }
+
+// The label for the node pill of a cloud-served request. The node field holds
+// "cloud:<provider>"; with no provider recorded the pill reads just "Cloud"
+// rather than a dangling "cloud:".
+export function cloudNodeLabel(node: string | undefined | null): string {
+  const provider = (node ?? '').replace(/^cloud:/, '').trim();
+  return provider ? `cloud:${provider}` : 'Cloud';
+}

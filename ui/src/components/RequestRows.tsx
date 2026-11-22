@@ -2,7 +2,7 @@ import { memo } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { RequestEntry, RoutingDecision } from '../types';
 import { formatRelativeTime } from '../lib/time';
-import { waitCloudSummary } from '../lib/requestsView';
+import { cloudNodeLabel, waitCloudSummary } from '../lib/requestsView';
 import { COLUMNS, ExplainPanel, ReasonBadge, ScrollableValue, StatusBadge } from './RequestLogParts';
 
 export type ExplainState = RoutingDecision | 'loading' | 'error' | undefined;
@@ -50,9 +50,9 @@ export const RequestRow = memo(function RequestRow({ entry, expanded, explain, o
           {entry.cloud ? (
             <span
               className="inline-block max-w-full truncate align-middle text-xs font-medium px-2 py-0.5 rounded-md border bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20"
-              title={`cloud:${(entry.node || '').replace('cloud:', '')}`}
+              title={cloudNodeLabel(entry.node)}
             >
-              cloud:{(entry.node || '').replace('cloud:', '')}
+              {cloudNodeLabel(entry.node)}
             </span>
           ) : (
             <span className="block truncate text-foreground" title={entry.node || '-'}>
@@ -126,7 +126,7 @@ export const RequestCard = memo(function RequestCard({ entry, expanded, explain,
           <div className="text-sm text-foreground">
             {entry.cloud ? (
               <span className="text-xs font-medium px-2 py-0.5 rounded-md border bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20">
-                cloud:{(entry.node || '').replace('cloud:', '')}
+                {cloudNodeLabel(entry.node)}
               </span>
             ) : (
               entry.node || '-'
