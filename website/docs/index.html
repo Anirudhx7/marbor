@@ -248,6 +248,12 @@ section,#install{scroll-margin-top:96px}
 .crumbs a::after,.breadcrumb a::after{content:"";position:absolute;inset:-14px -6px}
 footer a{display:inline-flex;align-items:center;min-height:44px}
 }
+
+/* Phone: keep the first column visible while a wide table scrolls sideways. */
+@media (max-width:640px){
+.doc-content td:first-child,.doc-content th:first-child{position:sticky;left:0;z-index:1;background:var(--bg-elevated)}
+.doc-content thead th:first-child{background:linear-gradient(var(--accent-bg),var(--accent-bg)),var(--bg-elevated)}
+}
 </style>
 </head>
 <body>
