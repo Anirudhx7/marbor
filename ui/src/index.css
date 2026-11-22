@@ -421,3 +421,55 @@ input[type="checkbox"]:disabled {
 }
 
 
+
+/* Toasts: one region in the top layer (popover="manual"), bottom right, stacked.
+   The UA popover box is reset so the region sizes to its toasts. */
+.toast-region {
+  position: fixed;
+  inset: auto 16px 16px auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  overflow: visible;
+  width: min(24rem, calc(100vw - 2rem));
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+}
+.toast-region:popover-open { display: flex; }
+.toast-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 8px 10px 14px;
+  border-radius: 12px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+  box-shadow: 0 8px 24px rgba(28, 24, 12, 0.18);
+  animation: fade-in 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.toast-text { flex: 1; min-width: 0; font-size: 0.875rem; overflow-wrap: anywhere; }
+.toast-action, .toast-close {
+  flex-shrink: 0;
+  min-height: 44px;
+  min-width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: hsl(var(--primary));
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.toast-close { color: hsl(var(--muted-foreground)); }
+.toast-action:hover, .toast-close:hover { background: hsl(var(--secondary)); }
+@media (min-width: 640px) {
+  .toast-action, .toast-close { min-height: 32px; min-width: 32px; padding: 0 8px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast-item { animation: none; }
+}

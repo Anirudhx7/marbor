@@ -31,6 +31,7 @@ import { NODE_SIGNAL_IDS, type GPUNode, type ModelFitResponse, type NodeFit, typ
 import { formatDurationLong } from '../lib/time';
 import { actionableCount, bucketSuggestions, chipsByNode, hasReplicaContent, pruneDismissedReady, readDismissedReady, readyFingerprints, readyLineVisible, writeDismissedReady } from '../lib/replicaGroups';
 import type { NodeChip } from '../lib/replicaGroups';
+import { toastCreated, toastDeleted } from '../lib/toast';
 
 // vramOverridesToString mirrors the CLI's --vram-override comma-separated
 // "model=mb" convention, same as the editGPUIndices
@@ -1822,6 +1823,7 @@ export function GPUNodes() {
         signals: [],
       });
       setNodes(prev => [...prev, added]);
+      toastCreated(values.name);
       if (addModal.finish(token)) {
         setNewNode(EMPTY_NEW_NODE);
         closeAddModal();
@@ -1854,6 +1856,7 @@ export function GPUNodes() {
     // "Failed to add node". The form is cleared and closed only when it is
     // still the one that fired this request; a form reopened meanwhile keeps
     // whatever the operator typed into it.
+    toastCreated(values.name);
     const current = addModal.finish(token);
     if (current) {
       setNewNode(EMPTY_NEW_NODE);
@@ -1866,11 +1869,13 @@ export function GPUNodes() {
     if (demoMode) {
       setNodes(prev => prev.filter(n => n.name !== name));
       setActionError(null);
+      toastDeleted(name);
       return true;
     }
     if (!isLive) return false;
     try {
       await removeNode(name);
+      toastDeleted(name);
       await loadNodes();
       setActionError(null);
       return true;

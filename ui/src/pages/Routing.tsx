@@ -46,6 +46,7 @@ import {
 } from '../lib/api';
 import { useDemoMode } from '../hooks/useDemoMode';
 import { Savings, CloudProvider, CloudProviderInput, GPUNode } from '../types';
+import { toastCreated, toastDeleted, toastSettingsSaved } from '../lib/toast';
 
 // Known cloud fallback providers. All use plain `Authorization: Bearer <key>`
 // auth and an OpenAI-compatible /chat/completions schema, matching this
@@ -371,6 +372,7 @@ export function Routing() {
   const handleStrategyChange = async (strategy: string): Promise<boolean> => {
     if (demoMode) {
       setCurrentStrategyState(strategy);
+      toastSettingsSaved();
       return true;
     }
 
@@ -379,6 +381,7 @@ export function Routing() {
       if (!mountedRef.current) return true;
       setCurrentStrategyState(strategy);
       setStrategyError(null);
+      toastSettingsSaved();
       return true;
     } catch (err: any) {
       if (mountedRef.current) setStrategyError(err.message);
@@ -440,6 +443,7 @@ export function Routing() {
       }
     }
 
+    toastCreated(`Rule ${parsedPriority}`);
     if (!mountedRef.current) return;
     setIsCreateModalOpen(false);
     setNewRuleForm({ priority: '', condition: '', targetNode: '', strategy: 'warm-first' });
@@ -460,6 +464,7 @@ export function Routing() {
       }
     }
 
+    toastDeleted(`Rule ${ruleToDelete.priority}`);
     if (!mountedRef.current) return;
     setIsDeleteModalOpen(false);
     setRuleToDelete(null);
@@ -538,6 +543,7 @@ export function Routing() {
         const priority = prev.reduce((m, p) => Math.max(m, p.priority ?? 0), 0) + 1;
         return [...prev, { ...entry, priority }];
       });
+      if (isNew) toastCreated(entry.name); else toastSettingsSaved();
       setCloudModalOpen(false);
       setEditingProvider(null);
       return;
@@ -563,6 +569,7 @@ export function Routing() {
       } else {
         await updateCloudProvider(editingProvider.name, editingProvider);
       }
+      if (isNew) toastCreated(editingProvider.name.trim()); else toastSettingsSaved();
       if (!mountedRef.current) return;
       setCloudModalOpen(false);
       setEditingProvider(null);
@@ -578,11 +585,13 @@ export function Routing() {
     if (!providerToDelete) return;
     if (demoMode) {
       setCloudProviders(prev => prev.filter(p => p.name !== providerToDelete));
+      toastDeleted(providerToDelete);
       setProviderToDelete(null);
       return;
     }
     try {
       await deleteCloudProvider(providerToDelete);
+      toastDeleted(providerToDelete);
       if (!mountedRef.current) return;
       setProviderToDelete(null);
       await refreshCloudProviders();
@@ -646,9 +655,11 @@ export function Routing() {
       setLocalDegradationChains(next);
       setNewDegModel('');
       setNewDegAlts('');
+      toastCreated('Fallback chain');
       return;
     }
     const ok = await persistChains(next);
+    if (ok) toastCreated('Fallback chain');
     if (ok && mountedRef.current) {
       setNewDegModel('');
       setNewDegAlts('');
@@ -656,13 +667,17 @@ export function Routing() {
   };
 
   const handleDeleteDegChain = async (model: string) => {
+    const before = localDegradationChains;
     const next = { ...localDegradationChains };
     delete next[model];
+    // Undo puts the chain back through the same path that removed it.
+    const undo = () => { void (demoMode ? Promise.resolve(setLocalDegradationChains(before)) : persistChains(before)); };
     if (demoMode) {
       setLocalDegradationChains(next);
+      toastDeleted('Fallback chain', undo);
       return;
     }
-    await persistChains(next);
+    if (await persistChains(next)) toastDeleted('Fallback chain', undo);
   };
 
   return (

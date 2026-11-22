@@ -7,6 +7,7 @@ import { CustomCombobox } from './Select';
 import { fetchModelAliases, setModelAlias, deleteModelAlias } from '../lib/api';
 import { getMockModelAliases, setMockModelAlias, deleteMockModelAlias } from '../lib/mockData';
 import { ModelAlias } from '../types';
+import { toastCreated, toastDeleted, toastSettingsSaved } from '../lib/toast';
 
 interface ModelAliasesSectionProps {
   demoMode: boolean;
@@ -74,7 +75,7 @@ export function ModelAliasesSection({ demoMode, knownModelNames }: ModelAliasesS
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [demoMode]);
 
-  const saveAlias = async (alias: string, target: string) => {
+  const saveAlias = async (alias: string, target: string, quiet = false) => {
     setSaving(true);
     try {
       const row = demoMode ? setMockModelAlias(alias, target) : await setModelAlias(alias, target);
@@ -87,6 +88,7 @@ export function ModelAliasesSection({ demoMode, knownModelNames }: ModelAliasesS
         if (demoMode) deleteMockModelAlias(editing);
         else await deleteModelAlias(editing);
       }
+      if (!quiet) { if (editing) toastSettingsSaved(); else toastCreated(row.alias); }
       setNewAlias('');
       setNewTarget('');
       setEditing(null);
@@ -141,6 +143,8 @@ export function ModelAliasesSection({ demoMode, knownModelNames }: ModelAliasesS
     try {
       if (demoMode) deleteMockModelAlias(aliasToRemove.alias);
       else await deleteModelAlias(aliasToRemove.alias);
+      const removed = aliasToRemove;
+      toastDeleted(removed.alias, () => { void saveAlias(removed.alias, removed.target, true); });
       if (!mountedRef.current) return;
       await reload();
     } catch (err: any) {

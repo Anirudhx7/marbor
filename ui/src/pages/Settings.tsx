@@ -18,6 +18,7 @@ import { useTimezone } from '../hooks/useTimezone';
 import { formatDateTimeInZone } from '../lib/time';
 import { notifyTimezoneChanged } from '../hooks/useTimezone';
 import { roundPrice } from '../lib/roundPrice';
+import { toastSettingsSaved } from '../lib/toast';
 
 const DEMO_BACKUP_TITLE = 'Demo mode: backups, downloads, uploads and restores are turned off. The backup data shown here is sample data.';
 
@@ -744,6 +745,7 @@ export function SettingsPage() {
       lastLoadedSettingsRef.current = settings;
       dirtyRef.current = false;
       setSaved(true);
+      toastSettingsSaved();
       setTimeout(() => setSaved(false), 2000);
       setError(null);
     } catch (err: any) {

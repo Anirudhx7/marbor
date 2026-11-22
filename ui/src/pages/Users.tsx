@@ -15,6 +15,7 @@ import { currentAppPath } from '../hooks/useDemoMode';
 import { useTimezone } from '../hooks/useTimezone';
 import { formatDateInZone } from '../lib/time';
 import { TabList, tabProps, panelProps } from '../components/TabList';
+import { toastCreated } from '../lib/toast';
 
 const STATUS_BADGE: Record<string, { variant: 'warning' | 'success' | 'destructive' | 'muted'; label: string }> = {
   pending:   { variant: 'warning',     label: 'Pending' },
@@ -301,6 +302,7 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
     // Outside the try above, so a failing callback can never be reported as a
     // failed create for a user that now exists.
     form.finish(token);
+    toastCreated(res.username);
     onCreated({ username: res.username, initial_password: res.initial_password }, mounted.current);
   }
 
