@@ -303,7 +303,7 @@ function docSidebar(currentSlug) {
 function tocHtml(headings) {
   if (!headings.length) return `<p class="toc-empty">No sections.</p>`;
   return `<ul class="toc">${headings.map((h) =>
-    `<li class="lvl-${h.level}"><a href="#${h.id}">${escapeHtml(h.text)}</a></li>`
+    `<li class="lvl-${h.level}"><a href="#${h.id}">${escapeHtml(h.text).replace(/`([^`]+)`/g, "<code>$1</code>")}</a></li>`
   ).join("")}</ul>`;
 }
 
