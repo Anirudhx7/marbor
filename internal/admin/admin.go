@@ -1189,7 +1189,9 @@ func (s *Server) Handler() http.Handler {
 		}
 		// Grafana dashboard JSON download - would otherwise fall through to the
 		// SPA catch-all and return index.html instead of the dashboard.
-		mux.Handle("/grafana/marbor.json", s.noCache(http.FileServer(http.FS(sub))))
+		// Sent as an attachment so a phone browser saves the file instead of
+		// navigating to the raw JSON.
+		mux.Handle("/grafana/marbor.json", s.noCache(attachment("marbor.json", http.FileServer(http.FS(sub)))))
 	} else {
 		fmt.Println("warn: failed to embed web UI:", err)
 	}
@@ -1210,6 +1212,14 @@ func (s *Server) Handler() http.Handler {
 	})
 
 	return mux
+}
+
+// attachment marks a response as a download with the given file name.
+func attachment(filename string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) noCache(next http.Handler) http.Handler {
