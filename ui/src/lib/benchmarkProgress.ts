@@ -121,10 +121,11 @@ function runDemoBenchmark(node: string, model: string, n: number) {
         speedup_x: warmP50 > 0 ? coldP50 / warmP50 : 0,
         created_at: new Date().toISOString(),
       };
-      void import('./mockData').then(({ recordMockBenchmark }) => {
-        recordMockBenchmark(result);
-        setState({ phase: 'done', result });
-      });
+      // Recording is best effort: the run still completes if the chunk fails.
+      void import('./mockData')
+        .then(({ recordMockBenchmark }) => recordMockBenchmark(result))
+        .catch(() => undefined)
+        .then(() => setState({ phase: 'done', result }));
       return;
     }
     const ms = Math.round(warmBaseMs + (Math.random() - 0.5) * 20);
