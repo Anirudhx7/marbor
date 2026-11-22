@@ -317,14 +317,14 @@ export function CustomDateTimePicker({
               <button
                 type="button"
                 onClick={handlePrevMonth}
-                className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                className="relative p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors pointer-coarse:after:absolute pointer-coarse:after:-inset-2.5 pointer-coarse:after:content-['']"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
               <button
                 type="button"
                 onClick={handleNextMonth}
-                className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                className="relative p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors pointer-coarse:after:absolute pointer-coarse:after:-inset-2.5 pointer-coarse:after:content-['']"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
@@ -708,14 +708,14 @@ export function CustomDatePicker({
               <button
                 type="button"
                 onClick={handlePrevMonth}
-                className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                className="relative p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors pointer-coarse:after:absolute pointer-coarse:after:-inset-2.5 pointer-coarse:after:content-['']"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
               <button
                 type="button"
                 onClick={handleNextMonth}
-                className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                className="relative p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors pointer-coarse:after:absolute pointer-coarse:after:-inset-2.5 pointer-coarse:after:content-['']"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>

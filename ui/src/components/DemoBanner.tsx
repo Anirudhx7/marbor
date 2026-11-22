@@ -69,7 +69,7 @@ export function DemoBanner() {
         <button
           onClick={handleDismiss}
           aria-label="Dismiss demo banner"
-          className="flex-shrink-0 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors min-w-[40px] min-h-[40px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
+          className="flex-shrink-0 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
         >
           <X className="w-4 h-4" />
         </button>

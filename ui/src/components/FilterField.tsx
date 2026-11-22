@@ -87,7 +87,8 @@ export function ClearableInput(
           type="button"
           onClick={onClear}
           title="Clear"
-          className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+          aria-label="Clear"
+          className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors pointer-coarse:after:absolute pointer-coarse:after:-inset-3 pointer-coarse:after:content-['']"
         >
           <X className="w-3.5 h-3.5" />
         </button>
