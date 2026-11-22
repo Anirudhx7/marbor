@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type ReactElement } from 'react';
+import { useState, useEffect, useCallback, useId, type ReactElement } from 'react';
 import { ChevronDown, RotateCcw, Loader2 } from 'lucide-react';
 import { Modal } from './Modal';
 import { CustomSelect } from './Select';
@@ -194,12 +194,25 @@ function Field({
   disabled?: boolean;
 }) {
   const isSet = value !== undefined && value !== null && value !== '';
+  const fieldId = useId();
+  const labelId = `${fieldId}-label`;
+  const helpId = `${fieldId}-help`;
+  const errorId = `${fieldId}-error`;
+  // A number outside the field's stated range is flagged to assistive
+  // technology and explained under the field, not by colour alone.
+  const outOfRange = typeof value === 'number'
+    && ((def.min !== undefined && value < def.min) || (def.max !== undefined && value > def.max));
+  const rangeText = def.min !== undefined && def.max !== undefined
+    ? `Allowed range: ${def.min} to ${def.max}`
+    : def.min !== undefined ? `Minimum: ${def.min}` : `Maximum: ${def.max}`;
 
   let input: ReactElement;
   if (def.type === 'bool') {
     const boolVal = value as boolean | undefined;
     input = (
       <CustomSelect
+        id={fieldId}
+        labelId={labelId}
         value={boolVal === undefined ? '' : boolVal ? 'true' : 'false'}
         onChange={(val) => onChange(val === '' ? undefined : val === 'true')}
         disabled={disabled}
@@ -214,6 +227,8 @@ function Field({
   } else if (def.type === 'textarea') {
     input = (
       <textarea
+        id={fieldId}
+        aria-describedby={helpId}
         value={(value as string) ?? ''}
         onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value)}
         rows={2}
@@ -225,6 +240,8 @@ function Field({
   } else if (def.type === 'text') {
     input = (
       <input
+        id={fieldId}
+        aria-describedby={helpId}
         type="text"
         value={(value as string) ?? ''}
         onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value)}
@@ -236,6 +253,8 @@ function Field({
   } else if (def.type === 'select') {
     input = (
       <CustomSelect
+        id={fieldId}
+        labelId={labelId}
         value={value === undefined || value === null ? '' : String(value)}
         onChange={(val) => {
           if (val === '') return onChange(undefined);
@@ -257,6 +276,8 @@ function Field({
     input = (
       <div className="flex items-center gap-3">
         <input
+          id={fieldId}
+          aria-describedby={helpId}
           type="range"
           min={min}
           max={max}
@@ -274,7 +295,10 @@ function Field({
   } else {
     input = (
       <input
+        id={fieldId}
         type="number"
+        aria-invalid={outOfRange || undefined}
+        aria-describedby={outOfRange ? `${errorId} ${helpId}` : helpId}
         value={value === undefined || value === null ? '' : (value as number)}
         onChange={(e) => {
           if (e.target.value === '') { onChange(undefined); return; }
@@ -299,7 +323,7 @@ function Field({
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between gap-2">
-        <label className="text-xs font-medium text-foreground">{def.label}</label>
+        <label id={labelId} htmlFor={def.type === 'bool' || def.type === 'select' ? undefined : fieldId} className="text-xs font-medium text-foreground">{def.label}</label>
         {isSet && !disabled && (
           <button
             type="button"
@@ -312,7 +336,8 @@ function Field({
         )}
       </div>
       {input}
-      <p className="text-[10px] text-muted-foreground leading-snug">{def.help}</p>
+      {outOfRange && <p id={errorId} role="alert" className="text-[11px] text-destructive">{rangeText}</p>}
+      <p id={helpId} className="text-[10px] text-muted-foreground leading-snug">{def.help}</p>
     </div>
   );
 }
