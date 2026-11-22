@@ -154,6 +154,16 @@ function AppShell({ session, onLogout, pendingCount }: AppShellProps) {
   const pathname = location.pathname;
   const { collapsed, toggle } = useSidebarCollapsed();
 
+  // A new page starts at the top. The one exception is a link that carries a
+  // highlight target: that page scrolls to the highlighted card itself.
+  useEffect(() => {
+    if (new URLSearchParams(location.search).has('highlight')) return;
+    window.scrollTo(0, 0);
+    // Only a page change resets scroll; changing a query param on the same
+    // page (filters, paging) must not jump the view.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
   // Preload chunks on idle - makes subsequent tab switches instant
   useEffect(() => {
     const id = (window as unknown as { requestIdleCallback?: (cb: () => void) => number }).requestIdleCallback
