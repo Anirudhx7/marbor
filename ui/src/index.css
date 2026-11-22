@@ -224,9 +224,20 @@ html {
   animation: fade-in 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+/* Reduced motion: nothing moves or scales. Colour and opacity changes stay so
+   state changes are still visible. Spinners keep turning because they show
+   that work is in progress, not decoration. */
 @media (prefers-reduced-motion: reduce) {
-  .animate-fade-in {
-    animation: none;
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-property: color, background-color, border-color, opacity !important;
+    transition-duration: 100ms !important;
+    scroll-behavior: auto !important;
+  }
+  .animate-spin {
+    animation-duration: 1s !important;
+    animation-iteration-count: infinite !important;
   }
 }
 
