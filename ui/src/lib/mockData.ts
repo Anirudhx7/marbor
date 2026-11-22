@@ -155,7 +155,7 @@ export const mockGPUNodes: GPUNode[] = [
     // reserve headroom or predictively warm this model on this node.
     vramOverrides: { 'llama3.3:8b': 16384 },
     vramTotalMB: 80 * GB,
-    vramUsedMB: Math.round(52.8 * GB),
+    vramUsedMB: Math.round(70.4 * GB),
     vramSource: 'nvidia',
     powerDrawW: 274,
     cpuPercent: 41,
@@ -171,6 +171,8 @@ export const mockGPUNodes: GPUNode[] = [
     loadedModels: [
       { name: 'llama3.3:8b', sizeVram: Math.round(16.2 * GiB) },
       { name: 'mistral:7b', sizeVram: Math.round(14.8 * GiB) },
+      { name: 'qwen2.5:14b', sizeVram: Math.round(9.6 * GiB) },
+      { name: 'qwen2.5-coder:14b', sizeVram: Math.round(26.5 * GiB) },
     ],
     healthHistory: Array(60).fill(0).map(() => 92 + Math.random() * 8),
     coldStarts: 0,
@@ -229,10 +231,11 @@ export const mockGPUNodes: GPUNode[] = [
     prewarmDisabled: true,
     pendingPrewarmMB: 0,
     uptime: '8d 2h',
+    // Everything resident here has to fit this 24 GB card, with room left for
+    // the KV cache the 22.8 GB used figure includes.
     loadedModels: [
-      { name: 'mistral:7b', sizeVram: Math.round(14.8 * GiB) },
-      { name: 'qwen2.5-coder:14b', sizeVram: Math.round(26.5 * GiB) },
-      { name: 'gemma2:9b', sizeVram: Math.round(14.1 * GiB) },
+      { name: 'qwen3:8b', sizeVram: Math.round(5.2 * GiB) },
+      { name: 'gemma4:12b', sizeVram: Math.round(7.8 * GiB) },
     ],
     healthHistory: Array(60).fill(0).map(() => 88 + Math.random() * 10),
     coldStarts: 5,
@@ -562,20 +565,24 @@ export const mockGPUNodes: GPUNode[] = [
     replicaPeers: { members: ['gpu-node-09', 'gpu-node-10'], head: 'gpu-node-10' },
     schedulingRole: 'unresolved',
     vramTotalMB: 192 * GB,
-    vramUsedMB: Math.round(2.1 * GB),
+    vramUsedMB: Math.round(63.5 * GB),
     vramSource: 'agent',
     powerDrawW: 90,
     cpuPercent: 6,
     temperature: 52,
     health: 'healthy',
     draining: false,
-    signals: ['healthy', 'agent'],
+    signals: ['healthy', 'agent', 'warm'],
     drainedGraceSeconds: 0,
     activeConns: 0,
     prewarmDisabled: false,
     pendingPrewarmMB: 0,
     uptime: '9h 12m',
-    loadedModels: [],
+    // An independent warm copy of the 405B model, unrelated to the gpu-node-07 and
+    // gpu-node-08 shard pair (the Models page's mixed-shape demo).
+    loadedModels: [
+      { name: 'meta-llama/Llama-3.1-405B-Instruct', sizeVram: Math.round(61.0 * GiB) },
+    ],
     healthHistory: Array(60).fill(0).map(() => 96 + Math.random() * 4),
     coldStarts: 0,
     tokensTotal: 0,
@@ -873,7 +880,6 @@ export const mockModelCatalog: ModelCatalog = (() => {
       // deliberately report different digests for the same model name, as if
       // the tag was re-pulled with different content mid-rollout.
       digest_mismatch: true,
-      total_vram_bytes: Math.round(16.2 * 2 * 1024 * 1024 * 1024),
       drift_details: '3b7e0a vs 9f8a1c',
       nodes: [
         { name: 'gpu-node-01', healthy: true, digest: 'sha256:9f8a1c2d47e0b6f3a5d9c8e1b2f4a7d6', warm: true, vram_bytes: Math.round(16.2 * 1024 * 1024 * 1024), runtime: 'ollama' },
@@ -886,7 +892,6 @@ export const mockModelCatalog: ModelCatalog = (() => {
       size_disk: Math.round(4.1 * 1024 * 1024 * 1024),
       warm_count: 0, // derived from nodes[].warm below
       total_nodes: mockGPUNodes.length,
-      total_vram_bytes: Math.round(14.8 * 2 * 1024 * 1024 * 1024),
       nodes: [
         { name: 'gpu-node-02', healthy: true, warm: true, vram_bytes: Math.round(14.8 * 1024 * 1024 * 1024), runtime: 'ollama' },
         { name: 'gpu-node-03', healthy: true, warm: true, vram_bytes: Math.round(14.8 * 1024 * 1024 * 1024), runtime: 'vllm' },
@@ -898,7 +903,6 @@ export const mockModelCatalog: ModelCatalog = (() => {
       size_disk: Math.round(42.5 * 1024 * 1024 * 1024),
       warm_count: 0, // derived from nodes[].warm below
       total_nodes: mockGPUNodes.length,
-      total_vram_bytes: Math.round(40.2 * 1024 * 1024 * 1024),
       nodes: [
         { name: 'gpu-node-01', healthy: true, warm: true, vram_bytes: Math.round(40.2 * 1024 * 1024 * 1024), runtime: 'ollama' },
       ],
@@ -910,7 +914,6 @@ export const mockModelCatalog: ModelCatalog = (() => {
       warm_count: 0, // derived from nodes[].warm below
       total_nodes: mockGPUNodes.length,
       digest_mismatch: true,
-      total_vram_bytes: Math.round(26.5 * 2 * 1024 * 1024 * 1024),
       drift_details: 'a1b2c3 vs d4e5f6',
       nodes: [
         { name: 'gpu-node-02', healthy: true, digest: 'sha256:a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6', warm: true, vram_bytes: Math.round(26.5 * 1024 * 1024 * 1024), runtime: 'ollama' },
@@ -923,7 +926,6 @@ export const mockModelCatalog: ModelCatalog = (() => {
       size_disk: Math.round(5.4 * 1024 * 1024 * 1024),
       warm_count: 0, // derived from nodes[].warm below
       total_nodes: mockGPUNodes.length,
-      total_vram_bytes: Math.round(14.1 * 3 * 1024 * 1024 * 1024),
       nodes: [
         { name: 'gpu-node-01', healthy: true, warm: true, vram_bytes: Math.round(14.1 * 1024 * 1024 * 1024), runtime: 'ollama' },
         { name: 'gpu-node-02', healthy: true, warm: true, vram_bytes: Math.round(14.1 * 1024 * 1024 * 1024), runtime: 'ollama' },
@@ -947,7 +949,6 @@ export const mockModelCatalog: ModelCatalog = (() => {
       size_disk: Math.round(4.7 * 1024 * 1024 * 1024),
       warm_count: 0, // derived from nodes[].warm below
       total_nodes: mockGPUNodes.length,
-      total_vram_bytes: Math.round(9.5 * 1024 * 1024 * 1024),
       nodes: [
         { name: 'gpu-node-01', healthy: true, warm: true, vram_bytes: Math.round(9.5 * 1024 * 1024 * 1024), runtime: 'llamacpp' },
       ],
@@ -958,7 +959,6 @@ export const mockModelCatalog: ModelCatalog = (() => {
       size_disk: Math.round(0.27 * 1024 * 1024 * 1024),
       warm_count: 0, // derived from nodes[].warm below
       total_nodes: mockGPUNodes.length,
-      total_vram_bytes: Math.round(0.6 * 2 * 1024 * 1024 * 1024),
       family: 'bert',
       nodes: [
         { name: 'gpu-node-02', healthy: true, warm: true, vram_bytes: Math.round(0.6 * 1024 * 1024 * 1024), runtime: 'ollama' },
@@ -970,7 +970,7 @@ export const mockModelCatalog: ModelCatalog = (() => {
       // TP=8 across the gpu-node-07/gpu-node-08 replica pair above (warm on
       // both members by design - a single instance, zero duplication waste
       // for that group) PLUS a separate, genuinely wasteful independent
-      // warm copy on gpu-node-01 unrelated to the shard. This mixed shape
+      // warm copy on gpu-node-10 unrelated to the shard. This mixed shape
       // exercises the fleet-wide "also warm elsewhere" fact the Models page
       // must not hide behind the shard-scoped ratio (see CHANGELOG).
       name: 'meta-llama/Llama-3.1-405B-Instruct',
@@ -978,20 +978,55 @@ export const mockModelCatalog: ModelCatalog = (() => {
       size_disk: Math.round(230.0 * 1024 * 1024 * 1024),
       warm_count: 0, // derived from nodes[].warm below
       total_nodes: mockGPUNodes.length,
-      total_vram_bytes: Math.round((61.0 + 58.4 + 61.0) * 1024 * 1024 * 1024),
       family: 'llama',
       nodes: [
         { name: 'gpu-node-07', healthy: true, warm: true, vram_bytes: Math.round(61.0 * 1024 * 1024 * 1024), runtime: 'vllm' },
         { name: 'gpu-node-08', healthy: true, warm: true, vram_bytes: Math.round(58.4 * 1024 * 1024 * 1024), runtime: 'vllm' },
-        { name: 'gpu-node-01', healthy: true, warm: true, vram_bytes: Math.round(61.0 * 1024 * 1024 * 1024), runtime: 'vllm' },
+        { name: 'gpu-node-10', healthy: true, warm: true, vram_bytes: Math.round(61.0 * 1024 * 1024 * 1024), runtime: 'vllm' },
       ],
+    },
+    {
+      name: 'qwen2.5:14b',
+      size_vram: Math.round(9.6 * 1024 * 1024 * 1024),
+      size_disk: Math.round(4.8 * 1024 * 1024 * 1024),
+      warm_count: 0, // derived from nodes[].warm below
+      total_nodes: mockGPUNodes.length,
+      nodes: [{ name: 'gpu-node-02', healthy: true, warm: false, runtime: 'ollama' }],
+    },
+    {
+      name: 'qwen3:8b',
+      size_vram: Math.round(5.2 * 1024 * 1024 * 1024),
+      size_disk: Math.round(4.5 * 1024 * 1024 * 1024),
+      warm_count: 0, // derived from nodes[].warm below
+      total_nodes: mockGPUNodes.length,
+      nodes: [
+        { name: 'gpu-node-03', healthy: true, warm: false, runtime: 'vllm' },
+        { name: 'gpu-node-04', healthy: false, warm: false, runtime: 'llamacpp' },
+      ],
+    },
+    {
+      name: 'gemma4:12b',
+      size_vram: Math.round(7.8 * 1024 * 1024 * 1024),
+      size_disk: Math.round(6.8 * 1024 * 1024 * 1024),
+      warm_count: 0, // derived from nodes[].warm below
+      total_nodes: mockGPUNodes.length,
+      nodes: [{ name: 'gpu-node-03', healthy: true, warm: false, runtime: 'vllm' }],
     },
   
   ].map(m => {
+    // Warm state comes from what each node actually has loaded, so Models,
+    // GPU Nodes and the Dashboard count the same fleet. A replica worker serves
+    // nothing itself: it is warm when its head holds the model.
+    const loadedOn = (node: GPUNode) => {
+      const own = (node.loadedModels ?? []).find(l => l.name === m.name);
+      if (own) return own;
+      const head = node.replicaHead ? mockGPUNodes.find(n => n.name === node.replicaHead) : undefined;
+      return head ? (head.loadedModels ?? []).find(l => l.name === m.name) : undefined;
+    };
     const nodes: NonNullable<ModelCatalog['models'][number]['nodes']> = (m.nodes ?? []).map(entry => {
       const node = mockGPUNodes.find(n => n.name === entry.name);
       if (!node) return entry;
-      const warm = (node.loadedModels ?? []).some(l => l.name === m.name);
+      const warm = loadedOn(node) !== undefined;
       return { ...entry, warm, healthy: node.health === 'healthy', runtime: node.runtime };
     });
     // A node that has the model loaded always appears in its resident list.
@@ -1001,7 +1036,9 @@ export const mockModelCatalog: ModelCatalog = (() => {
       if (!loaded) continue;
       nodes.push({ name: node.name, healthy: node.health === 'healthy', warm: true, vram_bytes: loaded.sizeVram, runtime: node.runtime });
     }
-    return { ...m, nodes, warm_count: nodes.filter(n => n.warm).length };
+    // The total is the sum over warm copies, never a stored figure.
+    const total_vram_bytes = nodes.filter(n => n.warm).reduce((sum, n) => sum + (n.vram_bytes ?? m.size_vram), 0);
+    return { ...m, nodes, warm_count: nodes.filter(n => n.warm).length, total_vram_bytes };
   });
   return {
     total_models: models.length,
