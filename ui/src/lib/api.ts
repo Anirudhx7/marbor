@@ -1794,7 +1794,7 @@ export async function fetchPredictiveDecisions(): Promise<PredictiveDecision[]> 
       { timestamp: new Date(now - 9 * 60_000).toISOString(), predicted_model: 'qwen2.5-coder:14b', trigger_model: 'llama3.3:8b',    node: 'gpu-node-02', was_already_warm: false, warmup_triggered: true,  transition_count: 9,  hour: new Date(now - 9 * 60_000).getUTCHours() },
       { timestamp: new Date(now - 15 * 60_000).toISOString(), predicted_model: 'mistral:7b',       trigger_model: 'gemma2:9b',      node: 'gpu-node-02', was_already_warm: false, warmup_triggered: false, transition_count: 6,  hour: new Date(now - 15 * 60_000).getUTCHours() },
       { timestamp: new Date(now - 21 * 60_000).toISOString(), predicted_model: 'deepseek-r1:7b',   trigger_model: 'gemma2:9b',     node: 'gpu-node-01', was_already_warm: true,  warmup_triggered: false, transition_count: 14, hour: new Date(now - 21 * 60_000).getUTCHours() },
-      { timestamp: new Date(now - 34 * 60_000).toISOString(), predicted_model: 'phi4:14b',         trigger_model: 'mistral:7b',     node: 'gpu-node-01', was_already_warm: false, warmup_triggered: false, transition_count: 4,  hour: new Date(now - 34 * 60_000).getUTCHours() },
+      { timestamp: new Date(now - 34 * 60_000).toISOString(), predicted_model: 'phi3:medium',      trigger_model: 'mistral:7b',     node: 'gpu-node-01', was_already_warm: false, warmup_triggered: false, transition_count: 4,  hour: new Date(now - 34 * 60_000).getUTCHours() },
     ]);
   }
   const res = await apiFetch(`${BASE}/predictive/decisions`, { headers: authHeaders() });
