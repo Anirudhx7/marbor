@@ -27,6 +27,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **The page-change fade is opacity only and 180ms** (it was 300ms with a slide).
 - **Demo: a pulled model now appears in the fleet (marked "Pulled in demo", findable by search) and a finished benchmark run is added to History.** Demo data only; a reload resets it.
 - **Docs: the agent enrollment page no longer links to a missing page, the LiteLLM page shows real arrows, and every docs page shows its content when JavaScript is off.**
+- **Escape closes only the top dialog when dialogs are stacked,** the dashboard honors the system reduced-motion setting everywhere, and layout properties are no longer animated outside the sidebar.
+- **Touch screens get 44px hit areas** on switches, selects, filter clear buttons, the demo banner dismiss, date picker month chevrons and the Why this node row. The drawn controls do not change.
+- **Tab rows on Models, Warmup, Users, Advisor and GPU Nodes are real tabs** with arrow-key navigation, and one-time secrets (new user passwords, reset links, approvals) now have a Copy button like API keys do.
+- **Add Rule examples are labelled as examples and its errors clear as you edit.** Demo: Logout is disabled instead of doing nothing, and a revoked key shows as revoked.
+- **The FX rate field no longer flags itself invalid while a rate such as 0.5 is being typed,** and the open dropdown's keys no longer fire while focus is in another field.
 
 ### Changed
 - **`marbor nodes fit --json` now prints `{"nodes": [...]}`, the same object `GET /admin/nodes/model-fit` returns (Breaking for scripts).** It used to print a bare array. The bare array is gone and no flag restores it: use `jq '.nodes[]'` where you used `jq '.[]'`. Fields the CLI does not list are now kept. The human table is unchanged.
