@@ -1439,9 +1439,9 @@ export function ModelAdvisor() {
                   className="w-40"
                 />
               </label>
-              {(minDownloads || minLikes || createdAfter || sortBy !== 'downloads') && (
+              {(search || runtimeOverride || minDownloads || minLikes || createdAfter || sortBy !== 'downloads') && (
                 <button
-                  onClick={() => { setSortBy('downloads'); setMinDownloads(''); setMinLikes(''); setCreatedAfter(''); }}
+                  onClick={() => { setSearch(''); setRuntimeOverride(null); setSortBy('downloads'); setMinDownloads(''); setMinLikes(''); setCreatedAfter(''); }}
                   className="text-xs text-primary hover:underline font-medium cursor-pointer pb-2"
                 >
                   Reset filters
