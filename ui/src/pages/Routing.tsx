@@ -24,7 +24,7 @@ import { SavingsCard } from '../components/SavingsCard';
 import { Toggle } from '../components/Toggle';
 import { ModelAliasesSection } from '../components/ModelAliasesSection';
 import { CloudOnlyModelsSection } from '../components/CloudOnlyModelsSection';
-import { mockGPUNodes, mockSavings, mockCloudProviders, mockModelCatalog } from '../lib/mockData';
+import { mockGPUNodes, mockSavings, mockCloudProviders, getMockModelCatalog } from '../lib/mockData';
 import {
   fetchRoutingRules,
   addRoutingRule,
@@ -272,7 +272,7 @@ export function Routing() {
   // Settings.tsx. Suggestions only, never enforced.
   useEffect(() => {
     if (demoMode) {
-      if (mountedRef.current) setKnownModelNames((mockModelCatalog.models || []).map((m) => m.name));
+      if (mountedRef.current) setKnownModelNames((getMockModelCatalog().models || []).map((m) => m.name));
       return;
     }
     let active = true;

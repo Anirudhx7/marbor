@@ -5,7 +5,7 @@ import { StatusDot } from '../components/StatusDot';
 import { Badge } from '../components/Badge';
 import { SearchInput } from '../components/SearchInput';
 import { EmptyState } from '../components/EmptyState';
-import { mockModelCatalog, mockGPUNodes } from '../lib/mockData';
+import { getMockModelCatalog, isMockPulledModel, mockGPUNodes } from '../lib/mockData';
 import { fetchModels, fetchNodes, deleteNodeModel } from '../lib/api';
 import { startPull, onPullSuccess, isDownloadOnlyRuntime, pullOptionsFor } from '../lib/pullProgress';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
@@ -303,6 +303,7 @@ function ModelFleetCard({ model, demoMode, replicaByNode, nodeStates, deleteGuar
           <div className="min-w-0 flex-1">
             <h3 className="font-mono font-semibold text-foreground truncate text-sm">
               {model.name}
+              {isMockPulledModel(model.name) && <Badge variant="muted" size="sm" className="ml-2 align-middle">Pulled in demo</Badge>}
             </h3>
             <div className="min-h-[30px]">
               <p className="text-xs text-muted-foreground mt-0.5 leading-tight">
@@ -586,7 +587,7 @@ function ModelFleetCard({ model, demoMode, replicaByNode, nodeStates, deleteGuar
 
 export function Models() {
   const { demoMode } = useDemoMode();
-  const [catalog, setCatalog] = useState<ModelCatalog | null>(demoMode ? mockModelCatalog : null);
+  const [catalog, setCatalog] = useState<ModelCatalog | null>(demoMode ? getMockModelCatalog() : null);
   const [isLive, setIsLive] = useState(!demoMode);
   const [searchParams, setSearchParams] = useSearchParams();
   const searchQuery = searchParams.get('q') || '';
@@ -744,7 +745,7 @@ export function Models() {
   const loadModels = async (active: boolean = true) => {
     if (demoMode) {
       if (!active || currentAppPath() !== '/models') return;
-      setCatalog(mockModelCatalog);
+      setCatalog(getMockModelCatalog());
       setIsLive(false);
       setError(null);
       setLoading(false);
@@ -967,6 +968,7 @@ export function Models() {
                           <tr key={model.name} className="border-b border-border last:border-0 hover:bg-secondary/30 transition-colors">
                             <td className="px-4 py-3 align-top">
                               <div className="font-mono font-semibold text-foreground text-sm truncate max-w-[200px]" title={model.name}>{model.name}</div>
+                              {isMockPulledModel(model.name) && <Badge variant="muted" size="sm" className="mt-1">Pulled in demo</Badge>}
                               <div className="text-xs text-muted-foreground font-mono">{formatVRAM(model.size_vram)} per copy{model.size_disk ? ` · ${formatVRAM(model.size_disk)} disk` : ''}</div>
                               {model.family && <div className="text-[11px] text-muted-foreground/70 font-mono">{model.family}</div>}
                             </td>

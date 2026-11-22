@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useSyncExternalStore } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Save, Check, Terminal, Shield, Activity, MonitorPlay, RefreshCw, KeyRound, DollarSign, Sliders, Lock, Container, Webhook, Network, Flame, Ruler, Plus, Trash2, Gauge, HardDrive, Download } from 'lucide-react';
 import { Modal } from '../components/Modal';
-import { defaultSettings, mockModelCatalog } from '../lib/mockData';
+import { defaultSettings, getMockModelCatalog } from '../lib/mockData';
 import { mockBackupResponse } from '../lib/backupMock';
 import { fetchSettings, updateSettings, reloadFromStore, changePassword, triggerBackupNow, downloadStoredBackup, fetchBackupList, restoreBackup, acknowledgeRestoreResult, uploadBackup, deleteBackup, fetchModels } from '../lib/api';
 import { getRestoreWatch, subscribeRestoreWatch, startRestoreWatch, resumeRestoreWatch, dismissRestoreWatch, readProcessStart } from '../lib/restoreWatch';
@@ -192,7 +192,7 @@ export function SettingsPage() {
     wasDemoRef.current = demoMode;
     if (currentAppPath() !== '/settings') return;
     if (demoMode) {
-      setKnownModelNames((mockModelCatalog.models || []).map((m) => m.name));
+      setKnownModelNames((getMockModelCatalog().models || []).map((m) => m.name));
       return;
     }
     let active = true;

@@ -10,7 +10,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import { Gauge, Zap, Server, X, History, Copy, Check } from 'lucide-react';
 import { fetchNodes, fetchModels, getNodeModels, fetchBenchmarkRuns } from '../lib/api';
 import { subscribe, getSnapshot, start, cancel, reset } from '../lib/benchmarkProgress';
-import { mockGPUNodes, mockBenchmarkRuns } from '../lib/mockData';
+import { mockGPUNodes, getMockBenchmarkRuns } from '../lib/mockData';
 import type { GPUNode, BenchmarkRun } from '../types';
 import { CustomSelect } from '../components/Select';
 import { useDemoMode } from '../hooks/useDemoMode';
@@ -151,7 +151,7 @@ export function Benchmark() {
       setNodes(mockGPUNodes);
       const healthy = mockGPUNodes.filter(n => n.health !== 'down');
       if (healthy.length === 1) setSelectedNode(healthy[0].name);
-      setHistory(mockBenchmarkRuns);
+      setHistory(getMockBenchmarkRuns());
       setLoading(false);
       return () => { active = false; };
     }
@@ -170,7 +170,7 @@ export function Benchmark() {
 
   function refreshHistory() {
     if (demoMode) {
-      if (mountedRef.current) { setHistory(mockBenchmarkRuns); setHistoryError(null); }
+      if (mountedRef.current) { setHistory(getMockBenchmarkRuns()); setHistoryError(null); }
       return;
     }
     fetchBenchmarkRuns()

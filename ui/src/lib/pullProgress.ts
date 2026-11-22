@@ -154,8 +154,13 @@ function runDemoPull(key: string, node: string, model: string, verifyLoad: boole
   notify();
 
   const finishSuccess = () => {
-    setJob(key, { status: 'success' });
-    notifySuccess(node, model);
+    // Put the model in the demo fleet before listeners refresh their lists.
+    // Loaded on demand so the demo fixtures stay out of the main bundle.
+    void import('./mockData').then(({ recordMockPull }) => {
+      recordMockPull(node, model, total);
+      setJob(key, { status: 'success' });
+      notifySuccess(node, model);
+    });
   };
 
   const step = () => {
