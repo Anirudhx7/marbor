@@ -172,9 +172,12 @@ const EXT_IC = `<svg class="ext-ic" viewBox="0 0 24 24" fill="none" stroke="curr
 function excerpt(s, n) {
   const t = String(s).replace(/\s+/g, " ").trim();
   if (t.length <= n) return t;
-  const cut = t.slice(0, n);
-  const at = cut.lastIndexOf(" ");
-  return (at > 1 ? cut.slice(0, at) : cut).trimEnd() + "...";
+  // Whole sentences only, so the full text of a card is in the page: the
+  // first sentence always, then more while they fit within n characters.
+  const sentences = t.match(/[^.!?]+[.!?]+(?=\s|$)|[^.!?]+$/g) || [t];
+  let out = sentences[0].trim();
+  for (let i = 1; i < sentences.length && (out + " " + sentences[i].trim()).length <= n; i++) out += " " + sentences[i].trim();
+  return out;
 }
 
 // Shared footer - identical to the landing page footer (paths relative via r).
@@ -535,6 +538,7 @@ ${BRAND_HTML(r)}
 <div class="hero" data-reveal>
   <h1>Run it, <em>route it</em>, read the numbers.</h1>
   <p class="lede">Everything you need to put Marbor in front of your cluster -- connect your tools, ship to production, and understand exactly what it's saving you.</p>
+  <p><a class="btn btn-gold" href="https://marbor.in/demo/" target="_blank" rel="noopener">Live demo</a></p>
   <nav class="breadcrumb" aria-label="Breadcrumb"><ol><li><a href="../index.html">Home</a></li><li aria-hidden="true"><span class="sep">/</span></li><li><span class="current" aria-current="page">Docs</span></li></ol></nav>
 </div>
 <div class="doc-shell two-col">
