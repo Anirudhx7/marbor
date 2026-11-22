@@ -288,6 +288,10 @@ footer a{display:inline-flex;align-items:center;min-height:44px}
 /* Facts that used to be joined with middle dots: separate items, hairline between. */
 .fact{display:inline}
 .fact+.fact::before{content:"";display:inline-block;width:1px;height:1em;margin:0 10px;background:var(--border);vertical-align:-.15em}
+
+.doc-figure{margin:0 0 24px}
+.doc-figure img{display:block;width:100%;height:auto;border:1px solid var(--border);border-radius:var(--r-md)}
+.doc-figure figcaption{margin-top:8px;font-size:13px;color:var(--text-muted)}
 </style>
 </head>
 <body>
@@ -361,7 +365,7 @@ footer a{display:inline-flex;align-items:center;min-height:44px}
     </div>
     <article class="doc-content doc-card"><div class="doc-card-body">
       <nav class="breadcrumb" aria-label="Breadcrumb"><ol><li><a href="../index.html">Home</a></li><li aria-hidden="true"><span class="sep">/</span></li><li><a href="../docs/index.html">Docs</a></li><li aria-hidden="true"><span class="sep">/</span></li><li><span class="current" aria-current="page">Production Deployment Guide</span></li></ol></nav>
-      <h1 id="production-deployment-guide">Production Deployment Guide<a class="anchor" href="#production-deployment-guide" aria-label="Link to section">#</a></h1>
+      <figure class="doc-figure"><img src="../screenshots/dashboard.png" width="1600" height="1400" loading="lazy" alt="The Marbor dashboard showing fleet health, warm models and routing." /><figcaption>The Marbor dashboard: fleet health, warm models and routing in one view.</figcaption></figure><h1 id="production-deployment-guide">Production Deployment Guide<a class="anchor" href="#production-deployment-guide" aria-label="Link to section">#</a></h1>
 <p>This guide covers running marbor in a real production environment. There is no config file - marbor is DB-first (<code>marbor.db</code>, SQLite). Point it at a persistent path with <code>--db</code> (or <code>MARBOR_DB_PATH</code>), boot it once, and configure nodes/keys/routing/everything else through the admin dashboard or the <code>/admin/v1/...</code> REST API (see the <a href="https://github.com/Anirudhx7/marbor/blob/main/README.md#configuration" target="_blank" rel="noopener">Configuration section of the README</a>).</p>
 <hr/>
 <h2 id="ports">Ports<a class="anchor" href="#ports" aria-label="Link to section">#</a></h2>
