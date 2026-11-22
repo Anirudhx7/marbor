@@ -64,7 +64,7 @@ reporting `agentPresent: true` and `health: "healthy"`.
 
 ## Agent transport (TLS)
 
-Agents installed this way run `marbor-agent service install`, which provisions a TLS certificate and serves HTTPS, so enrollment needs no extra flag. Only a hand-started foreground `marbor-agent` without `--cert`/`--key` is plaintext; it refuses to start on a non-loopback bind unless `--allow-insecure-plaintext` is passed (see [SECURITY.md](../../SECURITY.md)). Do not add that flag to an enrollment playbook.
+Agents installed this way run `marbor-agent service install`, which provisions a TLS certificate and serves HTTPS, so enrollment needs no extra flag. Only a hand-started foreground `marbor-agent` without `--cert`/`--key` is plaintext; it refuses to start on a non-loopback bind unless `--allow-insecure-plaintext` is passed (see [SECURITY.md](https://github.com/Anirudhx7/marbor/blob/main/SECURITY.md)). Do not add that flag to an enrollment playbook.
 
 ## Scripted enrollment for N nodes
 
