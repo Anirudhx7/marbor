@@ -472,4 +472,63 @@ input[type="checkbox"]:disabled {
 }
 @media (prefers-reduced-motion: reduce) {
   .toast-item { animation: none; }
+
+/* Native modal dialog: grows from the control that opened it (--modal-origin is
+   set per open), 220ms in, 160ms out, ease-out. Resting state is transform:none
+   so descendants are not given a new containing block. Reduced motion keeps
+   only the opacity change. */
+.modal-dialog {
+  opacity: 0;
+  transform: scale(0.96);
+  transform-origin: var(--modal-origin, 50% 50%);
+  transition-property: opacity, transform, display, overlay;
+  transition-duration: 160ms;
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  transition-behavior: allow-discrete;
+  overscroll-behavior: contain;
+}
+.modal-dialog[open] {
+  opacity: 1;
+  transform: none;
+  transition-duration: 220ms;
+  @starting-style {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+.modal-dialog::backdrop {
+  background: hsl(var(--background) / 0.8);
+  backdrop-filter: blur(4px);
+  opacity: 0;
+  overflow: hidden;
+  overscroll-behavior: contain;
+  transition-property: opacity, display, overlay;
+  transition-duration: 160ms;
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  transition-behavior: allow-discrete;
+}
+.modal-dialog[open]::backdrop {
+  opacity: 1;
+  transition-duration: 220ms;
+  @starting-style {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .modal-dialog, .modal-dialog[open] { transform: none; @starting-style { transform: none; } }
+}
+
+/* A menu or picker shown as a popover: undo the UA popover box so the inline
+   fixed position the component computes is what applies. In the base layer so
+   a component's own utilities (bg-card, border, overflow-y-auto) still win. */
+@layer base {
+  .top-layer-menu {
+    inset: auto;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    overflow: visible;
+  }
 }

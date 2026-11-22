@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useId } from 'react';
 import { createPortal } from 'react-dom';
+import { portalTarget, showAsPopover } from './topLayer';
 import { ChevronDown, Check, X } from 'lucide-react';
 
 // Dropdown menus render inside a scrollable modal body (Modal.tsx uses
@@ -254,11 +255,12 @@ export function CustomSelect({
 
       {isOpen && menuRect && createPortal(
         <div
-          ref={menuRef}
+          popover="manual"
+          ref={(el) => { menuRef.current = el; showAsPopover(el); }}
           id={listId}
           role="listbox"
           style={{ ...menuFixedStyle(menuRect), zIndex: 9999 }}
-          className="border border-border bg-card rounded-lg shadow-xl overflow-y-auto animate-fade-in focus:outline-none"
+          className="top-layer-menu border border-border bg-card rounded-lg shadow-xl overflow-y-auto animate-fade-in focus:outline-none"
         >
           <div className="py-1">
             {options.length === 0 ? (
@@ -296,7 +298,7 @@ export function CustomSelect({
             )}
           </div>
         </div>,
-        document.body
+        portalTarget(containerRef.current)
       )}
     </div>
   );
@@ -437,9 +439,10 @@ export function CustomCombobox({
 
       {isOpen && menuRect && createPortal(
         <div
-          ref={menuRef}
+          popover="manual"
+          ref={(el) => { menuRef.current = el; showAsPopover(el); }}
           style={{ ...menuFixedStyle(menuRect), zIndex: 9999 }}
-          className="border border-border bg-card rounded-lg shadow-xl overflow-y-auto animate-fade-in focus:outline-none"
+          className="top-layer-menu border border-border bg-card rounded-lg shadow-xl overflow-y-auto animate-fade-in focus:outline-none"
         >
           <div className="py-1">
             {displayOptions.length === 0 ? (
@@ -472,7 +475,7 @@ export function CustomCombobox({
             )}
           </div>
         </div>,
-        document.body
+        portalTarget(containerRef.current)
       )}
     </div>
   );
@@ -613,9 +616,10 @@ export function CustomTagCombobox({
 
       {isOpen && menuRect && createPortal(
         <div
-          ref={menuRef}
+          popover="manual"
+          ref={(el) => { menuRef.current = el; showAsPopover(el); }}
           style={{ ...menuFixedStyle(menuRect), zIndex: 9999 }}
-          className="border border-border bg-card rounded-lg shadow-xl overflow-y-auto animate-fade-in focus:outline-none"
+          className="top-layer-menu border border-border bg-card rounded-lg shadow-xl overflow-y-auto animate-fade-in focus:outline-none"
         >
           <div className="py-1">
             {filteredOptions.length === 0 ? (
@@ -640,7 +644,7 @@ export function CustomTagCombobox({
             )}
           </div>
         </div>,
-        document.body
+        portalTarget(containerRef.current)
       )}
     </div>
   );
