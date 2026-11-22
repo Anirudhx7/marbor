@@ -168,6 +168,7 @@ export function SettingsPage() {
   // Model context windows
   const [newCtxModel, setNewCtxModel] = useState('');
   const [newCtxTokens, setNewCtxTokens] = useState('');
+  const [ctxError, setCtxError] = useState<string | null>(null);
 
   // Known model names for the searchable context-windows combobox -
   // suggestions only, never enforced: an operator-declared name for a
@@ -1692,14 +1693,22 @@ export function SettingsPage() {
           </div>
 
           <div className="flex flex-col sm:flex-row gap-2">
-            <CustomCombobox value={newCtxModel} onChange={setNewCtxModel} options={knownModelNames} placeholder="llama3.2:8b" className="sm:flex-1" />
-            <input type="number" value={newCtxTokens} onChange={(e) => setNewCtxTokens(e.target.value)} placeholder="8192" className="w-full sm:w-28 px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
+            <CustomCombobox value={newCtxModel} onChange={(v) => { setNewCtxModel(v); setCtxError(null); }} options={knownModelNames} placeholder="llama3.2:8b" className="sm:flex-1" />
+            <input type="number" value={newCtxTokens} onChange={(e) => { setNewCtxTokens(e.target.value); setCtxError(null); }} placeholder="8192" className="w-full sm:w-28 px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground placeholder-muted-foreground/50 focus:outline-none focus:border-primary/50" />
             <button
               onClick={() => {
                 const tokens = parseInt(newCtxTokens, 10);
                 // !tokens only rejects 0/NaN - a negative value is truthy
                 // and was passing straight through to the stored setting.
-                if (!newCtxModel.trim() || !Number.isFinite(tokens) || tokens <= 0) return;
+                if (!newCtxModel.trim()) {
+                  setCtxError('Enter the model this context window applies to');
+                  return;
+                }
+                if (!Number.isFinite(tokens) || tokens <= 0) {
+                  setCtxError('Max tokens must be a whole number greater than 0');
+                  return;
+                }
+                setCtxError(null);
                 setSettings({ ...settings, contextWindows: { ...settings.contextWindows, [newCtxModel.trim()]: tokens } });
                 setNewCtxModel('');
                 setNewCtxTokens('');
@@ -1711,6 +1720,7 @@ export function SettingsPage() {
               <Plus className="w-4 h-4" />
             </button>
           </div>
+          {ctxError && <p role="alert" className="text-sm text-destructive mt-2">{ctxError}</p>}
         </div>
 
         {/* Global warmup & audit */}
