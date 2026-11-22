@@ -179,12 +179,14 @@ h1 em{font-style:italic;color:var(--accent);font-weight:600}
 .doc-content pre.code{background:var(--bg);border:1px solid var(--border);border-radius:var(--r-md);padding:16px;overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0;position:relative}
 .doc-content pre.code code{background:none;border:none;padding:0;font-size:12.5px;line-height:1.7;color:var(--text)}
 .doc-content .code-wrap{position:relative;margin:0 0 18px}
-.doc-content .code-wrap pre.code{padding-right:90px;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+.doc-content pre.code.wrap code{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}
+.doc-content .code-head{display:flex;justify-content:flex-end;align-items:center;padding:6px 8px;background:var(--bg-surface);border:1px solid var(--border);border-bottom:0;border-radius:var(--r-md) var(--r-md) 0 0}
+.doc-content .code-wrap pre.code{border-top-left-radius:0;border-top-right-radius:0;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
 .doc-content .code-wrap pre.code::-webkit-scrollbar{height:8px;width:8px}
 .doc-content .code-wrap pre.code::-webkit-scrollbar-track{background:transparent}
 .doc-content .code-wrap pre.code::-webkit-scrollbar-thumb{background:var(--border);border-radius:99px}
 .doc-content .code-wrap pre.code::-webkit-scrollbar-thumb:hover{background:var(--text-faint)}
-.doc-content .copy-btn{position:absolute;top:10px;right:10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:44px;min-height:44px;padding:7px 13px;cursor:pointer;background:var(--bg-surface);border:1px solid var(--border);border-radius:99px;color:var(--text-muted);font-family:var(--font-sans);font-weight:650;font-size:12px;line-height:1;box-shadow:var(--shadow);transition:color .15s,border-color .15s,background .15s,transform .15s}
+.doc-content .copy-btn{position:static;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:44px;min-height:44px;padding:7px 13px;cursor:pointer;background:var(--bg-surface);border:1px solid var(--border);border-radius:99px;color:var(--text-muted);font-family:var(--font-sans);font-weight:650;font-size:12px;line-height:1;box-shadow:var(--shadow);transition:color .15s,border-color .15s,background .15s,transform .15s}
 .doc-content .copy-btn:hover{color:var(--accent);border-color:var(--accent);background:var(--bg-input)}
 .doc-content .copy-btn svg{width:13px;height:13px}
 .doc-content .copy-btn.copied{color:var(--accent2);border-color:var(--accent2);transform:scale(1.06)}
@@ -323,22 +325,7 @@ footer a{display:inline-flex;align-items:center;min-height:44px}
 <hr/>
 <h2 id="librechatyaml-configuration">librechat.yaml configuration<a class="anchor" href="#librechatyaml-configuration" aria-label="Link to section">#</a></h2>
 <p>LibreChat reads endpoint config from <code>librechat.yaml</code>. Add an Ollama custom endpoint:</p>
-<div class="code-wrap"><pre class="code" data-lang="yaml"><code>endpoints:
-  custom:
-    - name: "Marbor"
-      apiKey: "sk-your-api-key"
-      baseURL: "http://&lt;marbor-host&gt;:11434/v1"
-      models:
-        default: ["llama3.2", "mistral-nemo", "deepseek-coder-v2"]
-        fetch: true
-      titleConvo: true
-      titleModel: "llama3.2"
-      summarize: false
-      forcePrompt: false
-      dropParams:
-        - "stop"
-      headers:
-        Authorization: "Bearer sk-your-api-key"</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="endpoints:
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="endpoints:
   custom:
     - name: &quot;Marbor&quot;
       apiKey: &quot;sk-your-api-key&quot;
@@ -353,37 +340,43 @@ footer a{display:inline-flex;align-items:center;min-height:44px}
       dropParams:
         - &quot;stop&quot;
       headers:
-        Authorization: &quot;Bearer sk-your-api-key&quot;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+        Authorization: &quot;Bearer sk-your-api-key&quot;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="yaml"><code>endpoints:
+  custom:
+    - name: "Marbor"
+      apiKey: "sk-your-api-key"
+      baseURL: "http://&lt;marbor-host&gt;:11434/v1"
+      models:
+        default: ["llama3.2", "mistral-nemo", "deepseek-coder-v2"]
+        fetch: true
+      titleConvo: true
+      titleModel: "llama3.2"
+      summarize: false
+      forcePrompt: false
+      dropParams:
+        - "stop"
+      headers:
+        Authorization: "Bearer sk-your-api-key"</code></pre></div>
 <p>Replace:</p>
 <ul><li><code>&lt;marbor-host&gt;</code> with the hostname or IP of the marbor instance</li><li><code>sk-your-api-key</code> with a key from the admin dashboard</li><li>The model list with models available on your cluster</li></ul>
 <p>The <code>baseURL</code> uses <code>/v1</code> (OpenAI-compatible path). marbor translates these to Ollama-native requests internally.</p>
 <hr/>
 <h2 id="docker-compose-setup">Docker Compose setup<a class="anchor" href="#docker-compose-setup" aria-label="Link to section">#</a></h2>
 <p>If LibreChat and marbor are on the same Docker host, use the service name as the host:</p>
-<div class="code-wrap"><pre class="code" data-lang="yaml"><code># In docker-compose.override.yml
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="# In docker-compose.override.yml
 services:
   api:
     environment:
       - ENDPOINTS=custom
     volumes:
-      - ./librechat.yaml:/app/librechat.yaml</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="# In docker-compose.override.yml
+      - ./librechat.yaml:/app/librechat.yaml"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="yaml"><code># In docker-compose.override.yml
 services:
   api:
     environment:
       - ENDPOINTS=custom
     volumes:
-      - ./librechat.yaml:/app/librechat.yaml"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+      - ./librechat.yaml:/app/librechat.yaml</code></pre></div>
 <p><code>librechat.yaml</code> with Docker networking:</p>
-<div class="code-wrap"><pre class="code" data-lang="yaml"><code>endpoints:
-  custom:
-    - name: "Marbor"
-      apiKey: "sk-your-api-key"
-      baseURL: "http://marbor:11434/v1"
-      models:
-        default: ["llama3.2"]
-        fetch: true
-      headers:
-        Authorization: "Bearer sk-your-api-key"</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="endpoints:
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="endpoints:
   custom:
     - name: &quot;Marbor&quot;
       apiKey: &quot;sk-your-api-key&quot;
@@ -392,17 +385,18 @@ services:
         default: [&quot;llama3.2&quot;]
         fetch: true
       headers:
-        Authorization: &quot;Bearer sk-your-api-key&quot;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+        Authorization: &quot;Bearer sk-your-api-key&quot;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="yaml"><code>endpoints:
+  custom:
+    - name: "Marbor"
+      apiKey: "sk-your-api-key"
+      baseURL: "http://marbor:11434/v1"
+      models:
+        default: ["llama3.2"]
+        fetch: true
+      headers:
+        Authorization: "Bearer sk-your-api-key"</code></pre></div>
 <p>Add marbor to the same Docker network:</p>
-<div class="code-wrap"><pre class="code" data-lang="yaml"><code># In marbor docker-compose section
-services:
-  marbor:
-    image: ghcr.io/anirudhx7/marbor:latest
-    ports:
-      - "11434:11434"
-      - "8080:8080"
-    networks:
-      - librechat_default</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="# In marbor docker-compose section
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="# In marbor docker-compose section
 services:
   marbor:
     image: ghcr.io/anirudhx7/marbor:latest
@@ -410,7 +404,15 @@ services:
       - &quot;11434:11434&quot;
       - &quot;8080:8080&quot;
     networks:
-      - librechat_default"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+      - librechat_default"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="yaml"><code># In marbor docker-compose section
+services:
+  marbor:
+    image: ghcr.io/anirudhx7/marbor:latest
+    ports:
+      - "11434:11434"
+      - "8080:8080"
+    networks:
+      - librechat_default</code></pre></div>
 <hr/>
 <h2 id="model-discovery">Model discovery<a class="anchor" href="#model-discovery" aria-label="Link to section">#</a></h2>
 <p>With <code>fetch: true</code>, LibreChat calls <code>GET /v1/models</code> on startup to populate the model list. marbor implements this endpoint - it returns all models currently loaded across healthy nodes.</p>

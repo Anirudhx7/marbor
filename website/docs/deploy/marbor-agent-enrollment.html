@@ -179,12 +179,14 @@ h1 em{font-style:italic;color:var(--accent);font-weight:600}
 .doc-content pre.code{background:var(--bg);border:1px solid var(--border);border-radius:var(--r-md);padding:16px;overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0;position:relative}
 .doc-content pre.code code{background:none;border:none;padding:0;font-size:12.5px;line-height:1.7;color:var(--text)}
 .doc-content .code-wrap{position:relative;margin:0 0 18px}
-.doc-content .code-wrap pre.code{padding-right:90px;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+.doc-content pre.code.wrap code{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}
+.doc-content .code-head{display:flex;justify-content:flex-end;align-items:center;padding:6px 8px;background:var(--bg-surface);border:1px solid var(--border);border-bottom:0;border-radius:var(--r-md) var(--r-md) 0 0}
+.doc-content .code-wrap pre.code{border-top-left-radius:0;border-top-right-radius:0;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
 .doc-content .code-wrap pre.code::-webkit-scrollbar{height:8px;width:8px}
 .doc-content .code-wrap pre.code::-webkit-scrollbar-track{background:transparent}
 .doc-content .code-wrap pre.code::-webkit-scrollbar-thumb{background:var(--border);border-radius:99px}
 .doc-content .code-wrap pre.code::-webkit-scrollbar-thumb:hover{background:var(--text-faint)}
-.doc-content .copy-btn{position:absolute;top:10px;right:10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:44px;min-height:44px;padding:7px 13px;cursor:pointer;background:var(--bg-surface);border:1px solid var(--border);border-radius:99px;color:var(--text-muted);font-family:var(--font-sans);font-weight:650;font-size:12px;line-height:1;box-shadow:var(--shadow);transition:color .15s,border-color .15s,background .15s,transform .15s}
+.doc-content .copy-btn{position:static;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:44px;min-height:44px;padding:7px 13px;cursor:pointer;background:var(--bg-surface);border:1px solid var(--border);border-radius:99px;color:var(--text-muted);font-family:var(--font-sans);font-weight:650;font-size:12px;line-height:1;box-shadow:var(--shadow);transition:color .15s,border-color .15s,background .15s,transform .15s}
 .doc-content .copy-btn:hover{color:var(--accent);border-color:var(--accent);background:var(--bg-input)}
 .doc-content .copy-btn svg{width:13px;height:13px}
 .doc-content .copy-btn.copied{color:var(--accent2);border-color:var(--accent2);transform:scale(1.06)}
@@ -324,15 +326,7 @@ footer a{display:inline-flex;align-items:center;min-height:44px}
 <p>Each node gets its own unique agent token, minted server-side and bound to that node's host - it is never a shared fleet-wide secret. A token copied to a different machine will not authenticate there; marbor checks it against the specific host it was generated for. Tokens can be rotated or revoked at any time without touching other nodes.</p>
 <p>The install command the API hands back does <strong>not</strong> embed the real permanent token directly. It embeds a short-lived, single-use enrollment code instead (<code>MARBOR_ENROLL=</code>), which the agent exchanges for the real token via <code>POST /admin/agent/enroll</code> at install time - so the permanent bearer token never sits in shell history, SSH logs, or chat. (<code>install.sh</code> also accepts a raw <code>MARBOR_AGENT_SECRET=</code> as a manual path, but <code>MARBOR_ENROLL=</code> is what the API generates and what you should script against.)</p>
 <p><code>POST /admin/nodes/{name}/agent</code> - enables the marbor agent for an already-registered node and returns a ready-to-run install command with the enrollment code embedded. The <code>port</code> in the request body is <strong>the agent's own listening port</strong> (the binary's default is <code>9200</code>) - not the node's runtime endpoint port:</p>
-<div class="code-wrap"><pre class="code" data-lang="json"><code>{
-  "node": "gpu01",
-  "enabled": true,
-  "port": 9200,
-  "token": "admin.&lt;opaque-permanent-token&gt;",
-  "enrollment_code": "&lt;short-lived-code&gt;",
-  "install_command": "curl -fsSL https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | ROLE=agent MARBOR_SERVER=https://marbor.example.com MARBOR_ENROLL=&lt;short-lived-code&gt; PORT=9200 sh",
-  "install_command_windows": "..."
-}</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="{
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="{
   &quot;node&quot;: &quot;gpu01&quot;,
   &quot;enabled&quot;: true,
   &quot;port&quot;: 9200,
@@ -340,28 +334,21 @@ footer a{display:inline-flex;align-items:center;min-height:44px}
   &quot;enrollment_code&quot;: &quot;&lt;short-lived-code&gt;&quot;,
   &quot;install_command&quot;: &quot;curl -fsSL https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | ROLE=agent MARBOR_SERVER=https://marbor.example.com MARBOR_ENROLL=&lt;short-lived-code&gt; PORT=9200 sh&quot;,
   &quot;install_command_windows&quot;: &quot;...&quot;
-}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="json"><code>{
+  "node": "gpu01",
+  "enabled": true,
+  "port": 9200,
+  "token": "admin.&lt;opaque-permanent-token&gt;",
+  "enrollment_code": "&lt;short-lived-code&gt;",
+  "install_command": "curl -fsSL https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | ROLE=agent MARBOR_SERVER=https://marbor.example.com MARBOR_ENROLL=&lt;short-lived-code&gt; PORT=9200 sh",
+  "install_command_windows": "..."
+}</code></pre></div>
 <p>Run the returned <code>install_command</code> on the target host (via SSH or any script you use) and the agent exchanges the code for its real token and registers itself. Automation that would rather not run a server-supplied string through a shell can use <code>enrollment_code</code> instead: build the same command from fixed parts and pass <code>MARBOR_SERVER</code>, <code>MARBOR_ENROLL</code> and <code>PORT</code> as environment variables, as the Ansible playbook does. Use an <code>https://</code> marbor URL for any remote host, since the code and the installer download travel over it.</p>
 <p><strong>This endpoint is not safe to call blindly on every run.</strong> It unconditionally mints a fresh token, overwrites the persisted <code>marbor_agent</code> record, and pushes the new token to the live router - a repeat call against an already-healthy node rotates its credential out from under it and could interrupt a live connection for no reason. Check <code>GET /admin/nodes</code> first and only call this for a node that isn't already reporting <code>agentPresent: true</code> and <code>health: "healthy"</code>.</p>
 <h2 id="agent-transport-tls">Agent transport (TLS)<a class="anchor" href="#agent-transport-tls" aria-label="Link to section">#</a></h2>
 <p>Agents installed this way run <code>marbor-agent service install</code>, which provisions a TLS certificate and serves HTTPS, so enrollment needs no extra flag. Only a hand-started foreground <code>marbor-agent</code> without <code>--cert</code>/<code>--key</code> is plaintext; it refuses to start on a non-loopback bind unless <code>--allow-insecure-plaintext</code> is passed (see <a href="https://github.com/Anirudhx7/marbor/blob/main/SECURITY.md" target="_blank" rel="noopener">SECURITY.md</a>). Do not add that flag to an enrollment playbook.</p>
 <h2 id="scripted-enrollment-for-n-nodes">Scripted enrollment for N nodes<a class="anchor" href="#scripted-enrollment-for-n-nodes" aria-label="Link to section">#</a></h2>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>MARBOR_SERVER=https://marbor.example.com
-COOKIES=$(mktemp)
-
-curl -sf -c "$COOKIES" -X POST "$MARBOR_SERVER/admin/login" \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"&lt;your admin password&gt;"}' &gt; /dev/null
-
-for host in gpu01 gpu02 gpu03; do
-  # Enable the agent, capture the install command
-  INSTALL_CMD=$(curl -sf -b "$COOKIES" -X POST "$MARBOR_SERVER/admin/nodes/$host/agent" \
-    -H "Content-Type: application/json" \
-    -d '{"port":9200}' | jq -r '.install_command')
-
-  # Run it on the target host (SSH shown here; swap for your Ansible task)
-  ssh "$host" "$INSTALL_CMD"
-done</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="MARBOR_SERVER=https://marbor.example.com
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="MARBOR_SERVER=https://marbor.example.com
 COOKIES=$(mktemp)
 
 curl -sf -c &quot;$COOKIES&quot; -X POST &quot;$MARBOR_SERVER/admin/login&quot; \
@@ -376,47 +363,29 @@ for host in gpu01 gpu02 gpu03; do
 
   # Run it on the target host (SSH shown here; swap for your Ansible task)
   ssh &quot;$host&quot; &quot;$INSTALL_CMD&quot;
-done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="bash"><code>MARBOR_SERVER=https://marbor.example.com
+COOKIES=$(mktemp)
+
+curl -sf -c "$COOKIES" -X POST "$MARBOR_SERVER/admin/login" \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"&lt;your admin password&gt;"}' &gt; /dev/null
+
+for host in gpu01 gpu02 gpu03; do
+  # Enable the agent, capture the install command
+  INSTALL_CMD=$(curl -sf -b "$COOKIES" -X POST "$MARBOR_SERVER/admin/nodes/$host/agent" \
+    -H "Content-Type: application/json" \
+    -d '{"port":9200}' | jq -r '.install_command')
+
+  # Run it on the target host (SSH shown here; swap for your Ansible task)
+  ssh "$host" "$INSTALL_CMD"
+done</code></pre></div>
 <h2 id="recommended-path-the-first-party-ansible-playbook">Recommended path: the first-party Ansible playbook<a class="anchor" href="#recommended-path-the-first-party-ansible-playbook" aria-label="Link to section">#</a></h2>
 <p>A first-party Ansible playbook automates the sequence above - login once, check which nodes already have a healthy agent (skipping those), enable and install the rest, then poll until each is healthy - across an arbitrary list of already- registered GPU hosts declared in a simple vars file. It ships as source in this repo only; it is not published to Ansible Galaxy or any external registry.</p>
 <ul><li>Playbook: <a href="https://github.com/Anirudhx7/marbor/blob/main/ansible/playbooks/install-marbor-agent.yml" target="_blank" rel="noopener"><code>ansible/playbooks/install-marbor-agent.yml</code></a></li><li>Example inventory: <a href="https://github.com/Anirudhx7/marbor/blob/main/ansible/inventory-agents.example.yml" target="_blank" rel="noopener"><code>ansible/inventory-agents.example.yml</code></a></li><li>Full variable reference, the re-enrollment idempotency policy, and prerequisites:</li></ul>
 <p>  <a href="https://github.com/Anirudhx7/marbor/blob/main/ansible/README.md" target="_blank" rel="noopener"><code>ansible/README.md</code></a></p>
 <p>This playbook enrolls/installs agents only - it does not register a node's runtime endpoint. Run <a href="https://github.com/Anirudhx7/marbor/blob/main/ansible/playbooks/register-gpus.yml" target="_blank" rel="noopener"><code>ansible/playbooks/register-gpus.yml</code></a> first for any node not yet registered - see <a href="gpu-node-registration.html">GPU node registration</a>.</p>
 <h2 id="ansible-sketch-how-it-works-under-the-hood-no-ansible-fallback">Ansible sketch (how it works under the hood / no-Ansible fallback)<a class="anchor" href="#ansible-sketch-how-it-works-under-the-hood-no-ansible-fallback" aria-label="Link to section">#</a></h2>
-<div class="code-wrap"><pre class="code" data-lang="yaml"><code>- name: Log in and capture session cookie
-  uri:
-    url: "https://marbor.example.com/admin/login"
-    method: POST
-    body_format: json
-    body:
-      username: admin
-      password: "{{ mesh_admin_password }}"
-    status_code: 200
-  register: mesh_login
-  delegate_to: localhost
-  run_once: true
-
-- name: Enable agent and capture install command
-  uri:
-    url: "https://marbor.example.com/admin/nodes/{{ inventory_hostname }}/agent"
-    method: POST
-    headers:
-      Cookie: "{{ mesh_login.set_cookie }}"
-    body_format: json
-    body:
-      port: 11434
-    return_content: true
-  register: agent_response
-  delegate_to: localhost
-
-- name: Install agent on GPU node
-  shell: curl -fsSL https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | sh
-  environment:
-    ROLE: agent
-    MARBOR_SERVER: "https://marbor.example.com"
-    MARBOR_ENROLL: "{{ (agent_response.content | from_json).enrollment_code }}"
-    PORT: "9200"
-  no_log: true</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="- name: Log in and capture session cookie
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="- name: Log in and capture session cookie
   uri:
     url: &quot;https://marbor.example.com/admin/login&quot;
     method: POST
@@ -449,7 +418,40 @@ done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2
     MARBOR_SERVER: &quot;https://marbor.example.com&quot;
     MARBOR_ENROLL: &quot;{{ (agent_response.content | from_json).enrollment_code }}&quot;
     PORT: &quot;9200&quot;
-  no_log: true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+  no_log: true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="yaml"><code>- name: Log in and capture session cookie
+  uri:
+    url: "https://marbor.example.com/admin/login"
+    method: POST
+    body_format: json
+    body:
+      username: admin
+      password: "{{ mesh_admin_password }}"
+    status_code: 200
+  register: mesh_login
+  delegate_to: localhost
+  run_once: true
+
+- name: Enable agent and capture install command
+  uri:
+    url: "https://marbor.example.com/admin/nodes/{{ inventory_hostname }}/agent"
+    method: POST
+    headers:
+      Cookie: "{{ mesh_login.set_cookie }}"
+    body_format: json
+    body:
+      port: 11434
+    return_content: true
+  register: agent_response
+  delegate_to: localhost
+
+- name: Install agent on GPU node
+  shell: curl -fsSL https://raw.githubusercontent.com/Anirudhx7/marbor/main/install.sh | sh
+  environment:
+    ROLE: agent
+    MARBOR_SERVER: "https://marbor.example.com"
+    MARBOR_ENROLL: "{{ (agent_response.content | from_json).enrollment_code }}"
+    PORT: "9200"
+  no_log: true</code></pre></div>
 <p>Run this play against a <code>gpu_nodes</code> inventory group and every host gets its own enrollment code from the same run - no manual UI step, no shared secret.</p>
 <h2 id="rotation-and-revocation">Rotation and revocation<a class="anchor" href="#rotation-and-revocation" aria-label="Link to section">#</a></h2>
 <ul><li><code>POST /admin/nodes/{name}/agent/regenerate</code> mints a new token (and a new install</li></ul>
