@@ -150,6 +150,7 @@ export function SettingsPage() {
   // keystroke rewrote "0" to 1 while the operator was still typing "0.92".
   // Only a finite positive number is committed; the text is left alone.
   const [fxText, setFxText] = useState(() => String(currency.fxRate));
+  const [fxFocused, setFxFocused] = useState(false);
   useEffect(() => {
     setFxText((prev) => (parseFloat(prev) === currency.fxRate ? prev : String(currency.fxRate)));
   }, [currency.fxRate]);
@@ -1314,8 +1315,11 @@ export function SettingsPage() {
                     const rate = parseFxRate(e.target.value);
                     if (rate !== null) setCurrency({ ...currency, fxRate: rate });
                   }}
-                  onBlur={() => setFxText(String(currency.fxRate))}
-                  aria-invalid={parseFxRate(fxText) === null}
+                  onFocus={() => setFxFocused(true)}
+                  onBlur={() => { setFxFocused(false); setFxText(String(currency.fxRate)); }}
+                  // Only flag the field once typing stops: "0." is a valid step
+                  // towards 0.5 and must not flash invalid on the way.
+                  aria-invalid={!fxFocused && parseFxRate(fxText) === null}
                   disabled={currency.code === 'USD'}
                   className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:border-primary/50 disabled:opacity-50"
                 />
