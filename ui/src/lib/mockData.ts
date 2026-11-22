@@ -1064,6 +1064,11 @@ let mockPulls: readonly MockPull[] = [];
 
 export function recordMockPull(node: string, model: string, sizeBytes: number): void {
   if (mockPulls.some(p => p.node === node && p.model === model)) return;
+  // A model the seed fleet already has on that node (on disk or loaded) is not
+  // new there: pulling it again changes nothing, so it keeps its seeded state
+  // and is not labelled as pulled in the demo.
+  const seeded = mockGPUNodes.find(n => n.name === node);
+  if (seeded && ((seeded.localModels ?? []).some(m => m.name === model) || (seeded.loadedModels ?? []).some(m => m.name === model))) return;
   mockPulls = [...mockPulls, { node, model, sizeBytes }];
 }
 
