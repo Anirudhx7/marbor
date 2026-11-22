@@ -21,6 +21,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **The mock node (`cmd/mocknode`) now honors `stream_options.include_usage`.** Streaming chat responses end with the usage chunk (prompt tokens, and cached tokens under the simulated prefix cache) when a client asks for it, as OpenAI-compatible engines do. Without the option the stream is unchanged.
 
 ### Fixed
+- **Dialogs and pickers behave under repeated Escape.** A form with unsaved changes keeps its Discard prompt through repeated Escape and Close presses, date and time popups stay inside their dialog and Escape closes one layer at a time, the date and time chevrons are 44px on touch screens, and the currency preference is one shared store so a quickly typed FX rate is no longer overwritten.
+- **A cloud request with no recorded provider shows "Cloud" in the Requests node pill** instead of a bare "cloud:".
+- **The docs table of contents shows code spans as code,** and the footer social icons reach 44px on touch screens. The 404 page's link no longer carries an arrow.
+- **Demo only:** Advisor stars survive navigation, a created key is shown once with its Copy button, pulled models get distinct sizes, and a model a node already holds is not labelled as pulled.
 - **Add fallback chain and Add context window now say what is missing** instead of doing nothing when the model or the alternates or the token count is empty or invalid.
 - **The FX rate field accepts rates below 1** (0.92 no longer turns into 1.92), and choosing USD resets the rate to 1 so caps are not shown multiplied by the previous currency's rate.
 - **Dropdowns on the dashboard close on Escape without closing the dialog around them, move with the arrow keys, and expose listbox semantics to screen readers.**
