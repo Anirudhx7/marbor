@@ -1,11 +1,5 @@
-import { AnimatePresence, motion } from 'framer-motion';
 import { X } from 'lucide-react';
-import { ReactNode, useEffect, useId, useRef } from 'react';
-import { createPortal } from 'react-dom';
-
-// Open modals, oldest first. Every modal listens on document, so without this
-// one Escape closed every stacked dialog at once. Only the top one reacts.
-const openModalStack: symbol[] = [];
+import { ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 
 interface ModalProps {
   isOpen: boolean;
@@ -15,105 +9,92 @@ interface ModalProps {
   maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl';
 }
 
-export function Modal({ isOpen, onClose, title, children, maxWidth = 'md' }: ModalProps) {
-  const maxWidthClass = {
-    sm: 'max-w-sm',
-    md: 'max-w-md',
-    lg: 'max-w-lg',
-    xl: 'max-w-xl',
-    '2xl': 'max-w-2xl',
-    '3xl': 'max-w-3xl',
-    '4xl': 'max-w-4xl',
-  }[maxWidth];
+const WIDTHS = { sm: '24rem', md: '28rem', lg: '32rem', xl: '36rem', '2xl': '42rem', '3xl': '48rem', '4xl': '56rem' } as const;
 
+// Matches the exit transition in index.css (.modal-dialog); the dialog is
+// unmounted once it has finished fading out.
+const EXIT_MS = 160;
+
+// A native modal <dialog>. The browser supplies the inert page, focus
+// containment, top layer, ::backdrop, Escape and focus return to the opener,
+// so stacked dialogs close one at a time (Escape goes to the topmost) with no
+// hand-built stack or focus trap. The dialog grows from the control that
+// opened it. Menus and pickers used inside it render into it as popovers
+// (see topLayer.ts) so they stay usable.
+export function Modal({ isOpen, onClose, title, children, maxWidth = 'md' }: ModalProps) {
   const titleId = useId();
-  const dialogRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const pressedBackdrop = useRef(false);
+  // Rendered while open and for the length of the exit transition.
+  const [present, setPresent] = useState(isOpen);
+  if (isOpen && !present) setPresent(true);
 
-  // While open: move focus into the dialog, close on Escape, keep Tab inside it,
-  // and hand focus back to whatever opened it.
-  useEffect(() => {
-    if (!isOpen) return;
-    const opener = document.activeElement as HTMLElement | null;
+  useLayoutEffect(() => {
     const dialog = dialogRef.current;
-    const self = Symbol('modal');
-    openModalStack.push(self);
-    dialog?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (openModalStack[openModalStack.length - 1] !== self) return;
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        onCloseRef.current();
-        return;
+    if (!dialog) return;
+    if (isOpen && !dialog.open) {
+      const opener = document.activeElement as HTMLElement | null;
+      dialog.showModal();
+      // Grow from the opener: its centre, in the dialog's own coordinates.
+      if (opener && opener !== document.body) {
+        const r = opener.getBoundingClientRect();
+        const left = (window.innerWidth - dialog.offsetWidth) / 2;
+        const top = (window.innerHeight - dialog.offsetHeight) / 2;
+        dialog.style.setProperty('--modal-origin', `${Math.round(r.left + r.width / 2 - left)}px ${Math.round(r.top + r.height / 2 - top)}px`);
       }
-      if (e.key !== 'Tab' || !dialog) return;
-      const items = Array.from(
-        dialog.querySelectorAll<HTMLElement>('a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])'),
-      ).filter(el => !el.hasAttribute('disabled'));
-      if (items.length === 0) { e.preventDefault(); return; }
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (e.shiftKey && (document.activeElement === first || document.activeElement === dialog)) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      const at = openModalStack.indexOf(self);
-      if (at >= 0) openModalStack.splice(at, 1);
-      if (opener && document.contains(opener)) opener.focus();
-    };
-  }, [isOpen]);
+      dialog.focus({ preventScroll: true });
+    } else if (!isOpen && dialog.open) {
+      dialog.close();
+    }
+  }, [isOpen, present]);
 
-  const modalElement = (
-    <AnimatePresence>
-      {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
-          {/* Backdrop */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={onClose}
-            className="fixed inset-0 bg-background/80 backdrop-blur-sm"
-          />
+  useEffect(() => {
+    if (isOpen || !present) return;
+    const id = window.setTimeout(() => setPresent(false), EXIT_MS);
+    return () => window.clearTimeout(id);
+  }, [isOpen, present]);
 
-          {/* Modal Content */}
-          <motion.div
-            ref={dialogRef}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby={titleId}
-            tabIndex={-1}
-            initial={{ opacity: 0, scale: 0.95, y: 10 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 10 }}
-            className={`relative w-full ${maxWidthClass} max-h-[calc(100dvh-2rem)] sm:max-h-[calc(100vh-3rem)] bg-card border border-border shadow-xl rounded-xl flex flex-col overflow-hidden min-w-0 focus:outline-none`}
-          >
-            <div className="px-4 py-3 sm:px-6 sm:py-4 border-b border-border flex items-center justify-between gap-3 shrink-0 min-w-0">
-              <h3 id={titleId} className="text-base sm:text-lg font-semibold text-foreground truncate min-w-0">{title}</h3>
-              <button
-                onClick={onClose}
-                className="p-1 rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors shrink-0 min-w-[40px] min-h-[40px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
-                aria-label="Close"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-4 sm:p-6 flex-1 overflow-y-auto min-w-0 break-words">
-              {children}
-            </div>
-          </motion.div>
-        </div>
-      )}
-    </AnimatePresence>
+  // A dialog unmounted while open (callers that render it conditionally) is
+  // closed first so the browser returns focus to the opener.
+  useLayoutEffect(() => () => {
+    const dialog = dialogRef.current;
+    if (dialog?.open) dialog.close();
+  }, []);
+
+  if (!present) return null;
+
+  return (
+    <dialog
+      ref={dialogRef}
+      aria-labelledby={titleId}
+      tabIndex={-1}
+      // Escape and the back gesture arrive as a cancel request; the parent
+      // owns the open state, so hand it over instead of closing here.
+      onCancel={(e) => { e.preventDefault(); onCloseRef.current(); }}
+      // A click on the backdrop lands on the dialog element itself. Both the
+      // press and the release must be there so a text-selection drag that ends
+      // outside does not dismiss it.
+      onPointerDown={(e) => { pressedBackdrop.current = e.target === e.currentTarget; }}
+      onClick={(e) => { if (pressedBackdrop.current && e.target === e.currentTarget) onCloseRef.current(); pressedBackdrop.current = false; }}
+      style={{ width: `min(calc(100vw - 2rem), ${WIDTHS[maxWidth]})` }}
+      className="modal-dialog m-auto p-0 max-h-[calc(100dvh-2rem)] sm:max-h-[calc(100vh-3rem)] bg-card text-foreground border border-border shadow-xl rounded-xl overflow-hidden min-w-0 focus:outline-none open:flex open:flex-col"
+    >
+      <div className="px-4 py-3 sm:px-6 sm:py-4 border-b border-border flex items-center justify-between gap-3 shrink-0 min-w-0">
+        <h3 id={titleId} className="text-base sm:text-lg font-semibold text-foreground truncate min-w-0">{title}</h3>
+        <button
+          type="button"
+          onClick={() => onCloseRef.current()}
+          className="p-1 rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors shrink-0 min-w-[40px] min-h-[40px] sm:min-w-0 sm:min-h-0 flex items-center justify-center"
+          aria-label="Close"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+      <div className="p-4 sm:p-6 flex-1 overflow-y-auto min-w-0 break-words">
+        {children}
+      </div>
+    </dialog>
   );
-
-  return createPortal(modalElement, document.body);
 }

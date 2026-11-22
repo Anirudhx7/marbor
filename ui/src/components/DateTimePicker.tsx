@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { portalTarget, showAsPopover } from './topLayer';
 import { Calendar as CalendarIcon, Clock, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, X } from 'lucide-react';
 import { useTimezone } from '../hooks/useTimezone';
 import { formatWallInZone, nowWallInZone, wallDateTimeToUtcIso, formatInTimezone } from '../lib/time';
@@ -304,9 +305,10 @@ export function CustomDateTimePicker({
 
       {isOpen && coords && createPortal(
         <div
-          ref={panelRef}
+          popover="manual"
+          ref={(el) => { panelRef.current = el; showAsPopover(el); }}
           style={{ position: 'fixed', left: coords.left, top: coords.top, bottom: coords.bottom, maxHeight: coords.maxHeight, zIndex: 9999 }}
-          className="p-4 border border-border bg-card rounded-xl shadow-xl w-80 overflow-y-auto animate-fade-in"
+          className="top-layer-menu p-4 border border-border bg-card rounded-xl shadow-xl w-80 overflow-y-auto animate-fade-in"
         >
           {/* Calendar header */}
           <div className="flex items-center justify-between mb-3">
@@ -467,7 +469,7 @@ export function CustomDateTimePicker({
             </button>
           </div>
         </div>,
-        document.body
+        portalTarget(containerRef.current)
       )}
     </div>
   );
@@ -695,9 +697,10 @@ export function CustomDatePicker({
 
       {isOpen && coords && createPortal(
         <div
-          ref={panelRef}
+          popover="manual"
+          ref={(el) => { panelRef.current = el; showAsPopover(el); }}
           style={{ position: 'fixed', left: coords.left, top: coords.top, bottom: coords.bottom, maxHeight: coords.maxHeight, zIndex: 9999 }}
-          className="p-4 border border-border bg-card rounded-xl shadow-xl w-80 overflow-y-auto animate-fade-in"
+          className="top-layer-menu p-4 border border-border bg-card rounded-xl shadow-xl w-80 overflow-y-auto animate-fade-in"
         >
           {/* Calendar header */}
           <div className="flex items-center justify-between mb-3">
@@ -794,7 +797,7 @@ export function CustomDatePicker({
             </button>
           </div>
         </div>,
-        document.body
+        portalTarget(containerRef.current)
       )}
     </div>
   );
@@ -943,9 +946,10 @@ export function CustomTimePicker({
 
       {isOpen && coords && createPortal(
         <div
-          ref={panelRef}
+          popover="manual"
+          ref={(el) => { panelRef.current = el; showAsPopover(el); }}
           style={{ position: 'fixed', left: coords.left, top: coords.top, bottom: coords.bottom, maxHeight: coords.maxHeight, zIndex: 9999 }}
-          className="p-4 border border-border bg-card rounded-xl shadow-xl w-64 overflow-y-auto animate-fade-in"
+          className="top-layer-menu p-4 border border-border bg-card rounded-xl shadow-xl w-64 overflow-y-auto animate-fade-in"
         >
           {/* Main Large Clock Display */}
           <div className="flex justify-center items-center gap-1.5 font-mono text-3xl font-bold text-primary mb-5 select-none bg-secondary/20 py-2.5 rounded-xl border border-border/40">
@@ -1001,7 +1005,7 @@ export function CustomTimePicker({
             </button>
           </div>
         </div>,
-        document.body
+        portalTarget(containerRef.current)
       )}
     </div>
   );
