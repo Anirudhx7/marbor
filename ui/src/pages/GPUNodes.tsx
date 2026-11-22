@@ -1803,7 +1803,9 @@ export function GPUNodes() {
         scheme: newNode.useHttps ? 'https' : 'http',
         gpuModel: newNode.gpuModel || 'Unknown GPU',
         port: values.port,
-        vramTotalMB: 24576,
+        // Memory comes from the GPU name the operator typed ("... 80GB"); a
+        // name with no size gets 0 rather than an invented 24 GB.
+        vramTotalMB: (parseInt(/(\d+)\s*GB/i.exec(newNode.gpuModel)?.[1] ?? '0', 10)) * 1024,
         vramUsedMB: 0,
         vramSource: 'declared',
         runtime: newNode.runtime === 'auto' ? 'ollama' : newNode.runtime,
