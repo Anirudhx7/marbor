@@ -1177,7 +1177,7 @@ export function Warmup() {
               type="button" role="switch" aria-checked={predictiveEnabled} aria-label="Predictive warmup engine"
               onClick={() => setPredictiveConfirmOpen(true)}
               disabled={togglingPredictive}
-              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 ease-in-out ${
+              className={`relative inline-flex h-6 w-11 shrink-0 pointer-coarse:after:absolute pointer-coarse:after:-inset-y-[10px] pointer-coarse:after:inset-x-0 pointer-coarse:after:content-[''] cursor-pointer items-center rounded-full transition-colors duration-200 ease-in-out ${
                 predictiveEnabled ? 'bg-primary' : 'bg-muted-foreground/30'
               }`}
             >

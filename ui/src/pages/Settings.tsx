@@ -871,7 +871,7 @@ export function SettingsPage() {
           <button
             type="button" role="switch" aria-checked={demoMode} aria-label="Demo mode"
             onClick={() => demoMode ? setDemoMode(false) : setDemoModeConfirmOpen(true)}
-            className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+            className={`relative inline-flex h-6 w-11 shrink-0 pointer-coarse:after:absolute pointer-coarse:after:-inset-y-[10px] pointer-coarse:after:inset-x-0 pointer-coarse:after:content-[''] items-center rounded-full transition-colors ${
               demoMode ? 'bg-amber-500' : 'bg-muted-foreground/30'
             }`}
           >
@@ -974,7 +974,7 @@ export function SettingsPage() {
               <button
                 type="button" role="switch" aria-checked={settings.hideDemoBanner} aria-label="Hide demo banner"
                 onClick={() => setSettings({ ...settings, hideDemoBanner: !settings.hideDemoBanner })}
-                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                className={`relative inline-flex h-6 w-11 shrink-0 pointer-coarse:after:absolute pointer-coarse:after:-inset-y-[10px] pointer-coarse:after:inset-x-0 pointer-coarse:after:content-[''] items-center rounded-full transition-colors ${
                   settings.hideDemoBanner ? 'bg-primary' : 'bg-muted-foreground/30'
                 }`}
               >
@@ -994,7 +994,7 @@ export function SettingsPage() {
               <button
                 type="button" role="switch" aria-checked={settings.hideBudgetBanner} aria-label="Hide budget banner"
                 onClick={() => setSettings({ ...settings, hideBudgetBanner: !settings.hideBudgetBanner })}
-                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                className={`relative inline-flex h-6 w-11 shrink-0 pointer-coarse:after:absolute pointer-coarse:after:-inset-y-[10px] pointer-coarse:after:inset-x-0 pointer-coarse:after:content-[''] items-center rounded-full transition-colors ${
                   settings.hideBudgetBanner ? 'bg-primary' : 'bg-muted-foreground/30'
                 }`}
               >
@@ -1097,7 +1097,7 @@ export function SettingsPage() {
               <button
                 type="button" role="switch" aria-checked={settings.allowManagementEndpoints} aria-label="Allow management endpoints"
                 onClick={() => setSettings({ ...settings, allowManagementEndpoints: !settings.allowManagementEndpoints })}
-                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                className={`relative inline-flex h-6 w-11 shrink-0 pointer-coarse:after:absolute pointer-coarse:after:-inset-y-[10px] pointer-coarse:after:inset-x-0 pointer-coarse:after:content-[''] items-center rounded-full transition-colors ${
                   settings.allowManagementEndpoints ? 'bg-primary' : 'bg-muted-foreground/30'
                 }`}
               >
@@ -1210,7 +1210,7 @@ export function SettingsPage() {
               <button
                 type="button" role="switch" aria-checked={settings.liteLLMEnabled} aria-label="Enable LiteLLM"
                 onClick={() => setSettings({ ...settings, liteLLMEnabled: !settings.liteLLMEnabled })}
-                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                className={`relative inline-flex h-6 w-11 shrink-0 pointer-coarse:after:absolute pointer-coarse:after:-inset-y-[10px] pointer-coarse:after:inset-x-0 pointer-coarse:after:content-[''] items-center rounded-full transition-colors ${
                   settings.liteLLMEnabled ? 'bg-primary' : 'bg-muted-foreground/30'
                 }`}
               >
@@ -1614,7 +1614,7 @@ export function SettingsPage() {
               <button
                 type="button" role="switch" aria-checked={settings.prometheusEnabled} aria-label="Prometheus metrics"
                 onClick={() => setSettings({ ...settings, prometheusEnabled: !settings.prometheusEnabled })}
-                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                className={`relative inline-flex h-6 w-11 shrink-0 pointer-coarse:after:absolute pointer-coarse:after:-inset-y-[10px] pointer-coarse:after:inset-x-0 pointer-coarse:after:content-[''] items-center rounded-full transition-colors ${
                   settings.prometheusEnabled ? 'bg-primary' : 'bg-muted-foreground/30'
                 }`}
               >

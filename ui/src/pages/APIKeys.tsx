@@ -817,7 +817,7 @@ export function APIKeys() {
               aria-checked={editForm.localOnly}
               aria-label="Local-only (never use cloud fallback)"
               onClick={() => setEditForm({ ...editForm, localOnly: !editForm.localOnly })}
-              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${editForm.localOnly ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+              className={`relative inline-flex h-6 w-11 shrink-0 pointer-coarse:after:absolute pointer-coarse:after:-inset-y-[10px] pointer-coarse:after:inset-x-0 pointer-coarse:after:content-[''] items-center rounded-full transition-colors ${editForm.localOnly ? 'bg-primary' : 'bg-muted-foreground/30'}`}
             >
               <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${editForm.localOnly ? 'translate-x-6' : 'translate-x-1'}`} />
             </button>
@@ -833,7 +833,7 @@ export function APIKeys() {
               aria-checked={editForm.allowLocalDegradation}
               aria-label="Allow local degradation"
               onClick={() => setEditForm({ ...editForm, allowLocalDegradation: !editForm.allowLocalDegradation })}
-              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${editForm.allowLocalDegradation ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+              className={`relative inline-flex h-6 w-11 shrink-0 pointer-coarse:after:absolute pointer-coarse:after:-inset-y-[10px] pointer-coarse:after:inset-x-0 pointer-coarse:after:content-[''] items-center rounded-full transition-colors ${editForm.allowLocalDegradation ? 'bg-primary' : 'bg-muted-foreground/30'}`}
             >
               <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${editForm.allowLocalDegradation ? 'translate-x-6' : 'translate-x-1'}`} />
             </button>

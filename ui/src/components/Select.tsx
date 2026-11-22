@@ -216,7 +216,7 @@ export function CustomSelect({
     setIsOpen(true);
   };
 
-  const sizeClasses = (size === 'sm' ? 'px-2.5 py-1 text-xs rounded-md' : 'px-3 py-2 text-sm rounded-lg') + (touchTarget ? ' min-h-[44px] sm:min-h-0' : '');
+  const sizeClasses = (size === 'sm' ? 'px-2.5 py-1 text-xs rounded-md' : 'px-3 py-2 text-sm rounded-lg') + ' pointer-coarse:min-h-[44px]' + (touchTarget ? ' min-h-[44px] sm:min-h-0' : '');
 
   return (
     <div ref={containerRef} className={`relative min-w-0 w-full ${className}`}>

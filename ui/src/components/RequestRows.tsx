@@ -154,7 +154,7 @@ export const RequestCard = memo(function RequestCard({ entry, expanded, explain,
         type="button"
         onClick={() => onToggle(entry.id)}
         aria-expanded={expanded}
-        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors pt-1 border-t border-border/60 w-full min-h-[40px]"
+        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors pt-1 border-t border-border/60 w-full min-h-[40px] pointer-coarse:min-h-[44px]"
       >
         {expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
         <span>Why this node?</span>
