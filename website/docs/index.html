@@ -11,6 +11,11 @@
 <title>Documentation · Marbor</title>
 <meta name="description" content="Marbor documentation -- integrations, production deployment, savings math, and use cases." />
 <link rel="canonical" href="https://marbor.in/docs/" />
+<meta property="og:image" content="https://marbor.in/screenshots/dashboard.png" />
+<meta property="og:image:alt" content="marbor admin dashboard" />
+<meta property="og:image:width" content="1600" />
+<meta property="og:image:height" content="1400" />
+<meta name="twitter:image" content="https://marbor.in/screenshots/dashboard.png" />
 <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
 <link rel="icon" type="image/png" sizes="48x48" href="../favicon-48.png" />
 <link rel="icon" type="image/png" sizes="96x96" href="../favicon-96.png" />
@@ -272,6 +277,10 @@ footer a{display:inline-flex;align-items:center;min-height:44px}
 /* Facts that used to be joined with middle dots: separate items, hairline between. */
 .fact{display:inline}
 .fact+.fact::before{content:"";display:inline-block;width:1px;height:1em;margin:0 10px;background:var(--border);vertical-align:-.15em}
+
+.doc-figure{margin:0 0 24px}
+.doc-figure img{display:block;width:100%;height:auto;border:1px solid var(--border);border-radius:var(--r-md)}
+.doc-figure figcaption{margin-top:8px;font-size:13px;color:var(--text-muted)}
 </style>
 </head>
 <body>
@@ -302,6 +311,7 @@ footer a{display:inline-flex;align-items:center;min-height:44px}
 </div>
 </nav>
 <div class="doc-main">
+  <figure class="doc-figure"><img src="../screenshots/dashboard.png" width="1600" height="1400" loading="lazy" alt="The Marbor dashboard showing fleet health, warm models and routing." /><figcaption>The Marbor dashboard: fleet health, warm models and routing in one view.</figcaption></figure>
   
     <section class="doc-card" data-reveal>
       <div class="doc-card-head"><h2 class="t"><span class="fact">Runtimes</span><span class="fact"><b>3 pages</b></span></h2></div>
