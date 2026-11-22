@@ -228,6 +228,7 @@ section,#install{scroll-margin-top:96px}
 .doc-content a.anchor::after{content:"";position:absolute;inset:-14px}
 .crumbs a::after,.breadcrumb a::after{content:"";position:absolute;inset:-14px -6px}
 footer a{display:inline-flex;align-items:center;min-height:44px}
+.foot-social a{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px}
 }
 
 /* Phone: keep the first column visible while a wide table scrolls sideways. */
