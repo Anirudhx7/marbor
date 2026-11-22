@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useId } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Check, X } from 'lucide-react';
 
@@ -133,9 +133,13 @@ export function CustomSelect({
   touchTarget = false,
 }: CustomSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuRect = useMenuPosition(containerRef, isOpen);
+  const listId = useId();
+  const optionId = (i: number) => `${listId}-opt-${i}`;
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent | TouchEvent) {
@@ -157,6 +161,61 @@ export function CustomSelect({
 
   const selectedOption = options.find((o) => o.value === value);
 
+  // Keyboard model while the list is open: Escape closes it (and is swallowed
+  // so an enclosing dialog stays open), arrows/Home/End move the highlight,
+  // Enter or Space picks it, Tab closes. Registered in the capture phase so
+  // it runs before any dialog-level Escape handler. DOM focus stays on the
+  // trigger; the highlight is exposed with aria-activedescendant.
+  useEffect(() => {
+    if (!isOpen) return;
+    const close = (restoreFocus: boolean) => {
+      setIsOpen(false);
+      if (restoreFocus) triggerRef.current?.focus();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        e.preventDefault();
+        close(true);
+      } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Home' || e.key === 'End') {
+        if (options.length === 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        setActiveIndex((i) => {
+          if (e.key === 'Home') return 0;
+          if (e.key === 'End') return options.length - 1;
+          const step = e.key === 'ArrowDown' ? 1 : -1;
+          return i < 0 ? (step === 1 ? 0 : options.length - 1) : Math.min(options.length - 1, Math.max(0, i + step));
+        });
+      } else if (e.key === 'Enter' || e.key === ' ') {
+        if (activeIndex < 0 || activeIndex >= options.length) return;
+        e.preventDefault();
+        e.stopPropagation();
+        onChange(options[activeIndex].value);
+        close(true);
+      } else if (e.key === 'Tab') {
+        close(false);
+      }
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => document.removeEventListener('keydown', onKey, true);
+  }, [isOpen, activeIndex, options, onChange]);
+
+  useEffect(() => {
+    if (!isOpen || activeIndex < 0) return;
+    document.getElementById(optionId(activeIndex))?.scrollIntoView({ block: 'nearest' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, activeIndex]);
+
+  const toggleOpen = () => {
+    if (isOpen) {
+      setIsOpen(false);
+      return;
+    }
+    setActiveIndex(options.findIndex((o) => o.value === value));
+    setIsOpen(true);
+  };
+
   const sizeClasses = (size === 'sm' ? 'px-2.5 py-1 text-xs rounded-md' : 'px-3 py-2 text-sm rounded-lg') + (touchTarget ? ' min-h-[44px] sm:min-h-0' : '');
 
   return (
@@ -164,9 +223,20 @@ export function CustomSelect({
       <button
         id={id}
         aria-labelledby={id && labelId ? `${labelId} ${id}` : undefined}
+        ref={triggerRef}
         type="button"
         disabled={disabled}
-        onClick={() => setIsOpen(!isOpen)}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        aria-controls={isOpen ? listId : undefined}
+        aria-activedescendant={isOpen && activeIndex >= 0 ? optionId(activeIndex) : undefined}
+        onClick={toggleOpen}
+        onKeyDown={(e) => {
+          if (!isOpen && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+            e.preventDefault();
+            toggleOpen();
+          }
+        }}
         className={`flex items-center justify-between w-full border border-border bg-secondary/30 text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 text-left transition-all ${sizeClasses} ${
           disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:bg-secondary/50'
         }`}
@@ -178,6 +248,8 @@ export function CustomSelect({
       {isOpen && menuRect && createPortal(
         <div
           ref={menuRef}
+          id={listId}
+          role="listbox"
           style={{ ...menuFixedStyle(menuRect), zIndex: 9999 }}
           className="border border-border bg-card rounded-lg shadow-xl overflow-y-auto animate-fade-in focus:outline-none"
         >
@@ -185,11 +257,15 @@ export function CustomSelect({
             {options.length === 0 ? (
               <div className="px-3 py-2 text-sm text-muted-foreground text-center">No options</div>
             ) : (
-              options.map((o) => {
+              options.map((o, i) => {
                 const isSelected = o.value === value;
                 return (
                   <button
                     key={o.value}
+                    id={optionId(i)}
+                    role="option"
+                    aria-selected={isSelected}
+                    tabIndex={-1}
                     type="button"
                     onClick={() => {
                       onChange(o.value);
@@ -203,7 +279,7 @@ export function CustomSelect({
                     }}
                     className={`flex items-center justify-between w-full px-3 py-2 text-left text-sm transition-colors hover:bg-primary/10 hover:text-primary min-h-[40px] sm:min-h-0 ${
                       isSelected ? 'bg-primary/5 text-primary font-medium' : 'text-foreground hover:bg-secondary/40'
-                    }`}
+                    } ${i === activeIndex ? 'ring-2 ring-inset ring-primary/50' : ''}`}
                   >
                     <span className="truncate">{o.label}</span>
                     {isSelected && <Check className="w-4 h-4 ml-2 text-primary shrink-0" />}
@@ -281,6 +357,15 @@ export function CustomCombobox({
           readOnly={isCoarse}
           inputMode={isCoarse ? 'none' : undefined}
           placeholder={placeholder}
+          role="combobox"
+          aria-expanded={isOpen}
+          aria-haspopup="listbox"
+          onKeyDown={(e) => {
+            if (e.key === 'Escape' && isOpen) {
+              e.stopPropagation();
+              setIsOpen(false);
+            }
+          }}
           value={isOpen ? searchTerm : value}
           onChange={(e) => {
             if (isCoarse) return;
@@ -460,6 +545,15 @@ export function CustomTagCombobox({
           readOnly={isCoarseTag}
           inputMode={isCoarseTag ? 'none' : undefined}
           placeholder={placeholder}
+          role="combobox"
+          aria-expanded={isOpen}
+          aria-haspopup="listbox"
+          onKeyDown={(e) => {
+            if (e.key === 'Escape' && isOpen) {
+              e.stopPropagation();
+              setIsOpen(false);
+            }
+          }}
           value={value}
           onChange={(e) => {
             if (isCoarseTag) return;
