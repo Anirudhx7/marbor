@@ -434,6 +434,7 @@ ${articleJsonLd(slug, title, description) ? `<script type="application/ld+json">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400..700&family=Playfair+Display:ital,wght@0,400..800;1,400..800&family=JetBrains+Mono:wght@400..700&display=swap" rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" />
 <noscript><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400..700&family=Playfair+Display:ital,wght@0,400..800;1,400..800&family=JetBrains+Mono:wght@400..700&display=swap" rel="stylesheet" /></noscript>
+<noscript><style>[data-reveal]{opacity:1!important;transform:none!important}</style></noscript>
 <meta name="theme-color" content="#d4a853" />
 <style>${DOC_CSS}</style>
 </head>
@@ -518,6 +519,7 @@ function docsIndexPage() {
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400..700&family=Playfair+Display:ital,wght@0,400..800;1,400..800&family=JetBrains+Mono:wght@400..700&display=swap" rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" />
 <noscript><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400..700&family=Playfair+Display:ital,wght@0,400..800;1,400..800&family=JetBrains+Mono:wght@400..700&display=swap" rel="stylesheet" /></noscript>
+<noscript><style>[data-reveal]{opacity:1!important;transform:none!important}</style></noscript>
 <meta name="theme-color" content="#d4a853" />
 <style>${DOC_CSS}</style>
 </head>
