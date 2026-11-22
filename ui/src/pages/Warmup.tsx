@@ -21,6 +21,7 @@ import { useTimezone } from '../hooks/useTimezone';
 import { formatDateTimeInZone, formatTimeInZone, formatInTimezone, wallDateTimeToUtcIso, decisionHourLabel } from '../lib/time';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
 import { TabList, tabProps, panelProps } from '../components/TabList';
+import { toastWarmupSaved } from '../lib/toast';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -206,6 +207,7 @@ function NodeCard({ node, initial, availableModels, onSave }: {
     try {
       await onSave(node.name, { enabled, models: selectedModels });
       dirty.current = false;
+      toastWarmupSaved();
     } catch (e: any) {
       setSaveError(e.message || 'Save failed');
     } finally {

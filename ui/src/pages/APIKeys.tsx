@@ -29,6 +29,7 @@ import { parseKeyForm } from '../lib/formValidation';
 import { useModalForm, errorMessage } from '../lib/useModalForm';
 import { copyText } from '../lib/clipboard';
 import { FormError } from '../components/FormError';
+import { toastKeyCreated } from '../lib/toast';
 
 // Which input to focus for the first invalid field after a failed submit.
 const CREATE_KEY_FIELD_IDS: Record<string, string> = { name: 'create-key-name', rateLimit: 'create-key-rate-limit' };
@@ -305,6 +306,7 @@ export function APIKeys() {
         expiresAt: newKeyForm.expiresAt || null,
       };
       setKeys([demoKey, ...keys]);
+      toastKeyCreated();
       if (keyModal.finish(token)) finishCreate();
       return;
     }
@@ -329,6 +331,7 @@ export function APIKeys() {
     // when the modal was closed while the request ran. The form is cleared
     // only when it is still the one that fired this request; a form reopened
     // meanwhile keeps whatever the operator typed into it.
+    toastKeyCreated();
     const current = keyModal.finish(token);
     if (current) {
       setNewKeyForm(EMPTY_KEY_FORM);

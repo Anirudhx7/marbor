@@ -1,4 +1,5 @@
 import { lazy, Suspense, Component, ReactNode, useState, useEffect } from 'react';
+import { ToastRegion } from './components/ToastRegion';
 import { BrowserRouter, HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ThemeProvider } from './hooks/useTheme';
 import { TimezoneProvider } from './hooks/useTimezone';
@@ -178,6 +179,7 @@ function AppShell({ session, onLogout, pendingCount }: AppShellProps) {
 
   return (
     <div className="min-h-screen bg-background text-foreground transition-colors duration-300">
+      <ToastRegion />
       <Sidebar onLogout={onLogout} session={session} pendingCount={pendingCount} collapsed={collapsed} onToggleCollapsed={toggle} />
       <main className={`${collapsed ? 'md:ml-[68px]' : 'md:ml-64'} min-h-screen pt-14 md:pt-0 will-change-[margin] transition-[margin] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] [contain:layout_style]`}>
         <DemoBanner />
