@@ -245,7 +245,10 @@ test('Activity page footer and filters behave as specified', () => {
   assert.match(page, /localeCompare/);
   // Failed sign-ins are not operators.
   assert.match(page, /filter\(\(e\) => !isFailedLogin\(e\.action\)\)/);
-  assert.match(page, /\{decisions\.length\} predictive decisions \(all loaded\)/);
+  // The card counts what the filters leave out of everything recorded, so it
+  // never disagrees with the section beside it.
+  assert.match(page, /predictive \$\{decisions\.length === 1 \? 'decision' : 'decisions'\}/);
+  assert.match(page, /\$\{filteredDecisions\.length\} of \$\{decisions\.length\} predictive decisions match the filters/);
   assert.match(page, /ignoring case, excluding failed sign-ins/);
   assert.match(page, /olderEventsMayMatch\(kindFilter, searchQuery, hasMore\)/);
 });
