@@ -179,12 +179,14 @@ h1 em{font-style:italic;color:var(--accent);font-weight:600}
 .doc-content pre.code{background:var(--bg);border:1px solid var(--border);border-radius:var(--r-md);padding:16px;overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0;position:relative}
 .doc-content pre.code code{background:none;border:none;padding:0;font-size:12.5px;line-height:1.7;color:var(--text)}
 .doc-content .code-wrap{position:relative;margin:0 0 18px}
-.doc-content .code-wrap pre.code{padding-right:90px;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+.doc-content pre.code.wrap code{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}
+.doc-content .code-head{display:flex;justify-content:flex-end;align-items:center;padding:6px 8px;background:var(--bg-surface);border:1px solid var(--border);border-bottom:0;border-radius:var(--r-md) var(--r-md) 0 0}
+.doc-content .code-wrap pre.code{border-top-left-radius:0;border-top-right-radius:0;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
 .doc-content .code-wrap pre.code::-webkit-scrollbar{height:8px;width:8px}
 .doc-content .code-wrap pre.code::-webkit-scrollbar-track{background:transparent}
 .doc-content .code-wrap pre.code::-webkit-scrollbar-thumb{background:var(--border);border-radius:99px}
 .doc-content .code-wrap pre.code::-webkit-scrollbar-thumb:hover{background:var(--text-faint)}
-.doc-content .copy-btn{position:absolute;top:10px;right:10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:44px;min-height:44px;padding:7px 13px;cursor:pointer;background:var(--bg-surface);border:1px solid var(--border);border-radius:99px;color:var(--text-muted);font-family:var(--font-sans);font-weight:650;font-size:12px;line-height:1;box-shadow:var(--shadow);transition:color .15s,border-color .15s,background .15s,transform .15s}
+.doc-content .copy-btn{position:static;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:44px;min-height:44px;padding:7px 13px;cursor:pointer;background:var(--bg-surface);border:1px solid var(--border);border-radius:99px;color:var(--text-muted);font-family:var(--font-sans);font-weight:650;font-size:12px;line-height:1;box-shadow:var(--shadow);transition:color .15s,border-color .15s,background .15s,transform .15s}
 .doc-content .copy-btn:hover{color:var(--accent);border-color:var(--accent);background:var(--bg-input)}
 .doc-content .copy-btn svg{width:13px;height:13px}
 .doc-content .copy-btn.copied{color:var(--accent2);border-color:var(--accent2);transform:scale(1.06)}
@@ -320,19 +322,7 @@ footer a{display:inline-flex;align-items:center;min-height:44px}
 <p>Set <code>OPENAI_BASE_URL</code> (or the equivalent in your client) to <code>http://your-marbor-host:11434</code> and set the API key to your <code>sk-marbor-...</code> key.</p>
 <hr/>
 <h2 id="python---openai-sdk">Python - openai SDK<a class="anchor" href="#python---openai-sdk" aria-label="Link to section">#</a></h2>
-<div class="code-wrap"><pre class="code" data-lang="python"><code>from openai import OpenAI
-
-client = OpenAI(
-    base_url="http://localhost:11434/v1",
-    api_key="sk-marbor-abc123",   # your marbor key, not an OpenAI key
-)
-
-response = client.chat.completions.create(
-    model="llama3.2:8b",
-    messages=[{"role": "user", "content": "What is 2 + 2?"}],
-    stream=False,
-)
-print(response.choices[0].message.content)</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="from openai import OpenAI
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="from openai import OpenAI
 
 client = OpenAI(
     base_url=&quot;http://localhost:11434/v1&quot;,
@@ -344,17 +334,21 @@ response = client.chat.completions.create(
     messages=[{&quot;role&quot;: &quot;user&quot;, &quot;content&quot;: &quot;What is 2 + 2?&quot;}],
     stream=False,
 )
-print(response.choices[0].message.content)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-<p>Streaming:</p>
-<div class="code-wrap"><pre class="code" data-lang="python"><code>with client.chat.completions.create(
+print(response.choices[0].message.content)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="python"><code>from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://localhost:11434/v1",
+    api_key="sk-marbor-abc123",   # your marbor key, not an OpenAI key
+)
+
+response = client.chat.completions.create(
     model="llama3.2:8b",
-    messages=[{"role": "user", "content": "Write a haiku about distributed systems."}],
-    stream=True,
-) as stream:
-    for chunk in stream:
-        delta = chunk.choices[0].delta.content
-        if delta:
-            print(delta, end="", flush=True)</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="with client.chat.completions.create(
+    messages=[{"role": "user", "content": "What is 2 + 2?"}],
+    stream=False,
+)
+print(response.choices[0].message.content)</code></pre></div>
+<p>Streaming:</p>
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="with client.chat.completions.create(
     model=&quot;llama3.2:8b&quot;,
     messages=[{&quot;role&quot;: &quot;user&quot;, &quot;content&quot;: &quot;Write a haiku about distributed systems.&quot;}],
     stream=True,
@@ -362,31 +356,27 @@ print(response.choices[0].message.content)"><svg viewBox="0 0 24 24" fill="none"
     for chunk in stream:
         delta = chunk.choices[0].delta.content
         if delta:
-            print(delta, end=&quot;&quot;, flush=True)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+            print(delta, end=&quot;&quot;, flush=True)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="python"><code>with client.chat.completions.create(
+    model="llama3.2:8b",
+    messages=[{"role": "user", "content": "Write a haiku about distributed systems."}],
+    stream=True,
+) as stream:
+    for chunk in stream:
+        delta = chunk.choices[0].delta.content
+        if delta:
+            print(delta, end="", flush=True)</code></pre></div>
 <p>Environment variable approach (recommended for scripts and agents):</p>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>export OPENAI_BASE_URL="http://localhost:11434/v1"
-export OPENAI_API_KEY="sk-marbor-abc123"</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="export OPENAI_BASE_URL=&quot;http://localhost:11434/v1&quot;
-export OPENAI_API_KEY=&quot;sk-marbor-abc123&quot;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-<div class="code-wrap"><pre class="code" data-lang="python"><code># No base_url/api_key needed - SDK reads from environment
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="export OPENAI_BASE_URL=&quot;http://localhost:11434/v1&quot;
+export OPENAI_API_KEY=&quot;sk-marbor-abc123&quot;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="bash"><code>export OPENAI_BASE_URL="http://localhost:11434/v1"
+export OPENAI_API_KEY="sk-marbor-abc123"</code></pre></div>
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="# No base_url/api_key needed - SDK reads from environment
 from openai import OpenAI
-client = OpenAI()</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="# No base_url/api_key needed - SDK reads from environment
+client = OpenAI()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="python"><code># No base_url/api_key needed - SDK reads from environment
 from openai import OpenAI
-client = OpenAI()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+client = OpenAI()</code></pre></div>
 <hr/>
 <h2 id="nodejs---openai-sdk">Node.js - openai SDK<a class="anchor" href="#nodejs---openai-sdk" aria-label="Link to section">#</a></h2>
-<div class="code-wrap"><pre class="code" data-lang="typescript"><code>import OpenAI from "openai";
-
-const client = new OpenAI({
-  baseURL: "http://localhost:11434/v1",
-  apiKey: "sk-marbor-abc123",
-});
-
-const response = await client.chat.completions.create({
-  model: "llama3.2:8b",
-  messages: [{ role: "user", content: "Explain warm-first routing in one sentence." }],
-});
-
-console.log(response.choices[0].message.content);</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="import OpenAI from &quot;openai&quot;;
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="import OpenAI from &quot;openai&quot;;
 
 const client = new OpenAI({
   baseURL: &quot;http://localhost:11434/v1&quot;,
@@ -398,17 +388,21 @@ const response = await client.chat.completions.create({
   messages: [{ role: &quot;user&quot;, content: &quot;Explain warm-first routing in one sentence.&quot; }],
 });
 
-console.log(response.choices[0].message.content);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-<p>Streaming:</p>
-<div class="code-wrap"><pre class="code" data-lang="typescript"><code>const stream = await client.chat.completions.create({
-  model: "llama3.2:8b",
-  messages: [{ role: "user", content: "List three uses of a load balancer." }],
-  stream: true,
+console.log(response.choices[0].message.content);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="typescript"><code>import OpenAI from "openai";
+
+const client = new OpenAI({
+  baseURL: "http://localhost:11434/v1",
+  apiKey: "sk-marbor-abc123",
 });
 
-for await (const chunk of stream) {
-  process.stdout.write(chunk.choices[0]?.delta?.content ?? "");
-}</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="const stream = await client.chat.completions.create({
+const response = await client.chat.completions.create({
+  model: "llama3.2:8b",
+  messages: [{ role: "user", content: "Explain warm-first routing in one sentence." }],
+});
+
+console.log(response.choices[0].message.content);</code></pre></div>
+<p>Streaming:</p>
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="const stream = await client.chat.completions.create({
   model: &quot;llama3.2:8b&quot;,
   messages: [{ role: &quot;user&quot;, content: &quot;List three uses of a load balancer.&quot; }],
   stream: true,
@@ -416,89 +410,87 @@ for await (const chunk of stream) {
 
 for await (const chunk of stream) {
   process.stdout.write(chunk.choices[0]?.delta?.content ?? &quot;&quot;);
-}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="typescript"><code>const stream = await client.chat.completions.create({
+  model: "llama3.2:8b",
+  messages: [{ role: "user", content: "List three uses of a load balancer." }],
+  stream: true,
+});
+
+for await (const chunk of stream) {
+  process.stdout.write(chunk.choices[0]?.delta?.content ?? "");
+}</code></pre></div>
 <hr/>
 <h2 id="curl---openai-compatible-endpoint">curl - OpenAI-compatible endpoint<a class="anchor" href="#curl---openai-compatible-endpoint" aria-label="Link to section">#</a></h2>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>curl http://localhost:11434/v1/chat/completions \
-  -H "Authorization: Bearer sk-marbor-abc123" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "llama3.2:8b",
-    "messages": [{"role": "user", "content": "Hello"}]
-  }'</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="curl http://localhost:11434/v1/chat/completions \
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="curl http://localhost:11434/v1/chat/completions \
   -H &quot;Authorization: Bearer sk-marbor-abc123&quot; \
   -H &quot;Content-Type: application/json&quot; \
   -d '{
     &quot;model&quot;: &quot;llama3.2:8b&quot;,
     &quot;messages&quot;: [{&quot;role&quot;: &quot;user&quot;, &quot;content&quot;: &quot;Hello&quot;}]
-  }'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-<p>Streaming (<code>stream: true</code>):</p>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>curl http://localhost:11434/v1/chat/completions \
+  }'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="bash"><code>curl http://localhost:11434/v1/chat/completions \
   -H "Authorization: Bearer sk-marbor-abc123" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "llama3.2:8b",
-    "messages": [{"role": "user", "content": "Count to 5"}],
-    "stream": true
-  }'</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="curl http://localhost:11434/v1/chat/completions \
+    "messages": [{"role": "user", "content": "Hello"}]
+  }'</code></pre></div>
+<p>Streaming (<code>stream: true</code>):</p>
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="curl http://localhost:11434/v1/chat/completions \
   -H &quot;Authorization: Bearer sk-marbor-abc123&quot; \
   -H &quot;Content-Type: application/json&quot; \
   -d '{
     &quot;model&quot;: &quot;llama3.2:8b&quot;,
     &quot;messages&quot;: [{&quot;role&quot;: &quot;user&quot;, &quot;content&quot;: &quot;Count to 5&quot;}],
     &quot;stream&quot;: true
-  }'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-<p>List available models (aggregated from all nodes):</p>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>curl http://localhost:11434/v1/models \
-  -H "Authorization: Bearer sk-marbor-abc123"</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="curl http://localhost:11434/v1/models \
-  -H &quot;Authorization: Bearer sk-marbor-abc123&quot;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-<hr/>
-<h2 id="curl---native-ollama-endpoint">curl - Native Ollama endpoint<a class="anchor" href="#curl---native-ollama-endpoint" aria-label="Link to section">#</a></h2>
-<p>marbor also accepts the native Ollama <code>/api/chat</code> format:</p>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>curl http://localhost:11434/api/chat \
+  }'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="bash"><code>curl http://localhost:11434/v1/chat/completions \
   -H "Authorization: Bearer sk-marbor-abc123" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "llama3.2:8b",
-    "messages": [{"role": "user", "content": "Hello from the Ollama API"}],
-    "stream": false
-  }'</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="curl http://localhost:11434/api/chat \
+    "messages": [{"role": "user", "content": "Count to 5"}],
+    "stream": true
+  }'</code></pre></div>
+<p>List available models (aggregated from all nodes):</p>
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="curl http://localhost:11434/v1/models \
+  -H &quot;Authorization: Bearer sk-marbor-abc123&quot;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="bash"><code>curl http://localhost:11434/v1/models \
+  -H "Authorization: Bearer sk-marbor-abc123"</code></pre></div>
+<hr/>
+<h2 id="curl---native-ollama-endpoint">curl - Native Ollama endpoint<a class="anchor" href="#curl---native-ollama-endpoint" aria-label="Link to section">#</a></h2>
+<p>marbor also accepts the native Ollama <code>/api/chat</code> format:</p>
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="curl http://localhost:11434/api/chat \
   -H &quot;Authorization: Bearer sk-marbor-abc123&quot; \
   -H &quot;Content-Type: application/json&quot; \
   -d '{
     &quot;model&quot;: &quot;llama3.2:8b&quot;,
     &quot;messages&quot;: [{&quot;role&quot;: &quot;user&quot;, &quot;content&quot;: &quot;Hello from the Ollama API&quot;}],
     &quot;stream&quot;: false
-  }'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-<p>Generate endpoint:</p>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>curl http://localhost:11434/api/generate \
+  }'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="bash"><code>curl http://localhost:11434/api/chat \
   -H "Authorization: Bearer sk-marbor-abc123" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "llama3.2:8b",
-    "prompt": "The capital of France is",
+    "messages": [{"role": "user", "content": "Hello from the Ollama API"}],
     "stream": false
-  }'</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="curl http://localhost:11434/api/generate \
+  }'</code></pre></div>
+<p>Generate endpoint:</p>
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="curl http://localhost:11434/api/generate \
   -H &quot;Authorization: Bearer sk-marbor-abc123&quot; \
   -H &quot;Content-Type: application/json&quot; \
   -d '{
     &quot;model&quot;: &quot;llama3.2:8b&quot;,
     &quot;prompt&quot;: &quot;The capital of France is&quot;,
     &quot;stream&quot;: false
-  }'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+  }'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="bash"><code>curl http://localhost:11434/api/generate \
+  -H "Authorization: Bearer sk-marbor-abc123" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "llama3.2:8b",
+    "prompt": "The capital of France is",
+    "stream": false
+  }'</code></pre></div>
 <hr/>
 <h2 id="langchain-python">LangChain (Python)<a class="anchor" href="#langchain-python" aria-label="Link to section">#</a></h2>
-<div class="code-wrap"><pre class="code" data-lang="python"><code>from langchain_openai import ChatOpenAI
-
-llm = ChatOpenAI(
-    base_url="http://localhost:11434/v1",
-    api_key="sk-marbor-abc123",
-    model="llama3.2:8b",
-    temperature=0,
-)
-
-response = llm.invoke("What is warm-first routing?")
-print(response.content)</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="from langchain_openai import ChatOpenAI
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="from langchain_openai import ChatOpenAI
 
 llm = ChatOpenAI(
     base_url=&quot;http://localhost:11434/v1&quot;,
@@ -508,17 +500,27 @@ llm = ChatOpenAI(
 )
 
 response = llm.invoke(&quot;What is warm-first routing?&quot;)
-print(response.content)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+print(response.content)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="python"><code>from langchain_openai import ChatOpenAI
+
+llm = ChatOpenAI(
+    base_url="http://localhost:11434/v1",
+    api_key="sk-marbor-abc123",
+    model="llama3.2:8b",
+    temperature=0,
+)
+
+response = llm.invoke("What is warm-first routing?")
+print(response.content)</code></pre></div>
 <p>With streaming:</p>
-<div class="code-wrap"><pre class="code" data-lang="python"><code>for chunk in llm.stream("Explain cloud overflow in plain English."):
-    print(chunk.content, end="", flush=True)</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="for chunk in llm.stream(&quot;Explain cloud overflow in plain English.&quot;):
-    print(chunk.content, end=&quot;&quot;, flush=True)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="for chunk in llm.stream(&quot;Explain cloud overflow in plain English.&quot;):
+    print(chunk.content, end=&quot;&quot;, flush=True)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="python"><code>for chunk in llm.stream("Explain cloud overflow in plain English."):
+    print(chunk.content, end="", flush=True)</code></pre></div>
 <hr/>
 <h2 id="keeping-existing-model-names-openwebui-cursor-apps-built-for-cloud-apis">Keeping existing model names (OpenWebUI, Cursor, apps built for cloud APIs)<a class="anchor" href="#keeping-existing-model-names-openwebui-cursor-apps-built-for-cloud-apis" aria-label="Link to section">#</a></h2>
 <p>Clients configured for a cloud model name such as <code>gpt-4</code> can keep that name. Declare a model alias that maps it to a real model on your fleet, and marbor rewrites each request before routing:</p>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>marbor models alias set gpt-4 llama3.2:8b
-marbor models alias list</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="marbor models alias set gpt-4 llama3.2:8b
-marbor models alias list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="marbor models alias set gpt-4 llama3.2:8b
+marbor models alias list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="bash"><code>marbor models alias set gpt-4 llama3.2:8b
+marbor models alias list</code></pre></div>
 <p>The same aliases are managed through the Admin API (<code>GET/PUT/DELETE /admin/model-aliases</code>) and the Routing page. Changes apply immediately, with no restart.</p>
 <ul><li>Point the client at marbor (<code>http://your-marbor-host:11434/v1</code> for OpenAI-style clients such as OpenWebUI's OpenAI connection or Cursor's custom base URL) and leave its model name unchanged.</li><li><code>GET /v1/models</code> lists the alias (with its target's status) while the target is on the fleet, so model pickers that read that endpoint show it.</li><li>Responses carry an <code>X-Marbor-Model-Alias: gpt-4 -&gt; llama3.2:8b</code> header, and the request log shows <code>gpt-4 -&gt; llama3.2:8b</code>. The response body's <code>model</code> field is the real model.</li><li>Aliases apply to both <code>/v1/*</code> and the Ollama-native <code>/api/*</code> endpoints. See <a href="LIMITATIONS.html#model-aliases">LIMITATIONS.md</a> for the full list of rules.</li></ul>
 <hr/>
