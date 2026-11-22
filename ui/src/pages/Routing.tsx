@@ -615,7 +615,14 @@ export function Routing() {
   const handleAddDegChain = async () => {
     const model = newDegModel.trim();
     const alts = newDegAlts.split(',').map((s) => s.trim()).filter(Boolean);
-    if (!model || alts.length === 0) return;
+    if (!model) {
+      setDegChainError('Enter the model this chain applies to');
+      return;
+    }
+    if (alts.length === 0) {
+      setDegChainError('Enter at least one alternate model');
+      return;
+    }
     // Mirror config.go Validate()'s local_degradation_chains rules
     // client-side so a nonsensical chain never even makes it into
     // the pending list - previously this only surfaced as a
