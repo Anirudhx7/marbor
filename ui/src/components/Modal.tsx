@@ -31,6 +31,8 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = 'md', dirty
   onCloseRef.current = onClose;
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
+  const isOpenRef = useRef(isOpen);
+  isOpenRef.current = isOpen;
   const [confirming, setConfirming] = useState(false);
   // Every way of closing goes through here so the guard cannot be bypassed.
   const requestClose = () => {
@@ -85,7 +87,21 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = 'md', dirty
       tabIndex={-1}
       // Escape and the back gesture arrive as a cancel request; the parent
       // owns the open state, so hand it over instead of closing here.
-      onCancel={(e) => { e.preventDefault(); requestClose(); }}
+      onCancel={(e) => { e.preventDefault(); e.stopPropagation(); requestClose(); }}
+      // The browser only lets a page veto Escape once per user activation, so a
+      // second Escape in a row closes the dialog natively and cancel's
+      // preventDefault is ignored. Bring the two back in line: a dirty form is
+      // shown again with its prompt, a clean one reports the close.
+      onClose={() => {
+        const dialog = dialogRef.current;
+        if (!dialog || dialog.open || !isOpenRef.current) return;
+        if (dirtyRef.current) {
+          dialog.showModal();
+          setConfirming(true);
+        } else {
+          onCloseRef.current();
+        }
+      }}
       // A click on the backdrop lands on the dialog element itself. Both the
       // press and the release must be there so a text-selection drag that ends
       // outside does not dismiss it.
