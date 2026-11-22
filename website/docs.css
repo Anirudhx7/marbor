@@ -61,7 +61,10 @@ a:hover{text-decoration:underline}
 #themeBtn:hover{color:var(--text);border-color:var(--border)}
 .hamb{display:none}
 .mobile-menu{display:none;position:absolute;top:100%;left:12px;right:12px;margin:8px 0 0;border:1px solid var(--border);border-radius:16px;padding:8px 20px calc(14px + env(safe-area-inset-bottom));background:var(--bg-elevated);z-index:101;max-height:calc(100vh - 90px);max-height:calc(100dvh - 90px);overflow-y:auto;box-shadow:var(--shadow)}
-.mobile-menu.open{display:block}
+.mobile-menu.open{display:block;transform-origin:top right;animation:menu-in .15s var(--ease)}
+@keyframes menu-in{from{opacity:0;transform:translateY(-6px) scale(.98)}to{opacity:1;transform:none}}
+body:has(.mobile-menu.open)::after{content:"";position:fixed;inset:0;z-index:99;background:rgba(0,0,0,.35)}
+@media (prefers-reduced-motion:reduce){.mobile-menu.open{animation:none}}
 .nav:has(.mobile-menu.open){background:var(--bg);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
 .mobile-menu a{display:block;padding:10px 4px;color:var(--text-muted);font-weight:550;border-bottom:1px solid var(--border-subtle)}
 a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
