@@ -29,6 +29,7 @@ import { mockHFModels, mockHFSafetensorsModels, mockSafetensorsDetails,mockHFRep
 import type { CatalogModelFit } from '../types';
 import { readLastModelCount, writeLastModelCount, readLastNodeCount } from '../lib/nodeCount';
 import { CustomDatePicker } from '../components/DateTimePicker';
+import { TabList, tabProps } from '../components/TabList';
 
 // LIVE_VRAM_TOOL_SOURCES are every `vram_source` string handleModelFit
 // (admin.go) can report for a value read straight from a vendor tool - see
@@ -1208,10 +1209,11 @@ export function ModelAdvisor() {
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2">
+      <TabList label="Advisor views" className="flex flex-wrap gap-2">
         {(['browse', 'favourites'] as const).map((t) => (
           <button
             key={t}
+            {...tabProps(tab === t)}
             onClick={() => setTab(t)}
             className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors cursor-pointer ${
               tab === t
@@ -1222,7 +1224,7 @@ export function ModelAdvisor() {
             {t === 'browse' ? 'Browse' : `Favourites (${favoriteIds.size})`}
           </button>
         ))}
-      </div>
+      </TabList>
 
       {loading && !demoMode ? (
         <div aria-hidden="true" className="flex flex-wrap items-center gap-2 animate-pulse">
