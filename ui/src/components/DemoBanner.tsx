@@ -61,7 +61,7 @@ export function DemoBanner() {
               Demo mode active
             </p>
             <p className="text-xs text-muted-foreground leading-snug">
-              All data shown is mock data, not your cluster.
+              All data shown is mock data, not your cluster. Demo data resets on reload.
               {!forcedDemo && ' Disable it in Settings.'}
             </p>
           </div>
