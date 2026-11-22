@@ -1149,7 +1149,7 @@ export function ModelAdvisor() {
 
   const favoriteModels = useMemo(() => {
     return [...favoriteIds]
-      .map(id => (demoMode ? mockHFModels.find(m => m.id === id) : (uniqueModels.find(m => m.id === id) ?? favoriteDetails[id])))
+      .map(id => (demoMode ? (mockHFModels.find(m => m.id === id) ?? mockHFSafetensorsModels.find(m => m.id === id)) : (uniqueModels.find(m => m.id === id) ?? favoriteDetails[id])))
       .filter((m): m is HFModel => !!m);
   }, [favoriteIds, demoMode, uniqueModels, favoriteDetails]);
 
