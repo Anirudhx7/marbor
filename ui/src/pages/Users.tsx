@@ -5,6 +5,7 @@ import { listUsers, createUser, approveUser, suspendUser, deleteUser, resetUserP
 import type { UserRecord, APIKey, ModelCatalog } from '../types';
 import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
+import { CopyButton } from '../components/CopyButton';
 import { FormError } from '../components/FormError';
 import { parseUserForm } from '../lib/formValidation';
 import { useModalForm, errorMessage } from '../lib/useModalForm';
@@ -109,6 +110,7 @@ function ApproveModal({ user, onClose, onDone }: ApproveModalProps) {
           <code className="block w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-xs font-mono text-primary break-all select-all">
             {createdKey}
           </code>
+          <CopyButton text={createdKey} label="Copy key" />
           <p className="text-xs text-amber-600 dark:text-amber-400">This key will not be shown again. Copy it now.</p>
           <button onClick={onDone} className="w-full py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors shadow-sm">
             Done
@@ -234,6 +236,7 @@ function ResetPasswordModal({ user, onClose }: ResetPasswordModalProps) {
             <code className="block w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-xs font-mono text-primary break-all select-all">
               {password}
             </code>
+            <CopyButton text={password} label="Copy password" />
             <p className="text-xs text-amber-600 dark:text-amber-400">
               User will be prompted to change it on next login. All active sessions revoked.
             </p>
@@ -356,6 +359,7 @@ function UserCreatedModal({ created, remaining, onDone }: { created: CreatedCred
         <code className="block w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-xs font-mono text-primary break-all select-all">
           {created.initial_password}
         </code>
+        <CopyButton text={created.initial_password} label="Copy password" />
         <p className="text-xs text-amber-600 dark:text-amber-400">Share with the user. They will be prompted to change it on first login.</p>
         <button onClick={onDone} className="w-full py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors shadow-sm">
           Done
