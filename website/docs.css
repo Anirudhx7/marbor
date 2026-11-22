@@ -245,3 +245,7 @@ footer a{display:inline-flex;align-items:center;min-height:44px}
 .doc-mobile-list,.doc-mobile-nav details>ul,.doc-mobile-nav details>ol{padding:6px 14px 12px;margin:0;list-style:none}
 .doc-mobile-nav .doc-nav-link,.doc-mobile-nav details a{display:flex;align-items:center;min-height:44px}
 }
+
+/* Facts that used to be joined with middle dots: separate items, hairline between. */
+.fact{display:inline}
+.fact+.fact::before{content:"";display:inline-block;width:1px;height:1em;margin:0 10px;background:var(--border);vertical-align:-.15em}
