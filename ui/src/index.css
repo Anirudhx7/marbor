@@ -472,6 +472,7 @@ input[type="checkbox"]:disabled {
 }
 @media (prefers-reduced-motion: reduce) {
   .toast-item { animation: none; }
+}
 
 /* Native modal dialog: grows from the control that opened it (--modal-origin is
    set per open), 220ms in, 160ms out, ease-out. Resting state is transform:none
