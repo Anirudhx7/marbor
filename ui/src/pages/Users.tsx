@@ -14,7 +14,7 @@ import { CustomSelect } from '../components/Select';
 import { currentAppPath } from '../hooks/useDemoMode';
 import { useTimezone } from '../hooks/useTimezone';
 import { formatDateInZone } from '../lib/time';
-import { TabList, tabProps } from '../components/TabList';
+import { TabList, tabProps, panelProps } from '../components/TabList';
 
 const STATUS_BADGE: Record<string, { variant: 'warning' | 'success' | 'destructive' | 'muted'; label: string }> = {
   pending:   { variant: 'warning',     label: 'Pending' },
@@ -130,7 +130,7 @@ function ApproveModal({ user, onClose, onDone }: ApproveModalProps) {
       <div className="space-y-4">
         <TabList label="Key source" className="flex gap-2">
           {(['create', 'assign'] as const).map(m => (
-            <button key={m} {...tabProps(mode === m)} onClick={() => setMode(m)}
+            <button key={m} {...tabProps(mode === m, `users-key-${m}`)} onClick={() => setMode(m)}
               className={`flex-1 py-1.5 text-xs font-medium rounded-lg border transition-colors ${mode === m ? 'bg-primary/10 border-primary text-primary' : 'border-border text-muted-foreground hover:bg-secondary'}`}>
               {m === 'create' ? 'Create New Key' : 'Assign Existing Key'}
             </button>
@@ -138,7 +138,7 @@ function ApproveModal({ user, onClose, onDone }: ApproveModalProps) {
         </TabList>
 
         {mode === 'assign' ? (
-          <div>
+          <div {...panelProps('users-key-assign')}>
             <label className="block text-xs font-medium text-muted-foreground mb-1.5">Select Active Key</label>
             {!keysLoaded ? (
               <p className="text-xs text-muted-foreground italic">Loading keys...</p>
@@ -156,7 +156,7 @@ function ApproveModal({ user, onClose, onDone }: ApproveModalProps) {
             )}
           </div>
         ) : (
-          <div className="space-y-3">
+          <div {...panelProps('users-key-create')} className="space-y-3">
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1.5">Key Name</label>
               <input type="text" value={newKeyName} onChange={e => setNewKeyName(e.target.value)}

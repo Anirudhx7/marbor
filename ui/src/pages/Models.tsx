@@ -14,7 +14,7 @@ import { Modal } from '../components/Modal';
 import { buttonClasses } from '../lib/buttonClasses';
 import { ModelConfigModal } from '../components/ModelConfigModal';
 import { CustomSelect } from '../components/Select';
-import { TabList, tabProps } from '../components/TabList';
+import { TabList, tabProps, panelProps } from '../components/TabList';
 
 function formatVRAM(bytes: number): string {
   if (bytes === 0) return '0 B';
@@ -849,14 +849,14 @@ export function Models() {
       {/* Tabs - Fleet first, Catalog secondary - smooth like sidenav 200ms ease */}
       <TabList label="Models views" className="flex items-center gap-1 p-1 bg-secondary rounded-lg w-fit">
         <button
-          {...tabProps(activeTab === 'fleet')}
+          {...tabProps(activeTab === 'fleet', 'models-fleet')}
           onClick={() => setActiveTab('fleet')}
           className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors duration-200 ease-out ${activeTab === 'fleet' ? 'bg-card shadow-sm text-foreground border border-border' : 'text-muted-foreground hover:text-foreground'}`}
         >
           Fleet
         </button>
         <button
-          {...tabProps(activeTab === 'catalog')}
+          {...tabProps(activeTab === 'catalog', 'models-catalog')}
           onClick={() => setActiveTab('catalog')}
           className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors duration-200 ease-out ${activeTab === 'catalog' ? 'bg-card shadow-sm text-foreground border border-border' : 'text-muted-foreground hover:text-foreground'}`}
         >
@@ -865,7 +865,7 @@ export function Models() {
       </TabList>
 
       {activeTab === 'fleet' ? (
-        <div className="space-y-6 animate-fade-in">
+        <div {...panelProps('models-fleet')} className="space-y-6 animate-fade-in">
           {error && !demoMode && (
             <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-sm font-medium">
               {error}
@@ -1120,7 +1120,7 @@ export function Models() {
         </div>
       ) : (
         /* Catalog secondary - read-only browse, fleet remains headline */
-        <div className="space-y-6 animate-fade-in">
+        <div {...panelProps('models-catalog')} className="space-y-6 animate-fade-in">
           <div className="bg-card border border-border rounded-xl p-6">
             <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
               <Layers className="w-5 h-5 text-primary" />

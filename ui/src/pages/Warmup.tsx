@@ -20,7 +20,7 @@ import { CustomTimePicker } from '../components/DateTimePicker';
 import { useTimezone } from '../hooks/useTimezone';
 import { formatDateTimeInZone, formatTimeInZone, formatInTimezone, wallDateTimeToUtcIso, decisionHourLabel } from '../lib/time';
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
-import { TabList, tabProps } from '../components/TabList';
+import { TabList, tabProps, panelProps } from '../components/TabList';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -1039,18 +1039,18 @@ export function Warmup() {
           )}
         </div>
         <TabList label="Warmup views" className="flex items-center bg-secondary rounded-lg p-0.5 text-sm w-full sm:w-auto overflow-x-auto no-scrollbar">
-          <button {...tabProps(tab === 'warmup')} onClick={() => setTab('warmup')}
+          <button {...tabProps(tab === 'warmup', 'warmup-warmup')} onClick={() => setTab('warmup')}
             className={`flex-1 sm:flex-none flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-md font-medium transition-colors whitespace-nowrap min-w-0 ${tab === 'warmup' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
             <Flame className="w-3.5 h-3.5 shrink-0" /> Warmup
           </button>
-          <button {...tabProps(tab === 'schedules')} onClick={() => setTab('schedules')}
+          <button {...tabProps(tab === 'schedules', 'warmup-schedules')} onClick={() => setTab('schedules')}
             className={`flex-1 sm:flex-none flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-md font-medium transition-colors whitespace-nowrap min-w-0 ${tab === 'schedules' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
             <Clock className="w-3.5 h-3.5 shrink-0" /> Schedules
             {schedules.length > 0 && (
               <span className="px-1 py-0.5 sm:px-1.5 bg-primary/10 text-primary rounded text-[10px] font-mono shrink-0">{schedules.length}</span>
             )}
           </button>
-          <button {...tabProps(tab === 'predictions')} onClick={() => setTab('predictions')}
+          <button {...tabProps(tab === 'predictions', 'warmup-predictions')} onClick={() => setTab('predictions')}
             className={`flex-1 sm:flex-none flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded-md font-medium transition-colors whitespace-nowrap min-w-0 ${tab === 'predictions' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}>
             <BrainCircuit className="w-3.5 h-3.5" /> Predictions
           </button>
@@ -1061,7 +1061,7 @@ export function Warmup() {
 
       {/* Warmup tab */}
       {tab === 'warmup' && (
-        <section className="space-y-2">
+        <section {...panelProps('warmup-warmup')} className="space-y-2">
           {loading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : nodes.length === 0 ? (
@@ -1082,7 +1082,7 @@ export function Warmup() {
 
       {/* Schedules tab */}
       {tab === 'schedules' && (
-        <section className="space-y-3">
+        <section {...panelProps('warmup-schedules')} className="space-y-3">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-secondary/35 border border-border/80 rounded-xl px-4 py-3 gap-2.5 text-xs text-muted-foreground shadow-sm">
             <div className="flex items-center gap-2">
               <div className="relative flex h-2 w-2">
@@ -1157,7 +1157,7 @@ export function Warmup() {
 
       {/* Predictions tab */}
       {tab === 'predictions' && (
-        <section className="space-y-4">
+        <section {...panelProps('warmup-predictions')} className="space-y-4">
           <div className={`bg-card border rounded-xl p-4 flex items-center justify-between shadow-sm transition-colors ${
             predictiveEnabled ? 'border-border' : 'border-amber-500/40 bg-amber-500/5'
           }`}>
