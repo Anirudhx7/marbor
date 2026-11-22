@@ -39,7 +39,7 @@ a:hover{text-decoration:underline}
 .brand:hover{text-decoration:none}
 .brand-chip{width:32px;height:32px;border-radius:8px;background:var(--brand-chip);display:grid;place-items:center;border:1px solid var(--border-subtle);flex:none;color:var(--brand-mark)}
 .brand-name{font-weight:650;letter-spacing:-.01em;font-size:16px}
-.brand-ver{font-size:11px;font-weight:600;letter-spacing:.02em;color:var(--text-faint);padding:2px 8px;border:1px solid var(--border);border-radius:99px;background:transparent;font-variant-numeric:tabular-nums}
+.brand-ver{font-size:12px;font-weight:600;letter-spacing:.02em;color:var(--text-faint);padding:2px 8px;border:1px solid var(--border);border-radius:99px;background:transparent;font-variant-numeric:tabular-nums}
 .nav-links{display:flex;align-items:center;gap:8px}
 .nav-links a.nl{position:relative;color:var(--text-muted);font-size:13.5px;font-weight:550;padding:8px 13px;border-radius:8px;transition:color .2s var(--ease)}
 .nav-links a.nl::after{content:"";position:absolute;left:13px;right:13px;bottom:4px;height:1.5px;border-radius:2px;background:var(--accent);transform:scaleX(0);transform-origin:left center;transition:transform .28s var(--ease)}
@@ -128,7 +128,7 @@ h1 em{font-style:italic;color:var(--accent);font-weight:600}
 .doc-content h1{font-family:var(--font-display);font-weight:600;font-size:clamp(30px,4vw,42px);letter-spacing:-.01em;margin:0 0 12px;line-height:1.08}
 .doc-content h2{font-family:var(--font-display);font-weight:600;font-size:24px;letter-spacing:-.01em;margin:28px 0 10px;padding-top:0;scroll-margin-top:96px;line-height:1.2}
 .doc-content h3{font-size:17px;font-weight:650;letter-spacing:-.01em;margin:22px 0 8px;scroll-margin-top:96px;line-height:1.35}
-.doc-content h2 .anchor,.doc-content h3 .anchor{opacity:0;margin-left:8px;color:var(--text-faint);font-weight:400;font-family:var(--font-mono);text-decoration:none;font-size:.7em}
+.doc-content h2 .anchor,.doc-content h3 .anchor{opacity:0;margin-left:8px;color:var(--text-faint);font-weight:400;font-family:var(--font-mono);text-decoration:none;font-size:max(12px,.7em)}
 .doc-content h2:hover .anchor,.doc-content h3:hover .anchor,.doc-content h2:focus-within .anchor,.doc-content h3:focus-within .anchor,.doc-content .anchor:focus{opacity:1}
 .doc-content h1 .anchor{display:none}
 .doc-content p{margin:0 0 14px;color:var(--text-muted)}
@@ -138,7 +138,7 @@ h1 em{font-style:italic;color:var(--accent);font-weight:600}
 .doc-content li{margin-bottom:5px}
 .doc-content li::marker{color:var(--accent)}
 .doc-content hr{border:none;border-top:1px solid var(--border-subtle);margin:30px 0}
-.doc-content code{font-family:var(--font-mono);font-size:.88em;background:var(--bg-surface);padding:2px 6px;border-radius:6px;color:var(--text);border:1px solid var(--border-subtle)}
+.doc-content code{font-family:var(--font-mono);font-size:max(12px,.88em);background:var(--bg-surface);padding:2px 6px;border-radius:6px;color:var(--text);border:1px solid var(--border-subtle)}
 .doc-content pre.code{background:var(--bg);border:1px solid var(--border);border-radius:var(--r-md);padding:16px;overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0;position:relative}
 .doc-content pre.code code{background:none;border:none;padding:0;font-size:12.5px;line-height:1.7;color:var(--text)}
 .doc-content .code-wrap{position:relative;margin:0 0 18px}
