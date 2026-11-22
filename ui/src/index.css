@@ -228,9 +228,13 @@ html {
    state changes are still visible. Spinners keep turning because they show
    that work is in progress, not decoration. */
 @media (prefers-reduced-motion: reduce) {
+  /* Decorative keyframes are switched off, not shortened to 0.01ms: a
+     near-zero animation still fires animationend and can flash its first
+     frame. Spinners are not decorative and keep turning (below). */
+  .animate-pulse, .animate-ping, .animate-fade-in {
+    animation: none !important;
+  }
   *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
     transition-property: color, background-color, border-color, opacity !important;
     transition-duration: 100ms !important;
     scroll-behavior: auto !important;
