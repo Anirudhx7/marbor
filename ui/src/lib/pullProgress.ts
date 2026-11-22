@@ -142,8 +142,22 @@ function closeStream(key: string) {
 // merely switched the dashboard into its own demo view.
 const DEMO = import.meta.env.VITE_FORCE_DEMO === 'true';
 
+// Demo size and speed follow the model so two pulls never look identical: the
+// size scales with the parameter count in the tag (about 0.6 GB per billion at
+// 4-bit), and the speed comes from a stable hash of the name, clamped so a pull
+// takes 3 to 22 seconds on screen (speeds stay under about 1.1 GB/s).
+export function demoPullProfile(model: string): { total: number; bytesPerSec: number } {
+  const params = /(\d+(?:\.\d+)?)\s*b\b/i.exec(model);
+  const total = params ? Math.min(24e9, Math.round(parseFloat(params[1]) * 0.6e9)) : 2_400_000_000;
+  let h = 0;
+  for (let i = 0; i < model.length; i++) h = (h * 31 + model.charCodeAt(i)) >>> 0;
+  const wantedBps = 150e6 + (h % 750) * 1e6;
+  const seconds = Math.min(22, Math.max(3, total / wantedBps));
+  return { total, bytesPerSec: total / seconds };
+}
+
 function runDemoPull(key: string, node: string, model: string, verifyLoad: boolean, completionNote: string) {
-  const total = 4_200_000_000; // plausible fixed size, clearly a demo fixture
+  const { total, bytesPerSec } = demoPullProfile(model);
   let completed = 0;
   const startedAtMs = Date.now();
   jobs.set(key, {
@@ -170,7 +184,7 @@ function runDemoPull(key: string, node: string, model: string, verifyLoad: boole
   const step = () => {
     const job = jobs.get(key);
     if (!job || job.status !== 'downloading') return;
-    completed = Math.min(total, completed + total * 0.08);
+    completed = Math.min(total, completed + bytesPerSec * 0.4);
     const now = Date.now();
     const deltaBytes = completed - job.lastSampleBytes;
     const deltaSec = (now - job.lastSampleMs) / 1000;

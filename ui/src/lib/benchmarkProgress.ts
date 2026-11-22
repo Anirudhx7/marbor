@@ -80,7 +80,11 @@ function closeStream() {
 const DEMO = import.meta.env.VITE_FORCE_DEMO === 'true';
 
 function runDemoBenchmark(node: string, model: string, n: number) {
-  const coldBaseMs = 3200 + Math.random() * 900;
+  // Bigger models load slower: scale the cold baseline with the parameter
+  // count in the tag so runs on different models do not share one distribution.
+  const params = /(\d+(?:\.\d+)?)\s*b\b/i.exec(model);
+  const sizeB = params ? Math.min(70, parseFloat(params[1])) : 8;
+  const coldBaseMs = 1600 + sizeB * 45 + Math.random() * 700;
   const warmBaseMs = 90 + Math.random() * 40;
   const coldTpotBaseMs = 25 + Math.random() * 10;
   const warmTpotBaseMs = 18 + Math.random() * 8;
@@ -91,7 +95,9 @@ function runDemoBenchmark(node: string, model: string, n: number) {
     if (state.phase !== 'evicting' && state.phase !== 'cold') return;
     setState({ phase: 'cold' });
     if (i >= n) { i = 0; setTimeout(stepWarm, 300); return; }
-    const ms = Math.round(coldBaseMs + (Math.random() - 0.5) * 300);
+    // Mostly tight with an occasional slow outlier, like real cold loads.
+    const slow = Math.random() < 0.2 ? coldBaseMs * (0.15 + Math.random() * 0.25) : 0;
+    const ms = Math.round(coldBaseMs + (Math.random() - 0.5) * 300 + slow);
     const tpotMs = Math.round((coldTpotBaseMs + (Math.random() - 0.5) * 6) * 10) / 10;
     setState({ coldSamplesMs: [...state.coldSamplesMs, ms], coldTpotSamplesMs: [...state.coldTpotSamplesMs, tpotMs] });
     i++;
