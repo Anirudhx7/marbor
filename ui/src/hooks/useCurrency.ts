@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useSyncExternalStore } from 'react';
 
 const STORAGE_KEY = 'marbor-currency';
 const CHANGE_EVENT = 'marbor-currency-change';
@@ -42,8 +42,7 @@ export function parseFxRate(text: string): number | null {
   return Number.isFinite(rate) && rate > 0 ? rate : null;
 }
 
-function readCurrencyPref(): CurrencyPref {
-  const raw = localStorage.getItem(STORAGE_KEY);
+function parsePref(raw: string | null): CurrencyPref {
   if (!raw) return DEFAULT_PREF;
   try {
     const parsed = JSON.parse(raw);
@@ -56,40 +55,44 @@ function readCurrencyPref(): CurrencyPref {
   return DEFAULT_PREF;
 }
 
+// One shared store over localStorage. Every useCurrency() caller reads the same
+// snapshot, so there is a single writer. The earlier version kept a copy per
+// caller and each copy wrote itself back on change; with two mounted (Settings
+// and the budget banner) a lagging copy re-wrote the previous rate over a newer
+// one while the FX field was being typed into, leaving 8 where 83 was entered.
+let cachedRaw: string | null | undefined;
+let cachedPref: CurrencyPref = DEFAULT_PREF;
+
+function getSnapshot(): CurrencyPref {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (raw !== cachedRaw) {
+    cachedRaw = raw;
+    cachedPref = parsePref(raw);
+  }
+  return cachedPref;
+}
+
+function subscribe(listener: () => void): () => void {
+  window.addEventListener(CHANGE_EVENT, listener);
+  window.addEventListener('storage', listener);
+  return () => {
+    window.removeEventListener(CHANGE_EVENT, listener);
+    window.removeEventListener('storage', listener);
+  };
+}
+
+function setCurrency(next: CurrencyPref | ((prev: CurrencyPref) => CurrencyPref)) {
+  const value = typeof next === 'function' ? next(getSnapshot()) : next;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
+  window.dispatchEvent(new Event(CHANGE_EVENT));
+}
+
 // Client-only display preference, mirroring useDemoMode.ts. The backend
 // always stores/enforces USD - this hook only converts for display and
 // for input fields, never touches any API payload's units directly.
 export function useCurrency() {
-  const [pref, setPref] = useState<CurrencyPref>(readCurrencyPref);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(pref));
-    window.dispatchEvent(new Event(CHANGE_EVENT));
-  }, [pref]);
-
-  useEffect(() => {
-    // readCurrencyPref() returns a new object every call, so setting it
-    // unconditionally would re-trigger the write effect above even when the
-    // value hasn't changed - every other mounted useCurrency() instance
-    // would then re-dispatch CHANGE_EVENT in response, and this listener
-    // would fire again, forever (two instances ping-ponging the event with
-    // no way to settle). Bail out to the same object reference when the
-    // value is unchanged so the write effect's [pref] dependency doesn't
-    // see a change and the loop terminates.
-    const sync = () => {
-      const next = readCurrencyPref();
-      setPref((prev) =>
-        prev.code === next.code && prev.symbol === next.symbol && prev.fxRate === next.fxRate
-          ? prev
-          : next
-      );
-    };
-    window.addEventListener(CHANGE_EVENT, sync);
-    return () => window.removeEventListener(CHANGE_EVENT, sync);
-  }, []);
-
+  const pref = useSyncExternalStore(subscribe, getSnapshot, () => DEFAULT_PREF);
   const toDisplay = (usd: number): number => usd * pref.fxRate;
   const toUSD = (displayAmount: number): number => displayAmount / pref.fxRate;
-
-  return { currency: pref, setCurrency: setPref, toDisplay, toUSD };
+  return { currency: pref, setCurrency, toDisplay, toUSD };
 }
