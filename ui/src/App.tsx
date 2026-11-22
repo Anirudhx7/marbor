@@ -1,4 +1,4 @@
-import { lazy, Suspense, Component, ReactNode, useState, useEffect } from 'react';
+import { lazy, Suspense, Component, ReactNode, useState, useEffect, useRef } from 'react';
 import { ToastRegion } from './components/ToastRegion';
 import { BrowserRouter, HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ThemeProvider } from './hooks/useTheme';
@@ -154,6 +154,22 @@ function AppShell({ session, onLogout, pendingCount }: AppShellProps) {
   const location = useLocation();
   const pathname = location.pathname;
   const { collapsed, toggle } = useSidebarCollapsed();
+  const mainRef = useRef<HTMLElement>(null);
+  const prevCollapsed = useRef(collapsed);
+
+  // The sidebar's width and the page's left margin change at once; sliding the
+  // page from where its left edge was keeps the move smooth without animating
+  // a layout property (width or margin) on every frame.
+  useEffect(() => {
+    if (prevCollapsed.current === collapsed) return;
+    const delta = collapsed ? 188 : -188;
+    prevCollapsed.current = collapsed;
+    if (window.matchMedia('(max-width: 767px)').matches || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    mainRef.current?.animate(
+      [{ transform: `translateX(${delta}px)` }, { transform: 'translateX(0)' }],
+      { duration: collapsed ? 160 : 220, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' },
+    );
+  }, [collapsed]);
 
   // A new page starts at the top. The one exception is a link that carries a
   // highlight target: that page scrolls to the highlighted card itself.
@@ -181,7 +197,7 @@ function AppShell({ session, onLogout, pendingCount }: AppShellProps) {
     <div className="min-h-screen bg-background text-foreground transition-colors duration-300">
       <ToastRegion />
       <Sidebar onLogout={onLogout} session={session} pendingCount={pendingCount} collapsed={collapsed} onToggleCollapsed={toggle} />
-      <main className={`${collapsed ? 'md:ml-[68px]' : 'md:ml-64'} min-h-screen pt-14 md:pt-0 will-change-[margin] transition-[margin] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] [contain:layout_style]`}>
+      <main ref={mainRef} className={`${collapsed ? 'md:ml-[68px]' : 'md:ml-64'} min-h-screen pt-14 md:pt-0 [contain:layout_style]`}>
         <DemoBanner />
         <BudgetBanner />
         <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto">
