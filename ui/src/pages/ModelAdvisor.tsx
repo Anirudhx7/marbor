@@ -29,7 +29,7 @@ import { mockHFModels, mockHFSafetensorsModels, mockSafetensorsDetails,mockHFRep
 import type { CatalogModelFit } from '../types';
 import { readLastModelCount, writeLastModelCount, readLastNodeCount } from '../lib/nodeCount';
 import { CustomDatePicker } from '../components/DateTimePicker';
-import { TabList, tabProps } from '../components/TabList';
+import { TabList, tabProps, TabPanel } from '../components/TabList';
 
 // LIVE_VRAM_TOOL_SOURCES are every `vram_source` string handleModelFit
 // (admin.go) can report for a value read straight from a vendor tool - see
@@ -1213,7 +1213,7 @@ export function ModelAdvisor() {
         {(['browse', 'favourites'] as const).map((t) => (
           <button
             key={t}
-            {...tabProps(tab === t)}
+            {...tabProps(tab === t, `advisor-${t}`)}
             onClick={() => setTab(t)}
             className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors cursor-pointer ${
               tab === t
@@ -1290,7 +1290,7 @@ export function ModelAdvisor() {
       )}
 
       {tab === 'favourites' ? (
-        <>
+        <TabPanel id="advisor-favourites">
           {loading && !demoMode ? (
             <div aria-hidden="true" className="bg-card border border-border rounded-xl p-5 shadow-sm animate-pulse">
               <div className="h-4 w-48 max-w-full bg-secondary rounded mb-3" />
@@ -1350,9 +1350,9 @@ export function ModelAdvisor() {
             )}
           </div>
         )}
-        </>
+        </TabPanel>
       ) : (
-      <>
+      <TabPanel id="advisor-browse">
       {activeNode && (
         <>
           <div className="bg-secondary/30 border border-border rounded-xl p-4 text-xs text-muted-foreground leading-relaxed shadow-sm">
@@ -1537,7 +1537,7 @@ export function ModelAdvisor() {
 />
 </div>
       )}
-      </>
+      </TabPanel>
       )}
     </div>
   );

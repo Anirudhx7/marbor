@@ -869,7 +869,7 @@ function NodeCard({ node, pinnedModels, replicaWorkers, onRemove, onDrain, onUnd
 }
 
 import { useDemoMode, currentAppPath } from '../hooks/useDemoMode';
-import { TabList, tabProps } from '../components/TabList';
+import { TabList, tabProps, panelProps, TabPanel } from '../components/TabList';
 
 // Which input to focus for the first invalid field after a failed submit.
 const ADD_NODE_FIELD_IDS: Record<string, string> = { name: 'add-node-name', host: 'add-node-host', port: 'add-node-port' };
@@ -2445,7 +2445,7 @@ export function GPUNodes() {
           {(['nodes', 'replicas'] as const).map((v) => (
             <button
               key={v}
-              {...tabProps(view === v)}
+              {...tabProps(view === v, `gpu-nodes-${v}`)}
               onClick={() => setView(v)}
               className={`px-4 py-1.5 min-h-[40px] sm:min-h-0 text-sm font-medium rounded-md transition-colors duration-200 ease-out ${view === v ? 'bg-card shadow-sm text-foreground border border-border' : 'text-muted-foreground hover:text-foreground'}`}
             >
@@ -2471,6 +2471,7 @@ export function GPUNodes() {
       )}
 
       {view === 'replicas' && (
+        <TabPanel id="gpu-nodes-replicas">
         <ReplicaGroupsTab
           data={replicaSuggestions}
           loadError={suggestionsError}
@@ -2480,12 +2481,13 @@ export function GPUNodes() {
           onEditNode={(name) => { const target = nodes.find(n => n.name === name); if (target) openEditModal(target); }}
           onGoToNode={goToReplicaMember}
         />
+        </TabPanel>
       )}
 
       {/* Stays mounted while the Replica groups tab shows, so card and filter
           state survive a tab switch. The hidden attribute also takes it out of
           the accessibility tree and the tab order. */}
-      <div hidden={view !== 'nodes'} className="space-y-6">
+      <div {...panelProps('gpu-nodes-nodes')} hidden={view !== 'nodes'} className="space-y-6">
       {/* Search */}
       <div className="max-w-md">
         <SearchInput
