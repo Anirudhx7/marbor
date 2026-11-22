@@ -179,12 +179,14 @@ h1 em{font-style:italic;color:var(--accent);font-weight:600}
 .doc-content pre.code{background:var(--bg);border:1px solid var(--border);border-radius:var(--r-md);padding:16px;overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0;position:relative}
 .doc-content pre.code code{background:none;border:none;padding:0;font-size:12.5px;line-height:1.7;color:var(--text)}
 .doc-content .code-wrap{position:relative;margin:0 0 18px}
-.doc-content .code-wrap pre.code{padding-right:90px;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+.doc-content pre.code.wrap code{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word}
+.doc-content .code-head{display:flex;justify-content:flex-end;align-items:center;padding:6px 8px;background:var(--bg-surface);border:1px solid var(--border);border-bottom:0;border-radius:var(--r-md) var(--r-md) 0 0}
+.doc-content .code-wrap pre.code{border-top-left-radius:0;border-top-right-radius:0;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
 .doc-content .code-wrap pre.code::-webkit-scrollbar{height:8px;width:8px}
 .doc-content .code-wrap pre.code::-webkit-scrollbar-track{background:transparent}
 .doc-content .code-wrap pre.code::-webkit-scrollbar-thumb{background:var(--border);border-radius:99px}
 .doc-content .code-wrap pre.code::-webkit-scrollbar-thumb:hover{background:var(--text-faint)}
-.doc-content .copy-btn{position:absolute;top:10px;right:10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:44px;min-height:44px;padding:7px 13px;cursor:pointer;background:var(--bg-surface);border:1px solid var(--border);border-radius:99px;color:var(--text-muted);font-family:var(--font-sans);font-weight:650;font-size:12px;line-height:1;box-shadow:var(--shadow);transition:color .15s,border-color .15s,background .15s,transform .15s}
+.doc-content .copy-btn{position:static;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-width:44px;min-height:44px;padding:7px 13px;cursor:pointer;background:var(--bg-surface);border:1px solid var(--border);border-radius:99px;color:var(--text-muted);font-family:var(--font-sans);font-weight:650;font-size:12px;line-height:1;box-shadow:var(--shadow);transition:color .15s,border-color .15s,background .15s,transform .15s}
 .doc-content .copy-btn:hover{color:var(--accent);border-color:var(--accent);background:var(--bg-input)}
 .doc-content .copy-btn svg{width:13px;height:13px}
 .doc-content .copy-btn.copied{color:var(--accent2);border-color:var(--accent2);transform:scale(1.06)}
@@ -320,38 +322,27 @@ footer a{display:inline-flex;align-items:center;min-height:44px}
 <p>This covers registering a node's runtime endpoint only. Once a node is registered, see <a href="marbor-agent-enrollment.html">marbor agent enrollment</a> for the separate step of installing its marbor agent.</p>
 <h2 id="authenticating-a-script">Authenticating a script<a class="anchor" href="#authenticating-a-script" aria-label="Link to section">#</a></h2>
 <p>There is no separate long-lived "admin API key" for these routes - they use the same session-based admin auth as the dashboard and CLI. <code>POST /admin/login</code> with an admin user's username/password returns the session as an <code>HttpOnly</code> cookie (the token itself is not present in the JSON response body), valid for 30 days or until logout. The simplest reliable way to script this is a curl cookie jar, which the routes below also accept as <code>Authorization: Bearer &lt;token&gt;</code> if you prefer to extract the token value from the cookie yourself.</p>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>MARBOR_SERVER=https://marbor.example.com
-COOKIES=$(mktemp)
-
-curl -sf -c "$COOKIES" -X POST "$MARBOR_SERVER/admin/login" \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"&lt;your admin password&gt;"}' &gt; /dev/null</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="MARBOR_SERVER=https://marbor.example.com
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="MARBOR_SERVER=https://marbor.example.com
 COOKIES=$(mktemp)
 
 curl -sf -c &quot;$COOKIES&quot; -X POST &quot;$MARBOR_SERVER/admin/login&quot; \
   -H &quot;Content-Type: application/json&quot; \
-  -d '{&quot;username&quot;:&quot;admin&quot;,&quot;password&quot;:&quot;&lt;your admin password&gt;&quot;}' &gt; /dev/null"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-<p>Every subsequent call in this guide reuses <code>-b "$COOKIES"</code>.</p>
-<h2 id="registering-a-node">Registering a node<a class="anchor" href="#registering-a-node" aria-label="Link to section">#</a></h2>
-<p><code>POST /admin/nodes</code> - registers the node (<code>{"name", "url"}</code>; other fields like <code>runtime</code> are optional, defaulting to <code>ollama</code>). This endpoint upserts by name: a repeat call with the same name updates that node's config in place (<code>200 OK</code>) instead of creating a duplicate; the first call returns <code>201 Created</code>. Safe to re-run.</p>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>curl -sf -b "$COOKIES" -X POST "$MARBOR_SERVER/admin/nodes" \
-  -H "Content-Type: application/json" \
-  -d '{"name":"gpu01","url":"http://gpu01:11434"}'</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="curl -sf -b &quot;$COOKIES&quot; -X POST &quot;$MARBOR_SERVER/admin/nodes&quot; \
-  -H &quot;Content-Type: application/json&quot; \
-  -d '{&quot;name&quot;:&quot;gpu01&quot;,&quot;url&quot;:&quot;http://gpu01:11434&quot;}'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
-<h2 id="scripted-registration-for-n-nodes">Scripted registration for N nodes<a class="anchor" href="#scripted-registration-for-n-nodes" aria-label="Link to section">#</a></h2>
-<div class="code-wrap"><pre class="code" data-lang="bash"><code>MARBOR_SERVER=https://marbor.example.com
+  -d '{&quot;username&quot;:&quot;admin&quot;,&quot;password&quot;:&quot;&lt;your admin password&gt;&quot;}' &gt; /dev/null"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="bash"><code>MARBOR_SERVER=https://marbor.example.com
 COOKIES=$(mktemp)
 
 curl -sf -c "$COOKIES" -X POST "$MARBOR_SERVER/admin/login" \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"&lt;your admin password&gt;"}' &gt; /dev/null
-
-for host in gpu01 gpu02 gpu03; do
-  curl -sf -b "$COOKIES" -X POST "$MARBOR_SERVER/admin/nodes" \
-    -H "Content-Type: application/json" \
-    -d "{\"name\":\"$host\",\"url\":\"http://$host:11434\"}"
-done</code></pre><button class="copy-btn" aria-label="Copy code" data-copy="MARBOR_SERVER=https://marbor.example.com
+  -d '{"username":"admin","password":"&lt;your admin password&gt;"}' &gt; /dev/null</code></pre></div>
+<p>Every subsequent call in this guide reuses <code>-b "$COOKIES"</code>.</p>
+<h2 id="registering-a-node">Registering a node<a class="anchor" href="#registering-a-node" aria-label="Link to section">#</a></h2>
+<p><code>POST /admin/nodes</code> - registers the node (<code>{"name", "url"}</code>; other fields like <code>runtime</code> are optional, defaulting to <code>ollama</code>). This endpoint upserts by name: a repeat call with the same name updates that node's config in place (<code>200 OK</code>) instead of creating a duplicate; the first call returns <code>201 Created</code>. Safe to re-run.</p>
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="curl -sf -b &quot;$COOKIES&quot; -X POST &quot;$MARBOR_SERVER/admin/nodes&quot; \
+  -H &quot;Content-Type: application/json&quot; \
+  -d '{&quot;name&quot;:&quot;gpu01&quot;,&quot;url&quot;:&quot;http://gpu01:11434&quot;}'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="bash"><code>curl -sf -b "$COOKIES" -X POST "$MARBOR_SERVER/admin/nodes" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"gpu01","url":"http://gpu01:11434"}'</code></pre></div>
+<h2 id="scripted-registration-for-n-nodes">Scripted registration for N nodes<a class="anchor" href="#scripted-registration-for-n-nodes" aria-label="Link to section">#</a></h2>
+<div class="code-wrap"><div class="code-head"><button class="copy-btn" aria-label="Copy code" data-copy="MARBOR_SERVER=https://marbor.example.com
 COOKIES=$(mktemp)
 
 curl -sf -c &quot;$COOKIES&quot; -X POST &quot;$MARBOR_SERVER/admin/login&quot; \
@@ -362,7 +353,18 @@ for host in gpu01 gpu02 gpu03; do
   curl -sf -b &quot;$COOKIES&quot; -X POST &quot;$MARBOR_SERVER/admin/nodes&quot; \
     -H &quot;Content-Type: application/json&quot; \
     -d &quot;{\&quot;name\&quot;:\&quot;$host\&quot;,\&quot;url\&quot;:\&quot;http://$host:11434\&quot;}&quot;
-done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div>
+done"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg><span>copy</span></button></div><pre class="code" data-lang="bash"><code>MARBOR_SERVER=https://marbor.example.com
+COOKIES=$(mktemp)
+
+curl -sf -c "$COOKIES" -X POST "$MARBOR_SERVER/admin/login" \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"&lt;your admin password&gt;"}' &gt; /dev/null
+
+for host in gpu01 gpu02 gpu03; do
+  curl -sf -b "$COOKIES" -X POST "$MARBOR_SERVER/admin/nodes" \
+    -H "Content-Type: application/json" \
+    -d "{\"name\":\"$host\",\"url\":\"http://$host:11434\"}"
+done</code></pre></div>
 <p>Once every node is registered, install their marbor agents - see <a href="marbor-agent-enrollment.html">marbor agent enrollment</a>.</p>
 <h2 id="recommended-path-the-first-party-ansible-playbook">Recommended path: the first-party Ansible playbook<a class="anchor" href="#recommended-path-the-first-party-ansible-playbook" aria-label="Link to section">#</a></h2>
 <p>A first-party Ansible playbook automates the sequence above - login once, register each node, poll until its runtime endpoint reports healthy - across an arbitrary list of GPU hosts declared in a simple vars file. It ships as source in this repo only; it is not published to Ansible Galaxy or any external registry. Use it instead of hand-rolling the loop above unless you have a reason to script this yourself (CI pipeline without Ansible, a language other than YAML, etc.) - the loop above remains correct as a reference for exactly what the playbook does under the hood, and as a no-Ansible fallback.</p>
