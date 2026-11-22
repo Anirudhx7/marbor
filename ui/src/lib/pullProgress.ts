@@ -156,11 +156,15 @@ function runDemoPull(key: string, node: string, model: string, verifyLoad: boole
   const finishSuccess = () => {
     // Put the model in the demo fleet before listeners refresh their lists.
     // Loaded on demand so the demo fixtures stay out of the main bundle.
-    void import('./mockData').then(({ recordMockPull }) => {
-      recordMockPull(node, model, total);
-      setJob(key, { status: 'success' });
-      notifySuccess(node, model);
-    });
+    // Recording is best effort: if the chunk fails to load the pull still
+    // finishes instead of hanging on "Downloading".
+    void import('./mockData')
+      .then(({ recordMockPull }) => recordMockPull(node, model, total))
+      .catch(() => undefined)
+      .then(() => {
+        setJob(key, { status: 'success' });
+        notifySuccess(node, model);
+      });
   };
 
   const step = () => {
