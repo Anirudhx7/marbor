@@ -24,7 +24,7 @@ export const RequestRow = memo(function RequestRow({ entry, expanded, explain, o
   const timing = entry.cloud ? waitCloudSummary(entry.queueWaitMs, entry.cloudMs) : undefined;
   return (
     <>
-      <tr className="border-b border-border last:border-0 hover:bg-secondary/30 transition-colors">
+      <tr className="border-b border-border last:border-0">
         <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{formatRelativeTime(entry.time)}</td>
         <td className="px-4 py-3 max-w-0">
           <ScrollableValue value={entry.id} valueClassName="font-mono text-xs text-foreground" />
