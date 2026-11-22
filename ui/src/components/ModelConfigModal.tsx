@@ -616,7 +616,7 @@ export function ModelConfigModal({
           <Section title="Meta / Orchestration" fields={metaFields} form={form} setField={setField} />
 
           {error && (
-            <p className="text-xs text-destructive font-medium bg-destructive/10 border border-destructive/20 rounded-lg p-2.5">
+            <p role="alert" className="text-xs text-destructive font-medium bg-destructive/10 border border-destructive/20 rounded-lg p-2.5">
               {error}
             </p>
           )}
@@ -672,7 +672,7 @@ export function ModelConfigModal({
           limits, everything. This action cannot be undone.
         </p>
         {error && (
-          <p className="text-sm text-destructive">{error}</p>
+          <p role="alert" className="text-sm text-destructive">{error}</p>
         )}
         <div className="flex justify-end gap-3 pt-4 border-t border-border">
           <button

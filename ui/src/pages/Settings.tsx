@@ -852,7 +852,7 @@ export function SettingsPage() {
       </div>
 
       {error && (
-        <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-sm font-medium">
+        <div role="alert" className="p-4 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-sm font-medium">
           {error}
         </div>
       )}
@@ -1161,7 +1161,7 @@ export function SettingsPage() {
             </div>
 
             {credError && (
-              <p className="mt-3 text-sm text-destructive">{credError}</p>
+              <p role="alert" className="mt-3 text-sm text-destructive">{credError}</p>
             )}
             {credSaved && (
               <p className="mt-3 text-sm text-green-600 dark:text-green-400">Credentials updated. Re-login required on other sessions.</p>
@@ -2269,7 +2269,7 @@ export function SettingsPage() {
           require a restart to take effect.
         </p>
         {error && (
-          <p className="text-sm text-destructive">{error}</p>
+          <p role="alert" className="text-sm text-destructive">{error}</p>
         )}
         <div className="flex justify-end gap-3 pt-4 border-t border-border">
           <button
