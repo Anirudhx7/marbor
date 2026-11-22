@@ -21,6 +21,27 @@ export const CURRENCY_PRESETS: Array<{ code: string; symbol: string }> = [
   { code: 'CAD', symbol: 'C$' },
 ];
 
+// Pure helpers for the Settings currency controls, kept here so the rules are
+// testable without rendering the page.
+
+// Picking a currency changes the code and symbol. USD is the base unit, so its
+// rate is always 1; any other currency keeps the rate already entered.
+export function applyCurrencyCode(pref: CurrencyPref, code: string): CurrencyPref {
+  const preset = CURRENCY_PRESETS.find((c) => c.code === code);
+  return {
+    ...pref,
+    code,
+    symbol: preset?.symbol || pref.symbol,
+    fxRate: code === 'USD' ? 1 : pref.fxRate,
+  };
+}
+
+// Returns the rate when the text is a finite number above zero, else null.
+export function parseFxRate(text: string): number | null {
+  const rate = parseFloat(text);
+  return Number.isFinite(rate) && rate > 0 ? rate : null;
+}
+
 function readCurrencyPref(): CurrencyPref {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) return DEFAULT_PREF;
