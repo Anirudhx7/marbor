@@ -20,6 +20,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **`prefixbench probe`: a single-engine residency probe.** Measures cached versus uncached time to first token on one engine, the same gap under concurrent load, and how many distinct conversations stay resident in its prefix cache. The routing comparison modes still require two or more engines.
 - **The mock node (`cmd/mocknode`) now honors `stream_options.include_usage`.** Streaming chat responses end with the usage chunk (prompt tokens, and cached tokens under the simulated prefix cache) when a client asks for it, as OpenAI-compatible engines do. Without the option the stream is unchanged.
 
+### Fixed
+- **Add fallback chain and Add context window now say what is missing** instead of doing nothing when the model or the alternates or the token count is empty or invalid.
+- **The FX rate field accepts rates below 1** (0.92 no longer turns into 1.92), and choosing USD resets the rate to 1 so caps are not shown multiplied by the previous currency's rate.
+- **Dropdowns on the dashboard close on Escape without closing the dialog around them, move with the arrow keys, and expose listbox semantics to screen readers.**
+- **The page-change fade is opacity only and 180ms** (it was 300ms with a slide).
+- **Docs: the agent enrollment page no longer links to a missing page, the LiteLLM page shows real arrows, and every docs page shows its content when JavaScript is off.**
+
 ### Changed
 - **`marbor nodes fit --json` now prints `{"nodes": [...]}`, the same object `GET /admin/nodes/model-fit` returns (Breaking for scripts).** It used to print a bare array. The bare array is gone and no flag restores it: use `jq '.nodes[]'` where you used `jq '.[]'`. Fields the CLI does not list are now kept. The human table is unchanged.
 - **Clarified public claims across README, documentation, and website copy (DOC/DIST-1).** Reconciled licensing copy to a single permanent Apache-2.0 open-source core statement without separate commercial license implications; bounded cold-start latency wording to avoiding latency on warm hits; qualified session affinity as opt-in (disabled by default); updated per-key rate-limiting and auth descriptions to remove multi-tenant terminology; accurately reflected SQLite-restored hourly analytics in documentation; attributed fleet savings projections as illustrative models; clarified installer auto-discovery coverage and manual registration for MLX on Apple Silicon; and documented realistic encryption key loss failure behavior.
