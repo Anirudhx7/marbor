@@ -321,14 +321,14 @@ export function CustomDateTimePicker({
               <button
                 type="button"
                 onClick={handlePrevMonth}
-                className="relative p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors pointer-coarse:after:absolute pointer-coarse:after:-inset-2.5 pointer-coarse:after:content-['']"
+                className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors flex items-center justify-center pointer-coarse:min-h-11 pointer-coarse:min-w-11"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
               <button
                 type="button"
                 onClick={handleNextMonth}
-                className="relative p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors pointer-coarse:after:absolute pointer-coarse:after:-inset-2.5 pointer-coarse:after:content-['']"
+                className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors flex items-center justify-center pointer-coarse:min-h-11 pointer-coarse:min-w-11"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
@@ -412,7 +412,7 @@ export function CustomDateTimePicker({
                 <button
                   type="button"
                   onClick={() => handleHourChange(hours + 1)}
-                  className="p-0.5 rounded text-muted-foreground hover:text-primary hover:bg-secondary/50 transition-colors"
+                  className="p-0.5 rounded text-muted-foreground hover:text-primary hover:bg-secondary/50 transition-colors flex items-center justify-center pointer-coarse:min-h-11 pointer-coarse:min-w-11"
                 >
                   <ChevronUp className="w-3.5 h-3.5" />
                 </button>
@@ -422,7 +422,7 @@ export function CustomDateTimePicker({
                 <button
                   type="button"
                   onClick={() => handleHourChange(hours - 1)}
-                  className="p-0.5 rounded text-muted-foreground hover:text-primary hover:bg-secondary/50 transition-colors"
+                  className="p-0.5 rounded text-muted-foreground hover:text-primary hover:bg-secondary/50 transition-colors flex items-center justify-center pointer-coarse:min-h-11 pointer-coarse:min-w-11"
                 >
                   <ChevronDown className="w-3.5 h-3.5" />
                 </button>
@@ -435,7 +435,7 @@ export function CustomDateTimePicker({
                 <button
                   type="button"
                   onClick={() => handleMinuteChange(minutes + 1)}
-                  className="p-0.5 rounded text-muted-foreground hover:text-primary hover:bg-secondary/50 transition-colors"
+                  className="p-0.5 rounded text-muted-foreground hover:text-primary hover:bg-secondary/50 transition-colors flex items-center justify-center pointer-coarse:min-h-11 pointer-coarse:min-w-11"
                 >
                   <ChevronUp className="w-3.5 h-3.5" />
                 </button>
@@ -445,7 +445,7 @@ export function CustomDateTimePicker({
                 <button
                   type="button"
                   onClick={() => handleMinuteChange(minutes - 1)}
-                  className="p-0.5 rounded text-muted-foreground hover:text-primary hover:bg-secondary/50 transition-colors"
+                  className="p-0.5 rounded text-muted-foreground hover:text-primary hover:bg-secondary/50 transition-colors flex items-center justify-center pointer-coarse:min-h-11 pointer-coarse:min-w-11"
                 >
                   <ChevronDown className="w-3.5 h-3.5" />
                 </button>
@@ -715,14 +715,14 @@ export function CustomDatePicker({
               <button
                 type="button"
                 onClick={handlePrevMonth}
-                className="relative p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors pointer-coarse:after:absolute pointer-coarse:after:-inset-2.5 pointer-coarse:after:content-['']"
+                className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors flex items-center justify-center pointer-coarse:min-h-11 pointer-coarse:min-w-11"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
               <button
                 type="button"
                 onClick={handleNextMonth}
-                className="relative p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors pointer-coarse:after:absolute pointer-coarse:after:-inset-2.5 pointer-coarse:after:content-['']"
+                className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors flex items-center justify-center pointer-coarse:min-h-11 pointer-coarse:min-w-11"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
