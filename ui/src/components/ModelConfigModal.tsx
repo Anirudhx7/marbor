@@ -560,7 +560,7 @@ export function ModelConfigModal({
       maxWidth="4xl"
       dirty={form !== null && baseline !== null && JSON.stringify(form) !== baseline}
     >
-      {loading || !form ? (
+      {(requestClose) => loading || !form ? (
         <div className="flex items-center justify-center py-12 gap-2 text-sm text-muted-foreground">
           <Loader2 className="w-4 h-4 animate-spin" /> Loading configuration...
         </div>
@@ -670,7 +670,7 @@ export function ModelConfigModal({
             </button>
             <div className="flex items-center gap-3">
               <button
-                onClick={onClose}
+                onClick={requestClose}
                 disabled={saving}
                 className="flex-1 sm:flex-none px-4 py-2 bg-secondary hover:bg-secondary/80 disabled:opacity-50 text-foreground text-sm font-semibold rounded-lg transition-colors cursor-pointer"
               >
