@@ -642,13 +642,7 @@ func main() {
 		log.Printf("WARNING: could not load nodes from store: %v", err)
 	}
 	loadNodeOverrides(r, st)
-	if drains, err := st.NodeDrainStates(); err == nil {
-		for name, ds := range drains {
-			if ds.Draining {
-				r.DrainNode(name, ds.Reason, ds.GraceSeconds)
-			}
-		}
-	}
+	loadDrainStates(r, st)
 	if agents, err := st.AllMarborAgents(); err == nil {
 		for _, a := range agents {
 			if !a.Enabled {
@@ -711,29 +705,7 @@ func main() {
 
 	// Load persisted predictive transition history so the predictive engine
 	// resumes learned patterns instead of rebuilding from zero.
-	if hist, err := st.PredictiveHistory(); err == nil && len(hist) > 0 {
-		tzName := r.Timezone()
-		entries := make([]router.TransitionEntry, len(hist))
-		for i, h := range hist {
-			hour := h.Timestamp.Hour() // fallback UTC
-			if tzName != "" && tzName != "Local" {
-				if loc, err := time.LoadLocation(tzName); err == nil {
-					hour = h.Timestamp.In(loc).Hour()
-				}
-			} else {
-				// "Local" means server OS zone - In(Local) honors that host's zone.
-				hour = h.Timestamp.In(time.Local).Hour()
-			}
-			entries[i] = router.TransitionEntry{
-				FromModel: h.FromModel,
-				ToModel:   h.ToModel,
-				Timestamp: h.Timestamp,
-				HourOfDay: hour,
-			}
-		}
-		r.SeedPredictiveHistory(entries)
-		log.Printf("store: loaded %d predictive transition(s)", len(entries))
-	}
+	loadPredictiveHistory(r, st)
 
 	// Rolling prefix-locality state is reseeded from SQLite inside SetStore
 	// itself (see internal/router/prefixlocality.go's seedPrefixLocalityFromStore),
@@ -762,39 +734,10 @@ func main() {
 
 	// Load persisted per-node warmup settings (admin-toggled) from the KV store
 	// so proactive warmup survives a restart.
-	if settings, err := st.AllSettings(); err == nil {
-		loaded := 0
-		for k, v := range settings {
-			if pn, ok := strings.CutPrefix(k, "pinned:node:"); ok {
-				var models []string
-				if v != "" && json.Unmarshal([]byte(v), &models) == nil && len(models) > 0 {
-					r.SetPinnedModels(pn, models)
-				}
-				continue
-			}
-			name, ok := strings.CutPrefix(k, "warmup:node:")
-			if !ok || v == "" {
-				continue
-			}
-			var nw router.NodeWarmup
-			if json.Unmarshal([]byte(v), &nw) == nil && (nw.Enabled || len(nw.Models) > 0) {
-				r.SetNodeWarmup(name, nw.Enabled, nw.Models)
-				loaded++
-			}
-		}
-		if loaded > 0 {
-			log.Printf("store: loaded warmup settings for %d node(s)", loaded)
-		}
-	}
+	loadNodeSettings(r, st)
 
 	// Load persisted schedules (warmup/drain/undrain) from the KV store.
-	if raw, err := st.GetSetting("schedules"); err == nil && raw != "" {
-		var scheds []router.Schedule
-		if json.Unmarshal([]byte(raw), &scheds) == nil && len(scheds) > 0 {
-			r.SetSchedules(scheds)
-			log.Printf("store: loaded %d schedule(s)", len(scheds))
-		}
-	}
+	loadSchedules(r, st)
 
 	// Load persisted routing rules.
 	if rules, err := st.AllRoutingRules(); err == nil {
@@ -1212,7 +1155,127 @@ func loadNodeOverrides(r *router.Router, st store.Store) {
 // which is why main_node_overrides_test.go pins this mapping field by field.
 func applyNodeOverrides(r *router.Router, overrides map[string]store.NodeOverride) {
 	for name, ov := range overrides {
-		r.PatchNode(name, router.NodePatch{VRAMTotalMB: ov.VRAMTotalMB, GPUModel: ov.GPUModel, Runtime: ov.Runtime, GPUIndices: ov.GPUIndices, MaxInFlight: ov.MaxInFlight, TLSFingerprint: ov.TLSFingerprint, ParallelismType: ov.ParallelismType, ParallelismWidth: ov.ParallelismWidth, VRAMOverrides: ov.VRAMOverrides, ReplicaPeers: ov.ReplicaPeers})
+		if !r.PatchNode(name, router.NodePatch{VRAMTotalMB: ov.VRAMTotalMB, GPUModel: ov.GPUModel, Runtime: ov.Runtime, GPUIndices: ov.GPUIndices, MaxInFlight: ov.MaxInFlight, TLSFingerprint: ov.TLSFingerprint, ParallelismType: ov.ParallelismType, ParallelismWidth: ov.ParallelismWidth, VRAMOverrides: ov.VRAMOverrides, ReplicaPeers: ov.ReplicaPeers}) {
+			// A removed node's saved row is kept on purpose (re-adding the node
+			// brings its declarations back), so this is expected, not a failure.
+			log.Printf("store: saved override for %q not applied: no such node is registered", name)
+		}
+	}
+}
+
+// loadDrainStates re-drains every node that was drained before the restart. A
+// failed read is logged and boot continues: without the log line a drained
+// node silently takes traffic again.
+func loadDrainStates(r *router.Router, st store.Store) {
+	drains, err := st.NodeDrainStates()
+	if err != nil {
+		log.Printf("WARNING: could not load node drain states from store: %v (nodes that were drained before this restart were not re-drained and are taking traffic again; drain them again if they should stay out of rotation)", err)
+		return
+	}
+	for name, ds := range drains {
+		if ds.Draining {
+			r.DrainNode(name, ds.Reason, ds.GraceSeconds)
+		}
+	}
+}
+
+// loadPredictiveHistory seeds the predictive engine from the persisted
+// transition history. A failed read is logged and the engine starts empty.
+func loadPredictiveHistory(r *router.Router, st store.Store) {
+	hist, err := st.PredictiveHistory()
+	if err != nil {
+		log.Printf("WARNING: could not load predictive history from store: %v (predictive warming starts without learned patterns)", err)
+		return
+	}
+	if len(hist) == 0 {
+		return
+	}
+	tzName := r.Timezone()
+	entries := make([]router.TransitionEntry, len(hist))
+	for i, h := range hist {
+		hour := h.Timestamp.Hour() // fallback UTC
+		if tzName != "" && tzName != "Local" {
+			if loc, err := time.LoadLocation(tzName); err == nil {
+				hour = h.Timestamp.In(loc).Hour()
+			}
+		} else {
+			// "Local" means server OS zone - In(Local) honors that host's zone.
+			hour = h.Timestamp.In(time.Local).Hour()
+		}
+		entries[i] = router.TransitionEntry{
+			FromModel: h.FromModel,
+			ToModel:   h.ToModel,
+			Timestamp: h.Timestamp,
+			HourOfDay: hour,
+		}
+	}
+	r.SeedPredictiveHistory(entries)
+	log.Printf("store: loaded %d predictive transition(s)", len(entries))
+}
+
+// loadNodeSettings restores the admin-toggled per-node warmup and pinned-model
+// settings so they survive a restart. A failed read, or a stored value that is
+// not valid JSON, is logged (by key only, never the value) and skipped.
+func loadNodeSettings(r *router.Router, st store.Store) {
+	settings, err := st.AllSettings()
+	if err != nil {
+		log.Printf("WARNING: could not load saved settings from store: %v (per-node warmup and pinned-model settings were not applied on this start)", err)
+		return
+	}
+	loaded := 0
+	for k, v := range settings {
+		if pn, ok := strings.CutPrefix(k, "pinned:node:"); ok {
+			if v == "" {
+				continue
+			}
+			var models []string
+			if err := json.Unmarshal([]byte(v), &models); err != nil {
+				log.Printf("WARNING: skipped saved setting %q: stored value is not valid JSON: %v", k, err)
+				continue
+			}
+			if len(models) > 0 {
+				r.SetPinnedModels(pn, models)
+			}
+			continue
+		}
+		name, ok := strings.CutPrefix(k, "warmup:node:")
+		if !ok || v == "" {
+			continue
+		}
+		var nw router.NodeWarmup
+		if err := json.Unmarshal([]byte(v), &nw); err != nil {
+			log.Printf("WARNING: skipped saved setting %q: stored value is not valid JSON: %v", k, err)
+			continue
+		}
+		if nw.Enabled || len(nw.Models) > 0 {
+			r.SetNodeWarmup(name, nw.Enabled, nw.Models)
+			loaded++
+		}
+	}
+	if loaded > 0 {
+		log.Printf("store: loaded warmup settings for %d node(s)", loaded)
+	}
+}
+
+// loadSchedules restores the persisted warmup/drain/undrain schedules. A failed
+// read or an unparseable stored value is logged and no schedule is applied.
+func loadSchedules(r *router.Router, st store.Store) {
+	raw, err := st.GetSetting("schedules")
+	if err != nil {
+		log.Printf("WARNING: could not load schedules from store: %v (saved schedules were not applied on this start)", err)
+		return
+	}
+	if raw == "" {
+		return
+	}
+	var scheds []router.Schedule
+	if err := json.Unmarshal([]byte(raw), &scheds); err != nil {
+		log.Printf("WARNING: skipped saved schedules: stored value is not valid JSON: %v (saved schedules were not applied on this start)", err)
+		return
+	}
+	if len(scheds) > 0 {
+		r.SetSchedules(scheds)
+		log.Printf("store: loaded %d schedule(s)", len(scheds))
 	}
 }
 

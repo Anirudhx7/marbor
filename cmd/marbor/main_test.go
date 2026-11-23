@@ -329,14 +329,14 @@ func TestServerBinary_DoesNotDependOnAgentRuntime(t *testing.T) {
 }
 
 // TestBootRestoresNodeDrainState exercises the boot-time drain restore loop
-// (main.go's server-start sequence, "if drains, err := st.NodeDrainStates();
-// ... r.DrainNode(...)") end-to-end: store_test.go's TestNodeDrainStates only
+// (main.go's loadDrainStates, called once from the server-start sequence)
+// end-to-end: store_test.go's TestNodeDrainStates only
 // round-trips SetNodeDrain/NodeDrainStates inside internal/store, and
 // router_test.go's TestDrainNodeExcludesFromRouting only calls
 // router.DrainNode directly - neither exercises the wiring between the two
-// that happens once, at boot, from a persisted drain row. This test mirrors
-// that exact wiring rather than calling into main() (which cannot be
-// invoked directly - it owns process-level setup like flag.Parse()).
+// that happens once, at boot, from a persisted drain row. This test calls the
+// loader directly because main() cannot be invoked (it owns process-level
+// setup like flag.Parse()).
 func TestBootRestoresNodeDrainState(t *testing.T) {
 	dir := t.TempDir()
 	st, err := store.Open(filepath.Join(dir, "marbor.db"))
@@ -362,18 +362,7 @@ func TestBootRestoresNodeDrainState(t *testing.T) {
 	}
 	r := router.New(cfg, nodes, nil)
 
-	// This reproduces the drain restore loop in main()'s server-start
-	// sequence verbatim - if that loop is ever edited, this test's copy must
-	// be kept in sync.
-	if drains, err := st.NodeDrainStates(); err == nil {
-		for name, ds := range drains {
-			if ds.Draining {
-				r.DrainNode(name, ds.Reason, ds.GraceSeconds)
-			}
-		}
-	} else {
-		t.Fatalf("NodeDrainStates: %v", err)
-	}
+	loadDrainStates(r, st)
 
 	var gotA, gotB *router.NodeState
 	for _, n := range r.Nodes() {
