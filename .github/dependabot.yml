@@ -18,7 +18,8 @@ updates:
       interval: "weekly"
 
   # Go toolchain image tags (Dockerfile and demo images) are pinned to an exact
-  # patch. Bump them together with the toolchain line in go.mod.
+  # patch. A bump here changes only the image tags: also update the toolchain
+  # line in go.mod in the same PR, or the hygiene test fails.
   - package-ecosystem: "docker"
     directories:
       - "/"

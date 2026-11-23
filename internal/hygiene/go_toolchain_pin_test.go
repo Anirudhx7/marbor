@@ -5,15 +5,18 @@ package hygiene
 // change. The pin lives in several files; this keeps them in agreement.
 
 import (
+	"path/filepath"
 	"regexp"
-	"strings"
 	"testing"
 )
 
 var (
 	toolchainLine = regexp.MustCompile(`(?m)^toolchain go(1\.\d+\.\d+)\s*$`)
-	goImageTag    = regexp.MustCompile(`(?m)^FROM (?:--platform=\S+ )?golang:(\S+)`)
-	exactGoTag    = regexp.MustCompile(`^(1\.\d+\.\d+)(-alpine)?$`)
+	goImageTag    = regexp.MustCompile(`(?mi)^FROM (?:--\S+ )*golang:(\S+)`)
+	exactGoTag    = regexp.MustCompile(`^(1\.\d+\.\d+)(-[a-z0-9.]+)?(@sha256:[0-9a-f]+)?$`)
+	setupGoFile   = regexp.MustCompile(`(?m)^\s*go-version-file: go\.mod\s*$`)
+	setupGoFloat  = regexp.MustCompile(`(?m)^\s*(go-version|check-latest):`)
+	setupGoStep   = regexp.MustCompile(`(?m)^\s*- uses: actions/setup-go@`)
 )
 
 func TestGoToolchainPinnedAndConsistent(t *testing.T) {
@@ -22,7 +25,15 @@ func TestGoToolchainPinnedAndConsistent(t *testing.T) {
 		t.Fatal("go.mod has no exact `toolchain goX.Y.Z` line")
 	}
 	pin := m[1]
-	for _, f := range []string{"Dockerfile", "demo/Dockerfile.mocknode", "demo/Dockerfile.demotraffic"} {
+	demo, err := filepath.Glob("../../demo/Dockerfile.*")
+	if err != nil || len(demo) == 0 {
+		t.Fatalf("no demo Dockerfiles found: %v", err)
+	}
+	files := []string{"Dockerfile"}
+	for _, d := range demo {
+		files = append(files, "demo/"+filepath.Base(d))
+	}
+	for _, f := range files {
 		tags := goImageTag.FindAllStringSubmatch(readRepoFile(t, f), -1)
 		if len(tags) == 0 {
 			t.Errorf("%s: no golang image stage found", f)
@@ -41,14 +52,15 @@ func TestGoToolchainPinnedAndConsistent(t *testing.T) {
 func TestReleaseWorkflowsUseThePinnedToolchain(t *testing.T) {
 	for _, f := range []string{".github/workflows/release.yml", ".github/workflows/release-check.yml"} {
 		text := readRepoFile(t, f)
-		if !strings.Contains(text, "go-version-file: go.mod") {
-			t.Errorf("%s: setup-go must read the Go version from go.mod", f)
+		steps := len(setupGoStep.FindAllString(text, -1))
+		if steps == 0 {
+			t.Errorf("%s: no setup-go step found", f)
 		}
-		if strings.Contains(text, "check-latest") {
-			t.Errorf("%s: release builds must not float to the latest Go", f)
+		if got := len(setupGoFile.FindAllString(text, -1)); got != steps {
+			t.Errorf("%s: %d setup-go steps but %d read the Go version from go.mod", f, steps, got)
 		}
-		if regexp.MustCompile(`go-version:`).MatchString(text) {
-			t.Errorf("%s: do not set go-version beside go-version-file", f)
+		if setupGoFloat.MatchString(text) {
+			t.Errorf("%s: release builds must not set go-version or check-latest", f)
 		}
 	}
 }
