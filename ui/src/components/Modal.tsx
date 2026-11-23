@@ -45,7 +45,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = 'md', dirty
     else onCloseRef.current();
   };
   const pressedBackdrop = useRef(false);
-  const settleTimer = useRef<number>();
+  const settleTimer = useRef<number | undefined>(undefined);
   // Rendered while open and for the length of the exit transition.
   const [present, setPresent] = useState(isOpen);
   if (isOpen && !present) setPresent(true);
