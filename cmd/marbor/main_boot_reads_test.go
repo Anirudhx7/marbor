@@ -75,7 +75,7 @@ func TestLoadDrainStates_ReadErrorIsLoggedAndNothingDrained(t *testing.T) {
 func TestLoadDrainStates_UnregisteredNodeIsLoggedAsInfo(t *testing.T) {
 	// Arrange
 	st := openMemStore(t)
-	for name, draining := range map[string]bool{"gone-node": true, "node-a": true, "node-b": false} {
+	for name, draining := range map[string]bool{"gone-node": true, "gone-b": true, "node-a": true, "node-b": false} {
 		if err := st.SetNodeDrain(name, draining, "r", 0); err != nil {
 			t.Fatal(err)
 		}
@@ -92,7 +92,10 @@ func TestLoadDrainStates_UnregisteredNodeIsLoggedAsInfo(t *testing.T) {
 		t.Fatalf("log output = %q, want the unregistered-node line", out)
 	}
 	if strings.Contains(out, "WARNING") || strings.Contains(out, "node-a") || strings.Contains(out, "node-b") {
-		t.Fatalf("log must only name the unregistered node, as information: %q", out)
+		t.Fatalf("log must only name the unregistered nodes, as information: %q", out)
+	}
+	if strings.Index(out, `"gone-b"`) > strings.Index(out, `"gone-node"`) {
+		t.Fatalf("orphan lines must come out sorted by name: %q", out)
 	}
 }
 

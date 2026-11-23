@@ -9,12 +9,14 @@ import (
 	"io"
 	"log"
 	"log/slog"
+	"maps"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"syscall"
 	"text/tabwriter"
@@ -1154,7 +1156,8 @@ func loadNodeOverrides(r *router.Router, st store.Store) {
 // field that is not copied into the patch below is silently lost on restart,
 // which is why main_node_overrides_test.go pins this mapping field by field.
 func applyNodeOverrides(r *router.Router, overrides map[string]store.NodeOverride) {
-	for name, ov := range overrides {
+	for _, name := range slices.Sorted(maps.Keys(overrides)) {
+		ov := overrides[name]
 		if !r.PatchNode(name, router.NodePatch{
 			VRAMTotalMB: ov.VRAMTotalMB, GPUModel: ov.GPUModel, Runtime: ov.Runtime, GPUIndices: ov.GPUIndices,
 			MaxInFlight: ov.MaxInFlight, TLSFingerprint: ov.TLSFingerprint, ParallelismType: ov.ParallelismType,
@@ -1176,7 +1179,9 @@ func loadDrainStates(r *router.Router, st store.Store) {
 		log.Printf("WARNING: could not load node drain states from store: %v (nodes that were drained before this restart were not re-drained and are taking traffic again; drain them again if they should stay out of rotation)", err)
 		return
 	}
-	for name, ds := range drains {
+	// Sorted so the orphan lines below come out in the same order every boot.
+	for _, name := range slices.Sorted(maps.Keys(drains)) {
+		ds := drains[name]
 		if ds.Draining && !r.DrainNode(name, ds.Reason, ds.GraceSeconds) {
 			// A removed node's saved row is kept on purpose, so this is expected.
 			log.Printf("store: saved drain state for %q not applied: no such node is registered", name)
