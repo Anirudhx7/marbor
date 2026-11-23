@@ -16,9 +16,12 @@ interface ModalProps {
 
 const WIDTHS = { sm: '24rem', md: '28rem', lg: '32rem', xl: '36rem', '2xl': '42rem', '3xl': '48rem', '4xl': '56rem' } as const;
 
-// Matches the exit transition in index.css (.modal-dialog); the dialog is
-// unmounted once it has finished fading out.
-const EXIT_MS = 160;
+// Just over the exit transition in index.css (.modal-dialog, 180ms); the
+// dialog is unmounted once it has finished fading out.
+const EXIT_MS = 200;
+// An open dialog is at full opacity by now. If an interrupted entry transition
+// left it lower, it is forced to 1.
+const ENTRY_SETTLE_MS = 450;
 
 // A native modal <dialog>. The browser supplies the inert page, focus
 // containment, top layer, ::backdrop, Escape and focus return to the opener,
@@ -42,6 +45,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = 'md', dirty
     else onCloseRef.current();
   };
   const pressedBackdrop = useRef(false);
+  const settleTimer = useRef<number>();
   // Rendered while open and for the length of the exit transition.
   const [present, setPresent] = useState(isOpen);
   if (isOpen && !present) setPresent(true);
@@ -62,7 +66,14 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = 'md', dirty
       // The safe action in a confirmation (marked data-autofocus), else the
       // dialog itself so Tab starts at its first control.
       (dialog.querySelector<HTMLElement>('[data-autofocus]') ?? dialog).focus({ preventScroll: true });
+      window.clearTimeout(settleTimer.current);
+      settleTimer.current = window.setTimeout(() => {
+        if (dialog.open && getComputedStyle(dialog).opacity !== '1') dialog.style.opacity = '1';
+      }, ENTRY_SETTLE_MS);
     } else if (!isOpen && dialog.open) {
+      window.clearTimeout(settleTimer.current);
+      // Release the forced value so the exit transition has something to run from.
+      dialog.style.removeProperty('opacity');
       dialog.close();
     }
   }, [isOpen, present]);
@@ -77,6 +88,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = 'md', dirty
   // closed first so the browser returns focus to the opener.
   useLayoutEffect(() => () => {
     const dialog = dialogRef.current;
+    window.clearTimeout(settleTimer.current);
     if (dialog?.open) dialog.close();
   }, []);
 
