@@ -1155,7 +1155,11 @@ func loadNodeOverrides(r *router.Router, st store.Store) {
 // which is why main_node_overrides_test.go pins this mapping field by field.
 func applyNodeOverrides(r *router.Router, overrides map[string]store.NodeOverride) {
 	for name, ov := range overrides {
-		if !r.PatchNode(name, router.NodePatch{VRAMTotalMB: ov.VRAMTotalMB, GPUModel: ov.GPUModel, Runtime: ov.Runtime, GPUIndices: ov.GPUIndices, MaxInFlight: ov.MaxInFlight, TLSFingerprint: ov.TLSFingerprint, ParallelismType: ov.ParallelismType, ParallelismWidth: ov.ParallelismWidth, VRAMOverrides: ov.VRAMOverrides, ReplicaPeers: ov.ReplicaPeers}) {
+		if !r.PatchNode(name, router.NodePatch{
+			VRAMTotalMB: ov.VRAMTotalMB, GPUModel: ov.GPUModel, Runtime: ov.Runtime, GPUIndices: ov.GPUIndices,
+			MaxInFlight: ov.MaxInFlight, TLSFingerprint: ov.TLSFingerprint, ParallelismType: ov.ParallelismType,
+			ParallelismWidth: ov.ParallelismWidth, VRAMOverrides: ov.VRAMOverrides, ReplicaPeers: ov.ReplicaPeers,
+		}) {
 			// A removed node's saved row is kept on purpose (re-adding the node
 			// brings its declarations back), so this is expected, not a failure.
 			log.Printf("store: saved override for %q not applied: no such node is registered", name)
@@ -1173,8 +1177,9 @@ func loadDrainStates(r *router.Router, st store.Store) {
 		return
 	}
 	for name, ds := range drains {
-		if ds.Draining {
-			r.DrainNode(name, ds.Reason, ds.GraceSeconds)
+		if ds.Draining && !r.DrainNode(name, ds.Reason, ds.GraceSeconds) {
+			// A removed node's saved row is kept on purpose, so this is expected.
+			log.Printf("store: saved drain state for %q not applied: no such node is registered", name)
 		}
 	}
 }
@@ -1190,27 +1195,42 @@ func loadPredictiveHistory(r *router.Router, st store.Store) {
 	if len(hist) == 0 {
 		return
 	}
-	tzName := r.Timezone()
+	loc := bootHourLocation(r.Timezone())
 	entries := make([]router.TransitionEntry, len(hist))
 	for i, h := range hist {
-		hour := h.Timestamp.Hour() // fallback UTC
-		if tzName != "" && tzName != "Local" {
-			if loc, err := time.LoadLocation(tzName); err == nil {
-				hour = h.Timestamp.In(loc).Hour()
-			}
-		} else {
-			// "Local" means server OS zone - In(Local) honors that host's zone.
-			hour = h.Timestamp.In(time.Local).Hour()
-		}
 		entries[i] = router.TransitionEntry{
 			FromModel: h.FromModel,
 			ToModel:   h.ToModel,
 			Timestamp: h.Timestamp,
-			HourOfDay: hour,
+			HourOfDay: transitionHour(h.Timestamp, loc),
 		}
 	}
 	r.SeedPredictiveHistory(entries)
 	log.Printf("store: loaded %d predictive transition(s)", len(entries))
+}
+
+// bootHourLocation picks the zone used to bucket persisted transitions by hour.
+// An empty name or "Local" means the host's zone. An unknown name is logged
+// once and returns nil, which transitionHour treats as the timestamp's own zone.
+func bootHourLocation(tzName string) *time.Location {
+	if tzName == "" || tzName == "Local" {
+		return time.Local
+	}
+	loc, err := time.LoadLocation(tzName)
+	if err != nil {
+		log.Printf("WARNING: unknown timezone %q for predictive history: %v (saved transitions are bucketed by their stored hour, so learned hour-of-day patterns may be off)", tzName, err)
+		return nil
+	}
+	return loc
+}
+
+// transitionHour is the hour of day for a transition in loc; a nil loc keeps
+// the timestamp's own zone.
+func transitionHour(ts time.Time, loc *time.Location) int {
+	if loc == nil {
+		return ts.Hour()
+	}
+	return ts.In(loc).Hour()
 }
 
 // loadNodeSettings restores the admin-toggled per-node warmup and pinned-model
@@ -1229,8 +1249,8 @@ func loadNodeSettings(r *router.Router, st store.Store) {
 				continue
 			}
 			var models []string
-			if err := json.Unmarshal([]byte(v), &models); err != nil {
-				log.Printf("WARNING: skipped saved setting %q: stored value is not valid JSON: %v", k, err)
+			if json.Unmarshal([]byte(v), &models) != nil {
+				log.Printf("WARNING: skipped saved setting %q: stored value is not valid JSON; value not logged", k)
 				continue
 			}
 			if len(models) > 0 {
@@ -1243,8 +1263,8 @@ func loadNodeSettings(r *router.Router, st store.Store) {
 			continue
 		}
 		var nw router.NodeWarmup
-		if err := json.Unmarshal([]byte(v), &nw); err != nil {
-			log.Printf("WARNING: skipped saved setting %q: stored value is not valid JSON: %v", k, err)
+		if json.Unmarshal([]byte(v), &nw) != nil {
+			log.Printf("WARNING: skipped saved setting %q: stored value is not valid JSON; value not logged", k)
 			continue
 		}
 		if nw.Enabled || len(nw.Models) > 0 {
@@ -1269,8 +1289,8 @@ func loadSchedules(r *router.Router, st store.Store) {
 		return
 	}
 	var scheds []router.Schedule
-	if err := json.Unmarshal([]byte(raw), &scheds); err != nil {
-		log.Printf("WARNING: skipped saved schedules: stored value is not valid JSON: %v (saved schedules were not applied on this start)", err)
+	if json.Unmarshal([]byte(raw), &scheds) != nil {
+		log.Printf("WARNING: skipped saved schedules: stored value is not valid JSON (saved schedules were not applied on this start)")
 		return
 	}
 	if len(scheds) > 0 {
