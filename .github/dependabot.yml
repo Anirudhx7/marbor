@@ -16,3 +16,17 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+
+  # Go toolchain image tags (Dockerfile and demo images) are pinned to an exact
+  # patch. Bump them together with the toolchain line in go.mod.
+  - package-ecosystem: "docker"
+    directories:
+      - "/"
+      - "/demo"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      go-toolchain:
+        patterns:
+          - "golang"

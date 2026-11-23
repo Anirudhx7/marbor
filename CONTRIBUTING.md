@@ -14,6 +14,8 @@ make backend    # Go only (fast iteration)
 make ui         # UI only
 ```
 
+**Go toolchain pin.** Release builds use one exact Go patch version: the `toolchain` line in `go.mod`, read by the release workflows, and the matching `golang:X.Y.Z` tags in `Dockerfile` and `demo/Dockerfile.*`. To move it, change all of them in one PR and run `go test ./internal/hygiene/`, which checks they agree. A local Go older than the pin downloads the pinned toolchain on first use (`GOTOOLCHAIN=auto`). Regular CI keeps testing against the latest patch of Go 1.26.
+
 ## Test
 
 ```bash

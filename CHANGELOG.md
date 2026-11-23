@@ -21,6 +21,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **The mock node (`cmd/mocknode`) now honors `stream_options.include_usage`.** Streaming chat responses end with the usage chunk (prompt tokens, and cached tokens under the simulated prefix cache) when a client asks for it, as OpenAI-compatible engines do. Without the option the stream is unchanged.
 
 ### Fixed
+- **Release builds now use an exact, pinned Go patch version.** The release workflows and the container images build with the Go version named in `go.mod` instead of the newest 1.26 patch, so a release is reproducible and a Go upgrade is a reviewed change.
 - **Dialogs no longer rearrange for a frame while closing.** The first frame of the exit laid the title and the form out as a row instead of a column. Only opacity and scale change during the fade-out now.
 - **Dialogs now animate in and out smoothly.** Entry was front-loaded and looked like a pop-in; exit finished within a few frames. Entry is now 270ms and exit 180ms, from and to opacity 0 and scale 0.95, with the backdrop on the same timing. A dialog whose entry transition is interrupted is forced to full opacity.
 - **Create user's Cancel button now asks before discarding typed input.** It closed the form without the Discard prompt that Escape, the X and the backdrop already showed.
