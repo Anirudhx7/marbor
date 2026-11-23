@@ -308,6 +308,7 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
 
   return (
     <Modal isOpen={true} onClose={onClose} title="Create user" dirty={username.trim() !== '' || email.trim() !== ''}>
+      {(requestClose) => (
       <div className="space-y-4">
         <div className="space-y-3">
           <div>
@@ -346,7 +347,7 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
         />
 
         <div ref={actionRow} className="flex gap-2 pt-4 border-t border-border">
-          <button onClick={onClose} className="flex-1 py-2 border border-border text-sm font-medium rounded-lg text-muted-foreground hover:bg-secondary transition-colors">
+          <button onClick={requestClose} className="flex-1 py-2 border border-border text-sm font-medium rounded-lg text-muted-foreground hover:bg-secondary transition-colors">
             Cancel
           </button>
           <button onClick={handleCreate}
@@ -356,6 +357,7 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
           </button>
         </div>
       </div>
+      )}
     </Modal>
   );
 }
