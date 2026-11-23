@@ -1,9 +1,14 @@
 package main
 
 import (
+	"bytes"
+	"errors"
+	"log"
+	"os"
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/Anirudhx7/marbor/internal/config"
@@ -386,4 +391,109 @@ func TestBootReloadEdgeCases(t *testing.T) {
 			t.Errorf("legacy row:\n got  %+v\n want %+v", got, want)
 		}
 	})
+}
+
+// failingOverridesRead fails only the node-overrides read, like a corrupt row
+// would, and passes every other call through to the wrapped store. It returns
+// a populated map alongside the error so a regression that applied the result
+// despite the error would visibly change the node.
+type failingOverridesRead struct {
+	store.Store
+}
+
+func (failingOverridesRead) NodeOverrides() (map[string]store.NodeOverride, error) {
+	vram := int64(99999)
+	model := "should-not-apply"
+	return map[string]store.NodeOverride{"node-a": {VRAMTotalMB: &vram, GPUModel: &model}}, errors.New("injected overrides read failure")
+}
+
+// captureLog sends the standard logger to a buffer and restores the previous
+// writer when the test ends. It swaps a global, so tests that use it must
+// never call t.Parallel.
+func captureLog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	prev := log.Writer()
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(prev) })
+	return &buf
+}
+
+func openMemStore(t *testing.T) store.Store {
+	t.Helper()
+	st, err := store.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	return st
+}
+
+func TestLoadNodeOverrides_ReadErrorIsLogged(t *testing.T) {
+	// Arrange
+	r := newBootRouter()
+	beforeA, beforeB := projectNode(t, r, "node-a"), projectNode(t, r, "node-b")
+	buf := captureLog(t)
+
+	// Act
+	loadNodeOverrides(r, failingOverridesRead{openMemStore(t)})
+
+	// Assert: one WARNING line naming the error, and no node changed.
+	out := buf.String()
+	if !strings.Contains(out, "WARNING: could not load node overrides from store: injected overrides read failure") {
+		t.Fatalf("log output = %q, want the warning with the error", out)
+	}
+	// log.Printf ends the line with one newline, so more than one means the message wraps.
+	if strings.Count(out, "\n") != 1 {
+		t.Fatalf("warning must be exactly one line: %q", out)
+	}
+	if got := projectNode(t, r, "node-a"); !reflect.DeepEqual(beforeA, got) {
+		t.Fatalf("a failed read changed node-a:\n before %+v\n after  %+v", beforeA, got)
+	}
+	if got := projectNode(t, r, "node-b"); !reflect.DeepEqual(beforeB, got) {
+		t.Fatalf("a failed read changed node-b: %+v", got)
+	}
+}
+
+func TestLoadNodeOverrides_SuccessAppliesAndStaysQuiet(t *testing.T) {
+	// Arrange
+	st := openMemStore(t)
+	vram, model := int64(48000), "A6000"
+	if err := st.UpsertNodeOverride("node-a", &vram, &model, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	r := newBootRouter()
+	beforeB := projectNode(t, r, "node-b")
+	buf := captureLog(t)
+
+	// Act
+	loadNodeOverrides(r, st)
+
+	// Assert
+	if strings.Contains(buf.String(), "WARNING") {
+		t.Fatalf("unexpected warning on a good read: %q", buf.String())
+	}
+	got := projectNode(t, r, "node-a")
+	if got.VRAMTotalMBConfig != 48000 || got.GPUModel != "A6000" {
+		t.Fatalf("override not applied: %+v", got)
+	}
+	if after := projectNode(t, r, "node-b"); !reflect.DeepEqual(beforeB, after) {
+		t.Fatalf("node-b changed without an override: %+v", after)
+	}
+}
+
+// main() cannot be unit tested, so this pins its one read of the persisted
+// overrides to loadNodeOverrides: an inline read that drops the error would
+// reintroduce the silent failure.
+func TestBootReadsNodeOverridesOnlyThroughLoadNodeOverrides(t *testing.T) {
+	src, err := os.ReadFile("main.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(string(src), "st.NodeOverrides()"); n != 1 {
+		t.Fatalf("main.go reads st.NodeOverrides() %d times, want exactly 1 (inside loadNodeOverrides)", n)
+	}
+	if !strings.Contains(string(src), "\tloadNodeOverrides(r, st)\n") {
+		t.Fatal("main.go boot no longer calls loadNodeOverrides(r, st)")
+	}
 }

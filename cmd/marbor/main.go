@@ -641,9 +641,7 @@ func main() {
 	} else {
 		log.Printf("WARNING: could not load nodes from store: %v", err)
 	}
-	if overrides, err := st.NodeOverrides(); err == nil {
-		applyNodeOverrides(r, overrides)
-	}
+	loadNodeOverrides(r, st)
 	if drains, err := st.NodeDrainStates(); err == nil {
 		for name, ds := range drains {
 			if ds.Draining {
@@ -1193,6 +1191,19 @@ func syncDirOf(path string) error {
 	syncErr := d.Sync()
 	closeErr := d.Close()
 	return errors.Join(syncErr, closeErr)
+}
+
+// loadNodeOverrides reads the persisted per-node overrides and applies them.
+// A failed read is logged and boot continues without them: the node keeps its
+// configured values, so the operator needs the log line to know their saved
+// declarations were not applied.
+func loadNodeOverrides(r *router.Router, st store.Store) {
+	overrides, err := st.NodeOverrides()
+	if err != nil {
+		log.Printf("WARNING: could not load node overrides from store: %v (saved per-node declarations, including max in-flight, TLS pin, parallelism and replica peers, were not applied on this start; nodes use their configured values)", err)
+		return
+	}
+	applyNodeOverrides(r, overrides)
 }
 
 // applyNodeOverrides re-applies every persisted per-node override to the
