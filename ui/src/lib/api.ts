@@ -1,6 +1,7 @@
 import { GPUNode, APIKey, LiveRequest, Savings, CloudProvider, CloudProviderInput, ModelCatalog, RequestEntry, Analytics, ModelFitResponse, ModelCatalogResponse, QuantRecommendation, LoginResponse, SessionData, UserRecord, PredictiveDecision, CloudBudgetStatus, SystemAuditEntry, ModelConfig, LocalModel, BenchmarkRun, BackupFileInfo, BackupListResponse, SpillCounterRow, RoutingDecision, ModelAlias } from '../types';
+import { isDemoHeadlessWorker } from './fleetHealth';
 import { readSoleReplicaImpact, runtimeActionFailureInfo, runtimeActionQuery } from './soleReplica';
-import { auditAddNodeDetails, auditRuntimeUnitDetails, mockAPIKeys, mockCloudProviders, mockGPUNodes, mockSavings, mockReplicaSuggestions, mockSoleReplicaImpact, getMockCloudOnly, setMockCloudOnly } from './mockData';
+import { auditAddNodeDetails, auditRuntimeUnitDetails, mockAPIKeys, mockCloudProviders, mockGPUNodes, mockSavings, mockReplicaSuggestions, withDemoSignals, mockSoleReplicaImpact, getMockCloudOnly, setMockCloudOnly } from './mockData';
 import { addEntry, removeEntry } from './cloudOnlyView';
 import { deepMerge, serverErrorText } from './settingsMerge';
 import { sameDeclared } from './replicaGroups';
@@ -723,7 +724,12 @@ export function applyDemoConfirmedGroups(nodes: GPUNode[]): GPUNode[] {
     const silent = isHead
       ? g.members.filter(m => nodes.find(x => x.name === m)?.agentStale).sort()[0]
       : undefined;
-    return { ...n, replicaPeers: { members: g.members, head: g.head }, schedulingRole: isHead ? 'head' : 'worker', replicaHead: g.head, replicaBlockedBy: silent };
+    const confirmed: GPUNode = { ...n, replicaPeers: { members: g.members, head: g.head }, schedulingRole: isHead ? 'head' : 'worker', replicaHead: g.head, replicaBlockedBy: silent };
+    // Same rule as the server: a confirmed worker whose probe is failing is a
+    // headless worker, muted and in none of the healthy, degraded or down
+    // signals. Raw health stays as probed.
+    if (!isDemoHeadlessWorker(isHead, n.health)) return confirmed;
+    return withDemoSignals({ ...confirmed, headlessWorker: true });
   });
 }
 

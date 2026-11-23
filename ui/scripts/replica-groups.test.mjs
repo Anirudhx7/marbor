@@ -2,7 +2,7 @@
 // only has type imports so Node can load it directly.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mentionsNode, outsideDeclarers, pruneDismissedReady, reasonToShow } from '../src/lib/replicaGroups.ts';
+import { confirmedChip, mentionsNode, outsideDeclarers, pruneDismissedReady, reasonToShow } from '../src/lib/replicaGroups.ts';
 
 test('mentionsNode matches whole node names only', () => {
   assert.equal(mentionsNode('node "gpu-node-10" declares it', 'gpu-node-1'), false);
@@ -26,4 +26,18 @@ test('reasonToShow hides the reason only when missing[] already explains it', ()
   assert.equal(reasonToShow({ reason: 'r', missing: [] }), 'r');
   assert.equal(reasonToShow({ reason: 'r', missing: ['x'] }), '');
   assert.equal(reasonToShow({ reason: '', missing: [] }), '');
+});
+
+test('confirmedChip ignores a worker whose probe is failing', () => {
+  const head = { name: 'h', health: 'healthy' };
+  const worker = { name: 'w', health: 'down', headlessWorker: true };
+  assert.equal(confirmedChip({ resolved: true, nodes: [head, worker] }).label, 'Healthy');
+  assert.equal(confirmedChip({ resolved: true, nodes: [{ ...head, health: 'down' }, worker] }).label, 'Down');
+  assert.equal(confirmedChip({ resolved: true, nodes: [head, { ...worker, headlessWorker: false }] }).label, 'Down');
+});
+
+test('confirmedChip keeps a real degraded member and treats an all-workers group as healthy', () => {
+  const worker = { name: 'w', health: 'down', headlessWorker: true };
+  assert.equal(confirmedChip({ resolved: true, nodes: [{ name: 'h', health: 'degraded' }, worker] }).label, 'Degraded');
+  assert.equal(confirmedChip({ resolved: true, nodes: [worker] }).label, 'Healthy');
 });

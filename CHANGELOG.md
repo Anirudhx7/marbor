@@ -59,6 +59,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Muting applies from the first failed probe,** before the node is marked unhealthy. Other nodes in that window stay counted.
 - **A node declared a worker is trusted to be one on any runtime.** A real outage of a worker declared on Ollama or MLX, which do serve HTTP, is muted too. An unresolved replica declaration is never treated as a worker and still shows as down.
 - **The replica group suggestion text for a rank that has not been seen now says the worker shows as a muted worker while its probe fails,** instead of saying it will show down.
+- **The dashboard shows a failing worker as a muted worker, not as down.** The Fleet Health strip adds a muted `N workers probe failing` segment and leaves the worker out of the healthy and down counts, so it agrees with `/health`. On GPU Nodes the worker card shows a muted dot, `-` in place of the health percentage, and sits in none of the Healthy, Degraded or Down chips; a one-line note under the chips says so. The replica group chip ignores a failing worker. The demo fleet shows one headless worker next to a real down node.
 
 ### Known
 - If a node's role changes during an outage: a node already down that becomes a worker still sends `node_up` on recovery; a worker that becomes standalone mid-outage sends no `node_down` for that outage, and an outage muted by a role change is not announced when it recovers.

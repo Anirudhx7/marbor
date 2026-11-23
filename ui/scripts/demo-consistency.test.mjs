@@ -209,3 +209,29 @@ test('the agent badge never says no agent is installed for a stale agent', () =>
 test('demo confirm flow derives the blocked member from stale agents, lowest name first', () => {
   assert.ok(/replicaBlockedBy: silent/.test(api) && /agentStale\)\.sort\(\)\[0\]/.test(api));
 });
+
+test('a confirmed demo worker whose node is down becomes a headless worker, a head or healthy worker does not', () => {
+  assert.match(api, /if \(!isDemoHeadlessWorker\(isHead, n\.health\)\) return confirmed;/);
+  assert.match(api, /withDemoSignals\(\{ \.\.\.confirmed, headlessWorker: true \}\)/);
+});
+
+test('the dashboard strip and node cards render the worker state through the shared helpers', () => {
+  for (const rel of ['src/pages/Dashboard.tsx', 'src/pages/GPUNodes.tsx']) {
+    const page = read(rel);
+    assert.match(page, /status=\{nodeDotStatus\(node\)\}/, `${rel} dot`);
+    assert.match(page, /title=\{nodeDotTitle\(node\)\}/, `${rel} dot title`);
+    assert.ok(!/<StatusDot status=\{(?:node|n)\.health\}/.test(page), `${rel} still draws the raw health dot`);
+  }
+  const dash = read('src/pages/Dashboard.tsx');
+  assert.match(dash, /f\.total === 0 && f\.workersFailing === 0/, 'all-workers fleet must not read as empty');
+  assert.match(dash, /\(f\.total > 0 \|\| f\.workersFailing > 0\)/, 'alert row must show for an all-workers fleet');
+  const nodes = read('src/pages/GPUNodes.tsx');
+  assert.match(nodes, /note=\{nodes\.some\(n => n\.headlessWorker\) \? 'A worker with a failing probe is in no health chip\.'/);
+  assert.match(nodes, /worker: 'text-muted-foreground'/, 'worker needs its own health color key');
+  assert.match(dash, /to=\{`\/gpu-nodes\?highlight=\$\{encodeURIComponent\(f\.workerNodes\.map\(\(n\) => n\.name\)\.join\(','\)\)\}&from=dashboard`\}/, 'worker strip segment links to the worker nodes');
+  assert.match(dash, /\{\(f\.total > 0 \|\| f\.draining > 0\) && \(/, 'a drain must show in an all-workers fleet');
+  assert.equal(dash.split('</span> draining').length - 1, 1, 'the strip draining segment markup appears once');
+  assert.match(dash, /<span className="text-muted-foreground">Worker \(probe failing is expected\)<\/span>/, 'dashboard legend has a Worker row');
+  assert.match(dash, /\{nodes\.some\(n => n\.headlessWorker\) && \(\s*<div[^>]*>\s*<span className="w-2 h-2 rounded-full bg-muted-foreground" \/>/, 'the Worker legend row only shows when a worker exists');
+  assert.match(nodes, /\{dotStatus === 'worker' \? \(/, 'health percentage placeholder for a worker');
+});

@@ -19,10 +19,10 @@ const CANONICAL = ['healthy', 'degraded', 'draining', 'down', 'agent', 'warm', '
 // The documented rules, in canonical order.
 function expectedSignals(n) {
   const out = [];
-  if (n.health === 'healthy' && !n.draining) out.push('healthy');
-  if (n.health === 'degraded' && !n.draining) out.push('degraded');
+  if (n.health === 'healthy' && !n.draining && !n.headlessWorker) out.push('healthy');
+  if (n.health === 'degraded' && !n.draining && !n.headlessWorker) out.push('degraded');
   if (n.draining) out.push('draining');
-  if (n.health === 'down') out.push('down');
+  if (n.health === 'down' && !n.headlessWorker) out.push('down');
   if (n.agentPresent) out.push('agent');
   if ((n.loadedModels ?? []).length > 0) out.push('warm');
   if (n.vramSource !== 'none' && n.vramTotalMB > 0 && n.vramUsedMB / n.vramTotalMB >= 0.9) out.push('pressure');
@@ -128,4 +128,39 @@ test('withDemoSignals: unknown VRAM never shows pressure', async () => {
   const f = await loadWithDemoSignals();
   assert.ok(!f({ ...base, vramSource: 'none', vramUsedMB: 10000 }).signals.includes('pressure'), 'vramSource none');
   assert.ok(!f({ ...base, vramTotalMB: 0, vramUsedMB: 500 }).signals.includes('pressure'), 'zero total');
+});
+
+test('withDemoSignals: a headless worker matches none of healthy, degraded or down', async () => {
+  const f = await loadWithDemoSignals();
+  for (const health of ['healthy', 'degraded', 'down']) {
+    assert.deepEqual(f({ ...base, health, headlessWorker: true }).signals, [], health);
+  }
+  assert.deepEqual(f({ ...base, health: 'down', headlessWorker: true, draining: true }).signals, ['draining']);
+});
+
+test('the demo fleet carries a headless worker and a real down node', async () => {
+  const nodes = await fixtures['mockData.ts mockGPUNodes']();
+  const worker = nodes.find((n) => n.name === 'gpu-node-08');
+  assert.equal(worker.headlessWorker, true);
+  assert.equal(worker.health, 'down');
+  assert.deepEqual(worker.signals, []);
+  assert.ok(nodes.some((n) => n.health === 'down' && !n.headlessWorker && n.signals.includes('down')), 'no real down node left in the demo');
+});
+
+test('the demo worker has no health history to show and the model catalog agrees with every node fixture', async () => {
+  const nodes = await fixtures['mockData.ts mockGPUNodes']();
+  const worker = nodes.find((n) => n.name === 'gpu-node-08');
+  assert.ok(worker.healthHistory.every((v) => v === 0), 'worker health history is not the zero series');
+  const src = read('src/lib/mockData.ts');
+  const entries = [...src.matchAll(/\{ name: '(gpu-node-\d+)', healthy: (true|false),/g)];
+  assert.ok(entries.length > 0, 'no catalog node literals found');
+  const catalogStart = src.indexOf('export const mockModelCatalog:');
+  const catalog = src.slice(catalogStart, src.indexOf('export const mockCloudProviders', catalogStart));
+  const all = [...catalog.matchAll(/\{ name: 'gpu-node-\d+',/g)];
+  assert.equal(entries.length, all.length, 'a catalog node literal has a shape the health check does not read');
+  for (const [, name, healthy] of entries) {
+    const node = nodes.find((n) => n.name === name);
+    assert.ok(node, `${name} is not a demo node`);
+    assert.equal(healthy === 'true', node.health === 'healthy', `catalog says ${name} healthy=${healthy} but the node is ${node.health}`);
+  }
 });
