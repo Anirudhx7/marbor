@@ -22,7 +22,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 - **Model Config's footer Close button now asks before discarding unsaved changes.** It bypassed the Discard prompt that Escape, the header X and the backdrop already showed.
-- **A failed read of saved node settings at startup is now logged.** If marbor cannot read the per-node overrides (VRAM, GPU model, runtime, GPU indices, max in-flight, TLS fingerprint, parallelism, replica peers) it prints a `WARNING: could not load node overrides from store` line and starts without them. Previously the failure was silent.
+- **A failed read of saved node settings at startup is now logged.** If marbor cannot read the per-node overrides (your declared VRAM, GPU model, runtime, GPU indices, max in-flight, TLS fingerprint, parallelism, per-model VRAM and replica peers) it prints a `WARNING: could not load node overrides from store` line and starts with each node's configured values instead. Previously the failure was silent.
 - **Dialogs and pickers behave under repeated Escape.** A form with unsaved changes keeps its Discard prompt through repeated Escape and Close presses, date and time popups stay inside their dialog and Escape closes one layer at a time, the date and time chevrons are 44px on touch screens, and the currency preference is one shared store so a quickly typed FX rate is no longer overwritten.
 - **A cloud request with no recorded provider shows "Cloud" in the Requests node pill** instead of a bare "cloud:".
 - **The docs table of contents shows code spans as code,** and the footer social icons reach 44px on touch screens. The 404 page's link no longer carries an arrow.

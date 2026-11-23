@@ -1200,7 +1200,7 @@ func syncDirOf(path string) error {
 func loadNodeOverrides(r *router.Router, st store.Store) {
 	overrides, err := st.NodeOverrides()
 	if err != nil {
-		log.Printf("WARNING: could not load node overrides from store: %v (saved per-node settings are not applied until the next successful start)", err)
+		log.Printf("WARNING: could not load node overrides from store: %v (saved per-node declarations, including max in-flight, TLS pin, parallelism and replica peers, were not applied on this start; nodes use their configured values)", err)
 		return
 	}
 	applyNodeOverrides(r, overrides)
