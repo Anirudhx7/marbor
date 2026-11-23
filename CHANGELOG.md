@@ -21,6 +21,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **The mock node (`cmd/mocknode`) now honors `stream_options.include_usage`.** Streaming chat responses end with the usage chunk (prompt tokens, and cached tokens under the simulated prefix cache) when a client asks for it, as OpenAI-compatible engines do. Without the option the stream is unchanged.
 
 ### Fixed
+- **Model Config's footer Close button now asks before discarding unsaved changes.** It bypassed the Discard prompt that Escape, the header X and the backdrop already showed.
 - **Dialogs and pickers behave under repeated Escape.** A form with unsaved changes keeps its Discard prompt through repeated Escape and Close presses, date and time popups stay inside their dialog and Escape closes one layer at a time, the date and time chevrons are 44px on touch screens, and the currency preference is one shared store so a quickly typed FX rate is no longer overwritten.
 - **A cloud request with no recorded provider shows "Cloud" in the Requests node pill** instead of a bare "cloud:".
 - **The docs table of contents shows code spans as code,** and the footer social icons reach 44px on touch screens. The 404 page's link no longer carries an arrow.

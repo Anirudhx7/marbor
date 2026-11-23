@@ -5,7 +5,9 @@ interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
   title: string;
-  children: ReactNode;
+  // A function child receives the guarded close, for footer Close/Cancel
+  // buttons that must prompt on a dirty form like the header X does.
+  children: ReactNode | ((requestClose: () => void) => ReactNode);
   maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl';
   // True while a form inside has unsaved changes. Escape, the Close button and
   // a backdrop click then ask before discarding; a clean form closes silently.
@@ -122,7 +124,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = 'md', dirty
         </button>
       </div>
       <div className="p-4 sm:p-6 flex-1 overflow-y-auto min-w-0 break-words">
-        {children}
+        {typeof children === 'function' ? children(requestClose) : children}
       </div>
       <Modal isOpen={confirming} onClose={() => setConfirming(false)} title="Discard changes?" maxWidth="sm">
         <p className="text-sm text-muted-foreground">You have unsaved changes. Closing will lose them.</p>
