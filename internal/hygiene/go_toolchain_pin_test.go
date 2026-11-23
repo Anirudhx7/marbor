@@ -49,6 +49,8 @@ func TestGoToolchainPinnedAndConsistent(t *testing.T) {
 	}
 }
 
+// Only the release workflows are checked: regular CI deliberately tests the
+// latest patch of the Go minor. The step regexp assumes the `- uses:` form.
 func TestReleaseWorkflowsUseThePinnedToolchain(t *testing.T) {
 	for _, f := range []string{".github/workflows/release.yml", ".github/workflows/release-check.yml"} {
 		text := readRepoFile(t, f)
