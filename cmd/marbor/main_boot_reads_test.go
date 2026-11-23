@@ -94,7 +94,7 @@ func TestLoadDrainStates_UnregisteredNodeIsLoggedAsInfo(t *testing.T) {
 	if strings.Contains(out, "WARNING") || strings.Contains(out, "node-a") || strings.Contains(out, "node-b") {
 		t.Fatalf("log must only name the unregistered nodes, as information: %q", out)
 	}
-	if strings.Index(out, `"gone-b"`) > strings.Index(out, `"gone-node"`) {
+	if ib, in := strings.Index(out, `"gone-b"`), strings.Index(out, `"gone-node"`); ib < 0 || in < 0 || ib > in {
 		t.Fatalf("orphan lines must come out sorted by name: %q", out)
 	}
 }
@@ -379,7 +379,7 @@ func TestApplyNodeOverrides_UnknownNodeIsLogged(t *testing.T) {
 	buf := captureLog(t)
 
 	// Act
-	applyNodeOverrides(r, map[string]store.NodeOverride{"gone-node": {VRAMTotalMB: &vram}, "node-a": {VRAMTotalMB: &vram}})
+	applyNodeOverrides(r, map[string]store.NodeOverride{"gone-node": {VRAMTotalMB: &vram}, "gone-b": {VRAMTotalMB: &vram}, "node-a": {VRAMTotalMB: &vram}})
 
 	// Assert: informational, not a WARNING - a removed node's saved row is
 	// kept on purpose, so this is expected on every boot after a removal.
@@ -389,6 +389,9 @@ func TestApplyNodeOverrides_UnknownNodeIsLogged(t *testing.T) {
 	}
 	if strings.Contains(out, "WARNING") || strings.Contains(out, "node-a") {
 		t.Fatalf("an orphaned override is expected after a node removal, not a WARNING, and a registered node logs nothing: %q", out)
+	}
+	if ib, in := strings.Index(out, `"gone-b"`), strings.Index(out, `"gone-node"`); ib < 0 || in < 0 || ib > in {
+		t.Fatalf("orphan lines must come out sorted by name: %q", out)
 	}
 	if got := projectNode(t, r, "node-a"); got.VRAMTotalMBConfig != 1000 {
 		t.Fatalf("registered node-a was not patched alongside the orphan: %+v", got)
