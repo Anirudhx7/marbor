@@ -145,3 +145,12 @@ test('dedupeInflight reset with an empty slot is a no-op', async () => {
   reset();
   assert.deepEqual(await call(), { n: 2 });
 });
+
+test('Modal keeps its column layout for the whole exit, not only while [open]', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../src/components/Modal.tsx', import.meta.url), 'utf8');
+  // open:flex-col stops applying the moment close() runs, so the dialog turns
+  // into a row for the fade-out. flex-col must not be gated on [open].
+  assert.ok(!src.includes('open:flex-col'));
+  assert.match(src, /\bflex-col\b/);
+});

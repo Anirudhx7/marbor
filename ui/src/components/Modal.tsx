@@ -122,7 +122,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = 'md', dirty
       onPointerDown={(e) => { pressedBackdrop.current = e.target === e.currentTarget; }}
       onClick={(e) => { if (pressedBackdrop.current && e.target === e.currentTarget) requestClose(); pressedBackdrop.current = false; }}
       style={{ width: `min(calc(100vw - 2rem), ${WIDTHS[maxWidth]})` }}
-      className="modal-dialog m-auto p-0 max-h-[calc(100dvh-2rem)] sm:max-h-[calc(100vh-3rem)] bg-card text-foreground border border-border shadow-xl rounded-xl overflow-hidden min-w-0 focus:outline-none open:flex open:flex-col"
+      className="modal-dialog m-auto p-0 max-h-[calc(100dvh-2rem)] sm:max-h-[calc(100vh-3rem)] bg-card text-foreground border border-border shadow-xl rounded-xl overflow-hidden min-w-0 focus:outline-none open:flex flex-col"
     >
       <div className="px-4 py-3 sm:px-6 sm:py-4 border-b border-border flex items-center justify-between gap-3 shrink-0 min-w-0">
         <h3 id={titleId} className="text-base sm:text-lg font-semibold text-foreground truncate min-w-0">{title}</h3>
