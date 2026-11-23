@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bytes"
+	"fmt"
+	"log"
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/Anirudhx7/marbor/internal/config"
@@ -386,4 +390,83 @@ func TestBootReloadEdgeCases(t *testing.T) {
 			t.Errorf("legacy row:\n got  %+v\n want %+v", got, want)
 		}
 	})
+}
+
+// failingOverridesRead fails only the node-overrides read, like a corrupt row
+// would, and passes every other call through to the wrapped store.
+type failingOverridesRead struct {
+	store.Store
+}
+
+func (failingOverridesRead) NodeOverrides() (map[string]store.NodeOverride, error) {
+	return nil, fmt.Errorf("injected overrides read failure")
+}
+
+// captureLog sends the standard logger to a buffer and restores the previous
+// writer when the test ends.
+func captureLog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	prev := log.Writer()
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(prev) })
+	return &buf
+}
+
+func TestLoadNodeOverrides_ReadErrorIsLogged(t *testing.T) {
+	// Arrange: a node with config values the overrides would have changed.
+	r := newBootRouter()
+	before := projectNode(t, r, "node-a")
+	buf := captureLog(t)
+	inner, err := store.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = inner.Close() })
+
+	// Act
+	loadNodeOverrides(r, failingOverridesRead{inner})
+
+	// Assert: one WARNING line naming the error, and no node changed.
+	out := buf.String()
+	if !strings.Contains(out, "WARNING: could not load node overrides from store: injected overrides read failure") {
+		t.Fatalf("log output = %q, want the warning with the error", out)
+	}
+	if n := strings.Count(strings.TrimSpace(out), "\n"); n != 0 {
+		t.Fatalf("warning spans %d extra lines, want one line: %q", n, out)
+	}
+	if after := projectNode(t, r, "node-a"); !reflect.DeepEqual(before, after) {
+		t.Fatalf("a failed read changed the node:\n before %+v\n after  %+v", before, after)
+	}
+}
+
+func TestLoadNodeOverrides_SuccessAppliesAndStaysQuiet(t *testing.T) {
+	// Arrange
+	vram := int64(48000)
+	model := "A6000"
+	ov := store.NodeOverride{VRAMTotalMB: &vram, GPUModel: &model}
+	path := filepath.Join(t.TempDir(), "marbor.db")
+	st, err := store.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	if err := st.UpsertNodeOverride("node-a", ov.VRAMTotalMB, ov.GPUModel, ov.Runtime, ov.GPUIndices, ov.MaxInFlight,
+		ov.TLSFingerprint, ov.ParallelismType, ov.ParallelismWidth, ov.VRAMOverrides, ov.ReplicaPeers); err != nil {
+		t.Fatal(err)
+	}
+	r := newBootRouter()
+	buf := captureLog(t)
+
+	// Act
+	loadNodeOverrides(r, st)
+
+	// Assert
+	if strings.Contains(buf.String(), "WARNING") {
+		t.Fatalf("unexpected warning on a good read: %q", buf.String())
+	}
+	got := projectNode(t, r, "node-a")
+	if got.VRAMTotalMBConfig != 48000 || got.GPUModel != "A6000" {
+		t.Fatalf("override not applied: %+v", got)
+	}
 }
