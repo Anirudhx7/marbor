@@ -475,26 +475,30 @@ input[type="checkbox"]:disabled {
 }
 
 /* Native modal dialog: grows from the control that opened it (--modal-origin is
-   set per open), 220ms in, 160ms out, ease-out. Resting state is transform:none
-   so descendants are not given a new containing block. Reduced motion keeps
-   only the opacity change. */
+   set per open). In: 270ms from opacity 0 and scale 0.95, ease-out quad so the
+   change is spread across the whole duration instead of landing in the first
+   frames. Out: 180ms (faster than in), ease-in-out, fading and shrinking back
+   to the same resting values. The dialog and its backdrop share each duration
+   and curve so neither leads. Resting state is transform:none so descendants
+   are not given a new containing block. Reduced motion keeps only opacity. */
 .modal-dialog {
   opacity: 0;
-  transform: scale(0.96);
+  transform: scale(0.95);
   transform-origin: var(--modal-origin, 50% 50%);
   transition-property: opacity, transform, display, overlay;
-  transition-duration: 160ms;
-  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  transition-duration: 180ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.6, 1);
   transition-behavior: allow-discrete;
   overscroll-behavior: contain;
 }
 .modal-dialog[open] {
   opacity: 1;
   transform: none;
-  transition-duration: 220ms;
+  transition-duration: 270ms;
+  transition-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
   @starting-style {
     opacity: 0;
-    transform: scale(0.96);
+    transform: scale(0.95);
   }
 }
 .modal-dialog::backdrop {
@@ -504,13 +508,14 @@ input[type="checkbox"]:disabled {
   overflow: hidden;
   overscroll-behavior: contain;
   transition-property: opacity, display, overlay;
-  transition-duration: 160ms;
-  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  transition-duration: 180ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.6, 1);
   transition-behavior: allow-discrete;
 }
 .modal-dialog[open]::backdrop {
   opacity: 1;
-  transition-duration: 220ms;
+  transition-duration: 270ms;
+  transition-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
   @starting-style {
     opacity: 0;
   }

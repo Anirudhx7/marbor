@@ -21,6 +21,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **The mock node (`cmd/mocknode`) now honors `stream_options.include_usage`.** Streaming chat responses end with the usage chunk (prompt tokens, and cached tokens under the simulated prefix cache) when a client asks for it, as OpenAI-compatible engines do. Without the option the stream is unchanged.
 
 ### Fixed
+- **Dialogs now animate in and out smoothly.** Entry was front-loaded and looked like a pop-in; exit finished within a few frames. Entry is now 270ms and exit 180ms, from and to opacity 0 and scale 0.95, with the backdrop on the same timing. A dialog whose entry transition is interrupted is forced to full opacity.
 - **Create user's Cancel button now asks before discarding typed input.** It closed the form without the Discard prompt that Escape, the X and the backdrop already showed.
 - **Model Config's footer Close button now asks before discarding unsaved changes.** It bypassed the Discard prompt that Escape, the header X and the backdrop already showed.
 - **A failed read of saved node settings at startup is now logged.** If marbor cannot read the per-node overrides (your declared VRAM, GPU model, runtime, GPU indices, max in-flight, TLS fingerprint, parallelism, per-model VRAM and replica peers) it prints a `WARNING: could not load node overrides from store` line and starts with each node's configured values instead. Previously the failure was silent.
