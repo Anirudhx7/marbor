@@ -1010,6 +1010,9 @@ func newLocalOnlyHandler(t *testing.T, cloud config.CloudProvider, keys []config
 	}
 	t.Cleanup(func() { st.Close() })
 	a.SetStore(st)
+	// Registered after the store's Close cleanup, so it runs first: the request
+	// logger must stop before the store closes and the temp dir is removed.
+	t.Cleanup(a.Shutdown)
 	h := NewHandler(r, a, nil)
 	h.SetAuth(auth.NewMiddleware(config.AuthConfig{Enabled: config.BoolPtr(true), Keys: keys}))
 	return h, st

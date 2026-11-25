@@ -55,6 +55,11 @@ func TestProxyTestsShutDownAdminServersThatOwnAStore(t *testing.T) {
 						if id, ok := sel.X.(*ast.Ident); ok && id.Name == "admin" && sel.Sel.Name == "NewServer" && len(x.Args) >= 4 && storeBacked == token.NoPos {
 							storeBacked = x.Pos()
 						}
+						// A store attached after construction (a.SetStore(st)) starts
+						// the same request-log writer, so it needs the same Shutdown.
+						if sel.Sel.Name == "SetStore" && storeBacked == token.NoPos {
+							storeBacked = x.Pos()
+						}
 					}
 				case *ast.SelectorExpr:
 					// Matches a.Shutdown() and the method value t.Cleanup(a.Shutdown).
@@ -71,6 +76,6 @@ func TestProxyTestsShutDownAdminServersThatOwnAStore(t *testing.T) {
 	}
 	sort.Strings(offenders)
 	for _, o := range offenders {
-		t.Errorf("%s: admin.NewServer is given a store but the function never calls Shutdown. Its async request logger can still be writing after the store closes and the temp dir is removed. Register t.Cleanup(a.Shutdown) after the store's Close cleanup (see newCapRig).", o)
+		t.Errorf("%s: the function gives an admin server a store (NewServer or SetStore) but never calls Shutdown. Its async request logger can still be writing after the store closes and the temp dir is removed. Register t.Cleanup(a.Shutdown) after the store's Close cleanup (see newCapRig).", o)
 	}
 }
