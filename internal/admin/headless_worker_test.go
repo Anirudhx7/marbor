@@ -390,6 +390,8 @@ func groupedFleet(tb testing.TB, n int) *Server {
 	return NewServer(r, nil, config.Config{})
 }
 
+const boundUnderLoadLimit = 20 * time.Second
+
 func TestHealthSummaryCatalog_BoundUnderLoad(t *testing.T) {
 	s := groupedFleet(t, 200)
 	// The catalog does far more per node than the other two, so it gets fewer calls.
@@ -413,8 +415,11 @@ func TestHealthSummaryCatalog_BoundUnderLoad(t *testing.T) {
 		}
 		// Generous wall-clock bound on the whole loop of calls for this handler,
 		// not per call: it only has to catch a quadratic or lock-convoy regression.
-		if d := time.Since(start); d > 5*time.Second {
-			t.Fatalf("%d %s calls over 200 grouped nodes took %v, want under 5s", c.n, c.target, d)
+		// A whole loop takes about 1.4s under -race on a quiet machine and ran
+		// 4 to 5 times slower on a loaded CI runner (6.5s seen), so the bound
+		// sits well above that and well below what a quadratic blowup would cost.
+		if d := time.Since(start); d > boundUnderLoadLimit {
+			t.Fatalf("%d %s calls over 200 grouped nodes took %v, want under %v", c.n, c.target, d, boundUnderLoadLimit)
 		}
 	}
 }
