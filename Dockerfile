@@ -11,7 +11,7 @@ RUN npm run build && \
     cp /app/grafana/marbor.json /app/internal/admin/web/dist/grafana/marbor.json
 
 # Build stage
-FROM --platform=$BUILDPLATFORM golang:1.26.11-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.27.4-alpine AS builder
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
