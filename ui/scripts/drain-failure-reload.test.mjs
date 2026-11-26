@@ -12,7 +12,10 @@ const api = readFileSync(new URL('../src/lib/api.ts', import.meta.url), 'utf8');
 test('reload after failure only for server errors', () => {
   assert.equal(shouldReloadAfterNodeActionFailure({ name: 'RuntimeActionError', status: 500 }), true);
   assert.equal(shouldReloadAfterNodeActionFailure({ status: 502 }), true);
-  for (const status of [409, 404, 400]) {
+  for (const status of [500, 503, 599]) {
+    assert.equal(shouldReloadAfterNodeActionFailure({ status }), true);
+  }
+  for (const status of [0, 200, 302, 400, 404, 409, 499, NaN]) {
     assert.equal(shouldReloadAfterNodeActionFailure({ status }), false);
   }
   assert.equal(shouldReloadAfterNodeActionFailure(new Error('network')), false);
@@ -24,6 +27,7 @@ test('reload after failure only for server errors', () => {
 test('undrain failure message keeps the server text', () => {
   const text = 'Undrain is active on the node but could not be saved and the node will be drained again on restart; retry the request (request id: abc)';
   assert.equal(runtimeActionFailureInfo(500, { error: text }, 'Failed to undrain node').message, text);
+  assert.equal(runtimeActionFailureInfo(500, {}, 'Failed to undrain node').message, 'Failed to undrain node (HTTP 500)');
   const nf = 'node "x" not found';
   assert.equal(runtimeActionFailureInfo(404, { error: nf }, 'Failed to undrain node').message, nf);
 });
@@ -39,25 +43,33 @@ test('both catch blocks set the message first, then reload only when the helper 
   const drain = handlerBlock('const handleDrainNode', 'const handleUndrainNode');
   const undrain = handlerBlock('const handleUndrainNode', 'const handleTogglePrewarm');
   for (const block of [drain, undrain]) {
-    const set = block.indexOf('setActionError(err?.message');
-    const reload = block.indexOf('if (shouldReloadAfterNodeActionFailure(err)) await loadNodes();');
+    const catchAt = block.indexOf('} catch (err');
+    assert.ok(catchAt >= 0, 'handler has a catch');
+    const inCatch = block.slice(catchAt);
+    const set = inCatch.indexOf('setActionError(err?.message');
+    const reload = inCatch.search(/if \(shouldReloadAfterNodeActionFailure\(err\)\) await loadNodes\(\);/);
     assert.ok(set >= 0, 'catch sets the error');
-    assert.ok(reload > set, 'helper-gated reload comes after the message is set');
+    assert.ok(reload > set, 'helper-gated reload comes inside the catch, after the message is set');
+    assert.ok(inCatch.indexOf('return false', reload) > reload, 'catch still returns false');
   }
   assert.match(drain, /drainImpact\.reload\(\)/);
 });
 
 test('undrain modal blocks double submit while in flight', () => {
-  const modal = handlerBlock('title="Undrain node"', 'Toggle Predictive Prewarm');
+  const modal = handlerBlock('nodeName={nodeToUndrain}', 'confirmClassName={buttonClasses');
   assert.match(modal, /onClose=\{\(\) => \{ if \(undrainBusy\) return;/);
   assert.match(modal, /setUndrainBusy\(true\)/);
   assert.match(modal, /finally \{\s*setUndrainBusy\(false\)/);
-  assert.match(modal, /busy=\{undrainBusy\}/);
+  assert.match(modal, /confirmLabel=\{undrainBusy \? 'Undraining\.\.\.' : 'Undrain node'\}/);
+  const tail = page.slice(page.indexOf('nodeName={nodeToUndrain}'), page.indexOf('nodeName={nodeToUndrain}') + 2000);
+  assert.match(tail, /busy=\{undrainBusy\}/);
 });
 
 test('undrainNode surfaces the server message and has a demo guard', () => {
   const start = api.indexOf('export async function undrainNode');
-  const block = api.slice(start, api.indexOf('export async function', start + 10));
+  assert.ok(start >= 0, 'undrainNode exists');
+  const next = api.indexOf('export async function', start + 10);
+  const block = api.slice(start, next > start ? next : undefined);
   assert.match(block, /if \(DEMO\) return demoDelay\(undefined\);/);
   assert.match(block, /runtimeActionFailure\(res, 'Failed to undrain node'\)/);
   assert.doesNotMatch(block, /new Error\('Failed to undrain node'\)/);

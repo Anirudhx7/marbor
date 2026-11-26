@@ -3393,7 +3393,7 @@ export function GPUNodes() {
             setUndrainBusy(false);
           }
         }}
-        confirmLabel="Undrain node"
+        confirmLabel={undrainBusy ? 'Undraining...' : 'Undrain node'}
         confirmClassName={buttonClasses('primary', 'md')}
         busy={undrainBusy}
       />

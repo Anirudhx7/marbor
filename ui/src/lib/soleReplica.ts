@@ -245,10 +245,11 @@ export function createImpactChecker(
   };
 }
 
-// A failed drain or undrain can still have changed router state when the server
-// answers 5xx (the change applied live but could not be saved), so the node list
-// is reloaded. A 4xx refusal or a network error changed nothing. Duck-typed so
-// this module keeps no value import of the api client.
+// A failed drain or undrain may still have changed router state when the server
+// answers 5xx (the change can have applied live but not been saved), so the node
+// list is reloaded. A 4xx refusal is a clear no, and a browser-side failure has
+// no status to act on; the regular poll catches up on those. Duck-typed so this
+// module keeps no value import of the api client.
 export function shouldReloadAfterNodeActionFailure(err: unknown): boolean {
   if (typeof err !== 'object' || err === null) return false;
   const status = (err as { status?: unknown }).status;
