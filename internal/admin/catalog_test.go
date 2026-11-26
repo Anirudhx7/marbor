@@ -1557,16 +1557,6 @@ func TestHandleModelSearch_MinLikesFilters(t *testing.T) {
 	}
 }
 
-func TestHandleModelSearch_RepeatedKeyFirstNonEmptyWins(t *testing.T) {
-	rt := &recordingHFTransport{body: numberedHFBody(50, 0)}
-	ids := searchIDs(t, searchWithTransport(t, rt,
-		"/admin/models/search?runtime=ollama&min_downloads=990&min_downloads=5"))
-	// 990 is first and wins; if the last value won, all 50 rows would stay.
-	if len(ids) != 11 {
-		t.Errorf("got %d rows, want 11", len(ids))
-	}
-}
-
 func TestHandleModelSearch_ValidFiltersStillReturn200(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -1612,12 +1602,20 @@ func TestHandleModelSearch_ThirtyDigitMinimumClampsAndFiltersEverything(t *testi
 }
 
 func TestHandleModelSearch_RepeatedKeyUsesFirstNonEmptyValue(t *testing.T) {
-	rt := &recordingHFTransport{body: numberedHFBody(50, 0)}
-	ids := searchIDs(t, searchWithTransport(t, rt,
-		"/admin/models/search?runtime=ollama&min_downloads=&min_downloads=990"))
-	// downloads are 1000-i, so 990 keeps rows 0..10.
-	if len(ids) != 11 {
-		t.Errorf("got %d rows, want 11", len(ids))
+	// downloads are 1000-i, so a minimum of 990 keeps rows 0..10 and a minimum
+	// of 5 keeps all 50: the first non-empty value must win, not the last.
+	for name, query := range map[string]string{
+		"empty then 990":   "min_downloads=&min_downloads=990",
+		"990 then 5":       "min_downloads=990&min_downloads=5",
+		"empty 990 then 5": "min_downloads=&min_downloads=990&min_downloads=5",
+	} {
+		t.Run(name, func(t *testing.T) {
+			rt := &recordingHFTransport{body: numberedHFBody(50, 0)}
+			ids := searchIDs(t, searchWithTransport(t, rt, "/admin/models/search?runtime=ollama&"+query))
+			if len(ids) != 11 {
+				t.Errorf("got %d rows, want 11", len(ids))
+			}
+		})
 	}
 }
 
