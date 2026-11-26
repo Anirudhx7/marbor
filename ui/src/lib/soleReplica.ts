@@ -244,3 +244,13 @@ export function createImpactChecker(
     },
   };
 }
+
+// A failed drain or undrain can still have changed router state when the server
+// answers 5xx (the change applied live but could not be saved), so the node list
+// is reloaded. A 4xx refusal or a network error changed nothing. Duck-typed so
+// this module keeps no value import of the api client.
+export function shouldReloadAfterNodeActionFailure(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const status = (err as { status?: unknown }).status;
+  return typeof status === 'number' && status >= 500;
+}

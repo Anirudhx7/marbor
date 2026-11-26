@@ -23,7 +23,7 @@ import { RuntimeBadge } from '../components/RuntimeBadge';
 import { mockGPUNodes, mockRuntimeLogLinesFor, withDemoSignals } from '../lib/mockData';
 import { SoleReplicaImpactNotice } from '../components/SoleReplicaImpactNotice';
 import { useSoleReplicaImpact } from '../lib/useSoleReplicaImpact';
-import { impactVisible, isChecking, confirmLabel, soleActionArgs, runtimeActionQuery, withoutHover, SOLE_REPLICA_CODE } from '../lib/soleReplica';
+import { impactVisible, isChecking, confirmLabel, soleActionArgs, runtimeActionQuery, withoutHover, shouldReloadAfterNodeActionFailure, SOLE_REPLICA_CODE } from '../lib/soleReplica';
 import { readLastNodeCount, writeLastNodeCount } from '../lib/nodeCount';
 import { isReplicaMember, replicaImpactCopy } from '../lib/replicaImpact';
 import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm, patchNode, probeNodeTLS, fetchModelFit, unloadModel, getPinned, getMarborAgent, enableMarborAgent, regenerateMarborAgentToken, disableMarborAgent, checkNodeHealth, fetchReplicaSuggestions, applyDemoConfirmedGroups, getNodeControl, acceptNodeControl, clearNodeControl, startNodeRuntime, stopNodeRuntime, restartNodeRuntime, getNodeRuntimeLogs, RuntimeActionError } from '../lib/api';
@@ -969,6 +969,7 @@ export function GPUNodes() {
   const [drainBusy, setDrainBusy] = useState(false);
   const drainImpact = useSoleReplicaImpact(nodeToDrain, demoMode);
   const [nodeToUndrain, setNodeToUndrain] = useState<string | null>(null);
+  const [undrainBusy, setUndrainBusy] = useState(false);
   // Bounded-drain window entered in the Drain confirm modal. Blank = infinite
   // (today's frozen default). Recorded and round-tripped now so a future rolling-
   // upgrade/orchestration feature can read it; nothing enforces it yet.
@@ -1909,6 +1910,7 @@ export function GPUNodes() {
       // The models only this node serves changed since the dialog opened:
       // refetch so the operator reviews the new list before confirming again.
       if (err instanceof RuntimeActionError && err.code === SOLE_REPLICA_CODE) drainImpact.reload();
+      if (shouldReloadAfterNodeActionFailure(err)) await loadNodes();
       return false;
     }
   };
@@ -1927,6 +1929,7 @@ export function GPUNodes() {
       return true;
     } catch (err: any) {
       setActionError(err?.message || `Failed to undrain node ${name}`);
+      if (shouldReloadAfterNodeActionFailure(err)) await loadNodes();
       return false;
     }
   };
@@ -3379,14 +3382,20 @@ export function GPUNodes() {
         question="Are you sure you want to undrain"
         explanation="This resumes routing new requests to this node. If it was drained automatically (e.g. by the thermal watchdog), confirm the underlying condition has actually cleared first."
         actionError={actionError}
-        onClose={() => setNodeToUndrain(null)}
+        onClose={() => { if (undrainBusy) return; setNodeToUndrain(null); }}
         onConfirm={async () => {
           if (!nodeToUndrain) return;
-          const ok = await handleUndrainNode(nodeToUndrain);
-          if (ok) setNodeToUndrain(null);
+          setUndrainBusy(true);
+          try {
+            const ok = await handleUndrainNode(nodeToUndrain);
+            if (ok) setNodeToUndrain(null);
+          } finally {
+            setUndrainBusy(false);
+          }
         }}
         confirmLabel="Undrain node"
         confirmClassName={buttonClasses('primary', 'md')}
+        busy={undrainBusy}
       />
 
       {/* Toggle Predictive Prewarm Confirmation Modal */}
