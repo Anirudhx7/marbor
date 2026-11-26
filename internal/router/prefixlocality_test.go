@@ -620,6 +620,7 @@ func (p *panickingPrefixStore) AppendPrefixLocality(string, string, time.Time) e
 }
 
 func TestRecordPrefixLocality_PersistPanicIsRecovered(t *testing.T) {
+	const recoveredMsg = "recovered panic in prefixLocalityPersist"
 	logs := &syncLog{}
 	prev := log.Writer()
 	log.SetOutput(logs)
@@ -642,10 +643,10 @@ func TestRecordPrefixLocality_PersistPanicIsRecovered(t *testing.T) {
 		t.Fatal("the persist goroutine never ran")
 	}
 	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) && !strings.Contains(logs.String(), "recovered panic in prefixLocalityPersist") {
+	for time.Now().Before(deadline) && !strings.Contains(logs.String(), recoveredMsg) {
 		time.Sleep(10 * time.Millisecond)
 	}
-	if !strings.Contains(logs.String(), "recovered panic in prefixLocalityPersist") {
+	if !strings.Contains(logs.String(), recoveredMsg) {
 		t.Fatalf("the panic must be recovered and logged, got %q", logs.String())
 	}
 	if node, hit := r.prefixStore.lookup("key-panic"); !hit || node != "node-a" {
