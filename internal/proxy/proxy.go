@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Anirudhx7/marbor/internal/admin"
@@ -136,6 +137,10 @@ type Handler struct {
 	// Ollama management paths (/api/delete, /api/pull, ...) are blocked so an
 	// inference-only key cannot mutate models on backend GPU nodes.
 	allowManagement bool
+
+	// stallDeadlineFor overrides the first-byte stall deadline when set (tests
+	// use tiny values); nil means the router's formula.
+	stallDeadlineFor func(n *router.NodeState, othersInFlight int) time.Duration
 
 	// cloudTransportOnce guards lazy construction of cloudTransport, a single
 	// shared *http.Transport for the cloud-fallback path. It clones
@@ -830,6 +835,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// follows, so rec.statusCode stays 0 and would otherwise be reported
 		// as a fabricated 200 by StatusCode()'s unset-maps-to-200 fallback.
 		var clientDisconnected bool
+		// watch is this attempt's first-byte stall watch; nil when the attempt is
+		// not judged (not a stream, or the model was not warm at dispatch).
+		var watch *stallWatch
 		// errHandled is set when ErrorHandler fired and already released this
 		// node's connection slot, so the post-loop DecrConn must not run again
 		// (a double decrement skews least-connections toward the failed node).
@@ -853,6 +861,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				retryErr = origReq.Context().Err()
 				clientDisconnected = true
 				return
+			}
+			// A streaming request whose response headers never came within the
+			// timeout is a stall on this node, counted once per request even if
+			// the watch timer already reported it.
+			if isHeaderTimeout(e) && watch.markStalled() {
+				h.router.RecordStall(node.Name, router.StallPhaseFirstByte, requestID)
 			}
 			h.router.RecordRequestOutcome(node.Name, false)
 			// The failure is logged here, once, so it is visible whichever way
@@ -969,7 +983,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		rec = &statusRecorder{ResponseWriter: w, start: start}
+		// Judge only streaming requests to a node that already had the model
+		// loaded. The warm check runs here, before the timer exists, never from
+		// the timer callback.
+		if isStreamingRequest(r.URL.Path, body) && h.router.ModelWarmOnNode(node, modelName) {
+			watch = h.startStallWatch(r.Context(), rec, node, requestID, h.stallDeadline(node))
+		}
 		streamAborted = serveAndRecoverAbort(proxy, rec, r)
+		stallClean := watch.finish()
 		aborted = streamAborted || clientDisconnected
 
 		if retryErr == errCloudHandled {
@@ -1011,6 +1032,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			clientGone := !success && r.Context().Err() != nil && rec.statusCode < 500
 			if !clientGone {
 				h.router.RecordRequestOutcome(node.Name, success)
+			}
+			// A stream that delivered output and never crossed its deadline is
+			// evidence the node generates again. A stream that stalled and then
+			// finished does not clear the record.
+			if success && stallClean && rec.sawAnyByte() {
+				h.router.ClearStalls(node.Name)
 			}
 			// Rolling prefix locality is recorded ONLY here, on full
 			// successful completion of the request that actually finished -
@@ -1868,7 +1895,15 @@ type statusRecorder struct {
 	heldLine      bool      // true while the tail is one retained line longer than tailMax (see trimTail)
 	start         time.Time // request start, for TTFT; zero value means TTFT is unavailable
 	firstByteAt   time.Time // set on the first Write(); zero until then
+	// lastWriteNano is the UnixNano time of the latest Write that carried
+	// bytes; zero means no byte has been written. The stall timer fires on its
+	// own goroutine, so it reads this atomic and never firstByteAt.
+	lastWriteNano atomic.Int64
 }
+
+// sawAnyByte reports whether any response byte has been written. Safe to call
+// from any goroutine.
+func (r *statusRecorder) sawAnyByte() bool { return r.lastWriteNano.Load() != 0 }
 
 // tailMax bounds the retained response tail for line-oriented responses -
 // Ollama NDJSON (one JSON object per line) or OpenAI SSE ("data: " lines) -
@@ -1896,6 +1931,7 @@ const embedTailMax = 1 << 20 // 1 MiB
 func (r *statusRecorder) Write(b []byte) (int, error) {
 	n, err := r.ResponseWriter.Write(b)
 	if n > 0 {
+		r.lastWriteNano.Store(time.Now().UnixNano())
 		if r.firstByteAt.IsZero() {
 			r.firstByteAt = time.Now()
 		}

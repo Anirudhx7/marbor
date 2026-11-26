@@ -107,7 +107,7 @@ func runNodes(ctx *RunCtx) int {
 	signals := strings.Trim(ctx.String("signal"), ",")
 	search := ctx.String("search")
 	if ctx.IsSet("signal") && strings.TrimSpace(strings.ReplaceAll(signals, ",", "")) == "" {
-		fmt.Fprintln(stderr, "error: --signal needs at least one signal id: healthy, degraded, draining, down, agent, warm, pressure")
+		fmt.Fprintln(stderr, "error: --signal needs at least one signal id: healthy, degraded, draining, down, agent, warm, pressure, stalled")
 		return ExitUserError
 	}
 

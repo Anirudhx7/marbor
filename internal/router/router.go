@@ -247,6 +247,15 @@ type NodeState struct {
 	// must fall back to the raw connection count, never fabricate a value.
 	RecentTTFT []float64
 
+	// Stalled-generation evidence, written by the proxy through RecordStall and
+	// ClearStalls under mu. ConsecutiveStalls counts back-to-back distinct
+	// streaming requests that produced no first byte by their deadline; a zero
+	// LastStallAt means nothing is recorded (unknown). See stall.go.
+	ConsecutiveStalls  int
+	LastStallAt        time.Time
+	LastStallPhase     string
+	lastStallRequestID string
+
 	// Marbor Agent-derived telemetry (see internal/marboragent).
 	// AgentPresent is true only after a successful poll of this node's agent
 	// on the most recent poll cycle; it is set back to false on any failure

@@ -790,7 +790,7 @@ type NodeResp struct {
 	// Health stays the raw probe state; the table shows "worker" instead.
 	HeadlessWorker bool `json:"headlessWorker"`
 	// Signals are the placement signals the server says this node matches
-	// (healthy, degraded, draining, down, agent, warm, pressure). Absent
+	// (healthy, degraded, draining, down, agent, warm, pressure, stalled). Absent
 	// from servers that predate filtering, which is how the CLI tells. An
 	// unfiltered --json against such a server therefore prints null.
 	Signals       []string          `json:"signals"`

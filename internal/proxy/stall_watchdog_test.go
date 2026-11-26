@@ -1,0 +1,391 @@
+package proxy
+
+// Tests for the stalled-generation watchdog. Fake upstreams send headers and
+// then go silent, or never answer, and the tests check what the router
+// recorded and that the client stream was never touched. Deadlines are tiny
+// and injected, so nothing here waits on the production floor.
+
+import (
+	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/Anirudhx7/marbor/internal/admin"
+	"github.com/Anirudhx7/marbor/internal/config"
+	"github.com/Anirudhx7/marbor/internal/router"
+)
+
+const stallChunk = `{"model":"llama3","response":"hi","done":false}` + "\n"
+const stallDone = `{"done":true,"eval_count":1,"prompt_eval_count":1}` + "\n"
+
+type stallEnv struct {
+	h    *Handler
+	node *router.NodeState
+}
+
+// newStallEnv builds a handler over one node. warm controls whether llama3 is
+// loaded on it; deadline is the injected first-byte deadline; upstreamMs is
+// the router's header timeout in milliseconds (0 = default).
+func newStallEnv(t *testing.T, nodeURL string, warm bool, deadline time.Duration, upstreamMs int) *stallEnv {
+	t.Helper()
+	r := router.New(config.RoutingConfig{
+		Strategy: "warm-first", Fallback: "least-connections", UpstreamTimeoutMs: upstreamMs,
+	}, []config.NodeConfig{
+		{Name: "mock-node", URL: nodeURL, GPUModel: "test-gpu", Runtime: "ollama"},
+	}, nil)
+	n := r.Nodes()[0]
+	n.Lock()
+	n.Healthy = true
+	if warm {
+		n.LoadedModels = []router.ModelInfo{{Name: "llama3"}}
+	}
+	n.Unlock()
+	h := NewHandler(r, admin.NewServer(r, nil, config.Config{}), nil)
+	h.stallDeadlineFor = func(*router.NodeState, int) time.Duration { return deadline }
+	return &stallEnv{h: h, node: n}
+}
+
+func (e *stallEnv) stallCount() int {
+	e.node.RLock()
+	defer e.node.RUnlock()
+	_, c, _, _ := e.node.StallViewLocked(time.Now())
+	return c
+}
+
+func (e *stallEnv) post(path, body string) *streamRecorder {
+	rec := newStreamRecorder()
+	e.h.ServeHTTP(rec, httptest.NewRequest("POST", path, strings.NewReader(body)))
+	return rec
+}
+
+// slowUpstream answers headers immediately (flushed), then waits, then sends
+// the body.
+func slowUpstream(t *testing.T, afterHeaders time.Duration) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		w.WriteHeader(http.StatusOK)
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		time.Sleep(afterHeaders)
+		io.WriteString(w, stallChunk+stallDone)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// hangingUpstream sends nothing, not even headers, for the given time.
+func hangingUpstream(t *testing.T, hang time.Duration) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-time.After(hang):
+		case <-r.Context().Done():
+			return
+		}
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		io.WriteString(w, stallChunk+stallDone)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func fastUpstream(t *testing.T) *httptest.Server {
+	return slowUpstream(t, 0)
+}
+
+const genBody = `{"model":"llama3"}`
+
+func TestStallWatch_HeadersThenSilentIsRecordedAndStreamNotAborted(t *testing.T) {
+	srv := slowUpstream(t, 300*time.Millisecond)
+	e := newStallEnv(t, srv.URL, true, 50*time.Millisecond, 0)
+	rec := e.post("/api/generate", genBody)
+	if got, want := rec.buf.String(), stallChunk+stallDone; got != want {
+		t.Fatalf("client body = %q, want the full stream %q", got, want)
+	}
+	if c := e.stallCount(); c != 1 {
+		t.Fatalf("stall count = %d, want 1", c)
+	}
+	// A stalled-then-finished stream does not clear the record, and three
+	// distinct stalled requests flag the node.
+	e.post("/api/generate", genBody)
+	e.post("/api/generate", genBody)
+	if !e.h.router.IsStalled("mock-node") {
+		t.Fatalf("node not stalled after 3 stalled requests, count=%d", e.stallCount())
+	}
+}
+
+func TestStallWatch_NoFirstByteByDeadlineIsRecorded(t *testing.T) {
+	srv := hangingUpstream(t, 300*time.Millisecond)
+	e := newStallEnv(t, srv.URL, true, 50*time.Millisecond, 0)
+	rec := e.post("/api/generate", genBody)
+	if !strings.Contains(rec.buf.String(), "hi") {
+		t.Fatalf("the late answer must still reach the client, got %q", rec.buf.String())
+	}
+	if c := e.stallCount(); c != 1 {
+		t.Fatalf("stall count = %d, want 1", c)
+	}
+}
+
+func TestStallWatch_HeaderTimeoutCountsOnceEvenWhenTimerFiredFirst(t *testing.T) {
+	srv := hangingUpstream(t, 2*time.Second)
+	// Timer deadline 40ms, header timeout 120ms: both fire for one request.
+	e := newStallEnv(t, srv.URL, true, 40*time.Millisecond, 120)
+	e.post("/api/generate", genBody)
+	if c := e.stallCount(); c != 1 {
+		t.Fatalf("stall count = %d, want exactly 1 for one request", c)
+	}
+}
+
+func TestStallWatch_HeaderTimeoutAloneIsRecorded(t *testing.T) {
+	srv := hangingUpstream(t, 2*time.Second)
+	// Timer deadline far away: only the transport header timeout fires.
+	e := newStallEnv(t, srv.URL, true, time.Minute, 100)
+	e.post("/api/generate", genBody)
+	if c := e.stallCount(); c != 1 {
+		t.Fatalf("stall count = %d, want 1 from the header timeout", c)
+	}
+}
+
+func TestStallWatch_SlowButWithinDeadlineIsNotFlagged(t *testing.T) {
+	srv := slowUpstream(t, 80*time.Millisecond)
+	e := newStallEnv(t, srv.URL, true, 2*time.Second, 0)
+	e.post("/api/generate", genBody)
+	if c := e.stallCount(); c != 0 {
+		t.Fatalf("stall count = %d, want 0 for a slow stream inside its deadline", c)
+	}
+}
+
+func TestStallWatch_NonStreamingIsNeverJudged(t *testing.T) {
+	srv := hangingUpstream(t, 250*time.Millisecond)
+	e := newStallEnv(t, srv.URL, true, 40*time.Millisecond, 0)
+	e.post("/v1/chat/completions", `{"model":"llama3","messages":[]}`)
+	e.post("/api/generate", `{"model":"llama3","stream":false}`)
+	e.post("/v1/chat/completions", `{"model":"llama3","stream":false}`)
+	if c := e.stallCount(); c != 0 {
+		t.Fatalf("stall count = %d, want 0 for non-streaming requests", c)
+	}
+}
+
+func TestStallWatch_NonStreamHeaderTimeoutIsNotCounted(t *testing.T) {
+	srv := hangingUpstream(t, 2*time.Second)
+	e := newStallEnv(t, srv.URL, true, time.Minute, 100)
+	e.post("/v1/chat/completions", `{"model":"llama3","messages":[]}`)
+	if c := e.stallCount(); c != 0 {
+		t.Fatalf("stall count = %d, want 0: a non-stream header timeout is no verdict", c)
+	}
+}
+
+func TestStallWatch_ColdModelIsNotJudged(t *testing.T) {
+	srv := hangingUpstream(t, 250*time.Millisecond)
+	e := newStallEnv(t, srv.URL, false, 40*time.Millisecond, 0)
+	e.post("/api/generate", genBody)
+	if c := e.stallCount(); c != 0 {
+		t.Fatalf("stall count = %d, want 0 for a model that was not warm at dispatch", c)
+	}
+}
+
+func TestStallWatch_CleanFastStreamClearsRecord(t *testing.T) {
+	srv := fastUpstream(t)
+	e := newStallEnv(t, srv.URL, true, 2*time.Second, 0)
+	e.h.router.RecordStall("mock-node", router.StallPhaseFirstByte, "old-1")
+	e.h.router.RecordStall("mock-node", router.StallPhaseFirstByte, "old-2")
+	e.h.router.RecordStall("mock-node", router.StallPhaseFirstByte, "old-3")
+	if !e.h.router.IsStalled("mock-node") {
+		t.Fatal("precondition: node should be stalled")
+	}
+	e.post("/api/generate", genBody)
+	if e.h.router.IsStalled("mock-node") || e.stallCount() != 0 {
+		t.Fatalf("a clean stream must clear the record, count=%d", e.stallCount())
+	}
+}
+
+func TestStallWatch_NonStreamSuccessDoesNotClear(t *testing.T) {
+	srv := fastUpstream(t)
+	e := newStallEnv(t, srv.URL, true, 2*time.Second, 0)
+	e.h.router.RecordStall("mock-node", router.StallPhaseFirstByte, "old-1")
+	e.post("/v1/chat/completions", `{"model":"llama3","messages":[]}`)
+	if c := e.stallCount(); c != 1 {
+		t.Fatalf("a non-stream success is no evidence either way, count=%d want 1", c)
+	}
+}
+
+func TestStallWatch_ClientDisconnectIsNotCounted(t *testing.T) {
+	srv := hangingUpstream(t, 5*time.Second)
+	e := newStallEnv(t, srv.URL, true, 150*time.Millisecond, 0)
+	front := httptest.NewServer(e.h)
+	defer front.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	req, _ := http.NewRequestWithContext(ctx, "POST", front.URL+"/api/generate", strings.NewReader(genBody))
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		resp, err := http.DefaultClient.Do(req)
+		if err == nil {
+			resp.Body.Close()
+		}
+	}()
+	time.Sleep(40 * time.Millisecond)
+	cancel()
+	<-done
+	time.Sleep(400 * time.Millisecond) // well past the 150ms deadline
+	if c := e.stallCount(); c != 0 {
+		t.Fatalf("stall count = %d, want 0 after a client disconnect", c)
+	}
+}
+
+func newTestWatchParts(t *testing.T) (*Handler, *router.NodeState, *statusRecorder) {
+	t.Helper()
+	e := newStallEnv(t, "http://127.0.0.1:1", true, time.Minute, 0)
+	return e.h, e.node, &statusRecorder{ResponseWriter: httptest.NewRecorder()}
+}
+
+func TestStallWatch_LateCallbackAfterCompletionRecordsNothing(t *testing.T) {
+	h, node, rec := newTestWatchParts(t)
+	w := h.startStallWatch(context.Background(), rec, node, "req-1", 20*time.Millisecond)
+	// Completion wins the race, as when the request ends right at the deadline
+	// and Stop arrives too late to cancel an already-fired timer.
+	w.state.Store(stallWatchDone)
+	time.Sleep(100 * time.Millisecond)
+	if h.router.IsStalled("mock-node") {
+		t.Fatal("late timer callback must not record after completion")
+	}
+	node.RLock()
+	c := node.ConsecutiveStalls
+	node.RUnlock()
+	if c != 0 {
+		t.Fatalf("ConsecutiveStalls = %d, want 0", c)
+	}
+}
+
+func TestStallWatch_FinishBeforeDeadlineStopsTheTimer(t *testing.T) {
+	h, node, rec := newTestWatchParts(t)
+	w := h.startStallWatch(context.Background(), rec, node, "req-1", 30*time.Millisecond)
+	if !w.finish() {
+		t.Fatal("finish before the deadline must report clean")
+	}
+	time.Sleep(100 * time.Millisecond)
+	node.RLock()
+	c := node.ConsecutiveStalls
+	node.RUnlock()
+	if c != 0 {
+		t.Fatalf("ConsecutiveStalls = %d, want 0", c)
+	}
+}
+
+func TestStallWatch_FinishAfterDeadlineIsNotClean(t *testing.T) {
+	h, node, rec := newTestWatchParts(t)
+	w := h.startStallWatch(context.Background(), rec, node, "req-1", 10*time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
+	if w.finish() {
+		t.Fatal("a watch that crossed its deadline must not report clean")
+	}
+	node.RLock()
+	c := node.ConsecutiveStalls
+	node.RUnlock()
+	if c != 1 {
+		t.Fatalf("ConsecutiveStalls = %d, want 1", c)
+	}
+}
+
+func TestStallWatch_NilWatchIsSafe(t *testing.T) {
+	var w *stallWatch
+	if w.finish() || w.markStalled() {
+		t.Fatal("nil watch must report false")
+	}
+}
+
+func TestStallWatch_ByteSeenSuppressesTimer(t *testing.T) {
+	h, node, rec := newTestWatchParts(t)
+	if _, err := rec.Write([]byte("x")); err != nil {
+		t.Fatal(err)
+	}
+	w := h.startStallWatch(context.Background(), rec, node, "req-1", 10*time.Millisecond)
+	time.Sleep(80 * time.Millisecond)
+	node.RLock()
+	c := node.ConsecutiveStalls
+	node.RUnlock()
+	if c != 0 {
+		t.Fatalf("a request that produced bytes must not count, got %d", c)
+	}
+	w.finish()
+}
+
+func TestStatusRecorder_ConcurrentWriteAndByteProbeIsRaceFree(t *testing.T) {
+	rec := &statusRecorder{ResponseWriter: httptest.NewRecorder()}
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 200; i++ {
+			rec.Write([]byte("a\n"))
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 200; i++ {
+			_ = rec.sawAnyByte()
+		}
+	}()
+	wg.Wait()
+	if !rec.sawAnyByte() {
+		t.Fatal("bytes were written")
+	}
+}
+
+func TestStatusRecorder_StillAFlusher(t *testing.T) {
+	var _ http.Flusher = (*statusRecorder)(nil)
+}
+
+func TestStallWatch_StreamStillArrivesIncrementallyWithWatchArmed(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f := w.(http.Flusher)
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		io.WriteString(w, stallChunk)
+		f.Flush()
+		time.Sleep(80 * time.Millisecond)
+		io.WriteString(w, stallDone)
+		f.Flush()
+	}))
+	defer srv.Close()
+	e := newStallEnv(t, srv.URL, true, 2*time.Second, 0)
+	rec := e.post("/api/generate", genBody)
+	if len(rec.writeTimes) < 2 {
+		t.Fatalf("got %d writes, want >= 2 (stream must not be buffered)", len(rec.writeTimes))
+	}
+	if gap := rec.writeTimes[len(rec.writeTimes)-1].Sub(rec.writeTimes[0]); gap < 60*time.Millisecond {
+		t.Fatalf("chunks arrived together (gap %v): response was buffered", gap)
+	}
+	if rec.flushes == 0 {
+		t.Fatal("Flush never reached the client")
+	}
+}
+
+func TestIsStreamingRequest(t *testing.T) {
+	cases := []struct {
+		path, body string
+		want       bool
+	}{
+		{"/api/generate", `{"model":"m"}`, true},
+		{"/api/chat", `{"model":"m"}`, true},
+		{"/api/generate", `{"model":"m","stream":false}`, false},
+		{"/api/chat", `not json`, true},
+		{"/v1/chat/completions", `{"model":"m"}`, false},
+		{"/v1/chat/completions", `{"model":"m","stream":true}`, true},
+		{"/v1/completions", `{"model":"m","stream":false}`, false},
+		{"/v1/embeddings", `{"model":"m"}`, false},
+		{"/v1/chat/completions", `garbage`, false},
+	}
+	for _, c := range cases {
+		if got := isStreamingRequest(c.path, []byte(c.body)); got != c.want {
+			t.Errorf("isStreamingRequest(%q, %s) = %v, want %v", c.path, c.body, got, c.want)
+		}
+	}
+}

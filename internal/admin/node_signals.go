@@ -21,11 +21,12 @@ const (
 	signalAgent    = "agent"
 	signalWarm     = "warm"
 	signalPressure = "pressure"
+	signalStalled  = "stalled"
 )
 
 var nodeSignalIDs = []string{
 	signalHealthy, signalDegraded, signalDraining, signalDown,
-	signalAgent, signalWarm, signalPressure,
+	signalAgent, signalWarm, signalPressure, signalStalled,
 }
 
 // NodeSignalIDs returns the valid signal ids in canonical order. The slice is
@@ -52,6 +53,10 @@ func NodeSignalIDs() []string {
 //     agent is silent (replicaBlockedBy) keeps its own signals: it is still
 //     healthy, and there is deliberately no signal or filter for the blocked
 //     state. The node list field carries it.
+//   - stalled is an overlay: it means streaming requests to this node have
+//     repeatedly produced no output by their deadline. It never changes the
+//     other signals, so a stalled node that answers health probes stays
+//     healthy and routable.
 //   - pressure needs a measured or declared total (never "none") and a
 //     used/total ratio at or above vramPressureThreshold.
 //
@@ -79,6 +84,9 @@ func nodeSignals(n nodeResp) []string {
 	if n.VRAMSource != "none" && n.VRAMTotalMB > 0 &&
 		float64(n.VRAMUsedMB)/float64(n.VRAMTotalMB) >= vramPressureThreshold {
 		out = append(out, signalPressure)
+	}
+	if n.Stalled {
+		out = append(out, signalStalled)
 	}
 	return out
 }

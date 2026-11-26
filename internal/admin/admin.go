@@ -666,12 +666,22 @@ type nodeResp struct {
 	Health              string `json:"health"`
 	Draining            bool   `json:"draining"`
 	// Signals lists the placement signals this node currently matches
-	// (healthy, degraded, draining, down, agent, warm, pressure), in that
+	// (healthy, degraded, draining, down, agent, warm, pressure, stalled), in that
 	// order. Always present, [] when none match. It is derived from the other
 	// fields in this response by nodeSignals; clients filter and count by it
 	// instead of re-deriving the rules.
-	Signals       []string `json:"signals"`
-	DrainedReason string   `json:"drainedReason,omitempty"`
+	Signals []string `json:"signals"`
+	// Stalled is true while this node carries a live stalled-generation verdict:
+	// enough consecutive streaming requests got no output by their deadline.
+	// ConsecutiveStalls, LastStallAt (RFC 3339) and StallPhase describe the
+	// evidence and appear whenever a live record exists, even below the
+	// threshold. All four are omitted when nothing is recorded or the record
+	// has expired: that is unknown, not healthy. Nothing is drained or rerouted.
+	Stalled           bool   `json:"stalled,omitempty"`
+	ConsecutiveStalls int    `json:"consecutiveStalls,omitempty"`
+	LastStallAt       string `json:"lastStallAt,omitempty"`
+	StallPhase        string `json:"stallPhase,omitempty"`
+	DrainedReason     string `json:"drainedReason,omitempty"`
 	// DrainedGraceSeconds is the bounded-drain window requested at drain time;
 	// 0 means no grace was set (infinite - today's frozen default). No
 	// enforcement engine reads this yet (Phase 3), it only round-trips.
@@ -1408,7 +1418,17 @@ func (s *Server) nodeStateToResp(n *router.NodeState, id string, roles map[strin
 
 	headlessWorker := router.IsHeadlessWorker(role, n.Healthy, n.Failures)
 
+	stalled, stallCount, stallAt, stallPhase := n.StallViewLocked(time.Now())
+	stallAtText := ""
+	if !stallAt.IsZero() {
+		stallAtText = stallAt.UTC().Format(time.RFC3339)
+	}
+
 	resp := nodeResp{
+		Stalled:                         stalled,
+		ConsecutiveStalls:               stallCount,
+		LastStallAt:                     stallAtText,
+		StallPhase:                      stallPhase,
 		HeadlessWorker:                  headlessWorker,
 		ID:                              id,
 		Name:                            n.Name,

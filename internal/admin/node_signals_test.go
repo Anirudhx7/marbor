@@ -79,7 +79,7 @@ func TestNodeSignals_NeverNilForUnknownHealth(t *testing.T) {
 }
 
 func TestNodeSignalIDs_CanonicalOrder(t *testing.T) {
-	want := []string{"healthy", "degraded", "draining", "down", "agent", "warm", "pressure"}
+	want := []string{"healthy", "degraded", "draining", "down", "agent", "warm", "pressure", "stalled"}
 	if !reflect.DeepEqual(NodeSignalIDs(), want) {
 		t.Fatalf("NodeSignalIDs = %v, want %v", NodeSignalIDs(), want)
 	}

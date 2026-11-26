@@ -61,7 +61,7 @@ show the CLI's saved identity (live-verified)
 list nodes known to marbor
 
 With --signal, lists only nodes that match any of the given signals, the same ones as the dashboard's filter chips: healthy,
-degraded, draining, down, agent, warm, pressure. healthy and degraded leave out draining nodes; a node that is down and draining
+degraded, draining, down, agent, warm, pressure, stalled. healthy and degraded leave out draining nodes; a node that is down and draining
 matches both down and draining; agent means a live marbor agent is reporting; warm means a model is loaded; pressure means used
 VRAM is at least 90% of a known total (a node without measured VRAM never matches, so "no pressure" there means unknown, not ok).
 A worker whose probe is failing shows worker instead of down and matches none of healthy, degraded or down.
@@ -73,7 +73,7 @@ Requires authentication - see the root README's CLI auth section, or run `marbor
 
 Flags:
 
-- `--signal string` - only nodes matching any of these signals, comma-separated or repeated: healthy, degraded, draining, down, agent, warm, pressure
+- `--signal string` - only nodes matching any of these signals, comma-separated or repeated: healthy, degraded, draining, down, agent, warm, pressure, stalled
 - `--search string` - only nodes whose name or GPU model contains this text (trimmed, case-insensitive)
 
 Examples:
