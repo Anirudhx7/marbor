@@ -28,6 +28,7 @@ test('undrain failure message keeps the server text', () => {
   const text = 'Undrain is active on the node but could not be saved and the node will be drained again on restart; retry the request (request id: abc)';
   assert.equal(runtimeActionFailureInfo(500, { error: text }, 'Failed to undrain node').message, text);
   assert.equal(runtimeActionFailureInfo(500, {}, 'Failed to undrain node').message, 'Failed to undrain node (HTTP 500)');
+  assert.equal(runtimeActionFailureInfo(500, { error: '' }, 'Failed to undrain node').message, 'Failed to undrain node (HTTP 500)');
   const nf = 'node "x" not found';
   assert.equal(runtimeActionFailureInfo(404, { error: nf }, 'Failed to undrain node').message, nf);
 });
@@ -52,7 +53,7 @@ test('both catch blocks set the message first, then reload only when the helper 
     assert.ok(reload > set, 'helper-gated reload comes inside the catch, after the message is set');
     assert.ok(inCatch.indexOf('return false', reload) > reload, 'catch still returns false');
   }
-  assert.match(drain, /drainImpact\.reload\(\)/);
+  assert.match(drain.slice(drain.indexOf('} catch (err')), /drainImpact\.reload\(\)/);
 });
 
 test('undrain modal blocks double submit while in flight', () => {
@@ -61,7 +62,9 @@ test('undrain modal blocks double submit while in flight', () => {
   assert.match(modal, /setUndrainBusy\(true\)/);
   assert.match(modal, /finally \{\s*setUndrainBusy\(false\)/);
   assert.match(modal, /confirmLabel=\{undrainBusy \? 'Undraining\.\.\.' : 'Undrain node'\}/);
-  const tail = page.slice(page.indexOf('nodeName={nodeToUndrain}'), page.indexOf('nodeName={nodeToUndrain}') + 2000);
+  const modalAt = page.indexOf('nodeName={nodeToUndrain}');
+  assert.ok(modalAt >= 0, 'undrain modal exists');
+  const tail = page.slice(modalAt, modalAt + 2000);
   assert.match(tail, /busy=\{undrainBusy\}/);
 });
 
