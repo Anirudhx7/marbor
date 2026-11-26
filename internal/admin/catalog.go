@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"net/url"
 	"path"
@@ -1612,14 +1611,11 @@ func parseDigitsFilter(values []string) (result int, ok bool) {
 			continue
 		}
 		found = true
-		n, err := strconv.ParseInt(v, 10, 64)
+		// Parsed at the platform int size: on a range error ParseInt returns
+		// the largest int, which is the clamp for an oversized value.
+		n, err := strconv.ParseInt(v, 10, strconv.IntSize)
 		if err != nil && !errors.Is(err, strconv.ErrRange) {
 			return 0, false
-		}
-		// Clamp to the platform int: on 32-bit builds a value that fits int64
-		// can still overflow int, so compare against math.MaxInt.
-		if err != nil || n > int64(math.MaxInt) {
-			n = int64(math.MaxInt)
 		}
 		result = int(n)
 	}
