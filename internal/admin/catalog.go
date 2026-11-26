@@ -398,7 +398,7 @@ func pullFormatIncompatible(format, runtime string) bool {
 // operator-facing phrase used in handleNodePull's rejection message.
 func pullFormatDescription(format string) string {
 	switch format {
-	case "gguf-hf":
+	case router.FormatGGUFHF:
 		return "a GGUF file/repo reference"
 	default:
 		return "an Ollama library tag"

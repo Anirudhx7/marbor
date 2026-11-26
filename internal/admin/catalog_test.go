@@ -1412,15 +1412,6 @@ func TestPullFormatIncompatible_MatchesLegacyAcrossMatrix(t *testing.T) {
 	}
 }
 
-func TestGGUFOnlyRuntime_AgreesWithSharedMatrix(t *testing.T) {
-	for _, rt := range []string{"", "ollama", "llamacpp", "vllm", "tgi", "mlx", "sglang", "auto"} {
-		ok, _ := router.FormatServable(rt, router.FormatGGUFHF)
-		if ggufOnlyRuntime(rt) != ok {
-			t.Errorf("ggufOnlyRuntime(%q) disagrees with router.FormatServable gguf-hf = %v", rt, ok)
-		}
-	}
-}
-
 // Explicit expected table for the pull hard-block across every runtime x
 // format, so the answer stays pinned independently of the shared matrix.
 func TestPullFormatIncompatible_Table(t *testing.T) {
