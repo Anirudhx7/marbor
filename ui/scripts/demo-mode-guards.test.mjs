@@ -204,8 +204,12 @@ test('dark: utilities follow the .dark class, not the OS preference', () => {
 
 test('a node added in the demo carries no invented temperature or health history', () => {
   const body = handler(gpuNodes, 'handleAddNode')
-  const demoBranch = body.slice(body.indexOf('if (demoMode) {'), body.indexOf('if (!isLive)'))
+  const start = body.indexOf('if (demoMode) {')
+  const end = body.indexOf('if (!isLive)')
+  assert.ok(start >= 0 && end > start, 'demo add-node branch not found')
+  const demoBranch = body.slice(start, end)
   assert.ok(demoBranch.includes('withDemoSignals('), 'demo add-node branch not found')
-  assert.doesNotMatch(demoBranch, /temperature:\s*\d/, 'demo node must not invent a temperature')
-  assert.doesNotMatch(demoBranch, /healthHistory:\s*\[\s*\d/, 'demo node must not invent a health history')
+  // Unknown stays unknown: null and an empty history, rendered as N/A and "no data yet".
+  assert.match(demoBranch, /temperature:\s*null,/, 'demo node temperature must be null')
+  assert.match(demoBranch, /healthHistory:\s*\[\],/, 'demo node health history must be empty')
 })
