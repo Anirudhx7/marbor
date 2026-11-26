@@ -1023,8 +1023,15 @@ export function ModelAdvisor() {
     searchSeqRef.current += 1;
     const seq = searchSeqRef.current;
     const doSearch = async () => {
-      const minDl = minDownloads ? Number(minDownloads) : undefined;
-      const minLk = minLikes ? Number(minLikes) : undefined;
+      // Send a filter only when the server will accept it: whole numbers above
+      // zero, and a plain YYYY-MM-DD date. Anything else means no filter.
+      const wholeNumber = (raw: string): number | undefined => {
+        const n = raw ? Number(raw) : NaN;
+        return Number.isInteger(n) && n > 0 && n <= Number.MAX_SAFE_INTEGER ? n : undefined;
+      };
+      const minDl = wholeNumber(minDownloads);
+      const minLk = wholeNumber(minLikes);
+      const createdAfterOk = /^\d{4}-\d{2}-\d{2}$/.test(createdAfter) ? createdAfter : undefined;
 
       if (demoMode) {
         setSearchError(null);
@@ -1034,7 +1041,7 @@ export function ModelAdvisor() {
         let filtered = q === '' ? pool : pool.filter(m => m.id.toLowerCase().includes(q));
         if (minDl) filtered = filtered.filter(m => m.downloads >= minDl);
         if (minLk) filtered = filtered.filter(m => m.likes >= minLk);
-        if (createdAfter) filtered = filtered.filter(m => m.lastModified >= createdAfter);
+        if (createdAfterOk) filtered = filtered.filter(m => m.lastModified >= createdAfterOk);
         const sorted = [...filtered].sort((a, b) => {
           if (sortBy === 'likes') return b.likes - a.likes;
           if (sortBy === 'newest') return b.lastModified.localeCompare(a.lastModified);
@@ -1053,7 +1060,7 @@ export function ModelAdvisor() {
           sort: sortBy,
           minDownloads: minDl,
           minLikes: minLk,
-          createdAfter: createdAfter || undefined,
+          createdAfter: createdAfterOk,
         });
         if (searchSeqRef.current !== seq) return;
         setModels(resp || []);

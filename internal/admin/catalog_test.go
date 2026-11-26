@@ -1402,6 +1402,67 @@ func TestPullFormatIncompatible_Table(t *testing.T) {
 	}
 }
 
+func TestHandleModelSearch_MalformedFiltersReturn400(t *testing.T) {
+	const marker = "zq9marker"
+	cases := []struct {
+		name  string
+		query string
+		field string
+	}{
+		{"downloads letters", "min_downloads=abc", "min_downloads"},
+		{"downloads decimal", "min_downloads=1.5", "min_downloads"},
+		{"downloads negative", "min_downloads=-1", "min_downloads"},
+		{"downloads negative zero", "min_downloads=-0", "min_downloads"},
+		{"downloads plus", "min_downloads=%2B5", "min_downloads"},
+		{"downloads leading space", "min_downloads=%205", "min_downloads"},
+		{"downloads whitespace only", "min_downloads=%20", "min_downloads"},
+		{"downloads exponent", "min_downloads=1e3", "min_downloads"},
+		{"downloads marker", "min_downloads=" + marker, "min_downloads"},
+		{"downloads repeated bad second", "min_downloads=5&min_downloads=abc", "min_downloads"},
+		{"downloads repeated bad first", "min_downloads=abc&min_downloads=5", "min_downloads"},
+		{"likes letters", "min_likes=abc", "min_likes"},
+		{"likes negative", "min_likes=-3", "min_likes"},
+		{"likes marker", "min_likes=" + marker, "min_likes"},
+		{"after garbage", "created_after=" + marker, "created_after"},
+		{"after rfc3339", "created_after=2024-01-05T00:00:00Z", "created_after"},
+		{"after month 13", "created_after=2024-13-01", "created_after"},
+		{"after short form", "created_after=2024-1-5", "created_after"},
+		{"after feb 30", "created_after=2024-02-30", "created_after"},
+		{"after whitespace only", "created_after=%20", "created_after"},
+		{"after repeated bad second", "created_after=2024-01-05&created_after=nope", "created_after"},
+		{"before garbage", "created_before=" + marker, "created_before"},
+		{"before month 13", "created_before=2024-13-01", "created_before"},
+		{"before short form", "created_before=2024-1-5", "created_before"},
+	}
+	for _, runtime := range []string{"ollama", "vllm", "llamacpp"} {
+		for _, tc := range cases {
+			t.Run(runtime+"/"+tc.name, func(t *testing.T) {
+				rt := &recordingHFTransport{body: numberedHFBody(5, 0)}
+				w := searchWithTransport(t, rt, "/admin/models/search?q=llama&runtime="+runtime+"&"+tc.query)
+				if w.Code != http.StatusBadRequest {
+					t.Fatalf("status = %d, want 400, body = %s", w.Code, w.Body.String())
+				}
+				if ct := w.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+					t.Errorf("content type = %q, want application/json", ct)
+				}
+				var resp map[string]string
+				if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+					t.Fatalf("body is not a JSON error envelope: %v", err)
+				}
+				if !strings.Contains(resp["error"], tc.field) {
+					t.Errorf("error %q must name field %s", resp["error"], tc.field)
+				}
+				if strings.Contains(w.Body.String(), marker) {
+					t.Errorf("raw value must not be echoed: %s", w.Body.String())
+				}
+				if n := len(rt.calls()); n != 0 {
+					t.Errorf("made %d upstream calls, want 0", n)
+				}
+			})
+		}
+	}
+}
+
 // The GGUF runtime check and the shared matrix must agree, and the gguf-hf
 // bucket must stay a known one.
 func TestGGUFOnlyRuntime_UsesSharedMatrix(t *testing.T) {
@@ -1412,6 +1473,95 @@ func TestGGUFOnlyRuntime_UsesSharedMatrix(t *testing.T) {
 		}
 		if ggufOnlyRuntime(rt) != ok {
 			t.Errorf("ggufOnlyRuntime(%q) = %v, shared matrix says %v", rt, ggufOnlyRuntime(rt), ok)
+		}
+	}
+}
+
+func TestHandleModelSearch_FirstInvalidFieldWinsInFixedOrder(t *testing.T) {
+	rt := &recordingHFTransport{body: numberedHFBody(5, 0)}
+	w := searchWithTransport(t, rt,
+		"/admin/models/search?runtime=ollama&created_before=x&created_after=x&min_likes=x&min_downloads=x")
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "min_downloads") {
+		t.Fatalf("want 400 naming min_downloads first, got %d %s", w.Code, w.Body.String())
+	}
+	w = searchWithTransport(t, rt,
+		"/admin/models/search?runtime=ollama&created_before=x&created_after=x&min_likes=x")
+	if !strings.Contains(w.Body.String(), "min_likes") {
+		t.Fatalf("want min_likes second, got %s", w.Body.String())
+	}
+	w = searchWithTransport(t, rt, "/admin/models/search?runtime=ollama&created_before=x&created_after=x")
+	if !strings.Contains(w.Body.String(), "created_after") {
+		t.Fatalf("want created_after third, got %s", w.Body.String())
+	}
+}
+
+func TestHandleModelSearch_ValidFiltersStillReturn200(t *testing.T) {
+	cases := []struct {
+		name  string
+		query string
+	}{
+		{"empty values", "min_downloads=&min_likes=&created_after=&created_before="},
+		{"zero", "min_downloads=0&min_likes=0"},
+		{"leading zeros", "min_downloads=007"},
+		{"thirty digits", "min_downloads=" + strings.Repeat("9", 30)},
+		{"valid dates", "created_after=2024-01-05&created_before=2024-12-31"},
+		{"min date", "created_after=0001-01-01&created_before=0001-01-01"},
+		{"repeated empty then value", "min_downloads=&min_downloads=5"},
+	}
+	for _, runtime := range []string{"ollama", "vllm", "llamacpp"} {
+		for _, tc := range cases {
+			t.Run(runtime+"/"+tc.name, func(t *testing.T) {
+				rt := &recordingHFTransport{body: numberedHFBody(5, 0)}
+				w := searchWithTransport(t, rt, "/admin/models/search?q=llama&runtime="+runtime+"&"+tc.query)
+				if w.Code != http.StatusOK {
+					t.Fatalf("status = %d, want 200, body = %s", w.Code, w.Body.String())
+				}
+			})
+		}
+	}
+}
+
+func TestHandleModelSearch_ThirtyDigitMinimumClampsAndFiltersEverything(t *testing.T) {
+	rt := &recordingHFTransport{body: numberedHFBody(5, 0)}
+	ids := searchIDs(t, searchWithTransport(t, rt,
+		"/admin/models/search?runtime=ollama&min_downloads="+strings.Repeat("9", 30)))
+	if len(ids) != 0 {
+		t.Errorf("got %v, want no rows for an unreachable minimum", ids)
+	}
+}
+
+func TestHandleModelSearch_RepeatedKeyUsesFirstNonEmptyValue(t *testing.T) {
+	rt := &recordingHFTransport{body: numberedHFBody(50, 0)}
+	ids := searchIDs(t, searchWithTransport(t, rt,
+		"/admin/models/search?runtime=ollama&min_downloads=&min_downloads=990"))
+	// downloads are 1000-i, so 990 keeps rows 0..10.
+	if len(ids) != 11 {
+		t.Errorf("got %d rows, want 11", len(ids))
+	}
+}
+
+func TestHandleModelSearch_MultiTagAllFailedStaysCorrelated(t *testing.T) {
+	transports := map[string]http.RoundTripper{
+		"error status":   errHFTransport{},
+		"malformed json": &recordingHFTransport{body: `{"leaky":"detail"`},
+	}
+	for _, runtime := range []string{"vllm", "mlx"} {
+		for name, rt := range transports {
+			t.Run(runtime+"/"+name, func(t *testing.T) {
+				w := searchWithTransport(t, rt, "/admin/models/search?runtime="+runtime)
+				if w.Code != http.StatusBadGateway {
+					t.Fatalf("status = %d, want 502", w.Code)
+				}
+				body := w.Body.String()
+				if !strings.Contains(body, "failed to fetch Hugging Face model list") {
+					t.Errorf("want the generic message, got %s", body)
+				}
+				for _, leak := range []string{"boom", "status 500", "leaky"} {
+					if strings.Contains(body, leak) {
+						t.Errorf("upstream detail %q leaked: %s", leak, body)
+					}
+				}
+			})
 		}
 	}
 }

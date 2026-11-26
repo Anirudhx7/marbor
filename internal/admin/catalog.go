@@ -3,8 +3,10 @@ package admin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"path"
@@ -1555,11 +1557,101 @@ func computeContextFeasibility(
 	return totalEstBytes, fit, cf
 }
 
+// modelSearchFilters holds the validated post-filter values of a model search.
+type modelSearchFilters struct {
+	minDownloads  int
+	minLikes      int
+	createdAfter  time.Time
+	createdBefore time.Time
+	hasAfter      bool
+	hasBefore     bool
+}
+
+func (f modelSearchFilters) active() bool {
+	return f.minDownloads > 0 || f.minLikes > 0 || f.hasAfter || f.hasBefore
+}
+
+// parseModelSearchFilters validates min_downloads, min_likes, created_after and
+// created_before. An empty value means unset. Every value of a repeated key is
+// validated and the first non-empty one is used. The first invalid field, in the
+// order listed above, is reported by name only (the returned string is a fixed
+// client-safe message, empty when everything is valid): the raw value is never
+// echoed.
+func parseModelSearchFilters(q url.Values) (modelSearchFilters, string) {
+	var f modelSearchFilters
+	var ok bool
+	if f.minDownloads, ok = parseDigitsFilter(q["min_downloads"]); !ok {
+		return f, "invalid min_downloads: must be digits only"
+	}
+	if f.minLikes, ok = parseDigitsFilter(q["min_likes"]); !ok {
+		return f, "invalid min_likes: must be digits only"
+	}
+	if f.createdAfter, f.hasAfter, ok = parseDateFilter(q["created_after"]); !ok {
+		return f, "invalid created_after: expected YYYY-MM-DD"
+	}
+	if f.createdBefore, f.hasBefore, ok = parseDateFilter(q["created_before"]); !ok {
+		return f, "invalid created_before: expected YYYY-MM-DD"
+	}
+	return f, ""
+}
+
+// parseDigitsFilter returns the first non-empty value as a clamped int. ok is
+// false when any value is not ASCII digits only.
+func parseDigitsFilter(values []string) (result int, ok bool) {
+	found := false
+	for _, v := range values {
+		if v == "" {
+			continue
+		}
+		for i := 0; i < len(v); i++ {
+			if v[i] < '0' || v[i] > '9' {
+				return 0, false
+			}
+		}
+		if found {
+			continue
+		}
+		found = true
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil && !errors.Is(err, strconv.ErrRange) {
+			return 0, false
+		}
+		if err != nil || n > int64(math.MaxInt) {
+			n = int64(math.MaxInt)
+		}
+		result = int(n)
+	}
+	return result, true
+}
+
+// parseDateFilter returns the first non-empty value as a date. ok is false
+// when any value is not a strict YYYY-MM-DD date.
+func parseDateFilter(values []string) (result time.Time, set, ok bool) {
+	for _, v := range values {
+		if v == "" {
+			continue
+		}
+		t, err := time.Parse("2006-01-02", v)
+		if err != nil {
+			return time.Time{}, false, false
+		}
+		if !set {
+			result, set = t, true
+		}
+	}
+	return result, set, true
+}
+
 // handleModelSearch searches Hugging Face models for the selected runtime.
 // For GGUF runtimes (Ollama, llama.cpp) it hides models tagged as speech,
 // image, video or detection; repos with no tag are still listed.
 // GET /admin/models/search?q={query} (also /admin/v1/models/search)
 func (s *Server) handleModelSearch(w http.ResponseWriter, r *http.Request) {
+	filters, badFilter := parseModelSearchFilters(r.URL.Query())
+	if badFilter != "" {
+		writeJSONError(w, http.StatusBadRequest, badFilter)
+		return
+	}
 	query := r.URL.Query().Get("q")
 	runtime := r.URL.Query().Get("runtime")
 
@@ -1653,33 +1745,24 @@ func (s *Server) handleModelSearch(w http.ResponseWriter, r *http.Request) {
 
 	// Post-filter on fields the HF search API returns per-model but has no
 	// query param for (min downloads/likes, created-date range). All of these
-	// come from real HF response fields, never estimated.
-	minDownloads, _ := strconv.Atoi(r.URL.Query().Get("min_downloads"))
-	minLikes, _ := strconv.Atoi(r.URL.Query().Get("min_likes"))
-	var createdAfter, createdBefore time.Time
-	if v := r.URL.Query().Get("created_after"); v != "" {
-		createdAfter, _ = time.Parse("2006-01-02", v)
-	}
-	if v := r.URL.Query().Get("created_before"); v != "" {
-		createdBefore, _ = time.Parse("2006-01-02", v)
-	}
-
-	if minDownloads > 0 || minLikes > 0 || !createdAfter.IsZero() || !createdBefore.IsZero() {
+	// come from real HF response fields, never estimated. The values were
+	// validated before the upstream fetch.
+	if filters.active() {
 		filtered := make([]HFModelInfo, 0, len(hfModels))
 		for _, m := range hfModels {
-			if minDownloads > 0 && m.Downloads < minDownloads {
+			if filters.minDownloads > 0 && m.Downloads < filters.minDownloads {
 				continue
 			}
-			if minLikes > 0 && m.Likes < minLikes {
+			if filters.minLikes > 0 && m.Likes < filters.minLikes {
 				continue
 			}
-			if !createdAfter.IsZero() || !createdBefore.IsZero() {
+			if filters.hasAfter || filters.hasBefore {
 				created, err := time.Parse(time.RFC3339, m.CreatedAt)
 				if err == nil {
-					if !createdAfter.IsZero() && created.Before(createdAfter) {
+					if filters.hasAfter && created.Before(filters.createdAfter) {
 						continue
 					}
-					if !createdBefore.IsZero() && created.After(createdBefore.AddDate(0, 0, 1)) {
+					if filters.hasBefore && created.After(filters.createdBefore.AddDate(0, 0, 1)) {
 						continue
 					}
 				}
