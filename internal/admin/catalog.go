@@ -381,22 +381,14 @@ func classifyPullTagFormat(model string) string {
 	return router.FormatOllamaLibrary
 }
 
-// The matrix itself lives in router.FormatServable so the router and this file
-// share one source of truth; this wrapper only turns it into a hard-block flag.
 // pullFormatIncompatible reports whether format (see classifyPullTagFormat)
 // can never be loaded by runtime - the only two format buckets confident
-// enough to hard-block on. An empty/undeclared runtime is treated as Ollama,
-// matching ggufOnlyRuntime's existing default elsewhere in this file.
-//
-// Full runtime x GPU-vendor compatibility matrix, stated explicitly (nothing
-// here silently narrows to Ollama-vs-everything-else):
-//   - "ollama-library" is compatible with {ollama, ""} only - incompatible
-//     with vllm, tgi, llamacpp, and mlx.
-//   - "gguf-hf" is compatible with ggufOnlyRuntime's {"", ollama, llamacpp} -
-//     incompatible with vllm, tgi, and mlx.
-//   - "hf-repo" is never flagged incompatible by this function (see
-//     classifyPullTagFormat's doc comment on why that's deliberate, not an
-//     oversight).
+// enough to hard-block on. An empty/undeclared runtime is treated as Ollama.
+// The runtime x format matrix, including which runtimes each bucket loads on,
+// is router.FormatServable; this function only turns its answer into a
+// hard-block flag (a known bucket that the runtime cannot serve). The
+// "hf-repo" bucket and anything unrecognised are never flagged (see
+// classifyPullTagFormat's doc comment on why that is deliberate).
 func pullFormatIncompatible(format, runtime string) bool {
 	ok, known := router.FormatServable(runtime, format)
 	return known && !ok
@@ -797,7 +789,7 @@ func (s *Server) handleModelCatalog(w http.ResponseWriter, r *http.Request) {
 		// (see classifyPullTagFormat) - computed once per node, not per
 		// variant, since it depends only on nodeRuntime. A vLLM/TGI node swaps in
 		// a Hugging Face row for the models in catalogHFRepos (see below).
-		catalogIncompatible := pullFormatIncompatible("ollama-library", nodeRuntime)
+		catalogIncompatible := pullFormatIncompatible(router.FormatOllamaLibrary, nodeRuntime)
 
 		models := make([]catalogModelFit, 0, len(catalogModels))
 		for _, cm := range catalogModels {
@@ -911,12 +903,8 @@ type HFModelInfo struct {
 // `safetensors` repos (optionally AWQ/GPTQ quantized), never GGUF. An empty
 // runtime defaults to the historical GGUF-only behavior (Ollama).
 func ggufOnlyRuntime(runtime string) bool {
-	switch runtime {
-	case "", "ollama", "llamacpp":
-		return true
-	default:
-		return false
-	}
+	ok, _ := router.FormatServable(runtime, router.FormatGGUFHF)
+	return ok
 }
 
 // ggufAdvisoryRuntimeCaveat returns the runtime caveat for a GGUF-family

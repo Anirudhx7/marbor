@@ -1,6 +1,7 @@
 package router
 
-// Model-format buckets understood by FormatServable. A bucket describes how a
+// Model-format buckets understood by FormatServable. The values are also the
+// bucket names the admin API reports, so they must not change. A bucket describes how a
 // model reference has to be fetched and what weight format it implies, using
 // only what the reference string itself proves.
 const (
@@ -19,7 +20,8 @@ const (
 
 // FormatServable reports whether a node running runtime can load a model of the
 // given format bucket. This is the single runtime x format matrix; the admin
-// pull block and advisor read it through here so they cannot drift apart.
+// package reads it through here, so the pull block and the GGUF runtime check
+// cannot drift apart.
 //
 // known is false when the matrix has no confident answer (the hf-repo bucket,
 // FP8, EXL3, safetensors, an empty or unrecognised format). In that case ok is
@@ -28,9 +30,14 @@ const (
 // For the two known buckets an empty runtime means Ollama, matching the rest
 // of the code base:
 //   - ollama-library loads on {"", ollama} only.
-//   - gguf-hf loads on {"", ollama, llamacpp}. vLLM can load GGUF only as an
-//     upstream-experimental path, TGI and MLX do not, so all three are treated
-//     as not servable.
+//   - gguf-hf loads on {"", ollama, llamacpp}. vLLM, TGI and MLX are treated
+//     as not servable (vLLM's own docs call its GGUF path experimental).
+//
+// Runtime names are matched exactly and case-sensitively. A runtime the matrix
+// has never heard of (for example "auto" or a future engine) is not servable
+// for the two known buckets, as before; only the format side fails open.
+//
+// Mind the argument order: runtime first, then format.
 //
 // The function is pure and holds no state, so it is safe for concurrent use.
 func FormatServable(runtime, format string) (ok, known bool) {

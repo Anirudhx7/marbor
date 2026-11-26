@@ -1420,3 +1420,36 @@ func TestGGUFOnlyRuntime_AgreesWithSharedMatrix(t *testing.T) {
 		}
 	}
 }
+
+// Explicit expected table for the pull hard-block across every runtime x
+// format, so the answer stays pinned independently of the shared matrix.
+func TestPullFormatIncompatible_Table(t *testing.T) {
+	runtimes := []string{"", "ollama", "llamacpp", "vllm", "tgi", "mlx", "sglang", "auto", "other"}
+	blocked := map[string]map[string]bool{
+		"ollama-library": {"llamacpp": true, "vllm": true, "tgi": true, "mlx": true, "sglang": true, "auto": true, "other": true},
+		"gguf-hf":        {"vllm": true, "tgi": true, "mlx": true, "sglang": true, "auto": true, "other": true},
+		// Unknown formats never block anywhere.
+		"hf-repo": {}, "fp8": {}, "exl3": {}, "": {}, "unknown": {},
+	}
+	for format, want := range blocked {
+		for _, rt := range runtimes {
+			if got := pullFormatIncompatible(format, rt); got != want[rt] {
+				t.Errorf("pullFormatIncompatible(%q, %q) = %v, want %v", format, rt, got, want[rt])
+			}
+		}
+	}
+}
+
+// The GGUF runtime check and the shared matrix must agree, and the gguf-hf
+// bucket must stay a known one.
+func TestGGUFOnlyRuntime_UsesSharedMatrix(t *testing.T) {
+	for _, rt := range []string{"", "ollama", "llamacpp", "vllm", "tgi", "mlx", "sglang", "auto", "other"} {
+		ok, known := router.FormatServable(rt, router.FormatGGUFHF)
+		if !known {
+			t.Fatalf("gguf-hf must be a known bucket")
+		}
+		if ggufOnlyRuntime(rt) != ok {
+			t.Errorf("ggufOnlyRuntime(%q) = %v, shared matrix says %v", rt, ggufOnlyRuntime(rt), ok)
+		}
+	}
+}
