@@ -25,8 +25,30 @@ var (
 	// and usage literal, e.g. fs.String("target", "http://...", "usage").
 	flagDeclRe = regexp.MustCompile(`\bfs\.([A-Za-z0-9]+)\(\s*"([^"]+)"\s*,\s*([^,]+?)\s*,\s*("(?:[^"\\]|\\.)*")\s*\)`)
 
-	secondsRe = regexp.MustCompile(`^(\d+)\*time\.Second$`)
+	// durationDefaultRe reads a duration default written as N*time.Unit.
+	durationDefaultRe = regexp.MustCompile(`^(\d+)\*time\.(Millisecond|Second|Minute|Hour)$`)
+
+	// quotedWordRe picks the words out of a dispatch case label list.
+	quotedWordRe = regexp.MustCompile(`"([^"]+)"`)
+
+	// fsCallRe matches every method call on a FlagSet variable named fs.
+	fsCallRe = regexp.MustCompile(`\bfs\.([A-Za-z0-9]+)\(`)
+
+	// exampleFlagRe picks the --flag tokens out of an example command line.
+	exampleFlagRe = regexp.MustCompile(`--([A-Za-z][A-Za-z0-9-]*)`)
 )
+
+// fsNonDeclaration lists the FlagSet methods that are not flag declarations;
+// any other method call on fs counts as a declaration and must be parsed.
+var fsNonDeclaration = map[string]bool{
+	"Parse": true, "SetOutput": true, "PrintDefaults": true, "Args": true,
+	"NArg": true, "Arg": true, "NFlag": true, "Set": true, "Lookup": true,
+	"Visit": true, "VisitAll": true, "Parsed": true, "Name": true, "Output": true,
+}
+
+var durationUnits = map[string]time.Duration{
+	"Millisecond": time.Millisecond, "Second": time.Second, "Minute": time.Minute, "Hour": time.Hour,
+}
 
 // repoRoot is the repository root relative to this package's directory, which
 // is where go test runs. readRepoFile must not be used after a Chdir.
@@ -70,15 +92,12 @@ func documentedNames() map[string]nonRegistryCommand {
 // a different usage line, or when a documented command is no longer listed.
 func TestNonRegistry_HelpTableMatches(t *testing.T) {
 	src := readRepoFile(t, "cmd", "marbor", "main.go")
-	rows := helpRowRe.FindAllStringSubmatch(sectionBetween(t, src, "var helpTableRows"), -1)
+	rows := helpRowRe.FindAllStringSubmatch(sectionBetween(t, src, "\nvar helpTableRows"), -1)
 
 	documented := documentedNames()
 	seen := map[string]bool{}
 	for _, m := range rows {
 		usage, name := m[1], m[2]
-		if name == "[flags]" {
-			continue
-		}
 		seen[name] = true
 		c, ok := documented[name]
 		if !ok {
@@ -104,7 +123,7 @@ func TestNonRegistry_HelpTableMatches(t *testing.T) {
 // one of the known special words.
 func TestNonRegistry_DispatchMatches(t *testing.T) {
 	src := readRepoFile(t, "cmd", "marbor", "main.go")
-	body := sectionBetween(t, src, "func resolveCommand")
+	body := sectionBetween(t, src, "\nfunc resolveCommand(")
 	cases := dispatchCaseRe.FindAllStringSubmatch(body, -1)
 	if len(cases) == 0 {
 		t.Fatal("parsed zero case labels from resolveCommand - update this test")
@@ -114,7 +133,7 @@ func TestNonRegistry_DispatchMatches(t *testing.T) {
 	documented := documentedNames()
 	dispatched := map[string]bool{}
 	for _, m := range cases {
-		for _, w := range regexp.MustCompile(`"([^"]+)"`).FindAllStringSubmatch(m[1], -1) {
+		for _, w := range quotedWordRe.FindAllStringSubmatch(m[1], -1) {
 			word := w[1]
 			if special[word] {
 				continue
@@ -182,25 +201,61 @@ func expectedDefault(t *testing.T, cmd, flagName, kind, def string) string {
 		}
 		return " (default " + strconv.Quote(v) + ")"
 	case "Duration":
-		m := secondsRe.FindStringSubmatch(def)
+		m := durationDefaultRe.FindStringSubmatch(def)
 		if m == nil {
 			t.Errorf("%s: cannot read the duration default of --%s (%s)", cmd, flagName, def)
 			return ""
 		}
 		n, _ := strconv.Atoi(m[1])
-		return " (default " + (time.Duration(n) * time.Second).String() + ")"
+		return " (default " + (time.Duration(n) * durationUnits[m[2]]).String() + ")"
+	case "Bool":
+		if def == "false" {
+			return ""
+		}
+		if def == "true" {
+			return " (default true)"
+		}
+	case "Int":
+		if def == "0" {
+			return ""
+		}
+		if _, err := strconv.Atoi(def); err == nil {
+			return " (default " + def + ")"
+		}
 	}
+	t.Errorf("%s: cannot read the default of --%s (%s)", cmd, flagName, def)
 	return ""
+}
+
+// flagSources returns, per non-registry command, the non-test Go files that
+// may declare its flags.
+func flagSources(t *testing.T) map[string]string {
+	t.Helper()
+	benchDir := filepath.Join(repoRoot, "internal", "bench")
+	entries, err := os.ReadDir(benchDir)
+	if err != nil {
+		t.Fatalf("reading %s: %v", benchDir, err)
+	}
+	var bench strings.Builder
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".go") && !strings.HasSuffix(e.Name(), "_test.go") {
+			bench.WriteString(readRepoFile(t, "internal", "bench", e.Name()))
+		}
+	}
+	return map[string]string{
+		"bench":     bench.String(),
+		"uninstall": readRepoFile(t, "cmd", "marbor", "uninstall.go"),
+	}
 }
 
 // TestNonRegistry_FlagsMatchSource fails when a flag of bench or uninstall is
 // added, removed, retyped, re-defaulted or re-described in its source without
 // the reference entry changing with it.
 func TestNonRegistry_FlagsMatchSource(t *testing.T) {
-	sources := map[string]string{
-		"bench":     readRepoFile(t, "internal", "bench", "bench.go"),
-		"uninstall": readRepoFile(t, "cmd", "marbor", "uninstall.go"),
-	}
+	// Flags are read from FlagSet variables named fs, the form both commands
+	// use; a flag declared on another variable or on flag.CommandLine would
+	// not be seen, which the completeness count below cannot catch.
+	sources := flagSources(t)
 	for _, c := range nonRegistryCommands {
 		src, ok := sources[c.Name]
 		if !ok {
@@ -214,17 +269,29 @@ func TestNonRegistry_FlagsMatchSource(t *testing.T) {
 		}
 		// Every flag declared anywhere in the file must be recognised, so a
 		// declaration form the parser misses cannot hide a new flag.
-		if n := strings.Count(src, "fs.String(") + strings.Count(src, "fs.Bool(") +
-			strings.Count(src, "fs.Int(") + strings.Count(src, "fs.Duration(") +
-			strings.Count(src, "fs.Float64(") + strings.Count(src, "fs.Int64(") +
-			strings.Count(src, "fs.Uint(") + strings.Count(src, "fs.Var(") +
-			strings.Count(src, "fs.Func("); n != len(decls) {
-			t.Errorf("%s: source has %d flag declaration call(s) but only %d parsed - update flagDeclRe", c.Name, n, len(decls))
+		n := 0
+		for _, m := range fsCallRe.FindAllStringSubmatch(src, -1) {
+			if !fsNonDeclaration[m[1]] {
+				n++
+			}
+		}
+		if n != len(decls) {
+			t.Errorf("%s: source has %d flag declaration call(s) on fs but only %d parsed - update flagDeclRe", c.Name, n, len(decls))
 		}
 
 		documented := map[string]nonRegistryFlag{}
 		for _, f := range c.Flags {
+			if _, dup := documented[f.Name]; dup {
+				t.Errorf("%s: flag --%s is documented twice", c.Name, f.Name)
+			}
 			documented[f.Name] = f
+		}
+		for _, ex := range c.Examples {
+			for _, m := range exampleFlagRe.FindAllStringSubmatch(ex, -1) {
+				if _, ok := documented[m[1]]; !ok {
+					t.Errorf("%s: example %q uses --%s, which is not a documented flag", c.Name, ex, m[1])
+				}
+			}
 		}
 		declared := map[string]bool{}
 		for _, d := range decls {
@@ -305,8 +372,21 @@ func TestNonRegistry_AppearsInGeneratedOutput(t *testing.T) {
 			}
 		}
 		for _, f := range c.Flags {
-			if !strings.Contains(string(page), roffEscape(f.Signature)+"\n") {
-				t.Errorf("man page for %q does not list flag %q", c.Name, f.Signature)
+			if !strings.Contains(string(page), ".B "+roffEscape(f.Signature)+"\n"+roffEscape(f.Usage)+"\n") {
+				t.Errorf("man page for %q does not list flag %q with its usage", c.Name, f.Signature)
+			}
+		}
+		for _, want := range []string{c.Long, c.Short} {
+			if !strings.Contains(md, want) {
+				t.Errorf("docs/cli.md does not carry the text %q of %q", want, c.Name)
+			}
+			if !strings.Contains(string(page), roffEscape(want)) {
+				t.Errorf("man page for %q does not carry the text %q", c.Name, want)
+			}
+		}
+		for _, ex := range c.Examples {
+			if !strings.Contains(string(page), roffEscape(ex)+"\n") {
+				t.Errorf("man page for %q does not show example %q", c.Name, ex)
 			}
 		}
 		if !strings.Contains(readme, "| `"+c.Usage+"` | "+c.Short+" |") {
