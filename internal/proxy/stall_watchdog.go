@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -29,6 +30,11 @@ const (
 type stallWatch struct {
 	state atomic.Int32
 	timer *time.Timer
+	// mu makes each decision (byte check plus move to stalled or done) one
+	// step, so no half-decided state is ever observable.
+	mu sync.Mutex
+	// byteSeen reports whether the response has produced any byte.
+	byteSeen func() bool
 }
 
 // isStreamingRequest reports whether the client asked for a streamed answer.
@@ -65,23 +71,24 @@ func isHeaderTimeout(err error) bool {
 // warm check was made by the caller before this call; the timer callback
 // never takes a router lock for it.
 func (h *Handler) startStallWatch(ctx context.Context, rec *statusRecorder, node *router.NodeState, requestID string, deadline time.Duration) *stallWatch {
-	w := &stallWatch{}
+	w := &stallWatch{byteSeen: rec.sawAnyByte}
+	w.arm(h, ctx, rec, node, requestID, deadline)
+	return w
+}
+
+// arm starts the timer. The callback decides under mu: a request that already
+// produced a byte, or was cancelled, is never stalled, and a finish() that
+// arrives meanwhile waits and then sees the final state.
+func (w *stallWatch) arm(h *Handler, ctx context.Context, rec *statusRecorder, node *router.NodeState, requestID string, deadline time.Duration) {
 	w.timer = time.AfterFunc(deadline, func() {
-		if ctx.Err() != nil || rec.sawAnyByte() {
+		w.mu.Lock()
+		if ctx.Err() != nil || w.byteSeen() || !w.state.CompareAndSwap(stallWatchRunning, stallWatchStalled) {
+			w.mu.Unlock()
 			return
 		}
-		if !w.state.CompareAndSwap(stallWatchRunning, stallWatchStalled) {
-			return
-		}
-		// A byte can land between the check above and winning the swap. Hand
-		// the watch back to running so the request still reads as clean.
-		if rec.sawAnyByte() {
-			w.state.CompareAndSwap(stallWatchStalled, stallWatchRunning)
-			return
-		}
+		w.mu.Unlock()
 		h.router.RecordStall(node.Name, router.StallPhaseFirstByte, requestID)
 	})
-	return w
 }
 
 // markStalled ends the watch as stalled and reports whether this call did it.
@@ -92,6 +99,8 @@ func (w *stallWatch) markStalled() bool {
 		return false
 	}
 	w.timer.Stop()
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	return w.state.CompareAndSwap(stallWatchRunning, stallWatchStalled)
 }
 
@@ -103,6 +112,8 @@ func (w *stallWatch) finish() bool {
 		return false
 	}
 	w.timer.Stop()
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	return w.state.CompareAndSwap(stallWatchRunning, stallWatchDone)
 }
 

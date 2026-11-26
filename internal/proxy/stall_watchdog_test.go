@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -456,5 +457,107 @@ func TestStallWatch_RefusedConnectionIsNotAStall(t *testing.T) {
 	e.post("/api/generate", genBody)
 	if c := e.stallCount(); c != 0 {
 		t.Fatalf("stall count = %d, want 0 for a refused connection", c)
+	}
+}
+
+// The byte check and the move to stalled are one step, so a finish() that
+// arrives mid-decision waits and then sees a consistent result.
+func TestStallWatch_FinishDuringTimerDecisionIsConsistent(t *testing.T) {
+	for _, byteArrives := range []bool{false, true} {
+		h, node, rec := newTestWatchParts(t)
+		inside := make(chan struct{})
+		release := make(chan struct{})
+		w := &stallWatch{}
+		w.byteSeen = func() bool {
+			close(inside)
+			<-release
+			return byteArrives
+		}
+		w.arm(h, context.Background(), rec, node, "req-1", time.Millisecond)
+		<-inside
+		got := make(chan bool, 1)
+		go func() { got <- w.finish() }()
+		time.Sleep(50 * time.Millisecond) // finish is now waiting on the decision
+		close(release)
+		clean := <-got
+		stalls := 0
+		waitFor(t, func() bool { stalls = stallsOn(node); return stalls == boolToInt(!byteArrives) }, 5*time.Second)
+		if clean != byteArrives {
+			t.Fatalf("byteArrives=%v: finish clean=%v, want %v", byteArrives, clean, byteArrives)
+		}
+		if w.state.Load() == stallWatchRunning {
+			t.Fatalf("byteArrives=%v: watch left running", byteArrives)
+		}
+	}
+}
+
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// Two attempts: the first node refuses the dial (no stall, and not marked
+// connected), the second times out waiting for headers and is the only one
+// counted.
+func TestStallWatch_RetryDialFailureThenHeaderTimeoutCountsSecondNodeOnly(t *testing.T) {
+	dead := httptest.NewServer(http.NotFoundHandler())
+	deadURL := dead.URL
+	dead.Close()
+	hung := hangingUpstream(t, 2*time.Second)
+	r := router.New(config.RoutingConfig{
+		Strategy: "warm-first", Fallback: "least-connections", UpstreamTimeoutMs: 100, MaxRetries: 1,
+	}, []config.NodeConfig{
+		{Name: "dead-node", URL: deadURL, GPUModel: "test-gpu", Runtime: "ollama"},
+		{Name: "hung-node", URL: hung.URL, GPUModel: "test-gpu", Runtime: "ollama"},
+	}, nil)
+	for _, n := range r.Nodes() {
+		n.Lock()
+		n.Healthy = true
+		n.LoadedModels = []router.ModelInfo{{Name: "llama3"}}
+		n.Unlock()
+	}
+	h := NewHandler(r, admin.NewServer(r, nil, config.Config{}), nil)
+	h.stallDeadlineFor = func(*router.NodeState, int) time.Duration { return time.Minute }
+	rec := newStreamRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("POST", "/api/generate", strings.NewReader(genBody)))
+	counts := map[string]int{}
+	for _, n := range r.Nodes() {
+		counts[n.Name] = stallsOn(n)
+	}
+	if counts["dead-node"] != 0 {
+		t.Fatalf("dead node stalls = %d, want 0 (dial failure)", counts["dead-node"])
+	}
+	// Whichever node was tried first, a node that timed out after connecting
+	// is counted and a refused one never is.
+	if counts["hung-node"] != 1 {
+		t.Fatalf("hung node stalls = %d, want 1 (counts=%v)", counts["hung-node"], counts)
+	}
+}
+
+// A header timeout on a reused (kept-alive) connection still counts: the
+// connection exists, so the silence is the node's.
+func TestStallWatch_HeaderTimeoutOnReusedConnectionCounts(t *testing.T) {
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if hits.Add(1) == 1 {
+			io.WriteString(w, stallChunk+stallDone)
+			return
+		}
+		select {
+		case <-time.After(2 * time.Second):
+		case <-r.Context().Done():
+		}
+	}))
+	t.Cleanup(srv.Close)
+	e := newStallEnv(t, srv.URL, true, time.Minute, 100)
+	e.post("/api/generate", genBody) // opens and parks a keep-alive connection
+	if c := e.stallCount(); c != 0 {
+		t.Fatalf("clean first request stalls = %d, want 0", c)
+	}
+	e.post("/api/generate", genBody) // reuses it, then times out on headers
+	if c := e.stallCount(); c != 1 {
+		t.Fatalf("stall count = %d, want 1 for a timeout on a reused connection", c)
 	}
 }
