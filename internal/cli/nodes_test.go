@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/Anirudhx7/marbor/internal/router"
 )
 
 const testValidFingerprint = "SHA256:" + "ab" + "cd" + "ef" + "01" + "23" + "45" + "67" + "89" +
@@ -574,5 +576,76 @@ func TestRun_NodesJSONCarriesReplicaBlockedBy(t *testing.T) {
 	var n NodeResp
 	if err := json.Unmarshal([]byte(`{"name":"h","replicaBlockedBy":"w-1"}`), &n); err != nil || n.ReplicaBlockedBy != "w-1" {
 		t.Errorf("NodeResp decode = %+v, %v", n, err)
+	}
+}
+
+func TestRun_NodesPartialGPULines(t *testing.T) {
+	cases := []struct {
+		name string
+		node string
+		want string // empty means no line
+	}{
+		{"partial with context", `{"name":"gpu-01","health":"healthy","loadedModels":[{"name":"llama3:70b","sizeVram":1,"gpuPercent":62,"contextLength":4096}]}`,
+			"note: gpu-01 runs llama3:70b at 62% on GPU, context 4096"},
+		{"partial without context", `{"name":"gpu-01","health":"healthy","loadedModels":[{"name":"llama3:70b","gpuPercent":62}]}`,
+			"note: gpu-01 runs llama3:70b at 62% on GPU\n"},
+		{"full GPU", `{"name":"gpu-01","health":"healthy","loadedModels":[{"name":"m","gpuPercent":100,"contextLength":8192}]}`, ""},
+		{"keys absent", `{"name":"gpu-01","health":"healthy","loadedModels":[{"name":"m","sizeVram":5}]}`, ""},
+		{"zero on a node with no known VRAM", `{"name":"gpu-01","health":"healthy","vramTotalMB":0,"loadedModels":[{"name":"m","gpuPercent":0}]}`, ""},
+		{"zero on a node with known VRAM", `{"name":"gpu-01","health":"healthy","vramTotalMB":24000,"loadedModels":[{"name":"m","gpuPercent":0}]}`,
+			"note: gpu-01 runs m at 0% on GPU\n"},
+		{"zero with a sibling on GPU", `{"name":"gpu-01","health":"healthy","loadedModels":[{"name":"m","gpuPercent":0},{"name":"n","gpuPercent":100}]}`,
+			"note: gpu-01 runs m at 0% on GPU\n"},
+		{"malformed entries are skipped", `{"name":"gpu-01","health":"healthy","loadedModels":["x",5,null,{"name":"m","gpuPercent":"high"},{"name":"k","gpuPercent":40}]}`,
+			"note: gpu-01 runs k at 40% on GPU\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out, errOut, code := runNodesAgainst(t, "["+tc.node+"]")
+			if code != ExitOK {
+				t.Fatalf("exit %d (stderr: %s)", code, errOut)
+			}
+			if tc.want == "" {
+				if strings.Contains(out, "on GPU") {
+					t.Errorf("unexpected line:\n%s", out)
+				}
+				return
+			}
+			if !strings.Contains(out, tc.want) {
+				t.Errorf("missing %q in:\n%s", tc.want, out)
+			}
+		})
+	}
+}
+
+func TestRun_NodesOutputUnchangedWithoutOffloadKeys(t *testing.T) {
+	old := `[{"name":"gpu-01","health":"healthy","loadedModels":[{"name":"m","sizeVram":5}]}]`
+	withKeys := `[{"name":"gpu-01","health":"healthy","loadedModels":[{"name":"m","sizeVram":5,"gpuPercent":100,"contextLength":4096}]}]`
+	a, _, _ := runNodesAgainst(t, old)
+	b, _, _ := runNodesAgainst(t, withKeys)
+	if a != b {
+		t.Errorf("full-GPU output must match the old output:\n%s\n---\n%s", a, b)
+	}
+}
+
+func TestRun_NodesPartialDecodesRouterModelInfo(t *testing.T) {
+	g, c := 62, int64(4096)
+	raw, err := json.Marshal([]map[string]any{{
+		"name": "gpu-01", "health": "healthy",
+		"loadedModels": []router.ModelInfo{{Name: "llama3:70b", GPUPercent: &g, ContextLength: &c}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, _, code := runNodesAgainst(t, string(raw))
+	if code != ExitOK || !strings.Contains(out, "note: gpu-01 runs llama3:70b at 62% on GPU, context 4096") {
+		t.Errorf("exit %d:\n%s", code, out)
+	}
+}
+
+func TestRun_NodesPartialJSONPassesThrough(t *testing.T) {
+	out, _, code := runNodesAgainst(t, `[{"name":"gpu-01","health":"healthy","loadedModels":[{"name":"m","gpuPercent":62}]}]`, "--json")
+	if code != ExitOK || strings.Contains(out, "note:") || !strings.Contains(out, `"gpuPercent"`) {
+		t.Errorf("exit %d:\n%s", code, out)
 	}
 }

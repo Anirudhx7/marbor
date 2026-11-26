@@ -77,12 +77,13 @@ export const mockGPUNodes: GPUNode[] = [
     // Names match the Models page catalog (mockModelCatalog derives each model's
     // warm state from these lists), so Dashboard and Models count the same fleet.
     loadedModels: [
-      { name: 'llama3.3:8b', sizeVram: Math.round(16.2 * GiB) },
-      { name: 'gemma2:9b', sizeVram: Math.round(14.1 * GiB) },
+      { name: 'llama3.3:8b', sizeVram: Math.round(16.2 * GiB), gpuPercent: 100, contextLength: 8192 },
+      // Partly on CPU: shows the "on GPU" badge and the loaded context.
+      { name: 'gemma2:9b', sizeVram: Math.round(14.1 * GiB), gpuPercent: 62, contextLength: 4096 },
       // Warm here so the cold-load list in mockSoleReplicaImpact (which is
       // computed from a node's loaded models) lists models this node holds.
-      { name: 'deepseek-r1:7b', sizeVram: Math.round(9.5 * GiB) },
-      { name: 'nomic-embed-text', sizeVram: Math.round(0.6 * GiB) },
+      { name: 'deepseek-r1:7b', sizeVram: Math.round(9.5 * GiB), gpuPercent: 100, contextLength: 32768 },
+      { name: 'nomic-embed-text', sizeVram: Math.round(0.6 * GiB), gpuPercent: 100, contextLength: 8192 },
     ],
     healthHistory: Array(60).fill(0).map(() => 95 + Math.random() * 5),
     coldStarts: 2,
@@ -178,10 +179,11 @@ export const mockGPUNodes: GPUNode[] = [
     pendingPrewarmMB: 8192,
     uptime: '12d 14h',
     loadedModels: [
-      { name: 'llama3.3:8b', sizeVram: Math.round(16.2 * GiB) },
-      { name: 'mistral:7b', sizeVram: Math.round(14.8 * GiB) },
-      { name: 'qwen2.5:14b', sizeVram: Math.round(9.6 * GiB) },
-      { name: 'qwen2.5-coder:14b', sizeVram: Math.round(26.5 * GiB) },
+      { name: 'llama3.3:8b', sizeVram: Math.round(16.2 * GiB), gpuPercent: 100, contextLength: 8192 },
+      { name: 'mistral:7b', sizeVram: Math.round(14.8 * GiB), gpuPercent: 100, contextLength: 8192 },
+      // No context reported (an older Ollama build): nothing is shown for it.
+      { name: 'qwen2.5:14b', sizeVram: Math.round(9.6 * GiB), gpuPercent: 100 },
+      { name: 'qwen2.5-coder:14b', sizeVram: Math.round(26.5 * GiB), gpuPercent: 100, contextLength: 32768 },
     ],
     healthHistory: Array(60).fill(0).map(() => 92 + Math.random() * 8),
     coldStarts: 0,

@@ -68,6 +68,9 @@ A worker whose probe is failing shows worker instead of down and matches none of
 --search keeps nodes whose name or GPU model contains the text, trimmed and ignoring case, and combines with --signal. Giving --signal more
 than once adds to the list. No match is an empty table (header only) or [] with --json and still exits 0, so scripts that act on
 matches should count rows rather than check the exit status.
+Under the table, one note names each Ollama model that Ollama reports as only partly in GPU memory (the rest runs on CPU, which is slower), with the
+context it is loaded at. A model at 0% is listed only when a GPU is known for that node. Models fully on GPU are not listed; every loaded model's
+share and context are in --json (gpuPercent, contextLength). Both are Ollama only and absent for other runtimes and older Ollama builds.
 
 Requires authentication - see the root README's CLI auth section, or run `marbor login`.
 

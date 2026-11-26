@@ -105,7 +105,10 @@ func buildRoot() *Command {
 					"A worker whose probe is failing shows worker instead of down and matches none of healthy, degraded or down.\n" +
 					"--search keeps nodes whose name or GPU model contains the text, trimmed and ignoring case, and combines with --signal. Giving --signal more\n" +
 					"than once adds to the list. No match is an empty table (header only) or [] with --json and still exits 0, so scripts that act on\n" +
-					"matches should count rows rather than check the exit status.",
+					"matches should count rows rather than check the exit status.\n" +
+					"Under the table, one note names each Ollama model that Ollama reports as only partly in GPU memory (the rest runs on CPU, which is slower), with the\n" +
+					"context it is loaded at. A model at 0% is listed only when a GPU is known for that node. Models fully on GPU are not listed; every loaded model's\n" +
+					"share and context are in --json (gpuPercent, contextLength). Both are Ollama only and absent for other runtimes and older Ollama builds.",
 				Flags: []FlagSpec{
 					{Name: "signal", Kind: FlagString, Repeatable: true, Usage: "only nodes matching any of these signals, comma-separated or repeated: healthy, degraded, draining, down, agent, warm, pressure"},
 					{Name: "search", Kind: FlagString, Usage: "only nodes whose name or GPU model contains this text (trimmed, case-insensitive)"},

@@ -78,3 +78,12 @@ func TestStreamUsageReportsCachedTokensUnderSimKV(t *testing.T) {
 		t.Fatalf("repeat request must report cached tokens, got %v", second)
 	}
 }
+
+func TestVramForOffloadsOneModel(t *testing.T) {
+	if got := vramFor("llama3.2:3b", 1000); got != 1000 {
+		t.Errorf("fully loaded model: got %d, want 1000", got)
+	}
+	if got := vramFor("codellama:13b", 1000); got != 620 {
+		t.Errorf("partly offloaded model: got %d, want 620", got)
+	}
+}

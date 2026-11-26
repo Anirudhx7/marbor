@@ -296,6 +296,11 @@ export interface AgentGPUDevice {
 export interface LoadedModel {
   name: string;
   sizeVram: number;
+  // Reported by Ollama only; absent for other runtimes and older Ollama builds.
+  // gpuPercent is the share of the model held in GPU memory (0 is a real reading).
+  gpuPercent?: number;
+  // contextLength is the context window the model is loaded at.
+  contextLength?: number;
 }
 
 // BenchmarkRun mirrors internal/store.BenchmarkRun - a persisted result from

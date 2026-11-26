@@ -77,6 +77,12 @@ type ModelInfo struct {
 	// from - not necessarily comparable in format across runtime types, only within one. Empty
 	// when unknown - never fabricated.
 	Digest string `json:"digest,omitempty"`
+	// GPUPercent is the share of this model Ollama reports as held in GPU memory
+	// (size_vram of size, 0-100). Ollama only; nil when the runtime does not report it.
+	GPUPercent *int `json:"gpuPercent,omitempty"`
+	// ContextLength is the context window the model is loaded at, as Ollama reports
+	// it. Ollama only; nil when the runtime does not report it.
+	ContextLength *int64 `json:"contextLength,omitempty"`
 	// sizeAttributed is true when SizeVRAM was not reported for this model but
 	// inferred as the node's whole used VRAM (attributeSoleModelVRAM). It is a
 	// placement input, not an observed footprint of the model, so it is never
