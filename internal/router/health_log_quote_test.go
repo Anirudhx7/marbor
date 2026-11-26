@@ -11,7 +11,7 @@ import (
 	"github.com/Anirudhx7/marbor/internal/config"
 )
 
-// awkwardNodeName holds a space, a newline and an ESC byte, the characters a
+// awkwardNodeName holds a space, a newline, a carriage return and an ESC byte, the characters a
 // bare %s would write straight into the log.
 const awkwardNodeName = "gpu 0\nforged line \x1b[31m"
 
@@ -19,16 +19,19 @@ const awkwardNodeName = "gpu 0\nforged line \x1b[31m"
 // starts with. A node name that splits a line leaves a fragment without it.
 var logTimestampPrefix = regexp.MustCompile(`^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}`)
 
-func newAwkwardRouter(t *testing.T, url string, runtime string) (*Router, *NodeState) {
+func newAwkwardRouter(t *testing.T, url string, runtimeName string) (*Router, *NodeState) {
 	t.Helper()
 	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000, Fallback: "least-connections"},
-		[]config.NodeConfig{{Name: awkwardNodeName, URL: url, Runtime: runtime}}, nil)
+		[]config.NodeConfig{{Name: awkwardNodeName, URL: url, Runtime: runtimeName}}, nil)
 	t.Cleanup(r.client.CloseIdleConnections)
 	return r, r.nodes[0]
 }
 
 func assertQuotedNameLine(t *testing.T, out, event string) {
 	t.Helper()
+	if strings.TrimSpace(out) == "" {
+		t.Fatalf("no log output captured for %q", event)
+	}
 	var matching []string
 	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
 		if !logTimestampPrefix.MatchString(line) {
@@ -80,9 +83,6 @@ func TestPollNodeLogsQuoteNodeName(t *testing.T) {
 		}))
 		t.Cleanup(srv.Close)
 		r, n := newAwkwardRouter(t, srv.URL, "auto")
-		n.mu.Lock()
-		n.autoDetect = true
-		n.mu.Unlock()
 
 		r.pollNode(n)
 
