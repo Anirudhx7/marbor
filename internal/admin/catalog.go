@@ -1616,6 +1616,8 @@ func parseDigitsFilter(values []string) (result int, ok bool) {
 		if err != nil && !errors.Is(err, strconv.ErrRange) {
 			return 0, false
 		}
+		// Clamp to the platform int: on 32-bit builds a value that fits int64
+		// can still overflow int, so compare against math.MaxInt.
 		if err != nil || n > int64(math.MaxInt) {
 			n = int64(math.MaxInt)
 		}
@@ -1647,17 +1649,18 @@ func parseDateFilter(values []string) (result time.Time, set, ok bool) {
 // image, video or detection; repos with no tag are still listed.
 // GET /admin/models/search?q={query} (also /admin/v1/models/search)
 func (s *Server) handleModelSearch(w http.ResponseWriter, r *http.Request) {
-	filters, badFilter := parseModelSearchFilters(r.URL.Query())
+	params := r.URL.Query()
+	filters, badFilter := parseModelSearchFilters(params)
 	if badFilter != "" {
 		writeJSONError(w, http.StatusBadRequest, badFilter)
 		return
 	}
-	query := r.URL.Query().Get("q")
-	runtime := r.URL.Query().Get("runtime")
+	query := params.Get("q")
+	runtime := params.Get("runtime")
 
 	sortField := "downloads"
 	direction := "-1"
-	switch r.URL.Query().Get("sort") {
+	switch params.Get("sort") {
 	case "likes":
 		sortField = "likes"
 	case "newest":

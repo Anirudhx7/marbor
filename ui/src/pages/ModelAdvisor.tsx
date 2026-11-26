@@ -30,6 +30,7 @@ import type { CatalogModelFit } from '../types';
 import { readLastModelCount, writeLastModelCount, readLastNodeCount } from '../lib/nodeCount';
 import { CustomDatePicker } from '../components/DateTimePicker';
 import { TabList, tabProps, TabPanel } from '../components/TabList';
+import { wholeNumber, realDate } from '../lib/modelSearchFilters';
 
 // LIVE_VRAM_TOOL_SOURCES are every `vram_source` string handleModelFit
 // (admin.go) can report for a value read straight from a vendor tool - see
@@ -1025,13 +1026,9 @@ export function ModelAdvisor() {
     const doSearch = async () => {
       // Send a filter only when the server will accept it: whole numbers above
       // zero, and a plain YYYY-MM-DD date. Anything else means no filter.
-      const wholeNumber = (raw: string): number | undefined => {
-        const n = raw ? Number(raw) : NaN;
-        return Number.isInteger(n) && n > 0 && n <= Number.MAX_SAFE_INTEGER ? n : undefined;
-      };
       const minDl = wholeNumber(minDownloads);
       const minLk = wholeNumber(minLikes);
-      const createdAfterOk = /^\d{4}-\d{2}-\d{2}$/.test(createdAfter) ? createdAfter : undefined;
+      const createdAfterOk = realDate(createdAfter);
 
       if (demoMode) {
         setSearchError(null);
