@@ -76,9 +76,9 @@ func (r *Router) thermalDrain(nodeName, detail string) {
 	}
 	if r.store != nil {
 		if err := r.store.SetNodeDrain(nodeName, true, "thermal", 0); err != nil {
-			log.Printf("thermal watchdog: persist drain for %s: %v", nodeName, err)
+			log.Printf("thermal watchdog: persist drain for %q: %v", nodeName, err)
 		}
 	}
-	log.Printf("thermal watchdog: node %s auto-drained after %d consecutive polls at/above %.1f°C (%s)",
+	log.Printf("thermal watchdog: node %q auto-drained after %d consecutive polls at/above %.1f°C (%s)",
 		nodeName, r.thermalBreachLimit(), r.thermalWatchdog.MaxTempCelsius, detail)
 }

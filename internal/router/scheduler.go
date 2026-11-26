@@ -160,15 +160,15 @@ func (r *Router) fireSchedule(ctx context.Context, s Schedule) {
 		if warning != "" {
 			errMsg += "; " + warning
 		}
-		log.Printf("schedule %q fired: action=%s node=%s models=%v - %s", s.ID, s.Action, s.Node, s.Models, errMsg)
+		log.Printf("schedule %q fired: action=%s node=%q models=%v - %s", s.ID, s.Action, s.Node, s.Models, errMsg)
 		r.recordScheduleRun(s.ID, "error", errMsg)
 		r.auditScheduled(s, "error", errMsg)
 		return
 	}
 	if warning != "" {
-		log.Printf("schedule %q fired: action=%s node=%s models=%v - %s", s.ID, s.Action, s.Node, s.Models, warning)
+		log.Printf("schedule %q fired: action=%s node=%q models=%v - %s", s.ID, s.Action, s.Node, s.Models, warning)
 	} else {
-		log.Printf("schedule %q fired: action=%s node=%s models=%v", s.ID, s.Action, s.Node, s.Models)
+		log.Printf("schedule %q fired: action=%s node=%q models=%v", s.ID, s.Action, s.Node, s.Models)
 	}
 	// A run that did everything it could is ok even when it left pinned models
 	// loaded on purpose; the warning rides along as the note, not as a failure.
@@ -186,7 +186,7 @@ func (r *Router) auditScheduled(s Schedule, status, errMsg string) {
 		return
 	}
 	action := "scheduled_" + s.Action
-	details := fmt.Sprintf("Schedule %s: action=%s node=%s models=%v status=%s", s.ID, s.Action, s.Node, s.Models, status)
+	details := fmt.Sprintf("Schedule %s: action=%s node=%q models=%v status=%s", s.ID, s.Action, s.Node, s.Models, status)
 	if errMsg != "" {
 		label := " error="
 		if status == "ok" {
@@ -323,7 +323,7 @@ func (r *Router) WarmModelsWithWarnings(ctx context.Context, nodeName string, mo
 		// Digest drift is logged, never acted on: the model is still warmed
 		// and the run's status is unaffected.
 		if r.driftedResidentDigest(target, m) {
-			log.Printf("[schedule] node %s model %q: digest drift - resident copy differs from the fleet's reference digest; still warming", target.Name, m)
+			log.Printf("[schedule] node %q model %q: digest drift - resident copy differs from the fleet's reference digest; still warming", target.Name, m)
 		}
 		// Serialized per node with the keep-warm pinger and predictive
 		// prewarm, so concurrent origins never evict from the same stale

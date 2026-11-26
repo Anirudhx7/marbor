@@ -62,7 +62,7 @@ func (r *Router) persistResidencyDiff(node string, prev, current []ModelInfo) {
 			LastUsed:  r.lastUsedAt(node, m.Name),
 			VRAMBytes: m.SizeVRAM,
 		}); err != nil {
-			log.Printf("warmstate: record load %q on %s: %v", m.Name, node, err)
+			log.Printf("warmstate: record load %q on %q: %v", m.Name, node, err)
 		}
 	}
 	for _, m := range prev {
@@ -70,7 +70,7 @@ func (r *Router) persistResidencyDiff(node string, prev, current []ModelInfo) {
 			continue
 		}
 		if err := st.DeleteWarmState(m.Name, node); err != nil {
-			log.Printf("warmstate: delete %q on %s: %v", m.Name, node, err)
+			log.Printf("warmstate: delete %q on %q: %v", m.Name, node, err)
 		}
 	}
 }
@@ -92,7 +92,7 @@ func (r *Router) reconcileNodeResidency(node string, current []ModelInfo) {
 		names[i] = m.Name
 	}
 	if err := st.ReconcileNodeWarmState(node, names); err != nil {
-		log.Printf("warmstate: reconcile %s: %v", node, err)
+		log.Printf("warmstate: reconcile %q: %v", node, err)
 	}
 }
 
@@ -115,7 +115,7 @@ func (r *Router) snapshotNode(n *NodeState) {
 			LastUsed:  r.lastUsedAt(name, m.Name),
 			VRAMBytes: m.SizeVRAM,
 		}); err != nil {
-			log.Printf("warmstate: snapshot %q on %s: %v", m.Name, name, err)
+			log.Printf("warmstate: snapshot %q on %q: %v", m.Name, name, err)
 			return
 		}
 	}
@@ -146,7 +146,7 @@ func (r *Router) FlushWarmState() {
 				LastUsed:  r.lastUsedAt(name, m.Name),
 				VRAMBytes: m.SizeVRAM,
 			}); err != nil {
-				log.Printf("warmstate: flush %q on %s: %v", m.Name, name, err)
+				log.Printf("warmstate: flush %q on %q: %v", m.Name, name, err)
 			}
 		}
 	}

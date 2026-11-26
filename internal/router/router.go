@@ -1597,7 +1597,7 @@ func (r *Router) AddNode(n config.NodeConfig) bool {
 		}
 		if config.NormalizeNodeURL(existing.URL) == normURL {
 			r.mu.Unlock()
-			log.Printf("router: WARNING: rejecting node %q (%s): URL already registered as node %q - refusing to register the same backend twice under different names", n.Name, n.URL, existing.Name)
+			log.Printf("router: WARNING: rejecting node %q (%q): URL already registered as node %q - refusing to register the same backend twice under different names", n.Name, n.URL, existing.Name)
 			return false
 		}
 	}
@@ -1840,7 +1840,7 @@ func (r *Router) RemoveNode(name string) {
 	// no longer meaningful and must not be restored on the next start.
 	if st != nil {
 		if err := st.DeleteWarmStateByNode(name); err != nil {
-			log.Printf("warmstate: delete node %s: %v", name, err)
+			log.Printf("warmstate: delete node %q: %v", name, err)
 		}
 	}
 }
@@ -2083,7 +2083,7 @@ func deleteWarmStateForURLChange(st store.Store, name string) {
 		return
 	}
 	if err := st.DeleteWarmStateByNode(name); err != nil {
-		log.Printf("warmstate: delete node %s (url change): %v", name, err)
+		log.Printf("warmstate: delete node %q (url change): %v", name, err)
 	}
 }
 

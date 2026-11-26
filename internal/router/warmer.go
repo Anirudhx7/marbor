@@ -324,7 +324,7 @@ func (r *Router) pingWarmupModels(ctx context.Context) {
 					// letting it block other models' headroom checks for the
 					// remainder of warmReservationTTL.
 					r.clearWarmReservation(n.Name, model)
-					log.Printf("[warmup] node %s model %q: %v", n.Name, model, err)
+					log.Printf("[warmup] node %q model %q: %v", n.Name, model, err)
 					n.Lock()
 					if n.WarmupErrors == nil {
 						n.WarmupErrors = map[string]string{}

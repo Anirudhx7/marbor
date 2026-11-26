@@ -623,10 +623,10 @@ func (r *Router) recordUnloadSideEffects(nodeName, model, reason string) {
 	// for the background flush, else a crash could restore an evicted model.
 	if st := r.warmStore(); st != nil {
 		if err := st.DeleteWarmState(model, nodeName); err != nil {
-			log.Printf("warmstate: delete %q on %s after unload: %v", model, nodeName, err)
+			log.Printf("warmstate: delete %q on %q after unload: %v", model, nodeName, err)
 		}
 	}
-	log.Printf("unloaded model %q from node %s (%s)", model, nodeName, reason)
+	log.Printf("unloaded model %q from node %q (%s)", model, nodeName, reason)
 }
 
 // RecordManualUnload applies the same post-eviction bookkeeping as a direct
@@ -868,7 +868,7 @@ func (r *Router) UnloadModelsWithWarnings(ctx context.Context, nodeName string, 
 			continue
 		}
 		if r.isPinned(nodeName, m) {
-			log.Printf("scheduled unload of %q on %s skipped: %v", m, nodeName, ErrModelPinned)
+			log.Printf("scheduled unload of %q on %q skipped: %v", m, nodeName, ErrModelPinned)
 			pinnedSkipped = append(pinnedSkipped, m)
 			continue
 		}
@@ -880,7 +880,7 @@ func (r *Router) UnloadModelsWithWarnings(ctx context.Context, nodeName string, 
 				if rec := recover(); rec != nil {
 					pv := truncateForLog(fmt.Sprint(rec), maxLogValueBytes)
 					if r.allowHostLog("panic:" + nodeName + "/" + m) {
-						log.Printf("scheduled unload of %q on %s panicked: %s\n%s", m, nodeName, pv, debug.Stack())
+						log.Printf("scheduled unload of %q on %q panicked: %s\n%s", m, nodeName, pv, debug.Stack())
 					}
 					perr := fmt.Errorf("panic: %s", pv)
 					recordUnloadError(n, m, perr)
@@ -897,7 +897,7 @@ func (r *Router) UnloadModelsWithWarnings(ctx context.Context, nodeName string, 
 				// surface as a confusing agent-dispatch error instead of the
 				// real reachability problem.
 				if !healthy {
-					log.Printf("scheduled unload of %q on %s skipped: node is currently unreachable (down)", m, nodeName)
+					log.Printf("scheduled unload of %q on %q skipped: node is currently unreachable (down)", m, nodeName)
 					recordUnloadError(n, m, errors.New("node is currently unreachable (down)"))
 					addFailure(m, "node is currently unreachable (down)")
 					return
@@ -905,7 +905,7 @@ func (r *Router) UnloadModelsWithWarnings(ctx context.Context, nodeName string, 
 				actx, cancel := context.WithTimeout(ctx, marborAgentUnloadTimeout)
 				defer cancel()
 				if err := r.unloadModelViaAgent(actx, nodeURL, agentCfg, m); err != nil {
-					log.Printf("scheduled unload of %q on %s failed (agent): %v", m, nodeName, err)
+					log.Printf("scheduled unload of %q on %q failed (agent): %v", m, nodeName, err)
 					recordUnloadError(n, m, err)
 					addFailure(m, err.Error())
 					return
@@ -915,7 +915,7 @@ func (r *Router) UnloadModelsWithWarnings(ctx context.Context, nodeName string, 
 				return
 			}
 			if err := r.unloadModel(ctx, n, m, "scheduled"); err != nil {
-				log.Printf("scheduled unload of %q on %s failed: %v", m, nodeName, err)
+				log.Printf("scheduled unload of %q on %q failed: %v", m, nodeName, err)
 				recordUnloadError(n, m, err)
 				addFailure(m, err.Error())
 				return
@@ -1026,7 +1026,7 @@ func (r *Router) evictForHeadroom(ctx context.Context, nodeName, forModel string
 		// Nothing can be unloaded here, so no victim could ever help; say so
 		// once per interval instead of failing an unload on every warm tick.
 		if r.allowHostLog("headroom:" + nodeName + "/unload-unsupported") {
-			log.Printf("headroom: node %s runs %q, which marbor cannot unload models from; cannot make room for %q", nodeName, targetRuntime, forModel)
+			log.Printf("headroom: node %q runs %q, which marbor cannot unload models from; cannot make room for %q", nodeName, targetRuntime, forModel)
 		}
 		return false
 	}
@@ -1102,14 +1102,14 @@ func (r *Router) evictForHeadroom(ctx context.Context, nodeName, forModel string
 			}
 		}
 		if coldIdx == -1 && protIdx != -1 {
-			log.Printf("headroom: node %s: only models with a live sticky session remain evictable for %q; evicting %q as a last resort", nodeName, forModel, loaded[protIdx].name)
+			log.Printf("headroom: node %q: only models with a live sticky session remain evictable for %q; evicting %q as a last resort", nodeName, forModel, loaded[protIdx].name)
 			coldIdx = protIdx
 		}
 		if coldIdx == -1 {
 			if sawInFlightOnly {
-				log.Printf("headroom: node %s needs %d more free bytes for %q but only pinned/higher-priority/in-flight models remain; cannot make room", nodeName, neededBytes-free, forModel)
+				log.Printf("headroom: node %q needs %d more free bytes for %q but only pinned/higher-priority/in-flight models remain; cannot make room", nodeName, neededBytes-free, forModel)
 			} else {
-				log.Printf("headroom: node %s needs %d more free bytes for %q but only pinned/higher-priority models remain; cannot make room", nodeName, neededBytes-free, forModel)
+				log.Printf("headroom: node %q needs %d more free bytes for %q but only pinned/higher-priority models remain; cannot make room", nodeName, neededBytes-free, forModel)
 			}
 			break
 		}
@@ -1121,12 +1121,12 @@ func (r *Router) evictForHeadroom(ctx context.Context, nodeName, forModel string
 		live := inFlightFor(target.modelInFlight, victim.name, targetRuntime)
 		target.mu.RUnlock()
 		if live > 0 {
-			log.Printf("headroom: node %s: skipping eviction of %q for %q, it started serving a request after victims were chosen", nodeName, victim.name, forModel)
+			log.Printf("headroom: node %q: skipping eviction of %q for %q, it started serving a request after victims were chosen", nodeName, victim.name, forModel)
 			inFlight[victim.name] = live
 			continue
 		}
 		if err := r.unloadModel(ctx, target, victim.name, "LRU headroom"); err != nil {
-			log.Printf("headroom: failed to evict %q from %s: %v", victim.name, nodeName, truncateForLog(err.Error(), maxLogValueBytes))
+			log.Printf("headroom: failed to evict %q from %q: %v", victim.name, nodeName, truncateForLog(err.Error(), maxLogValueBytes))
 			break
 		}
 		// Credit what was freed with the same overhead multiplier that was
@@ -1669,7 +1669,7 @@ func (r *Router) makeHeadroom(ctx context.Context, n *NodeState, model string) e
 		// never be met, and since this re-runs on every subsequent warmup
 		// tick (gated only by the cooldown), that full wipe would repeat
 		// indefinitely for as long as this oversized model is requested.
-		log.Printf("ensureHeadroom: model %q (%d bytes) exceeds node %s's total capacity (%d bytes) - skipping", model, est, nodeName, totalBytes)
+		log.Printf("ensureHeadroom: model %q (%d bytes) exceeds node %q's total capacity (%d bytes) - skipping", model, est, nodeName, totalBytes)
 		return errNoHeadroom
 	}
 
@@ -1686,7 +1686,7 @@ func (r *Router) makeHeadroom(ctx context.Context, n *NodeState, model string) e
 	// neededBytes here would wipe every evictable model on the node on every
 	// tick, same failure mode as the est>totalBytes case above.
 	if est+reservedByOthers > totalBytes {
-		log.Printf("ensureHeadroom: model %q (%d bytes) plus %d bytes reserved by other in-flight warmups exceeds node %s's total capacity (%d bytes) - skipping", model, est, reservedByOthers, nodeName, totalBytes)
+		log.Printf("ensureHeadroom: model %q (%d bytes) plus %d bytes reserved by other in-flight warmups exceeds node %q's total capacity (%d bytes) - skipping", model, est, reservedByOthers, nodeName, totalBytes)
 		r.clearWarmReservation(nodeName, model)
 		return errNoHeadroom
 	}
@@ -1747,7 +1747,7 @@ func (r *Router) logHeadroomSkipped(node, model, reason string) {
 	if !r.allowHostLog("headroom:" + node + "/" + model) {
 		return
 	}
-	log.Printf("headroom: skipping the warm load of %q on node %s: %s", truncateForLog(model, maxLogValueBytes), node, reason)
+	log.Printf("headroom: skipping the warm load of %q on node %q: %s", truncateForLog(model, maxLogValueBytes), node, reason)
 }
 
 // evictClaim identifies one claim of a node's eviction cooldown, so releasing

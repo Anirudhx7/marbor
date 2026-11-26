@@ -471,10 +471,10 @@ func TestThermalWatchdog_AgentPersistFailureStillDrainsInMemory(t *testing.T) {
 	if d, _ := thermalDraining(ns[0]); !d {
 		t.Error("in-memory drain must stand even when persisting fails")
 	}
-	if !strings.Contains(buf.String(), "persist drain for a") {
+	if !strings.Contains(buf.String(), "persist drain for \"a\"") {
 		t.Errorf("persist failure not logged: %q", buf.String())
 	}
-	if !strings.Contains(buf.String(), "node a auto-drained after 1 consecutive polls at/above 85.0°C (agent GPU 0 at 95.0°C") {
+	if !strings.Contains(buf.String(), "node \"a\" auto-drained after 1 consecutive polls at/above 85.0°C (agent GPU 0 at 95.0°C") {
 		t.Errorf("drain not reported with its streak, threshold and reading: %q", buf.String())
 	}
 }
@@ -531,7 +531,7 @@ func TestThermalWatchdog_LocalPathDrainLogsReadingAndHonoursLimitFloor(t *testin
 	if d, _ := thermalDraining(n); !d {
 		t.Fatal("first hot local poll drains when the limit is below one")
 	}
-	if !strings.Contains(buf.String(), "node gpu-0 auto-drained after 1 consecutive polls at/above 85.0\u00b0C (local GPU at 91.0\u00b0C)") {
+	if !strings.Contains(buf.String(), "node \"gpu-0\" auto-drained after 1 consecutive polls at/above 85.0\u00b0C (local GPU at 91.0\u00b0C)") {
 		t.Errorf("unexpected local drain log: %q", buf.String())
 	}
 }
