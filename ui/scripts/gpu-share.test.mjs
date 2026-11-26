@@ -39,12 +39,31 @@ test('0 on a node with no known VRAM is flagged when a sibling is on the GPU', (
   assert.equal(showPartialGpuBadge(m, node([m, anotherZero], 0)), false);
 });
 
+test('invalid percents never show a badge', () => {
+  for (const v of [-1, NaN, Infinity, -Infinity]) {
+    const m = { gpuPercent: v };
+    assert.equal(showPartialGpuBadge(m, node([m], 24000)), false);
+  }
+});
+
+test('99 is partial', () => {
+  const m = { gpuPercent: 99 };
+  assert.equal(showPartialGpuBadge(m, node([m], 0)), true);
+});
+
+test('a model is never its own GPU sibling', () => {
+  const m = { gpuPercent: 0 };
+  assert.equal(showPartialGpuBadge(m, node([m], 0)), false);
+});
+
 test('context formatting', () => {
   assert.equal(formatContext(4096), '4k');
   assert.equal(formatContext(32768), '32k');
   assert.equal(formatContext(131072), '128k');
   assert.equal(formatContext(2048 + 512), '2.5k');
   assert.equal(formatContext(512), '512');
+  assert.equal(formatContext(4100), '4k');
+  assert.equal(formatContext(4608), '4.5k');
   assert.equal(formatContext(null), null);
   assert.equal(formatContext(undefined), null);
   assert.equal(formatContext(0), null);

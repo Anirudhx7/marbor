@@ -25,10 +25,10 @@ export const PARTIAL_GPU_TOOLTIP =
 // resident model on it is on the GPU. Otherwise it is likely a CPU-only node.
 export function showPartialGpuBadge(model: ModelShare, node: ShareNode): boolean {
   const pct = model.gpuPercent;
-  if (pct == null || pct >= 100) return false;
+  if (pct == null || !Number.isFinite(pct) || pct < 0 || pct >= 100) return false;
   if (pct > 0) return true;
   if ((node.vramTotalMB ?? 0) > 0) return true;
-  return (node.loadedModels ?? []).some(m => m !== model && m.gpuPercent != null && m.gpuPercent > 0);
+  return (node.loadedModels ?? []).some(m => m !== model && m.gpuPercent != null && Number.isFinite(m.gpuPercent) && m.gpuPercent > 0);
 }
 
 // formatContext writes a loaded context window compactly (4096 -> "4k",
@@ -37,7 +37,7 @@ export function formatContext(contextLength: number | null | undefined): string 
   if (contextLength == null || !(contextLength > 0)) return null;
   if (contextLength >= 1024) {
     const k = contextLength / 1024;
-    return `${Number.isInteger(k) ? k : k.toFixed(1)}k`;
+    return `${k.toFixed(1).replace(/\.0$/, '')}k`;
   }
   return String(contextLength);
 }

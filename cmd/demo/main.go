@@ -111,6 +111,15 @@ func (m *mockOllamaServer) handlePS(w http.ResponseWriter, r *http.Request) {
 				SizeVRAM:      4294967296,
 				ContextLength: 4096,
 			},
+			{
+				// Partly offloaded (about 62% on GPU) so the dashboard shows the badge.
+				Name:          "llama3.1:70b",
+				Size:          42949672960,
+				Digest:        "def456abc123",
+				ExpiresAt:     "2099-01-01T00:00:00Z",
+				SizeVRAM:      26628796825,
+				ContextLength: 8192,
+			},
 		},
 	}
 	w.Header().Set("Content-Type", "application/json")

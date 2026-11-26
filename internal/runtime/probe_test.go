@@ -574,3 +574,24 @@ func TestOllamaProbe_TolerantSizeAndContext(t *testing.T) {
 		})
 	}
 }
+
+func TestOllamaProbe_ZeroHugeAndContextAbsent(t *testing.T) {
+	res, err := probeOllamaBody(t, `{"models":[
+	  {"name":"zero","digest":"d","size":5000,"size_vram":0,"context_length":4096},
+	  {"name":"huge","digest":"d","size":1e30,"size_vram":2048,"context_length":1e30},
+	  {"name":"nocontext","digest":"d","size":5000,"size_vram":2500}
+	]}`)
+	if err != nil {
+		t.Fatalf("probe: %v", err)
+	}
+	z, h, n := res.LoadedModels[0], res.LoadedModels[1], res.LoadedModels[2]
+	if z.SizeBytes != 5000 || z.SizeVRAMBytes != 0 || z.ContextLength != 4096 {
+		t.Errorf("zero vram with known size must stay a real 0: %+v", z)
+	}
+	if h.SizeBytes != 0 || h.ContextLength != 0 {
+		t.Errorf("out-of-range values must read as unknown: %+v", h)
+	}
+	if n.SizeBytes != 5000 || n.SizeVRAMBytes != 2500 || n.ContextLength != 0 {
+		t.Errorf("size present with context absent: %+v", n)
+	}
+}

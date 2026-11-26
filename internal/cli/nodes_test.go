@@ -596,6 +596,8 @@ func TestRun_NodesPartialGPULines(t *testing.T) {
 			"note: gpu-01 runs m at 0% on GPU\n"},
 		{"zero with a sibling on GPU", `{"name":"gpu-01","health":"healthy","loadedModels":[{"name":"m","gpuPercent":0},{"name":"n","gpuPercent":100}]}`,
 			"note: gpu-01 runs m at 0% on GPU\n"},
+		{"full GPU with zero gate", `{"name":"gpu-01","health":"healthy","vramTotalMB":0,"loadedModels":[{"name":"m","gpuPercent":100}]}`, ""},
+		{"negative share", `{"name":"gpu-01","health":"healthy","vramTotalMB":24000,"loadedModels":[{"name":"m","gpuPercent":-5}]}`, ""},
 		{"malformed entries are skipped", `{"name":"gpu-01","health":"healthy","loadedModels":["x",5,null,{"name":"m","gpuPercent":"high"},{"name":"k","gpuPercent":40}]}`,
 			"note: gpu-01 runs k at 40% on GPU\n"},
 	}
@@ -625,6 +627,27 @@ func TestRun_NodesOutputUnchangedWithoutOffloadKeys(t *testing.T) {
 	b, _, _ := runNodesAgainst(t, withKeys)
 	if a != b {
 		t.Errorf("full-GPU output must match the old output:\n%s\n---\n%s", a, b)
+	}
+	if strings.Contains(a, "note:") || strings.Contains(a, "on GPU") {
+		t.Errorf("no note expected:\n%s", a)
+	}
+	const want = "NAME    HOST:PORT  HEALTH   RUNTIME  GPU  VRAM USED/TOTAL  MODELS WARM  DRAINING  REPLICA ROLE  REPLICA HEAD  DETECTED GPUS  KEEP-WARM\ngpu-01  :0         healthy                - / -            1            no        standalone    -             -              -\n"
+	if a != want {
+		t.Errorf("table output changed:\n got %q\nwant %q", a, want)
+	}
+}
+
+func TestRun_NodesPartialStripsControlBytes(t *testing.T) {
+	out, _, code := runNodesAgainst(t, `[{"name":"gpu-01","health":"healthy","loadedModels":[{"name":"m\u001b[31mx","gpuPercent":40}]}]`)
+	if code != ExitOK || strings.Contains(out, "\x1b") || !strings.Contains(out, "at 40% on GPU") {
+		t.Errorf("exit %d, control byte must not reach the terminal: %q", code, out)
+	}
+}
+
+func TestRun_NodesPartialMixedEntries(t *testing.T) {
+	out, _, code := runNodesAgainst(t, `[{"name":"gpu-01","health":"healthy","loadedModels":[{"name":"good1","gpuPercent":30},"bad",{"gpuPercent":10},{"name":"good2","gpuPercent":70,"contextLength":2048}]}]`)
+	if code != ExitOK || !strings.Contains(out, "gpu-01 runs good1 at 30% on GPU") || !strings.Contains(out, "gpu-01 runs good2 at 70% on GPU, context 2048") {
+		t.Errorf("exit %d, good entries must still print:\n%s", code, out)
 	}
 }
 

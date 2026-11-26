@@ -69,8 +69,25 @@ var modelSizes = map[string]int64{
 	"codellama:13b": 7_300_000_000,
 }
 
+// defaultContextLength is the loaded context window for models not in modelContexts.
+const defaultContextLength = 4096
+
+// modelContexts varies the reported loaded context so the dashboard shows more than one value.
+var modelContexts = map[string]int{
+	"llama3.2:3b":   8192,
+	"qwen2.5:14b":   32768,
+	"codellama:13b": 16384,
+}
+
 // vramFor returns how much of a model's size the mock reports as held in GPU memory.
 // One model is deliberately partly offloaded (62%) so a mock fleet shows that case.
+func contextFor(model string) int {
+	if c, ok := modelContexts[model]; ok {
+		return c
+	}
+	return defaultContextLength
+}
+
 func vramFor(model string, size int64) int64 {
 	if model == "codellama:13b" {
 		return size * 62 / 100
@@ -197,7 +214,7 @@ func runOllamaMock(nodeName, port string, latencyMs int) {
 				Model:         m,
 				Size:          sz,
 				SizeVram:      vramFor(m, sz),
-				ContextLength: 4096,
+				ContextLength: contextFor(m),
 				Digest:        digestFor(m),
 				ExpiresAt:     time.Now().Add(5 * time.Minute),
 			})

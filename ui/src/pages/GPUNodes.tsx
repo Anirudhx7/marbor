@@ -835,6 +835,7 @@ function NodeCard({ node, pinnedModels, replicaWorkers, onRemove, onDrain, onUnd
           ) : (
             (node.loadedModels || []).map((model) => {
               const pinned = pinnedModels.includes(model.name);
+              const ctxLabel = formatContext(model.contextLength);
               return (
                 <Badge
                   key={model.name}
@@ -845,17 +846,26 @@ function NodeCard({ node, pinnedModels, replicaWorkers, onRemove, onDrain, onUnd
                   <span className="ml-1.5 opacity-70 font-mono">
                     {formatBytes(model.sizeVram)}
                   </span>
-                  {formatContext(model.contextLength) && (
-                    <span className="ml-1.5 opacity-70 font-mono" title="Context window this model is loaded at">
-                      ctx {formatContext(model.contextLength)}
+                  {ctxLabel && (
+                    <span
+                      className="ml-1.5 opacity-70 font-mono whitespace-nowrap"
+                      title="Context window this model is loaded at"
+                      tabIndex={0}
+                      role="note"
+                      aria-label="Context window this model is loaded at"
+                    >
+                      ctx {ctxLabel}
                     </span>
                   )}
                   {showPartialGpuBadge(model, node) && (
                     <span
                       title={PARTIAL_GPU_TOOLTIP}
+                      tabIndex={0}
+                      role="note"
+                      aria-label={PARTIAL_GPU_TOOLTIP}
                       className="ml-1.5 px-1.5 rounded-full bg-warning/15 text-warning border border-warning/30 whitespace-nowrap"
                     >
-                      {model.gpuPercent}% on GPU
+                      {Math.round(model.gpuPercent ?? 0)}% on GPU
                     </span>
                   )}
                   <button

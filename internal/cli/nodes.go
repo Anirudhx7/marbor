@@ -236,6 +236,8 @@ type loadedModelShare struct {
 	ContextLength *int64 `json:"contextLength"`
 }
 
+// decodeModelShares decodes each raw loadedModels entry independently and keeps
+// the ones that parse and carry a name; malformed entries are dropped silently.
 func decodeModelShares(raw []json.RawMessage) []loadedModelShare {
 	out := make([]loadedModelShare, 0, len(raw))
 	for _, r := range raw {
@@ -248,6 +250,16 @@ func decodeModelShares(raw []json.RawMessage) []loadedModelShare {
 	return out
 }
 
+// anyOnGPU reports whether any entry has a positive GPU share.
+func anyOnGPU(shares []loadedModelShare) bool {
+	for _, m := range shares {
+		if m.GPUPercent != nil && *m.GPUPercent > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // printPartialGPUNotes prints one line per Ollama model that is not fully in GPU
 // memory, with the context it is loaded at when Ollama reports one. A model at 0%
 // is listed only where a GPU is known: the node reports VRAM, or another model on
@@ -258,20 +270,15 @@ func printPartialGPUNotes(w io.Writer, nodes []NodeResp) {
 	var lines []string
 	for _, n := range nodes {
 		shares := decodeModelShares(n.LoadedModels)
-		anyOnGPU := false
+		onGPU := anyOnGPU(shares)
 		for _, m := range shares {
-			if m.GPUPercent != nil && *m.GPUPercent > 0 {
-				anyOnGPU = true
-			}
-		}
-		for _, m := range shares {
-			if m.GPUPercent == nil || *m.GPUPercent >= 100 {
+			if m.GPUPercent == nil || *m.GPUPercent < 0 || *m.GPUPercent >= 100 {
 				continue
 			}
-			if *m.GPUPercent <= 0 && n.VRAMTotalMB <= 0 && !anyOnGPU {
+			if *m.GPUPercent == 0 && n.VRAMTotalMB <= 0 && !onGPU {
 				continue
 			}
-			line := fmt.Sprintf("note: %s runs %s at %d%% on GPU", n.Name, m.Name, *m.GPUPercent)
+			line := fmt.Sprintf("note: %s runs %s at %d%% on GPU", stripControl(n.Name), stripControl(m.Name), *m.GPUPercent)
 			if m.ContextLength != nil {
 				line += fmt.Sprintf(", context %d", *m.ContextLength)
 			}

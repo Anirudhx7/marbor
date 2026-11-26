@@ -57,6 +57,10 @@ func TestRestoreWarmStateSeedsResidencyAndLRU(t *testing.T) {
 	if got := r.nodes[1].LoadedModels; len(got) != 1 || got[0].Name != "qwen" {
 		t.Errorf("polled node residency = %+v, want [qwen] (poll not clobbered)", got)
 	}
+	// A restored entry carries no offload or context reading: those only come from a live poll.
+	if got := r.nodes[0].LoadedModels[0]; got.GPUPercent != nil || got.ContextLength != nil {
+		t.Errorf("restored model must not invent gpuPercent/contextLength: %+v", got)
+	}
 	// LRU history restored for both pairs regardless of residency seeding.
 	if got := r.lastUsedAt("cold", "llama3"); !got.Equal(used) {
 		t.Errorf("cold llama3 last_used = %v, want %v", got, used)

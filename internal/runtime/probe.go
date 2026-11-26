@@ -9,8 +9,10 @@ import (
 
 // LoadedModel describes a single model currently loaded in a backend's VRAM.
 type LoadedModel struct {
-	Name          string
-	SizeVRAMBytes int64 // 0 when unknown
+	Name string
+	// SizeVRAMBytes is the bytes held in GPU memory. 0 is a real reading (nothing on
+	// the GPU) when the backend also reports a model size; without a size it means unknown.
+	SizeVRAMBytes int64
 	// Digest is the backend-reported content digest/checksum, when it exposes one
 	// (currently only Ollama's /api/ps). Empty when unknown - never fabricated.
 	Digest string
