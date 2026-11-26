@@ -11,9 +11,9 @@ import (
 	"github.com/Anirudhx7/marbor/internal/config"
 )
 
-// awkwardNodeName holds a space, a newline, a carriage return and an ESC byte, the characters a
-// bare %s would write straight into the log.
-const awkwardNodeName = "gpu 0\nforged line \x1b[31m"
+// awkwardNodeName holds a space, a carriage return, a newline and an ESC
+// byte, the characters a bare %s would write straight into the log.
+const awkwardNodeName = "gpu 0\r\nforged line \x1b[31m"
 
 // logTimestampPrefix is the standard log package prefix every real log line
 // starts with. A node name that splits a line leaves a fragment without it.
