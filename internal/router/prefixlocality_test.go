@@ -2,9 +2,11 @@ package router
 
 import (
 	"context"
+	"log"
 	"math"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -600,5 +602,52 @@ func TestSeedPrefixLocalityFromStore_TTLAndValidNodeFilter(t *testing.T) {
 	_, hint := r.PrefixLocalityLookup(ctx, "model-x", body)
 	if hint != "node-live" {
 		t.Errorf("post-reseed PrefixLocalityLookup hint = %q, want \"node-live\"", hint)
+	}
+}
+
+// panickingPrefixStore wraps a real store and panics on the prefix-locality
+// write, to prove the background persist goroutine cannot take the process
+// down.
+type panickingPrefixStore struct {
+	store.Store
+	called chan struct{}
+}
+
+func (p *panickingPrefixStore) AppendPrefixLocality(string, string, time.Time) error {
+	close(p.called)
+	panic("prefix-locality persist boom")
+}
+
+func TestRecordPrefixLocality_PersistPanicIsRecovered(t *testing.T) {
+	logs := &syncLog{}
+	prev := log.Writer()
+	log.SetOutput(logs)
+	t.Cleanup(func() { log.SetOutput(prev) })
+
+	real, err := store.Open(filepath.Join(t.TempDir(), "prefix-panic.db"))
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = real.Close() })
+	ps := &panickingPrefixStore{Store: real, called: make(chan struct{})}
+
+	r := newPrefixTestRouter()
+	r.SetStore(ps)
+	r.RecordPrefixLocality("key-panic", "node-a", true)
+
+	select {
+	case <-ps.called:
+	case <-time.After(3 * time.Second):
+		t.Fatal("the persist goroutine never ran")
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) && !strings.Contains(logs.String(), "recovered panic in prefixLocalityPersist") {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !strings.Contains(logs.String(), "recovered panic in prefixLocalityPersist") {
+		t.Fatalf("the panic must be recovered and logged, got %q", logs.String())
+	}
+	if node, hit := r.prefixStore.lookup("key-panic"); !hit || node != "node-a" {
+		t.Errorf("in-memory locality must be unaffected: lookup = (%q, %v)", node, hit)
 	}
 }

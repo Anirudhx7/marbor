@@ -20,9 +20,7 @@ import (
 // without recover. Each entry is a bug awaiting a fix, not an exemption. The
 // test fails when an entry becomes protected, so fixing the function forces
 // the entry's removal.
-var unprotectedGoroutines = map[string]bool{
-	"RecordPrefixLocality": true, // store-write goroutine; wrap it in safeRun, then delete this line
-}
+var unprotectedGoroutines = map[string]bool{}
 
 func callsRecover(body ast.Node) bool {
 	found := false
