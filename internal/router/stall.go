@@ -23,6 +23,8 @@ const (
 	StallTTFTMultiple = 4
 	// StallPhaseFirstByte marks a stall where no output arrived at all.
 	StallPhaseFirstByte = "first_byte"
+	// maxStallDeadline bounds the deadline when no upstream timeout is set.
+	maxStallDeadline = 24 * time.Hour
 )
 
 // RecordStall notes that a streaming request to nodeName produced no first
@@ -109,11 +111,20 @@ func (r *Router) FirstByteStallDeadline(n *NodeState, othersInFlight int) time.D
 	if scaled := time.Duration(maxTTFT * float64(time.Second) * StallTTFTMultiple); scaled > base {
 		base = scaled
 	}
-	if othersInFlight > 0 {
-		base *= time.Duration(1 + othersInFlight)
+	ceiling := r.UpstreamTimeout()
+	if ceiling <= 0 {
+		ceiling = maxStallDeadline
 	}
-	if ceiling := r.UpstreamTimeout(); ceiling > 0 && base > ceiling {
+	if base > ceiling {
 		base = ceiling
+	}
+	if othersInFlight > 0 {
+		// Clamp before multiplying so a huge in-flight count cannot overflow.
+		share := time.Duration(1 + othersInFlight)
+		if base > ceiling/share {
+			return ceiling
+		}
+		base *= share
 	}
 	return base
 }

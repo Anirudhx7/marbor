@@ -11,6 +11,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/http/httptrace"
 	"net/http/httputil"
 	"net/url"
 	"path"
@@ -838,6 +839,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// watch is this attempt's first-byte stall watch; nil when the attempt is
 		// not judged (not a stream, or the model was not warm at dispatch).
 		var watch *stallWatch
+		// connected is set once a connection to the node was obtained, so a
+		// timeout is blamed on the node's silence only when the connect itself
+		// succeeded (a dial or TLS timeout says nothing about generation).
+		var connected atomic.Bool
 		// errHandled is set when ErrorHandler fired and already released this
 		// node's connection slot, so the post-loop DecrConn must not run again
 		// (a double decrement skews least-connections toward the failed node).
@@ -865,7 +870,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// A streaming request whose response headers never came within the
 			// timeout is a stall on this node, counted once per request even if
 			// the watch timer already reported it.
-			if isHeaderTimeout(e) && watch.markStalled() {
+			if connected.Load() && isHeaderTimeout(e) && watch.markStalled() {
 				h.router.RecordStall(node.Name, router.StallPhaseFirstByte, requestID)
 			}
 			h.router.RecordRequestOutcome(node.Name, false)
@@ -989,7 +994,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if isStreamingRequest(r.URL.Path, body) && h.router.ModelWarmOnNode(node, modelName) {
 			watch = h.startStallWatch(r.Context(), rec, node, requestID, h.stallDeadline(node))
 		}
-		streamAborted = serveAndRecoverAbort(proxy, rec, r)
+		attemptReq := r.WithContext(httptrace.WithClientTrace(r.Context(), &httptrace.ClientTrace{
+			GotConn: func(httptrace.GotConnInfo) { connected.Store(true) },
+		}))
+		streamAborted = serveAndRecoverAbort(proxy, rec, attemptReq)
 		stallClean := watch.finish()
 		aborted = streamAborted || clientDisconnected
 

@@ -160,3 +160,33 @@ func TestStallDeadline_SmallUpstreamTimeoutIsTheCeiling(t *testing.T) {
 		t.Fatalf("got %v, want 5s", got)
 	}
 }
+
+func TestStallDeadline_HugeInFlightCountDoesNotOverflow(t *testing.T) {
+	r, n := newStallRouter(t, 600000)
+	got := r.FirstByteStallDeadline(n, int(^uint(0)>>1)-1)
+	if got != 10*time.Minute {
+		t.Fatalf("deadline = %v, want the 10m upstream ceiling", got)
+	}
+	r2, n2 := newStallRouter(t, 0)
+	if got := r2.FirstByteStallDeadline(n2, 1<<40); got <= 0 {
+		t.Fatalf("deadline = %v, want a positive bounded value", got)
+	}
+}
+
+// Requests that stall at the same time on one hung node are distinct
+// requests, so a burst of three flags the node at once.
+func TestStall_ConcurrentDistinctRequestsReachThresholdInABurst(t *testing.T) {
+	r, _ := newStallRouter(t, 0)
+	var wg sync.WaitGroup
+	for _, id := range []string{"burst-1", "burst-2", "burst-3"} {
+		wg.Add(1)
+		go func(id string) {
+			defer wg.Done()
+			r.RecordStall("a", StallPhaseFirstByte, id)
+		}(id)
+	}
+	wg.Wait()
+	if !r.IsStalled("a") {
+		t.Fatal("three concurrent distinct stalled requests must flag the node")
+	}
+}

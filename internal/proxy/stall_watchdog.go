@@ -51,7 +51,8 @@ func isStreamingRequest(path string, body []byte) bool {
 
 // isHeaderTimeout reports whether err is the upstream response-header timeout
 // (a network timeout from the transport), as opposed to a refused connection
-// or a cancelled request.
+// or a cancelled request. By itself it cannot tell a header timeout from a
+// dial or TLS timeout: callers must also know a connection was established.
 func isHeaderTimeout(err error) bool {
 	var ne net.Error
 	return errors.As(err, &ne) && ne.Timeout() && !errors.Is(err, context.Canceled)
@@ -70,6 +71,12 @@ func (h *Handler) startStallWatch(ctx context.Context, rec *statusRecorder, node
 			return
 		}
 		if !w.state.CompareAndSwap(stallWatchRunning, stallWatchStalled) {
+			return
+		}
+		// A byte can land between the check above and winning the swap. Hand
+		// the watch back to running so the request still reads as clean.
+		if rec.sawAnyByte() {
+			w.state.CompareAndSwap(stallWatchStalled, stallWatchRunning)
 			return
 		}
 		h.router.RecordStall(node.Name, router.StallPhaseFirstByte, requestID)

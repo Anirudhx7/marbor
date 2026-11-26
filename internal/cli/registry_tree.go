@@ -98,7 +98,7 @@ func buildRoot() *Command {
 				Name:      "nodes",
 				Short:     "list nodes known to marbor",
 				NeedsAuth: true,
-				Long: "With --signal, lists only nodes that match any of the given signals, the same ones as the dashboard's filter chips: healthy,\n" +
+				Long: "With --signal, lists only nodes that match any of the given signals, the dashboard's filter chips offer all of these except stalled, which they do not include yet: healthy,\n" +
 					"degraded, draining, down, agent, warm, pressure, stalled. healthy and degraded leave out draining nodes; a node that is down and draining\n" +
 					"matches both down and draining; agent means a live marbor agent is reporting; warm means a model is loaded; pressure means used\n" +
 					"VRAM is at least 90% of a known total (a node without measured VRAM never matches, so \"no pressure\" there means unknown, not ok).\n" +

@@ -8,6 +8,7 @@ package proxy
 import (
 	"context"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -217,7 +218,15 @@ func TestStallWatch_NonStreamSuccessDoesNotClear(t *testing.T) {
 }
 
 func TestStallWatch_ClientDisconnectIsNotCounted(t *testing.T) {
-	srv := hangingUpstream(t, 5*time.Second)
+	arrived := make(chan struct{}, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		arrived <- struct{}{}
+		select {
+		case <-time.After(5 * time.Second):
+		case <-r.Context().Done():
+		}
+	}))
+	t.Cleanup(srv.Close)
 	e := newStallEnv(t, srv.URL, true, 150*time.Millisecond, 0)
 	front := httptest.NewServer(e.h)
 	defer front.Close()
@@ -232,13 +241,36 @@ func TestStallWatch_ClientDisconnectIsNotCounted(t *testing.T) {
 			resp.Body.Close()
 		}
 	}()
-	time.Sleep(40 * time.Millisecond)
+	select {
+	case <-arrived:
+	case <-time.After(5 * time.Second):
+		t.Fatal("request never reached the upstream")
+	}
 	cancel()
 	<-done
 	time.Sleep(400 * time.Millisecond) // well past the 150ms deadline
 	if c := e.stallCount(); c != 0 {
 		t.Fatalf("stall count = %d, want 0 after a client disconnect", c)
 	}
+}
+
+func stallsOn(node *router.NodeState) int {
+	node.RLock()
+	defer node.RUnlock()
+	return node.ConsecutiveStalls
+}
+
+// waitFor polls cond until it holds or the limit passes.
+func waitFor(t *testing.T, cond func() bool, limit time.Duration) {
+	t.Helper()
+	end := time.Now().Add(limit)
+	for time.Now().Before(end) {
+		if cond() {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("condition not met in time")
 }
 
 func newTestWatchParts(t *testing.T) (*Handler, *router.NodeState, *statusRecorder) {
@@ -253,7 +285,7 @@ func TestStallWatch_LateCallbackAfterCompletionRecordsNothing(t *testing.T) {
 	// Completion wins the race, as when the request ends right at the deadline
 	// and Stop arrives too late to cancel an already-fired timer.
 	w.state.Store(stallWatchDone)
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(300 * time.Millisecond)
 	if h.router.IsStalled("mock-node") {
 		t.Fatal("late timer callback must not record after completion")
 	}
@@ -265,13 +297,24 @@ func TestStallWatch_LateCallbackAfterCompletionRecordsNothing(t *testing.T) {
 	}
 }
 
+// A timer that is allowed to fire records the stall, so the late-callback test
+// above is exercising a real armed timer and not an absent one.
+func TestStallWatch_ArmedTimerFiresAndRecords(t *testing.T) {
+	h, node, rec := newTestWatchParts(t)
+	w := h.startStallWatch(context.Background(), rec, node, "req-1", 10*time.Millisecond)
+	waitFor(t, func() bool { return stallsOn(node) == 1 }, 5*time.Second)
+	if w.finish() {
+		t.Fatal("finish after the timer won must not report clean")
+	}
+}
+
 func TestStallWatch_FinishBeforeDeadlineStopsTheTimer(t *testing.T) {
 	h, node, rec := newTestWatchParts(t)
 	w := h.startStallWatch(context.Background(), rec, node, "req-1", 30*time.Millisecond)
 	if !w.finish() {
 		t.Fatal("finish before the deadline must report clean")
 	}
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(300 * time.Millisecond)
 	node.RLock()
 	c := node.ConsecutiveStalls
 	node.RUnlock()
@@ -283,15 +326,9 @@ func TestStallWatch_FinishBeforeDeadlineStopsTheTimer(t *testing.T) {
 func TestStallWatch_FinishAfterDeadlineIsNotClean(t *testing.T) {
 	h, node, rec := newTestWatchParts(t)
 	w := h.startStallWatch(context.Background(), rec, node, "req-1", 10*time.Millisecond)
-	time.Sleep(100 * time.Millisecond)
+	waitFor(t, func() bool { return stallsOn(node) == 1 }, 5*time.Second)
 	if w.finish() {
 		t.Fatal("a watch that crossed its deadline must not report clean")
-	}
-	node.RLock()
-	c := node.ConsecutiveStalls
-	node.RUnlock()
-	if c != 1 {
-		t.Fatalf("ConsecutiveStalls = %d, want 1", c)
 	}
 }
 
@@ -308,7 +345,7 @@ func TestStallWatch_ByteSeenSuppressesTimer(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := h.startStallWatch(context.Background(), rec, node, "req-1", 10*time.Millisecond)
-	time.Sleep(80 * time.Millisecond)
+	time.Sleep(300 * time.Millisecond)
 	node.RLock()
 	c := node.ConsecutiveStalls
 	node.RUnlock()
@@ -387,5 +424,37 @@ func TestIsStreamingRequest(t *testing.T) {
 		if got := isStreamingRequest(c.path, []byte(c.body)); got != c.want {
 			t.Errorf("isStreamingRequest(%q, %s) = %v, want %v", c.path, c.body, got, c.want)
 		}
+	}
+}
+
+type dialTimeoutErr struct{}
+
+func (dialTimeoutErr) Error() string   { return "i/o timeout" }
+func (dialTimeoutErr) Timeout() bool   { return true }
+func (dialTimeoutErr) Temporary() bool { return true }
+
+func TestStallWatch_DialTimeoutIsNotAStall(t *testing.T) {
+	e := newStallEnv(t, "http://127.0.0.1:1", true, time.Minute, 0)
+	e.h.localTransportOnce.Do(func() {
+		e.h.localTransport = &http.Transport{
+			DialContext: func(context.Context, string, string) (net.Conn, error) {
+				return nil, &net.OpError{Op: "dial", Net: "tcp", Err: dialTimeoutErr{}}
+			},
+		}
+	})
+	e.post("/api/generate", genBody)
+	if c := e.stallCount(); c != 0 {
+		t.Fatalf("stall count = %d, want 0: an unreachable node is not a stalled generation", c)
+	}
+}
+
+func TestStallWatch_RefusedConnectionIsNotAStall(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	url := srv.URL
+	srv.Close()
+	e := newStallEnv(t, url, true, time.Minute, 0)
+	e.post("/api/generate", genBody)
+	if c := e.stallCount(); c != 0 {
+		t.Fatalf("stall count = %d, want 0 for a refused connection", c)
 	}
 }
