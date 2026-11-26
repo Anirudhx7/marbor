@@ -32,7 +32,7 @@ function escapeAttr(s) {
 }
 // Allowlist of schemes safe to emit as an href/src on the static docs site -
 // javascript:/data: etc. in a community-authored docs PR must never become a
-// clickable/renderable anchor (P386). A value with no scheme prefix at all
+// clickable/renderable anchor. A value with no scheme prefix at all
 // (relative path or #fragment) is always safe.
 function isSafeUrl(url) {
   if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(url)) {

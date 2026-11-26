@@ -54,7 +54,7 @@
     --brand-dim: #57450f;
     --brand-bg: rgba(108,86,19,0.09);
 
-    /* Warm Paper Light Theme - healthy element contrast redesign P400 */
+    /* Warm Paper Light Theme - healthy element contrast redesign */
     --background: 45 20% 90%; /* Deeper warm paper lets card breathe 1.16 vs bg, reduces glare */
     --foreground: 45 9% 15%; /* Soft warm charcoal (prevents halation) */
     --card: 42 35% 97%; /* Cleaner ivory, less saturated for lift */
@@ -385,7 +385,7 @@ input[type="checkbox"]:disabled {
    colour, 3:1 or better on both themes). Toggles used to draw the ring on any
    focus, so a mouse click left a gold outline that read as the on state. */
 
-/* P399 parity tokens - filter-bar is single source via FilterField.tsx */
+/* Parity tokens - filter-bar is single source via FilterField.tsx */
 
 /* Mobile tap-target floor (375px sweep): icon-only buttons get a usable hit
     area without changing desktop layout. Unlayered so it wins over utilities. */
