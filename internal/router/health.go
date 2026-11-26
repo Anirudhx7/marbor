@@ -164,7 +164,7 @@ func (r *Router) pollNode(n *NodeState) {
 	// the process; the poll loop naturally retries it next interval.
 	defer func() {
 		if rec := recover(); rec != nil {
-			log.Printf("router: recovered panic in pollNode for node %s: %v", n.Name, truncateForLog(fmt.Sprint(rec), maxLogValueBytes))
+			log.Printf("router: recovered panic in pollNode for node %q: %v", n.Name, truncateForLog(fmt.Sprint(rec), maxLogValueBytes))
 			r.markFailure(n)
 		}
 	}()
@@ -205,7 +205,7 @@ func (r *Router) pollNode(n *NodeState) {
 			n.probe = runtimepkg.NewProbe(detected, r.client)
 			n.autoDetect = false
 		}()
-		log.Printf("auto-detect: node %s resolved to runtime %q", n.Name, detected)
+		log.Printf("auto-detect: node %q resolved to runtime %q", n.Name, detected)
 	}
 
 	n.mu.RLock()
