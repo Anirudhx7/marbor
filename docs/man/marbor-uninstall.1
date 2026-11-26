@@ -1,0 +1,22 @@
+.TH MARBOR\-UNINSTALL 1 "2026-08-17" "marbor dev" "Marbor Manual"
+.SH NAME
+marbor\-uninstall \- Remove the marbor's own service registration from this host
+.SH SYNOPSIS
+.B marbor uninstall [\-\-purge]
+.SH DESCRIPTION
+Removes the marbor's own service registration (if any) from this host. To remove a marbor agent, run "marbor\-agent service uninstall" on the agent's own host instead. Never deletes marbor.db - remove it yourself if you also want the database gone. Run from the same directory the marbor server was started from, so a nohup\-mode marbor.pid is found. It acts on this host only, so the global flags above do not apply to it.
+.SH FLAGS
+.TP
+.B \-\-purge
+also delete the installed binary (default: only removes service registrations)
+.SH EXAMPLES
+.PP
+.nf
+marbor uninstall
+.fi
+.PP
+.nf
+marbor uninstall \-\-purge
+.fi
+.SH SEE ALSO
+\fBmarbor\fR(1)

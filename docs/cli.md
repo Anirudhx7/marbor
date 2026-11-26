@@ -31,6 +31,48 @@ The session saved by `marbor login` (mode `0600`), under the OS user config dir 
 
 ## Commands
 
+### `bench`
+
+Benchmark warm-vs-cold first-token latency against a running marbor
+
+Measures cold vs warm Time-To-First-Token (TTFT) through the marbor proxy. --target must point at the marbor proxy port, not an Ollama backend directly. It talks to the proxy with an API key, not to the Admin API, so the global flags above do not apply to it.
+
+Usage: `marbor bench [flags]`
+
+Flags:
+
+- `--target string` - Marbor proxy base URL (not the Ollama backend) (default "http://localhost:11434")
+- `--model string` - Model to benchmark (auto-detected from /v1/models if omitted)
+- `--key string` - Bearer API key (required if auth is enabled on the marbor)
+- `--json` - Emit JSON output instead of the human-readable table
+- `--timeout duration` - Per-request timeout (cold load can take minutes on a large model) (default 5m0s)
+
+Examples:
+
+```bash
+marbor bench --target http://localhost:11434 --model llama3:8b
+marbor bench --json --key <api-key>
+```
+
+### `uninstall`
+
+Remove the marbor's own service registration from this host
+
+Removes the marbor's own service registration (if any) from this host. To remove a marbor agent, run "marbor-agent service uninstall" on the agent's own host instead. Never deletes marbor.db - remove it yourself if you also want the database gone. Run from the same directory the marbor server was started from, so a nohup-mode marbor.pid is found. It acts on this host only, so the global flags above do not apply to it.
+
+Usage: `marbor uninstall [--purge]`
+
+Flags:
+
+- `--purge` - also delete the installed binary (default: only removes service registrations)
+
+Examples:
+
+```bash
+marbor uninstall
+marbor uninstall --purge
+```
+
 ### `version`
 
 print CLI and (if reachable) server version

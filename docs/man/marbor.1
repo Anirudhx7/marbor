@@ -9,6 +9,12 @@ marbor \- CLI client for the Marbor Admin API
 Marbor is a single static binary that is three tools in one - the marbor server, a marbor agent, and this thin CLI client of the Admin API - selected by the first argument. As a CLI, every subcommand below is exactly one Admin API request; it never talks to a marbor agent directly.
 .SH COMMANDS
 .TP
+.B bench
+Benchmark warm\-vs-cold first\-token latency against a running marbor. See \fBmarbor-bench\fR(1).
+.TP
+.B uninstall
+Remove the marbor's own service registration from this host. See \fBmarbor-uninstall\fR(1).
+.TP
 .B version
 print CLI and (if reachable) server version
 .TP
@@ -194,6 +200,8 @@ marbor completion zsh > "${fpath[1]}/_marbor"
 marbor completion fish > ~/.config/fish/completions/marbor.fish
 .fi
 .SH SEE ALSO
+\fBmarbor-bench\fR(1),
+\fBmarbor-uninstall\fR(1),
 \fBmarbor-nodes\fR(1),
 \fBmarbor-models\fR(1),
 \fBmarbor-runtime\fR(1),

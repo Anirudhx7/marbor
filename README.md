@@ -507,7 +507,7 @@ of the Admin API - selected by its first argument. The marbor agent is a separat
 | Command | Purpose |
 |---|---|
 | `marbor` | Run the marbor server (default, no argument needed) |
-| `marbor bench` | Benchmark warm-vs-cold first-token latency against a running marbor |
+| `marbor bench [flags]` | Benchmark warm-vs-cold first-token latency against a running marbor |
 | `marbor uninstall [--purge]` | Remove the marbor's own service registration from this host |
 | `marbor version` | print CLI and (if reachable) server version |
 | `marbor status` | print marbor health/status summary |
