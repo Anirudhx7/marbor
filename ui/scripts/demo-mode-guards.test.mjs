@@ -201,3 +201,11 @@ test('cloud provider modal mode is stored, not derived from the typed name', () 
 test('dark: utilities follow the .dark class, not the OS preference', () => {
   assert.match(css, /@custom-variant dark \(&:where\(\.dark, \.dark \*\)\);/)
 })
+
+test('a node added in the demo carries no invented temperature or health history', () => {
+  const body = handler(gpuNodes, 'handleAddNode')
+  const demoBranch = body.slice(body.indexOf('if (demoMode) {'), body.indexOf('if (!isLive)'))
+  assert.ok(demoBranch.includes('withDemoSignals('), 'demo add-node branch not found')
+  assert.doesNotMatch(demoBranch, /temperature:\s*\d/, 'demo node must not invent a temperature')
+  assert.doesNotMatch(demoBranch, /healthHistory:\s*\[\s*\d/, 'demo node must not invent a health history')
+})

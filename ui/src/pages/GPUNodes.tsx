@@ -1820,14 +1820,14 @@ export function GPUNodes() {
         runtime: newNode.runtime === 'auto' ? 'ollama' : newNode.runtime,
         powerDrawW: 0,
         cpuPercent: 0,
-        temperature: 45,
+        temperature: null,
         health: 'healthy',
         draining: false,
         drainedGraceSeconds: 0,
         activeConns: 0,
         uptime: '0m',
         loadedModels: [],
-        healthHistory: [100, 100, 100],
+        healthHistory: [],
         signals: [],
       });
       setNodes(prev => [...prev, added]);
