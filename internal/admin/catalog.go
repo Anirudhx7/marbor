@@ -355,7 +355,7 @@ type catalogNodeEntry struct {
 //     other pull mechanism of its own either.
 //   - "gguf-hf": "hf.co/..." prefix, or a bare filename ending ".gguf" -
 //     Ollama/llama.cpp's convention for pulling a GGUF quant straight from a
-//     Hugging Face repo (ggufOnlyRuntime's own two runtimes). vLLM, TGI, and
+//     Hugging Face repo (the runtimes ggufOnlyRuntime accepts). vLLM, TGI, and
 //     MLX never load GGUF.
 //   - "hf-repo": a bare "org/repo"[:revision] Hugging Face identifier - the
 //     shape handleModelRepo already generates for vLLM/TGI/MLX's own browse

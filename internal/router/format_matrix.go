@@ -1,9 +1,9 @@
 package router
 
 // Model-format buckets understood by FormatServable. The values are also the
-// bucket names the admin API reports, so they must not change. A bucket describes how a
-// model reference has to be fetched and what weight format it implies, using
-// only what the reference string itself proves.
+// bucket names the admin API reports, so they must not change. A bucket
+// describes how a model reference has to be fetched and what weight format it
+// implies, using only what the reference string itself proves.
 const (
 	// FormatOllamaLibrary is a bare "name[:tag]" with no slash: Ollama's own
 	// library shorthand. Only `ollama pull` resolves it.
