@@ -5,10 +5,12 @@ package main
 // consulted ("bench" runs the benchmark tool, "uninstall" removes the
 // service registration), so cli.Root() never sees them. They are real
 // commands an operator can run, so the generated reference must cover them:
-// this list is the one place gen-docs does not derive from the registry. Text
-// here is copied from each command's own --help output; the drift tests in
-// nonregistry_test.go fail when a command, or one of its flags, is added to
-// the binary without being listed here.
+// this list is the one place gen-docs does not derive from the registry.
+// Flag names, types, defaults and usage text must match each command's own
+// flag declarations, and the usage lines must match the binary's help table;
+// the drift tests in nonregistry_test.go fail when a command or flag is added
+// or changed without this list following. The Marbor Agent is a separate
+// binary (cmd/marbor-agent) and must never be listed here as a subcommand.
 
 // nonRegistryFlag is one flag of a non-registry command. Signature is the
 // flag as shown to the operator, e.g. "--target string".
@@ -28,6 +30,7 @@ type nonRegistryCommand struct {
 	Examples []string
 }
 
+// nonRegistryCommands is in the order the commands are documented.
 var nonRegistryCommands = []nonRegistryCommand{
 	{
 		Name:  "bench",
@@ -36,13 +39,13 @@ var nonRegistryCommands = []nonRegistryCommand{
 		Long: "Measures cold vs warm Time-To-First-Token (TTFT) through the marbor proxy. " +
 			"--target must point at the marbor proxy port, not an Ollama backend directly. " +
 			"It talks to the proxy with an API key, not to the Admin API, so the global " +
-			"flags above do not apply to it.",
+			"Admin API flags (--server, --json, --username, --password) do not apply to it.",
 		Flags: []nonRegistryFlag{
-			{"target", "--target string", `Marbor proxy base URL (not the Ollama backend) (default "http://localhost:11434")`},
-			{"model", "--model string", "Model to benchmark (auto-detected from /v1/models if omitted)"},
-			{"key", "--key string", "Bearer API key (required if auth is enabled on the marbor)"},
-			{"json", "--json", "Emit JSON output instead of the human-readable table"},
-			{"timeout", "--timeout duration", "Per-request timeout (cold load can take minutes on a large model) (default 5m0s)"},
+			{Name: "target", Signature: "--target string", Usage: `Marbor proxy base URL (not the Ollama backend) (default "http://localhost:11434")`},
+			{Name: "model", Signature: "--model string", Usage: "Model to benchmark (auto-detected from /v1/models if omitted)"},
+			{Name: "key", Signature: "--key string", Usage: "Bearer API key (required if auth is enabled on the marbor)"},
+			{Name: "json", Signature: "--json", Usage: "Emit JSON output instead of the human-readable table"},
+			{Name: "timeout", Signature: "--timeout duration", Usage: "Per-request timeout (cold load can take minutes on a large model) (default 5m0s)"},
 		},
 		Examples: []string{
 			"marbor bench --target http://localhost:11434 --model llama3:8b",
@@ -53,13 +56,14 @@ var nonRegistryCommands = []nonRegistryCommand{
 		Name:  "uninstall",
 		Usage: "marbor uninstall [--purge]",
 		Short: "Remove the marbor's own service registration from this host",
-		Long: "Removes the marbor's own service registration (if any) from this host. " +
+		Long: "Removes the marbor's own systemd service registration (if any) from this host and stops a " +
+			"marbor started in the background by the installer (the process named in marbor.pid). " +
 			"To remove a marbor agent, run \"marbor-agent service uninstall\" on the agent's own host instead. " +
 			"Never deletes marbor.db - remove it yourself if you also want the database gone. " +
 			"Run from the same directory the marbor server was started from, so a nohup-mode marbor.pid is found. " +
-			"It acts on this host only, so the global flags above do not apply to it.",
+			"It acts on this host only, so the global Admin API flags (--server, --json, --username, --password) do not apply to it.",
 		Flags: []nonRegistryFlag{
-			{"purge", "--purge", "also delete the installed binary (default: only removes service registrations)"},
+			{Name: "purge", Signature: "--purge", Usage: "also delete the installed binary (default: only removes service registrations)"},
 		},
 		Examples: []string{
 			"marbor uninstall",

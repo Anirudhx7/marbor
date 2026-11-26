@@ -32,7 +32,7 @@ func writeMarkdownNonRegistry(b *strings.Builder, c nonRegistryCommand) {
 // genNonRegistryMan renders one page, e.g. "marbor-bench.1".
 func genNonRegistryMan(root *cli.Command, c nonRegistryCommand) string {
 	var b strings.Builder
-	writeManHeader(&b, root.Name+"-"+c.Name, c.Short)
+	writeManHeader(&b, slugFor(root, c.Name), c.Short)
 
 	b.WriteString(".SH SYNOPSIS\n")
 	fmt.Fprintf(&b, ".B %s\n", roffEscape(c.Usage))

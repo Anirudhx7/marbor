@@ -35,7 +35,7 @@ The session saved by `marbor login` (mode `0600`), under the OS user config dir 
 
 Benchmark warm-vs-cold first-token latency against a running marbor
 
-Measures cold vs warm Time-To-First-Token (TTFT) through the marbor proxy. --target must point at the marbor proxy port, not an Ollama backend directly. It talks to the proxy with an API key, not to the Admin API, so the global flags above do not apply to it.
+Measures cold vs warm Time-To-First-Token (TTFT) through the marbor proxy. --target must point at the marbor proxy port, not an Ollama backend directly. It talks to the proxy with an API key, not to the Admin API, so the global Admin API flags (--server, --json, --username, --password) do not apply to it.
 
 Usage: `marbor bench [flags]`
 
@@ -58,7 +58,7 @@ marbor bench --json --key <api-key>
 
 Remove the marbor's own service registration from this host
 
-Removes the marbor's own service registration (if any) from this host. To remove a marbor agent, run "marbor-agent service uninstall" on the agent's own host instead. Never deletes marbor.db - remove it yourself if you also want the database gone. Run from the same directory the marbor server was started from, so a nohup-mode marbor.pid is found. It acts on this host only, so the global flags above do not apply to it.
+Removes the marbor's own systemd service registration (if any) from this host and stops a marbor started in the background by the installer (the process named in marbor.pid). To remove a marbor agent, run "marbor-agent service uninstall" on the agent's own host instead. Never deletes marbor.db - remove it yourself if you also want the database gone. Run from the same directory the marbor server was started from, so a nohup-mode marbor.pid is found. It acts on this host only, so the global Admin API flags (--server, --json, --username, --password) do not apply to it.
 
 Usage: `marbor uninstall [--purge]`
 

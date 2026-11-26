@@ -4,7 +4,7 @@ marbor\-bench \- Benchmark warm\-vs-cold first\-token latency against a running 
 .SH SYNOPSIS
 .B marbor bench [flags]
 .SH DESCRIPTION
-Measures cold vs warm Time\-To-First-Token (TTFT) through the marbor proxy. \-\-target must point at the marbor proxy port, not an Ollama backend directly. It talks to the proxy with an API key, not to the Admin API, so the global flags above do not apply to it.
+Measures cold vs warm Time\-To-First-Token (TTFT) through the marbor proxy. \-\-target must point at the marbor proxy port, not an Ollama backend directly. It talks to the proxy with an API key, not to the Admin API, so the global Admin API flags (\-\-server, \-\-json, \-\-username, \-\-password) do not apply to it.
 .SH FLAGS
 .TP
 .B \-\-target string

@@ -82,7 +82,7 @@ func generateManPages(root *cli.Command) error {
 		}
 	}
 	for _, c := range nonRegistryCommands {
-		path := filepath.Join("docs", "man", root.Name+"-"+c.Name+".1")
+		path := filepath.Join("docs", "man", slugFor(root, c.Name)+".1")
 		if err := os.WriteFile(path, []byte(genNonRegistryMan(root, c)), 0644); err != nil {
 			return err
 		}
@@ -113,7 +113,7 @@ func genRootMan(root *cli.Command) string {
 	b.WriteString(".SH COMMANDS\n")
 	for _, c := range nonRegistryCommands {
 		b.WriteString(".TP\n")
-		fmt.Fprintf(&b, ".B %s\n%s. See \\fB%s-%s\\fR(1).\n", roffEscape(c.Name), roffEscape(c.Short), root.Name, c.Name)
+		fmt.Fprintf(&b, ".B %s\n%s. See \\fB%s\\fR(1).\n", roffEscape(c.Name), roffEscape(c.Short), slugFor(root, c.Name))
 	}
 	for _, c := range root.Sub {
 		b.WriteString(".TP\n")
@@ -156,7 +156,7 @@ func genRootMan(root *cli.Command) string {
 	b.WriteString(".SH SEE ALSO\n")
 	seeAlso := make([]string, 0, len(groups)+len(nonRegistryCommands))
 	for _, c := range nonRegistryCommands {
-		seeAlso = append(seeAlso, fmt.Sprintf("\\fB%s-%s\\fR(1)", root.Name, c.Name))
+		seeAlso = append(seeAlso, fmt.Sprintf("\\fB%s\\fR(1)", slugFor(root, c.Name)))
 	}
 	for _, g := range groups {
 		seeAlso = append(seeAlso, fmt.Sprintf("\\fB%s\\fR(1)", pageSlug(root, g)))
