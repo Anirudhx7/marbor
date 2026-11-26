@@ -1,96 +1,101 @@
 package router
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/Anirudhx7/marbor/internal/config"
-	runtimepkg "github.com/Anirudhx7/marbor/internal/runtime"
 )
 
 // awkwardNodeName holds a space, a newline and an ESC byte, the characters a
 // bare %s would write straight into the log.
 const awkwardNodeName = "gpu 0\nforged line \x1b[31m"
 
-type quotePanicProbe struct{}
+// logTimestampPrefix is the standard log package prefix every real log line
+// starts with. A node name that splits a line leaves a fragment without it.
+var logTimestampPrefix = regexp.MustCompile(`^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}`)
 
-func (quotePanicProbe) Probe(context.Context, string) (runtimepkg.ProbeResult, error) {
-	panic("boom")
-}
-
-func logLinesContaining(out, event string) []string {
-	var hits []string
-	for _, line := range strings.Split(out, "\n") {
-		if strings.Contains(line, event) {
-			hits = append(hits, line)
-		}
-	}
-	return hits
+func newAwkwardRouter(t *testing.T, url string, runtime string) (*Router, *NodeState) {
+	t.Helper()
+	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000, Fallback: "least-connections"},
+		[]config.NodeConfig{{Name: awkwardNodeName, URL: url, Runtime: runtime}}, nil)
+	t.Cleanup(r.client.CloseIdleConnections)
+	return r, r.nodes[0]
 }
 
 func assertQuotedNameLine(t *testing.T, out, event string) {
 	t.Helper()
-	hits := logLinesContaining(out, event)
-	if len(hits) != 1 {
-		t.Fatalf("want exactly one log line containing %q, got %d\n%q", event, len(hits), out)
+	var matching []string
+	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
+		if !logTimestampPrefix.MatchString(line) {
+			t.Errorf("log line split by the node name (no timestamp prefix): %q in %q", line, out)
+		}
+		if strings.Contains(line, event) {
+			matching = append(matching, line)
+		}
 	}
-	if !strings.Contains(hits[0], strconv.Quote(awkwardNodeName)) {
-		t.Errorf("node name not %%q-escaped in %q", hits[0])
+	if len(matching) != 1 {
+		t.Fatalf("want exactly one log line containing %q, got %d\n%q", event, len(matching), out)
+	}
+	if !strings.Contains(matching[0], strconv.Quote(awkwardNodeName)) {
+		t.Errorf("node name not %%q-escaped in %q", matching[0])
 	}
 	if strings.Contains(out, "\x1b") {
 		t.Errorf("raw ESC reached the log: %q", out)
 	}
-	if strings.Contains(out, "forged line") && len(logLinesContaining(out, "forged line")) != 1 {
-		t.Errorf("name split the log into extra lines: %q", out)
-	}
 }
 
-func newAwkwardRouter(t *testing.T, url string) (*Router, *NodeState) {
-	t.Helper()
-	r := New(config.RoutingConfig{Strategy: "warm-first", PollIntervalMs: 2000, Fallback: "least-connections"},
-		[]config.NodeConfig{{Name: "placeholder", URL: url}}, nil)
-	n := r.nodes[0]
-	n.mu.Lock()
-	n.Name = awkwardNodeName
-	n.mu.Unlock()
-	return r, n
-}
+func TestPollNodeLogsQuoteNodeName(t *testing.T) {
+	t.Run("recovered probe panic", func(t *testing.T) {
+		logBuf := captureLog(t)
+		r, n := newAwkwardRouter(t, "http://127.0.0.1:1", "ollama")
+		n.mu.Lock()
+		n.probe = panicProbe{}
+		n.mu.Unlock()
 
-func TestPollNodeRecoverLogQuotesNodeName(t *testing.T) {
-	logBuf := captureLog(t)
-	r, n := newAwkwardRouter(t, "http://127.0.0.1:1")
-	n.mu.Lock()
-	n.autoDetect = false
-	n.probe = quotePanicProbe{}
-	n.mu.Unlock()
+		r.pollNode(n)
 
-	r.pollNode(n)
-
-	assertQuotedNameLine(t, logBuf.String(), "recovered panic in pollNode")
-}
-
-func TestAutoDetectLogQuotesNodeName(t *testing.T) {
-	logBuf := captureLog(t)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		if req.URL.Path == "/api/ps" {
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"models":[]}`))
-			return
+		assertQuotedNameLine(t, logBuf.String(), "recovered panic in pollNode")
+		n.mu.RLock()
+		failures := n.Failures
+		n.mu.RUnlock()
+		if failures != 1 {
+			t.Errorf("Failures = %d, want 1: markFailure must run after the recovered panic", failures)
 		}
-		http.NotFound(w, req)
-	}))
-	defer srv.Close()
-	r, n := newAwkwardRouter(t, srv.URL)
-	n.mu.Lock()
-	n.Runtime = "auto"
-	n.autoDetect = true
-	n.mu.Unlock()
+	})
 
-	r.pollNode(n)
+	t.Run("auto-detect resolution", func(t *testing.T) {
+		logBuf := captureLog(t)
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			if req.URL.Path == "/api/ps" {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"models":[]}`))
+				return
+			}
+			http.NotFound(w, req)
+		}))
+		t.Cleanup(srv.Close)
+		r, n := newAwkwardRouter(t, srv.URL, "auto")
+		n.mu.Lock()
+		n.autoDetect = true
+		n.mu.Unlock()
 
-	assertQuotedNameLine(t, logBuf.String(), "auto-detect: node")
+		r.pollNode(n)
+
+		out := logBuf.String()
+		assertQuotedNameLine(t, out, "auto-detect: node")
+		if !strings.Contains(out, `resolved to runtime "ollama"`) {
+			t.Errorf("auto-detect did not log the quoted runtime resolution: %q", out)
+		}
+		n.mu.RLock()
+		stillAuto := n.autoDetect
+		n.mu.RUnlock()
+		if stillAuto {
+			t.Error("autoDetect still true: the detection path under test did not run")
+		}
+	})
 }
