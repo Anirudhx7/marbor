@@ -1382,3 +1382,41 @@ func TestClassifyFit_UnknownCasesMirrorUINodeVramUnknown(t *testing.T) {
 		})
 	}
 }
+
+// legacyPullFormatIncompatible is the pre-lift implementation, kept verbatim so
+// the shared matrix is proven to decide exactly as the admin did before.
+func legacyPullFormatIncompatible(format, runtime string) bool {
+	switch format {
+	case "ollama-library":
+		return runtime != "" && runtime != "ollama"
+	case "gguf-hf":
+		return !ggufOnlyRuntime(runtime)
+	default:
+		return false
+	}
+}
+
+func TestPullFormatIncompatible_MatchesLegacyAcrossMatrix(t *testing.T) {
+	runtimes := []string{"", "ollama", "llamacpp", "vllm", "tgi", "mlx", "sglang", "auto", "other"}
+	formats := []string{"ollama-library", "gguf-hf", "hf-repo", "fp8", "exl3", "", "unknown"}
+	for _, f := range formats {
+		for _, rt := range runtimes {
+			if got, want := pullFormatIncompatible(f, rt), legacyPullFormatIncompatible(f, rt); got != want {
+				t.Errorf("pullFormatIncompatible(%q, %q) = %v, want %v", f, rt, got, want)
+			}
+		}
+	}
+	// ollama-library on llama.cpp stays incompatible, as it is today.
+	if !pullFormatIncompatible("ollama-library", "llamacpp") {
+		t.Error("ollama-library on llamacpp must stay incompatible")
+	}
+}
+
+func TestGGUFOnlyRuntime_AgreesWithSharedMatrix(t *testing.T) {
+	for _, rt := range []string{"", "ollama", "llamacpp", "vllm", "tgi", "mlx", "sglang", "auto"} {
+		ok, _ := router.FormatServable(rt, router.FormatGGUFHF)
+		if ggufOnlyRuntime(rt) != ok {
+			t.Errorf("ggufOnlyRuntime(%q) disagrees with router.FormatServable gguf-hf = %v", rt, ok)
+		}
+	}
+}

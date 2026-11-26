@@ -369,18 +369,20 @@ type catalogNodeEntry struct {
 func classifyPullTagFormat(model string) string {
 	lower := strings.ToLower(model)
 	if strings.HasPrefix(lower, "hf.co/") || strings.HasSuffix(lower, ".gguf") {
-		return "gguf-hf"
+		return router.FormatGGUFHF
 	}
 	if strings.Contains(model, "/") {
 		// Includes a namespaced Ollama community tag (e.g. "someuser/somemodel")
 		// misclassified as "hf-repo" - indistinguishable from a real HF repo id
 		// by shape alone. Errs safe (never blocked here), not fixed - see the
 		// "hf-repo" bucket's doc comment above for why.
-		return "hf-repo"
+		return router.FormatHFRepo
 	}
-	return "ollama-library"
+	return router.FormatOllamaLibrary
 }
 
+// The matrix itself lives in router.FormatServable so the router and this file
+// share one source of truth; this wrapper only turns it into a hard-block flag.
 // pullFormatIncompatible reports whether format (see classifyPullTagFormat)
 // can never be loaded by runtime - the only two format buckets confident
 // enough to hard-block on. An empty/undeclared runtime is treated as Ollama,
@@ -396,14 +398,8 @@ func classifyPullTagFormat(model string) string {
 //     classifyPullTagFormat's doc comment on why that's deliberate, not an
 //     oversight).
 func pullFormatIncompatible(format, runtime string) bool {
-	switch format {
-	case "ollama-library":
-		return runtime != "" && runtime != "ollama"
-	case "gguf-hf":
-		return !ggufOnlyRuntime(runtime)
-	default:
-		return false
-	}
+	ok, known := router.FormatServable(runtime, format)
+	return known && !ok
 }
 
 // pullFormatDescription renders a classifyPullTagFormat bucket as the
