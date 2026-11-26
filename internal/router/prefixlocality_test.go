@@ -611,10 +611,11 @@ func TestSeedPrefixLocalityFromStore_TTLAndValidNodeFilter(t *testing.T) {
 type panickingPrefixStore struct {
 	store.Store
 	called chan struct{}
+	once   sync.Once
 }
 
 func (p *panickingPrefixStore) AppendPrefixLocality(string, string, time.Time) error {
-	close(p.called)
+	p.once.Do(func() { close(p.called) })
 	panic("prefix-locality persist boom")
 }
 
