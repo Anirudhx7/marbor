@@ -279,7 +279,7 @@ func printPartialGPUNotes(w io.Writer, nodes []NodeResp) {
 				continue
 			}
 			line := fmt.Sprintf("note: %s runs %s at %d%% on GPU", stripControl(n.Name), stripControl(m.Name), *m.GPUPercent)
-			if m.ContextLength != nil {
+			if m.ContextLength != nil && *m.ContextLength > 0 {
 				line += fmt.Sprintf(", context %d", *m.ContextLength)
 			}
 			lines = append(lines, line)

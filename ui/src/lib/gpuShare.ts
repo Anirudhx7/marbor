@@ -34,7 +34,7 @@ export function showPartialGpuBadge(model: ModelShare, node: ShareNode): boolean
 // formatContext writes a loaded context window compactly (4096 -> "4k",
 // 32768 -> "32k", 131072 -> "128k"). Returns null when not reported.
 export function formatContext(contextLength: number | null | undefined): string | null {
-  if (contextLength == null || !(contextLength > 0)) return null;
+  if (contextLength == null || !Number.isFinite(contextLength) || !(contextLength > 0)) return null;
   if (contextLength >= 1024) {
     const k = contextLength / 1024;
     return `${k.toFixed(1).replace(/\.0$/, '')}k`;

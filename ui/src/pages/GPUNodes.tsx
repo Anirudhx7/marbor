@@ -850,9 +850,6 @@ function NodeCard({ node, pinnedModels, replicaWorkers, onRemove, onDrain, onUnd
                     <span
                       className="ml-1.5 opacity-70 font-mono whitespace-nowrap"
                       title="Context window this model is loaded at"
-                      tabIndex={0}
-                      role="note"
-                      aria-label="Context window this model is loaded at"
                     >
                       ctx {ctxLabel}
                     </span>
@@ -860,12 +857,10 @@ function NodeCard({ node, pinnedModels, replicaWorkers, onRemove, onDrain, onUnd
                   {showPartialGpuBadge(model, node) && (
                     <span
                       title={PARTIAL_GPU_TOOLTIP}
-                      tabIndex={0}
-                      role="note"
-                      aria-label={PARTIAL_GPU_TOOLTIP}
                       className="ml-1.5 px-1.5 rounded-full bg-warning/15 text-warning border border-warning/30 whitespace-nowrap"
                     >
-                      {Math.round(model.gpuPercent ?? 0)}% on GPU
+                      {Math.floor(model.gpuPercent ?? 0)}% on GPU
+                      <span className="sr-only">. {PARTIAL_GPU_TOOLTIP}</span>
                     </span>
                   )}
                   <button

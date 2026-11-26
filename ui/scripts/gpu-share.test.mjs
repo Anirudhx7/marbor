@@ -61,6 +61,7 @@ test('context formatting', () => {
   assert.equal(formatContext(32768), '32k');
   assert.equal(formatContext(131072), '128k');
   assert.equal(formatContext(2048 + 512), '2.5k');
+  assert.equal(formatContext(Infinity), null);
   assert.equal(formatContext(512), '512');
   assert.equal(formatContext(4100), '4k');
   assert.equal(formatContext(4608), '4.5k');

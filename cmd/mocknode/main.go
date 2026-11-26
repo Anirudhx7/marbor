@@ -79,8 +79,7 @@ var modelContexts = map[string]int{
 	"codellama:13b": 16384,
 }
 
-// vramFor returns how much of a model's size the mock reports as held in GPU memory.
-// One model is deliberately partly offloaded (62%) so a mock fleet shows that case.
+// contextFor returns the loaded context window the mock reports for a model.
 func contextFor(model string) int {
 	if c, ok := modelContexts[model]; ok {
 		return c
@@ -88,6 +87,8 @@ func contextFor(model string) int {
 	return defaultContextLength
 }
 
+// vramFor returns how much of a model's size the mock reports as held in GPU memory.
+// One model is deliberately partly offloaded (62%) so a mock fleet shows that case.
 func vramFor(model string, size int64) int64 {
 	if model == "codellama:13b" {
 		return size * 62 / 100
