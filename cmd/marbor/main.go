@@ -354,10 +354,6 @@ func resolveCommand(args []string) string {
 	}
 }
 
-// printTopLevelHelp is the single, unified --help output for the merged
-// binary - one command table covering the server, the Marbor Agent, the
-// benchmark tool, and the Admin API CLI, rather than separate help systems
-// per subcommand family.
 // helpTableRows hand-lists only the 3 entrypoints that are not Admin API CLI
 // commands (server default, bench, uninstall) - these are dispatched in
 // resolveCommand before internal/cli's registry is ever consulted, so they
@@ -380,6 +376,10 @@ var helpTableRows = [][2]string{
 	{"marbor uninstall [--purge]", "remove the marbor's own service registration from this host"},
 }
 
+// printTopLevelHelp is the single, unified --help output for the marbor
+// binary - one command table covering the server, the benchmark tool, the
+// uninstall command, and the Admin API CLI, rather than separate help systems
+// per subcommand family.
 func printTopLevelHelp(w io.Writer) {
 	fmt.Fprintf(w, "marbor %s - the self-hosted control plane for AI inference: warm-aware GPU routing, an OpenAI-compatible gateway, and cost-metered cloud overflow for Ollama, vLLM, TGI, llama.cpp, and MLX\n\nUsage:\n", Version)
 	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
@@ -408,15 +408,6 @@ Server flags:
 	fmt.Fprint(w, "\nNo config file needed: start the binary, then add nodes/API keys/settings\nthrough the dashboard at http://localhost:8080 (sign in as admin/admin, then set a new password: the first-login change cannot be skipped).\n")
 }
 
-// printUnknownCommand reports tok (os.Args[1]) as an unrecognized top-level
-// command, offering a "did you mean" suggestion when cli.SuggestTopLevel
-// finds a plausible candidate - the exact typo-correction mechanism
-// internal/cli's own dispatcher already applies to in-CLI actions
-// (reportUnknownToken in internal/cli/dispatch.go), now also covering the
-// most common typo case of all: a mistyped top-level word (e.g. "whoam"
-// instead of "whoami"). Phrasing mirrors dispatch.go's "unknown command
-// %q"/"Did you mean %q?" lines byte-for-byte so the UX is identical whether
-// the typo is top-level or inside the CLI.
 // printAgentRemovedNotice explains where the Marbor Agent went for anyone
 // still typing "marbor agent ..." out of muscle memory from before the
 // control-plane/Marbor Agent binary split - it directs them to the dedicated
@@ -427,6 +418,15 @@ func printAgentRemovedNotice(w io.Writer) {
 	fmt.Fprintln(w, "  Run \"marbor-agent service install --port=<port>\" (set the MARBOR_AGENT_SECRET env var) instead of \"marbor agent service install ...\".")
 }
 
+// printUnknownCommand reports tok (os.Args[1]) as an unrecognized top-level
+// command, offering a "did you mean" suggestion when cli.SuggestTopLevel
+// finds a plausible candidate - the exact typo-correction mechanism
+// internal/cli's own dispatcher already applies to in-CLI actions
+// (reportUnknownToken in internal/cli/dispatch.go), now also covering the
+// most common typo case of all: a mistyped top-level word (e.g. "whoam"
+// instead of "whoami"). Phrasing mirrors dispatch.go's "unknown command
+// %q"/"Did you mean %q?" lines byte-for-byte so the UX is identical whether
+// the typo is top-level or inside the CLI.
 func printUnknownCommand(w io.Writer, tok string) {
 	fmt.Fprintf(w, "marbor: unknown command %q\n", tok)
 	if s := cli.SuggestTopLevel(tok); len(s) > 0 {
