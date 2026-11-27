@@ -169,5 +169,5 @@ test('Warmup keeps the Prefix Locality card when the stats fetch fails and says 
   assert.match(src, /requestId !== loadRequestId\.current[^\r\n]*\r?\n\s*setPrefixStats\(pStats\)/);
   // The unavailable message is rendered in the failed branch and announced.
   assert.match(src, /prefixStatsFailed \|\| !prefixStats \?\s*\(\s*'Unavailable - could not load these stats/);
-  assert.match(src, /role=\{prefixStatsFailed \? 'status' : undefined\}/);
+  assert.match(src, /role="status"/);
 });

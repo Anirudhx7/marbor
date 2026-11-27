@@ -1207,8 +1207,9 @@ export function Warmup() {
                 <p className="text-sm font-medium text-foreground">Prefix Locality Hit Rate</p>
                 <p
                   className={`text-xs ${prefixStatsFailed ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'}`}
-                  role={prefixStatsFailed ? 'status' : undefined}
+                  role="status"
                 >
+                  {/* !prefixStats narrows the type for the branches below; it is only reachable with the failed flag set. */}
                   {prefixStatsFailed || !prefixStats ? (
                     'Unavailable - could not load these stats. Retrying on the next refresh (every 10s).'
                   ) : prefixStats.enabled ? (
