@@ -161,6 +161,13 @@ test('Warmup keeps the Prefix Locality card when the stats fetch fails and says 
   // A failed fetch used to null the stats and hide the whole card, which looked
   // the same as "feature not present". The card must not be gated on the stats alone.
   assert.ok(!src.includes('{prefixStats && ('));
-  assert.match(src, /prefixStatsFailed/);
-  assert.match(src, /Prefix Locality stats unavailable/);
+  assert.match(src, /\(prefixStats \|\| prefixStatsFailed\) &&/);
+  // The failure flag is set from the fetch outcome, so a later success clears it.
+  assert.match(src, /pStatsFailed = true;/);
+  assert.match(src, /setPrefixStatsFailed\(pStatsFailed\)/);
+  // A superseded poll must not overwrite the stats or the failure flag.
+  assert.match(src, /requestId !== loadRequestId\.current[^\r\n]*\r?\n\s*setPrefixStats\(pStats\)/);
+  // The unavailable message is rendered in the failed branch and announced.
+  assert.match(src, /prefixStatsFailed \|\| !prefixStats \?\s*\(\s*'Unavailable - could not load these stats/);
+  assert.match(src, /role=\{prefixStatsFailed \? 'status' : undefined\}/);
 });

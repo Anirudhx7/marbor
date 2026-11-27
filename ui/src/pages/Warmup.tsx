@@ -861,10 +861,17 @@ export function Warmup() {
       if (!active || requestId !== loadRequestId.current || currentAppPath() !== '/warmup') return;
       setPredictiveEnabled(status.predictive_engine_enabled);
 
-      const pStats = await fetchPrefixLocalityStats().catch(() => null);
+      let pStats: PrefixLocalityStats | null = null;
+      let pStatsFailed = false;
+      try {
+        pStats = await fetchPrefixLocalityStats();
+      } catch (e) {
+        pStatsFailed = true;
+        console.warn('prefix locality stats fetch failed', e);
+      }
       if (!active || requestId !== loadRequestId.current || currentAppPath() !== '/warmup') return;
       setPrefixStats(pStats);
-      setPrefixStatsFailed(pStats === null);
+      setPrefixStatsFailed(pStatsFailed);
 
       const sys = await fetchSystemInfo().catch(() => null);
       if (!active || requestId !== loadRequestId.current || currentAppPath() !== '/warmup') return;
@@ -1198,9 +1205,12 @@ export function Warmup() {
             <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30 mb-4">
               <div>
                 <p className="text-sm font-medium text-foreground">Prefix Locality Hit Rate</p>
-                <p className="text-xs text-muted-foreground">
-                  {!prefixStats ? (
-                    'Prefix Locality stats unavailable - could not load them from the marbor. They will retry on the next refresh.'
+                <p
+                  className={`text-xs ${prefixStatsFailed ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'}`}
+                  role={prefixStatsFailed ? 'status' : undefined}
+                >
+                  {prefixStatsFailed || !prefixStats ? (
+                    'Unavailable - could not load these stats. Retrying on the next refresh (every 10s).'
                   ) : prefixStats.enabled ? (
                     `${(prefixStats.hit_rate * 100).toFixed(1)}% (${prefixStats.hits} hits / ${prefixStats.misses} misses)`
                   ) : (
