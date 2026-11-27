@@ -32,10 +32,13 @@ var (
 	quotedWordRe = regexp.MustCompile(`"([^"]+)"`)
 
 	// fsCallRe matches every method call on a FlagSet variable named fs.
-	fsCallRe = regexp.MustCompile(`\bfs\.([A-Za-z0-9]+)\(`)
+	// The receiver must be the bare identifier fs, not a field or another
+	// variable ending in fs (opts.fs.String, myfs.String).
+	fsCallRe = regexp.MustCompile(`(?m)(?:^|[^.\w])fs\.([A-Za-z0-9]+)\(`)
 
-	// exampleFlagRe picks the --flag tokens out of an example command line.
-	exampleFlagRe = regexp.MustCompile(`--([A-Za-z][A-Za-z0-9-]*)`)
+	// exampleFlagRe picks the --flag tokens out of an example command line. A
+	// flag starts a word, so a "--" inside another token is not one.
+	exampleFlagRe = regexp.MustCompile(`(?:^|\s)--([A-Za-z][A-Za-z0-9-]*)`)
 )
 
 // fsNonDeclaration lists the FlagSet methods that are not flag declarations;
@@ -98,6 +101,9 @@ func TestNonRegistry_HelpTableMatches(t *testing.T) {
 	seen := map[string]bool{}
 	for _, m := range rows {
 		usage, name := m[1], m[2]
+		if seen[name] {
+			t.Errorf("`marbor %s` is listed more than once in the binary's help table", name)
+		}
 		seen[name] = true
 		c, ok := documented[name]
 		if !ok {
@@ -157,8 +163,8 @@ func TestNonRegistry_DispatchMatches(t *testing.T) {
 func TestNonRegistry_NoRegistryCollision(t *testing.T) {
 	root := cli.Root()
 	for _, c := range nonRegistryCommands {
-		if !strings.HasPrefix(c.Usage, root.Name+" "+c.Name) {
-			t.Errorf("%s: usage %q must start with %q", c.Name, c.Usage, root.Name+" "+c.Name)
+		if w := strings.Fields(c.Usage); len(w) < 2 || w[0] != root.Name || w[1] != c.Name {
+			t.Errorf("%s: usage %q must start with the words %q", c.Name, c.Usage, root.Name+" "+c.Name)
 		}
 		for _, r := range root.Sub {
 			if r.Name == c.Name {
@@ -342,6 +348,11 @@ func TestNonRegistry_AppearsInGeneratedOutput(t *testing.T) {
 	rootMan := string(files["docs/man/marbor.1"])
 	readme := string(files["README.md"])
 	for _, c := range nonRegistryCommands {
+		// An empty Short or Long would make the Contains checks below pass
+		// for any output.
+		if c.Short == "" || c.Long == "" {
+			t.Errorf("%s: Short and Long must both be non-empty", c.Name)
+		}
 		if !strings.Contains(md, "### `"+c.Name+"`\n") {
 			t.Errorf("docs/cli.md has no section for %q", c.Name)
 		}
@@ -432,5 +443,19 @@ func TestGenerated_CommittedDocsAreCurrent(t *testing.T) {
 		if _, ok := generated[name]; !ok {
 			t.Errorf("%s is committed but no longer generated - delete it", name)
 		}
+	}
+}
+
+// TestNonRegistry_ParserPrecision pins the extraction regexes against the
+// near-miss inputs they must not match, so a loosened pattern cannot make the
+// drift checks pass on the wrong text.
+func TestNonRegistry_ParserPrecision(t *testing.T) {
+	got := exampleFlagRe.FindAllStringSubmatch("marbor bench --target x a--b -- --n 3", -1)
+	if len(got) != 2 || got[0][1] != "target" || got[1][1] != "n" {
+		t.Errorf("exampleFlagRe matched %v, want only --target and --n", got)
+	}
+	calls := fsCallRe.FindAllStringSubmatch("fs.String(\"a\")\n\tx := opts.fs.Int(\"b\")\n\tmyfs.Bool(\"c\")\n\tfs.Parse(args)", -1)
+	if len(calls) != 2 {
+		t.Errorf("fsCallRe matched %v, want only the two bare fs calls", calls)
 	}
 }
