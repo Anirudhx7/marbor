@@ -240,17 +240,10 @@ func TestReloadFromStore_CorruptChainRowAppliesNothing(t *testing.T) {
 			if err := s.st.SetSetting("routing_cloud_only_models", `["changed"]`); err != nil {
 				t.Fatal(err)
 			}
-			// Rows that a successful reload would apply: a new node and cloud.
-			if err := s.st.UpsertNode(store.NodeRecord{Name: "extra", URL: "http://localhost:11999", Runtime: "ollama"}); err != nil {
-				t.Fatal(err)
-			}
-			if err := s.st.UpsertCloudProvider(store.CloudProviderRecord{Name: "cp-extra", Provider: "openai", BaseURL: "https://example.invalid", Enabled: true}); err != nil {
-				t.Fatal(err)
-			}
-			if err := s.st.UpsertKey(store.KeyRecord{Name: "key-extra", Key: "sk-extra-token"}); err != nil {
-				t.Fatal(err)
-			}
+			// Rows that a successful reload would apply: a new node, cloud and key.
+			seedExtraRows(t, s)
 			routerBefore := routerNodeNames(s)
+			liveKeysBefore, liveCloudsBefore := liveAuthAndCloudNames(s)
 			s.mu.RLock()
 			nodesBefore, cloudsBefore, keysBefore := cfgIdentities(s)
 			s.mu.RUnlock()
@@ -270,6 +263,13 @@ func TestReloadFromStore_CorruptChainRowAppliesNothing(t *testing.T) {
 			}
 			if got := routerNodeNames(s); !reflect.DeepEqual(got, routerBefore) || slices.Contains(got, "extra") {
 				t.Errorf("router nodes changed by a failed reload: %v, want %v", got, routerBefore)
+			}
+			liveKeysAfter, liveCloudsAfter := liveAuthAndCloudNames(s)
+			if !reflect.DeepEqual(liveKeysAfter, liveKeysBefore) || slices.Contains(liveKeysAfter, "key-extra") {
+				t.Errorf("live auth keys changed by a failed reload: %v, want %v", liveKeysAfter, liveKeysBefore)
+			}
+			if !reflect.DeepEqual(liveCloudsAfter, liveCloudsBefore) || slices.Contains(liveCloudsAfter, "cp-extra") {
+				t.Errorf("live router cloud providers changed by a failed reload: %v, want %v", liveCloudsAfter, liveCloudsBefore)
 			}
 			s.mu.RLock()
 			defer s.mu.RUnlock()
@@ -293,6 +293,84 @@ func TestReloadFromStore_CorruptChainRowAppliesNothing(t *testing.T) {
 				t.Errorf("s.cfg keys changed by a failed reload: %v, want %v", keysAfter, keysBefore)
 			}
 		})
+	}
+}
+
+// seedExtraRows stores a node, an enabled cloud provider and a key that a
+// successful reload loads into live state. Shared by the corrupt-row test and
+// its positive control so the two cannot drift apart.
+func seedExtraRows(t *testing.T, s *Server) {
+	t.Helper()
+	if err := s.st.UpsertNode(store.NodeRecord{Name: "extra", URL: "http://localhost:11999", Runtime: "ollama"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.st.UpsertCloudProvider(store.CloudProviderRecord{Name: "cp-extra", Provider: "openai", BaseURL: "https://example.invalid", Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.st.UpsertKey(store.KeyRecord{Name: "key-extra", Key: "sk-extra-token"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// liveAuthAndCloudNames returns the sorted key names the live auth middleware
+// holds and the enabled cloud provider names the live router holds, which is
+// what requests are actually served from (not the s.cfg mirror).
+// CloudChain lists enabled providers only and is replaced by a single entry
+// when the LiteLLM integration is on, which these tests never enable.
+func liveAuthAndCloudNames(s *Server) (keys, clouds []string) {
+	keys = s.auth.AllKeyNames()
+	chain := s.router.CloudChain()
+	clouds = make([]string, 0, len(chain))
+	for _, c := range chain {
+		clouds = append(clouds, c.Name)
+	}
+	sort.Strings(keys)
+	sort.Strings(clouds)
+	return keys, clouds
+}
+
+// Positive control for the corrupt-row test above: the same node, cloud and
+// key rows with a valid chain row must load and reach live auth and the live
+// router. Without this, the corrupt-row test cannot tell a rejected reload
+// from rows that were never loadable.
+func TestReloadFromStore_ValidRowsAreApplied(t *testing.T) {
+	s := chainsServer(t)
+	mustPut(t, s, `{"routing":{"fallback_chains":{"a":["b"]},"local_degradation_chains":{"a":["c"]},"cloud_only_models":["x"]}}`)
+	if err := store.SetJSONSetting(s.st, "routing_fallback_chains", map[string][]string{"a": {"new"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetJSONSetting(s.st, "routing_local_degradation_chains", map[string][]string{"a": {"newer"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.st.SetSetting("routing_cloud_only_models", `["changed"]`); err != nil {
+		t.Fatal(err)
+	}
+	seedExtraRows(t, s)
+	_, _, authKeys, cloudProviders, err := s.ReloadFromStore()
+	if err != nil {
+		t.Fatalf("ReloadFromStore with valid rows: %v", err)
+	}
+	if authKeys != 1 || cloudProviders != 1 {
+		t.Errorf("ReloadFromStore counts: keys=%d clouds=%d, want 1 and 1", authKeys, cloudProviders)
+	}
+	liveKeys, liveClouds := liveAuthAndCloudNames(s)
+	if !slices.Contains(liveKeys, "key-extra") {
+		t.Errorf("live auth keys = %v, want key-extra loaded", liveKeys)
+	}
+	if !slices.Contains(liveClouds, "cp-extra") {
+		t.Errorf("live cloud providers = %v, want cp-extra loaded", liveClouds)
+	}
+	if got := routerNodeNames(s); !slices.Contains(got, "extra") {
+		t.Errorf("router nodes = %v, want extra loaded", got)
+	}
+	if got := s.router.FallbackChainFor("a"); !reflect.DeepEqual(got, []string{"new"}) {
+		t.Errorf("fallback chain = %v, want the stored value", got)
+	}
+	if got := s.router.LocalDegradationChainFor("a"); !reflect.DeepEqual(got, []string{"newer"}) {
+		t.Errorf("degradation chain = %v, want the stored value", got)
+	}
+	if got := s.router.CloudOnlyModels(); !reflect.DeepEqual(got, []string{"changed"}) {
+		t.Errorf("cloud-only list = %v, want the stored value", got)
 	}
 }
 
