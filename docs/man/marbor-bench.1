@@ -1,0 +1,34 @@
+.TH MARBOR\-BENCH 1 "2026-08-17" "marbor dev" "Marbor Manual"
+.SH NAME
+marbor\-bench \- Benchmark warm\-vs-cold first\-token latency against a running marbor
+.SH SYNOPSIS
+.B marbor bench [flags]
+.SH DESCRIPTION
+Measures cold vs warm Time\-To-First-Token (TTFT) through the marbor proxy. \-\-target must point at the marbor proxy port, not an Ollama backend directly. It talks to the proxy with an API key, not to the Admin API, so the global Admin API flags (\-\-server, \-\-json, \-\-username, \-\-password) do not apply to it.
+.SH FLAGS
+.TP
+.B \-\-target string
+Marbor proxy base URL (not the Ollama backend) (default "http://localhost:11434")
+.TP
+.B \-\-model string
+Model to benchmark (auto\-detected from /v1/models if omitted)
+.TP
+.B \-\-key string
+Bearer API key (required if auth is enabled on the marbor)
+.TP
+.B \-\-json
+Emit JSON output instead of the human\-readable table
+.TP
+.B \-\-timeout duration
+Per\-request timeout (cold load can take minutes on a large model) (default 5m0s)
+.SH EXAMPLES
+.PP
+.nf
+marbor bench \-\-target http://localhost:11434 \-\-model llama3:8b
+.fi
+.PP
+.nf
+marbor bench \-\-json \-\-key <api\-key>
+.fi
+.SH SEE ALSO
+\fBmarbor\fR(1)

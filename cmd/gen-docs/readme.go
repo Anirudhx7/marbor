@@ -17,21 +17,6 @@ const (
 	readmeEndMarker   = "<!-- END CLI TABLE -->"
 )
 
-// nonRegistryRows are real subcommands of the marbor binary that are
-// NOT part of internal/cli's Command registry - "bench" selects an entirely
-// different mode of the binary (see main.go), and "uninstall" is handled by
-// uninstall.go, not internal/cli. They still belong in the README's CLI
-// table for a human reading "what can this binary do", so they're
-// prepended by hand rather than derived - this is the one place gen-docs
-// doesn't come purely from the registry, and it's the reason: these
-// deliberately live outside it. The Marbor Agent is a separate binary
-// (cmd/marbor-agent) as of the control-plane/agent split - it is not,
-// and must never again be, a subcommand of this table.
-var nonRegistryRows = [][2]string{
-	{"marbor bench", "Benchmark warm-vs-cold first-token latency against a running marbor"},
-	{"marbor uninstall [--purge]", "Remove the marbor's own service registration from this host"},
-}
-
 func generateReadmeTable(root *cli.Command) error {
 	data, err := os.ReadFile("README.md")
 	if err != nil {
@@ -63,8 +48,9 @@ func renderReadmeTable(root *cli.Command) string {
 	b.WriteString("| Command | Purpose |\n")
 	b.WriteString("|---|---|\n")
 	fmt.Fprintf(&b, "| `%s` | Run the marbor server (default, no argument needed) |\n", root.Name)
-	for _, row := range nonRegistryRows {
-		fmt.Fprintf(&b, "| `%s` | %s |\n", row[0], row[1])
+	// Commands dispatched outside the registry (see nonregistry.go).
+	for _, c := range nonRegistryCommands {
+		fmt.Fprintf(&b, "| `%s` | %s |\n", c.Usage, c.Short)
 	}
 	for _, c := range root.Sub {
 		writeReadmeRows(&b, root, c, nil)

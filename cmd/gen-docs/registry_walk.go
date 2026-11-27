@@ -49,7 +49,13 @@ func groupPageCommands(root *cli.Command) []*cli.Command {
 // pageSlug returns the man/doc page identifier for a top-level group
 // command, e.g. "marbor-models".
 func pageSlug(root *cli.Command, c *cli.Command) string {
-	return root.Name + "-" + c.Name
+	return slugFor(root, c.Name)
+}
+
+// slugFor returns the man/doc page identifier for a command name, shared by
+// registry commands and the non-registry ones (bench, uninstall).
+func slugFor(root *cli.Command, name string) string {
+	return root.Name + "-" + name
 }
 
 // argsSuffix renders args using the same "<required>"/"[optional]"/

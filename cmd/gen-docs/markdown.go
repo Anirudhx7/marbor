@@ -45,6 +45,9 @@ func generateMarkdown(root *cli.Command) error {
 		"`%AppData%\\marbor\\session` on Windows.\n\n")
 
 	b.WriteString("## Commands\n\n")
+	for _, c := range nonRegistryCommands {
+		writeMarkdownNonRegistry(&b, c)
+	}
 	for _, c := range root.Sub {
 		writeMarkdownCommand(&b, c, 3)
 	}
