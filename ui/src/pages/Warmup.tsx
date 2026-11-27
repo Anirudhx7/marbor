@@ -813,6 +813,7 @@ export function Warmup() {
   const [serverTimezone, setServerTimezone] = useState<string>('');
   const [predictiveEnabled, setPredictiveEnabled] = useState(true);
   const [prefixStats, setPrefixStats] = useState<PrefixLocalityStats | null>(null);
+  const [prefixStatsFailed, setPrefixStatsFailed] = useState(false);
   const [togglingPredictive, setTogglingPredictive] = useState(false);
   const [predictiveConfirmOpen, setPredictiveConfirmOpen] = useState(false);
   const [scheduleToDelete, setScheduleToDelete] = useState<Schedule | null>(null);
@@ -860,9 +861,17 @@ export function Warmup() {
       if (!active || requestId !== loadRequestId.current || currentAppPath() !== '/warmup') return;
       setPredictiveEnabled(status.predictive_engine_enabled);
 
-      const pStats = await fetchPrefixLocalityStats().catch(() => null);
-      if (!active || currentAppPath() !== '/warmup') return;
+      let pStats: PrefixLocalityStats | null = null;
+      let pStatsFailed = false;
+      try {
+        pStats = await fetchPrefixLocalityStats();
+      } catch (e) {
+        pStatsFailed = true;
+        console.warn('prefix locality stats fetch failed', e);
+      }
+      if (!active || requestId !== loadRequestId.current || currentAppPath() !== '/warmup') return;
       setPrefixStats(pStats);
+      setPrefixStatsFailed(pStatsFailed);
 
       const sys = await fetchSystemInfo().catch(() => null);
       if (!active || requestId !== loadRequestId.current || currentAppPath() !== '/warmup') return;
@@ -1192,12 +1201,18 @@ export function Warmup() {
             </button>
           </div>
 
-          {prefixStats && (
+          {(prefixStats || prefixStatsFailed) && (
             <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30 mb-4">
               <div>
                 <p className="text-sm font-medium text-foreground">Prefix Locality Hit Rate</p>
-                <p className="text-xs text-muted-foreground">
-                  {prefixStats.enabled ? (
+                <p
+                  className={`text-xs ${prefixStatsFailed ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'}`}
+                  role="status"
+                >
+                  {/* !prefixStats narrows the type for the branches below; it is only reachable with the failed flag set. */}
+                  {prefixStatsFailed || !prefixStats ? (
+                    'Unavailable - could not load these stats. Retrying on the next refresh (every 10s).'
+                  ) : prefixStats.enabled ? (
                     `${(prefixStats.hit_rate * 100).toFixed(1)}% (${prefixStats.hits} hits / ${prefixStats.misses} misses)`
                   ) : (
                     <>
