@@ -129,7 +129,7 @@ func (r *Router) discoverAndAddDockerNodes() {
 			r.discoveredURLs[n.URL] = struct{}{}
 			r.mu.Unlock()
 		} else if r.allowHostLog("docker-add:" + n.URL) {
-			log.Printf("router: docker-discovered node %q at %s was not added (see the rejection reason above)", n.Name, n.URL)
+			log.Printf("router: docker-discovered node %q at %q was not added (see the rejection reason above)", n.Name, n.URL)
 		}
 	}
 }

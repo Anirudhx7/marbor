@@ -2526,7 +2526,7 @@ func (s *Server) handleDisableMarborAgent(w http.ResponseWriter, r *http.Request
 		if sameHost && fp != "" {
 			s.router.PatchNode(nodeName, router.NodePatch{TLSFingerprint: &empty})
 			if err := s.st.UpsertNodeOverride(nodeName, nil, nil, nil, nil, nil, &empty, nil, nil, nil, nil); err != nil {
-				log.Printf("admin: failed to persist cleared TLS fingerprint override for %s: %v", nodeName, err)
+				log.Printf("admin: failed to persist cleared TLS fingerprint override for %q: %v", nodeName, err)
 			}
 		}
 	}
@@ -4209,7 +4209,7 @@ func (s *Server) handlePatchNode(w http.ResponseWriter, r *http.Request) {
 				return false
 			}
 			if err := s.st.UpsertNodeOverride(name, patch.VRAMTotalMB, patch.GPUModel, patch.Runtime, patch.GPUIndices, patch.MaxInFlight, patch.TLSFingerprint, patch.ParallelismType, patch.ParallelismWidth, patch.VRAMOverrides, patch.ReplicaPeers); err != nil {
-				log.Printf("admin: failed to persist node override for %s: %v", name, err)
+				log.Printf("admin: failed to persist node override for %q: %v", name, err)
 			}
 		}
 		return true
@@ -7842,7 +7842,7 @@ func (s *Server) runDirectPull(ctx context.Context, job *pullJob, nodeURL, model
 	client := &http.Client{Timeout: nodePullTimeout, CheckRedirect: noRedirect}
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Printf("runDirectPull: request to node %s failed: %v", job.Node, err)
+		log.Printf("runDirectPull: request to node %q failed: %v", job.Node, err)
 		job.finish("failed", fmt.Sprintf("pull failed for node %s: %v", job.Node, err))
 		return
 	}
@@ -7850,7 +7850,7 @@ func (s *Server) runDirectPull(ctx context.Context, job *pullJob, nodeURL, model
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		upstreamMsg, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		log.Printf("runDirectPull: node %s upstream returned %d: %s", job.Node, resp.StatusCode, upstreamMsg)
+		log.Printf("runDirectPull: node %q upstream returned %d: %s", job.Node, resp.StatusCode, upstreamMsg)
 		errMsg := fmt.Sprintf("upstream returned %d: %s", resp.StatusCode, strings.TrimSpace(string(upstreamMsg)))
 		if resp.StatusCode == http.StatusUnauthorized {
 			// Direct pulls hit the node's Ollama REST API directly, which has

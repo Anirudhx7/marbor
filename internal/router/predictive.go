@@ -398,7 +398,7 @@ func (r *Router) runTimeOfDayPrewarm(ctx context.Context, targetHour int, health
 					if estSize > 0 && freeBytes >= estSize {
 						r.logPredictiveDigestDrift(n, model)
 						go safeRun("prewarmPredicted", func() { r.prewarmPredicted(ctx, n, model, keepAlive) })
-						log.Printf("[predictive] time-of-day prewarm triggered for model %q on node %s for hour %d (appeared on %d distinct days)",
+						log.Printf("[predictive] time-of-day prewarm triggered for model %q on node %q for hour %d (appeared on %d distinct days)",
 							model, n.Name, targetHour, distinctDays)
 					}
 				}
@@ -432,7 +432,7 @@ func (r *Router) prewarmPredicted(ctx context.Context, n *NodeState, model, keep
 // Visibility only: the prewarm still proceeds.
 func (r *Router) logPredictiveDigestDrift(n *NodeState, model string) {
 	if r.driftedResidentDigest(n, model) {
-		log.Printf("[predictive] node %s model %q: digest drift - resident copy differs from the fleet's reference digest; still prewarming", n.Name, model)
+		log.Printf("[predictive] node %q model %q: digest drift - resident copy differs from the fleet's reference digest; still prewarming", n.Name, model)
 	}
 }
 
