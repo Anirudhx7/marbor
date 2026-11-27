@@ -718,10 +718,11 @@ function NodeCard({ node, pinnedModels, replicaWorkers, onRemove, onDrain, onUnd
             <span className="text-xs font-medium">Temp</span>
           </div>
           <span className={`font-mono text-lg font-medium ${
-            node.temperature && node.temperature > 80 ? 'text-destructive' : 
-            node.temperature && node.temperature > 70 ? 'text-amber-700 dark:text-amber-400' : 'text-primary'
+            node.temperature == null ? 'text-muted-foreground' :
+            node.temperature > 80 ? 'text-destructive' : 
+            node.temperature > 70 ? 'text-amber-700 dark:text-amber-400' : 'text-primary'
           }`}>
-            {node.temperature ? `${node.temperature}°C` : 'N/A'}
+            {node.temperature != null ? `${node.temperature}°C` : 'N/A'}
           </span>
         </div>
       </div>
@@ -1820,14 +1821,14 @@ export function GPUNodes() {
         runtime: newNode.runtime === 'auto' ? 'ollama' : newNode.runtime,
         powerDrawW: 0,
         cpuPercent: 0,
-        temperature: 45,
+        temperature: null,
         health: 'healthy',
         draining: false,
         drainedGraceSeconds: 0,
         activeConns: 0,
         uptime: '0m',
         loadedModels: [],
-        healthHistory: [100, 100, 100],
+        healthHistory: [],
         signals: [],
       });
       setNodes(prev => [...prev, added]);

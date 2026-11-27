@@ -201,3 +201,15 @@ test('cloud provider modal mode is stored, not derived from the typed name', () 
 test('dark: utilities follow the .dark class, not the OS preference', () => {
   assert.match(css, /@custom-variant dark \(&:where\(\.dark, \.dark \*\)\);/)
 })
+
+test('a node added in the demo carries no invented temperature or health history', () => {
+  const body = handler(gpuNodes, 'handleAddNode')
+  const start = body.indexOf('if (demoMode) {')
+  const end = body.indexOf('if (!isLive)')
+  assert.ok(start >= 0 && end > start, 'demo add-node branch not found')
+  const demoBranch = body.slice(start, end)
+  assert.ok(demoBranch.includes('withDemoSignals('), 'demo add-node branch not found')
+  // Unknown stays unknown: null and an empty history, rendered as N/A and "no data yet".
+  assert.match(demoBranch, /temperature:\s*null,/, 'demo node temperature must be null')
+  assert.match(demoBranch, /healthHistory:\s*\[\],/, 'demo node health history must be empty')
+})
