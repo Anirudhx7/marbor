@@ -463,11 +463,13 @@ func (r *Router) RecordPrefixLocality(key, nodeName string, success bool) {
 	st := r.store
 	r.mu.RUnlock()
 	if st != nil {
-		go func() {
+		// A panic in the store write is recovered and logged: an unrecovered
+		// panic in any goroutine would end the whole process.
+		go safeRun("prefixLocalityPersist", func() {
 			if err := st.AppendPrefixLocality(key, nodeName, time.Now()); err != nil {
 				log.Printf("prefix-locality: persistence write failed (non-fatal, in-memory state unaffected): %v", err)
 			}
-		}()
+		})
 	}
 }
 
