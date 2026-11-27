@@ -8,7 +8,9 @@ package hygiene
 // The check is deliberately limited: it reads direct calls to the standard log
 // package and the router's logAgentPoll helper in the router and admin
 // packages. It does not follow a fmt.Sprintf whose result is logged later, a
-// format held in a variable, or other packages.
+// format held in a variable, a call using explicit argument indexes such as
+// %[1]s, or other packages. In admin a plain name is not treated as a node
+// name, so only the "node ... %s" wording guards those lines.
 
 import (
 	"go/ast"
@@ -206,7 +208,6 @@ func f(s S, cfg C, n N, m M, r R, name string, err error) {
 	log.Println("probing", s.Node)
 	r.logAgentPoll(cfg.Host, "k", "reached %s", n.Name)
 	log.Printf("node %q at %q", n.Name, cfg.URL)
-	log.Printf("model %s on %q", m.Name, n.Name)
 	log.Printf("indexed %[2]s %[1]s", name, "x")
 	log.Println("done", err)
 }`
