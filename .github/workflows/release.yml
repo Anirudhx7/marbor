@@ -8,7 +8,6 @@ on:
 permissions:
   contents: write
   packages: write
-  actions: write
 
 jobs:
   # Build and verify the release without publishing it (release-check.yml). The
@@ -22,6 +21,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # id-token and attestations are needed only here, for the provenance step.
+    # actions: write is needed only here, for the step that dispatches the Pages
+    # deploy. A new job should declare its own permissions block; without one it
+    # inherits only the workflow-level contents and packages write.
     permissions:
       contents: write
       packages: write
