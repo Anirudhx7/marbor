@@ -368,7 +368,7 @@ func groupedFleet(tb testing.TB, n int) *Server {
 	tb.Helper()
 	cfgs := make([]config.NodeConfig, n)
 	for i := range cfgs {
-		cfgs[i] = config.NodeConfig{Name: fmt.Sprintf("n%03d", i), URL: fmt.Sprintf("http://n%03d:8000", i), Runtime: "vllm"}
+		cfgs[i] = config.NodeConfig{Name: fmt.Sprintf("n%03d", i), URL: fmt.Sprintf("http://127.0.%d.%d:8000", i/250, i%250+1), Runtime: "vllm"}
 	}
 	r := router.New(config.RoutingConfig{}, cfgs, nil)
 	nodes := r.Nodes()
