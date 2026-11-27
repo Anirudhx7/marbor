@@ -347,10 +347,9 @@ func resolveCommand(args []string) string {
 			}
 		}
 		// A bare word that isn't a known subcommand is almost always a typo
-		// or a missing subcommand (e.g. "uninstall", which has never been a
-		// binary subcommand - see uninstall.sh) - silently starting the full
-		// marbor server in that case is a dangerous footgun, not a reasonable
-		// default.
+		// or a missing subcommand (e.g. "statu" for "status") - silently starting
+		// the full marbor server in that case is a dangerous footgun, not a
+		// reasonable default.
 		return "unknown"
 	}
 }
@@ -359,11 +358,12 @@ func resolveCommand(args []string) string {
 // binary - one command table covering the server, the Marbor Agent, the
 // benchmark tool, and the Admin API CLI, rather than separate help systems
 // per subcommand family.
-// helpTableRows hand-lists only the 4 genuinely-non-CLI entrypoints (server
-// default, agent, bench, uninstall) - these are separate binaries/entrypoints
-// dispatched in resolveCommand before internal/cli's registry is ever
-// consulted, so they have no home in that registry and this is the one
-// legitimate source of truth for them. Every OTHER row (version, status,
+// helpTableRows hand-lists only the 3 entrypoints that are not Admin API CLI
+// commands (server default, bench, uninstall) - these are dispatched in
+// resolveCommand before internal/cli's registry is ever consulted, so they
+// have no home in that registry and this is the one legitimate source of
+// truth for them. The agent is not listed: it ships as its own binary,
+// marbor-agent, with its own help. Every OTHER row (version, status,
 // login, key, spill, requests, ... - the real Admin API CLI commands) comes
 // from cli.HelpRows() at print time instead of being hand-duplicated here -
 // this hardening matters because the previous hand-listed
