@@ -1205,7 +1205,7 @@ func (r *Router) fireWebhook(event, nodeName, nodeURL string) {
 		client := &http.Client{Timeout: 5 * time.Second, CheckRedirect: noRedirect}
 		resp, err := client.Do(req)
 		if err != nil {
-			log.Printf("webhook: post %s: %v", strings.TrimRight(cfg.URL, "/"), err)
+			log.Printf("webhook: post %q: %v", strings.TrimRight(cfg.URL, "/"), err)
 			return
 		}
 		resp.Body.Close()
