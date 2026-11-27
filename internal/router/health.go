@@ -53,6 +53,30 @@ func attributeSoleModelVRAM(n *NodeState) {
 	n.LoadedModels = updated
 }
 
+// modelInfoFromProbe converts one probed model. GPUPercent comes from the probe's own
+// size and size_vram, before attributeSoleModelVRAM can fill SizeVRAM from node totals:
+// it is only set when the runtime reported a positive total size and a non-negative
+// VRAM share. A reported 0 with a known size is a real 0% on GPU; anything else unknown
+// stays nil. Any VRAM at all never rounds down to 0.
+func modelInfoFromProbe(m runtimepkg.LoadedModel) ModelInfo {
+	info := ModelInfo{Name: m.Name, SizeVRAM: m.SizeVRAMBytes, Digest: m.Digest}
+	if m.SizeBytes > 0 && m.SizeVRAMBytes >= 0 {
+		pct := int(float64(m.SizeVRAMBytes) * 100 / float64(m.SizeBytes))
+		if m.SizeVRAMBytes > 0 && pct < 1 {
+			pct = 1
+		}
+		if pct > 100 {
+			pct = 100
+		}
+		info.GPUPercent = &pct
+	}
+	if m.ContextLength > 0 {
+		ctxLen := m.ContextLength
+		info.ContextLength = &ctxLen
+	}
+	return info
+}
+
 // pollNvidiaAll refreshes nvidia-smi stats for all local nodes and stores
 // results in nvidiaCache. Called on a separate ticker (default 30s) so that
 // nvidia-smi is never forked on every /api/ps poll cycle.
@@ -256,7 +280,7 @@ func (r *Router) pollNode(n *NodeState) {
 	// Convert runtime.LoadedModel slice to []ModelInfo (router's internal type).
 	models := make([]ModelInfo, len(result.LoadedModels))
 	for i, m := range result.LoadedModels {
-		models[i] = ModelInfo{Name: m.Name, SizeVRAM: m.SizeVRAMBytes, Digest: m.Digest}
+		models[i] = modelInfoFromProbe(m)
 		r.recordModelDigest(m.Name, m.Digest)
 	}
 	psUsedMB := result.VRAMUsedMB

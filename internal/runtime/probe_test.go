@@ -496,3 +496,102 @@ func TestNewProbe_UnknownRuntime_ReturnsOllamaProbe(t *testing.T) {
 		t.Errorf("expected *OllamaProbe for unknown runtime, got %T", probe)
 	}
 }
+
+func probeOllamaBody(t *testing.T, body string) (ProbeResult, error) {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(body))
+	}))
+	defer srv.Close()
+	probe := &OllamaProbe{client: testClient()}
+	return probe.Probe(context.Background(), srv.URL)
+}
+
+func TestOllamaProbe_SizeAndContextLength(t *testing.T) {
+	// Shape documented for Ollama's GET /api/ps. The second entry has no
+	// context_length, as older Ollama builds report.
+	body := `{"models":[
+	  {"name":"llama3:70b","model":"llama3:70b","size":40000000000,"digest":"sha256:aaa",
+	   "details":{"format":"gguf"},"expires_at":"2025-01-01T00:00:00Z","size_vram":24800000000,"context_length":4096},
+	  {"name":"mistral:7b","model":"mistral:7b","size":4100000000,"digest":"sha256:bbb",
+	   "expires_at":"2025-01-01T00:00:00Z","size_vram":4100000000}
+	]}`
+	res, err := probeOllamaBody(t, body)
+	if err != nil {
+		t.Fatalf("probe: %v", err)
+	}
+	if len(res.LoadedModels) != 2 {
+		t.Fatalf("want 2 models, got %d", len(res.LoadedModels))
+	}
+	a, b := res.LoadedModels[0], res.LoadedModels[1]
+	if a.SizeBytes != 40000000000 || a.ContextLength != 4096 || a.SizeVRAMBytes != 24800000000 {
+		t.Errorf("first model decoded wrong: %+v", a)
+	}
+	if b.SizeBytes != 4100000000 || b.ContextLength != 0 {
+		t.Errorf("second model: size=%d ctx=%d, want size set and ctx 0", b.SizeBytes, b.ContextLength)
+	}
+}
+
+func TestOllamaProbe_TolerantSizeAndContext(t *testing.T) {
+	cases := map[string]struct{ size, ctx string }{
+		"null":     {"null", "null"},
+		"absent":   {"", ""},
+		"string":   {`"abc"`, `"abc"`},
+		"float":    {"1.5e9", "1.5"},
+		"negative": {"-1", "-4096"},
+		"bool":     {"true", "false"},
+		"object":   {"{}", "[]"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			extra := ""
+			if c.size != "" {
+				extra += `,"size":` + c.size
+			}
+			if c.ctx != "" {
+				extra += `,"context_length":` + c.ctx
+			}
+			body := `{"models":[{"name":"m:1","digest":"sha256:d","size_vram":2048` + extra + `}]}`
+			res, err := probeOllamaBody(t, body)
+			if err != nil {
+				t.Fatalf("probe must not fail on odd size/context_length: %v", err)
+			}
+			m := res.LoadedModels[0]
+			if m.Name != "m:1" || m.Digest != "sha256:d" || m.SizeVRAMBytes != 2048 {
+				t.Errorf("other fields damaged: %+v", m)
+			}
+			if name == "float" {
+				// 1.5e9 is integral and valid; 1.5 is not integral.
+				if m.SizeBytes != 1500000000 || m.ContextLength != 0 {
+					t.Errorf("float case: size=%d ctx=%d", m.SizeBytes, m.ContextLength)
+				}
+				return
+			}
+			if m.SizeBytes != 0 || m.ContextLength != 0 {
+				t.Errorf("%s: want unknown (0), got size=%d ctx=%d", name, m.SizeBytes, m.ContextLength)
+			}
+		})
+	}
+}
+
+func TestOllamaProbe_ZeroHugeAndContextAbsent(t *testing.T) {
+	res, err := probeOllamaBody(t, `{"models":[
+	  {"name":"zero","digest":"d","size":5000,"size_vram":0,"context_length":4096},
+	  {"name":"huge","digest":"d","size":1e30,"size_vram":2048,"context_length":1e30},
+	  {"name":"nocontext","digest":"d","size":5000,"size_vram":2500}
+	]}`)
+	if err != nil {
+		t.Fatalf("probe: %v", err)
+	}
+	z, h, n := res.LoadedModels[0], res.LoadedModels[1], res.LoadedModels[2]
+	if z.SizeBytes != 5000 || z.SizeVRAMBytes != 0 || z.ContextLength != 4096 {
+		t.Errorf("zero vram with known size must stay a real 0: %+v", z)
+	}
+	if h.SizeBytes != 0 || h.ContextLength != 0 {
+		t.Errorf("out-of-range values must read as unknown: %+v", h)
+	}
+	if n.SizeBytes != 5000 || n.SizeVRAMBytes != 2500 || n.ContextLength != 0 {
+		t.Errorf("size present with context absent: %+v", n)
+	}
+}

@@ -49,12 +49,14 @@ type modelInfo struct {
 }
 
 type psModel struct {
-	Name      string    `json:"name"`
-	Model     string    `json:"model"`
-	Size      int64     `json:"size"`
-	SizeVram  int64     `json:"size_vram"`
-	Digest    string    `json:"digest"`
-	ExpiresAt time.Time `json:"expires_at"`
+	Name     string `json:"name"`
+	Model    string `json:"model"`
+	Size     int64  `json:"size"`
+	SizeVram int64  `json:"size_vram"`
+	// ContextLength is the loaded context window, as newer Ollama builds report it.
+	ContextLength int       `json:"context_length"`
+	Digest        string    `json:"digest"`
+	ExpiresAt     time.Time `json:"expires_at"`
 }
 
 // modelSizes maps model names to realistic size_vram values (bytes).
@@ -65,6 +67,33 @@ var modelSizes = map[string]int64{
 	"qwen2.5:7b":    4_400_000_000,
 	"qwen2.5:14b":   8_900_000_000,
 	"codellama:13b": 7_300_000_000,
+}
+
+// defaultContextLength is the loaded context window for models not in modelContexts.
+const defaultContextLength = 4096
+
+// modelContexts varies the reported loaded context so the dashboard shows more than one value.
+var modelContexts = map[string]int{
+	"llama3.2:3b":   8192,
+	"qwen2.5:14b":   32768,
+	"codellama:13b": 16384,
+}
+
+// contextFor returns the loaded context window the mock reports for a model.
+func contextFor(model string) int {
+	if c, ok := modelContexts[model]; ok {
+		return c
+	}
+	return defaultContextLength
+}
+
+// vramFor returns how much of a model's size the mock reports as held in GPU memory.
+// One model is deliberately partly offloaded (62%) so a mock fleet shows that case.
+func vramFor(model string, size int64) int64 {
+	if model == "codellama:13b" {
+		return size * 62 / 100
+	}
+	return size
 }
 
 func sizeFor(model string) int64 {
@@ -182,12 +211,13 @@ func runOllamaMock(nodeName, port string, latencyMs int) {
 			}
 			sz := sizeFor(m)
 			ps = append(ps, psModel{
-				Name:      m,
-				Model:     m,
-				Size:      sz,
-				SizeVram:  sz,
-				Digest:    digestFor(m),
-				ExpiresAt: time.Now().Add(5 * time.Minute),
+				Name:          m,
+				Model:         m,
+				Size:          sz,
+				SizeVram:      vramFor(m, sz),
+				ContextLength: contextFor(m),
+				Digest:        digestFor(m),
+				ExpiresAt:     time.Now().Add(5 * time.Minute),
 			})
 		}
 		stateMu.RUnlock()

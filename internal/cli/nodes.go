@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"sort"
@@ -158,6 +159,7 @@ func runNodes(ctx *RunCtx) int {
 	}
 	printWarmupWarnings(stdout, nodes)
 	printReplicaBlockedNotes(stdout, nodes)
+	printPartialGPUNotes(stdout, nodes)
 	return ExitOK
 }
 
@@ -213,6 +215,75 @@ func printReplicaBlockedNotes(w io.Writer, nodes []NodeResp) {
 			continue
 		}
 		lines = append(lines, fmt.Sprintf("note: %s is a last-resort routing target: the host agent on replica member %s is not answering", n.Name, n.ReplicaBlockedBy))
+	}
+	if len(lines) == 0 {
+		return
+	}
+	sort.Strings(lines)
+	fmt.Fprintln(w)
+	for _, l := range lines {
+		fmt.Fprintln(w, l)
+	}
+}
+
+// loadedModelShare is the part of a node's loadedModels entry the partial-GPU
+// note needs. Entries are decoded one at a time from the raw JSON, so a server
+// that predates these fields, or an entry of an unexpected shape, is skipped
+// and never fails the command.
+type loadedModelShare struct {
+	Name          string `json:"name"`
+	GPUPercent    *int   `json:"gpuPercent"`
+	ContextLength *int64 `json:"contextLength"`
+}
+
+// decodeModelShares decodes each raw loadedModels entry independently and keeps
+// the ones that parse and carry a name; malformed entries are dropped silently.
+func decodeModelShares(raw []json.RawMessage) []loadedModelShare {
+	out := make([]loadedModelShare, 0, len(raw))
+	for _, r := range raw {
+		var m loadedModelShare
+		if err := json.Unmarshal(r, &m); err != nil || m.Name == "" {
+			continue
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
+// anyOnGPU reports whether any entry has a positive GPU share.
+func anyOnGPU(shares []loadedModelShare) bool {
+	for _, m := range shares {
+		if m.GPUPercent != nil && *m.GPUPercent > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// printPartialGPUNotes prints one line per Ollama model that is not fully in GPU
+// memory, with the context it is loaded at when Ollama reports one. A model at 0%
+// is listed only where a GPU is known: the node reports VRAM, or another model on
+// it is on the GPU. Otherwise 0% can simply mean a CPU-only node. Models fully on
+// GPU, and models whose runtime reports no share, print nothing here; their
+// values are in --json.
+func printPartialGPUNotes(w io.Writer, nodes []NodeResp) {
+	var lines []string
+	for _, n := range nodes {
+		shares := decodeModelShares(n.LoadedModels)
+		onGPU := anyOnGPU(shares)
+		for _, m := range shares {
+			if m.GPUPercent == nil || *m.GPUPercent < 0 || *m.GPUPercent >= 100 {
+				continue
+			}
+			if *m.GPUPercent == 0 && n.VRAMTotalMB <= 0 && !onGPU {
+				continue
+			}
+			line := fmt.Sprintf("note: %s runs %s at %d%% on GPU", stripControl(n.Name), stripControl(m.Name), *m.GPUPercent)
+			if m.ContextLength != nil && *m.ContextLength > 0 {
+				line += fmt.Sprintf(", context %d", *m.ContextLength)
+			}
+			lines = append(lines, line)
+		}
 	}
 	if len(lines) == 0 {
 		return

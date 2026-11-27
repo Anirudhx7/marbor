@@ -30,6 +30,7 @@ import { fetchNodes, addNode, removeNode, drainNode, undrainNode, setNodePrewarm
 import type { MarborAgentStatus, NodeHealthCheckResult, NodeControlStatus, ReplicaSuggestionsResponse } from '../lib/api';
 import { NODE_SIGNAL_IDS, type GPUNode, type ModelFitResponse, type NodeFit, type FitStatus, type NodeSignalId } from '../types';
 import { formatDurationLong } from '../lib/time';
+import { showPartialGpuBadge, formatContext, PARTIAL_GPU_TOOLTIP } from '../lib/gpuShare';
 import { actionableCount, bucketSuggestions, chipsByNode, hasReplicaContent, pruneDismissedReady, readDismissedReady, readyFingerprints, readyLineVisible, writeDismissedReady } from '../lib/replicaGroups';
 import type { NodeChip } from '../lib/replicaGroups';
 import { toastCreated, toastDeleted } from '../lib/toast';
@@ -834,6 +835,7 @@ function NodeCard({ node, pinnedModels, replicaWorkers, onRemove, onDrain, onUnd
           ) : (
             (node.loadedModels || []).map((model) => {
               const pinned = pinnedModels.includes(model.name);
+              const ctxLabel = formatContext(model.contextLength);
               return (
                 <Badge
                   key={model.name}
@@ -844,6 +846,23 @@ function NodeCard({ node, pinnedModels, replicaWorkers, onRemove, onDrain, onUnd
                   <span className="ml-1.5 opacity-70 font-mono">
                     {formatBytes(model.sizeVram)}
                   </span>
+                  {ctxLabel && (
+                    <span
+                      className="ml-1.5 opacity-70 font-mono whitespace-nowrap"
+                      title="Context window this model is loaded at"
+                    >
+                      ctx {ctxLabel}
+                    </span>
+                  )}
+                  {showPartialGpuBadge(model, node) && (
+                    <span
+                      title={PARTIAL_GPU_TOOLTIP}
+                      className="ml-1.5 px-1.5 rounded-full bg-warning/15 text-warning border border-warning/30 whitespace-nowrap"
+                    >
+                      {Math.floor(model.gpuPercent ?? 0)}% on GPU
+                      <span className="sr-only">. {PARTIAL_GPU_TOOLTIP}</span>
+                    </span>
+                  )}
                   <button
                     onClick={() => onConfigureModel(model.name, node.name, node.runtime)}
                     title={`Advanced settings for ${model.name}`}

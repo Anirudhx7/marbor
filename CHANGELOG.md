@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **Ollama nodes now show how much of each loaded model is in GPU memory, and the context it is loaded at.** On the GPU Nodes page a model that Ollama reports as only partly on the GPU gets a `NN% on GPU` badge (the rest runs on CPU, which is slower), and the loaded context shows as `ctx 4k` where Ollama reports it. `marbor nodes` prints one note per partly offloaded model, with its context; the share and context of every loaded model, including those fully on GPU, are in `marbor nodes --json` and `GET /admin/nodes` (`gpuPercent`, `contextLength`). `0% on GPU` can also mean the Ollama node has no GPU, so it is flagged only where a GPU is known. Values are as reported by Ollama's `/api/ps`; other runtimes and older Ollama builds show nothing. Routing is unchanged.
+
 ## [0.26.0] - 2026-11-27
 
 ### Added

@@ -9,11 +9,18 @@ import (
 
 // LoadedModel describes a single model currently loaded in a backend's VRAM.
 type LoadedModel struct {
-	Name          string
-	SizeVRAMBytes int64 // 0 when unknown
+	Name string
+	// SizeVRAMBytes is the bytes held in GPU memory. 0 is a real reading (nothing on
+	// the GPU) when the backend also reports a model size; without a size it means unknown.
+	SizeVRAMBytes int64
 	// Digest is the backend-reported content digest/checksum, when it exposes one
 	// (currently only Ollama's /api/ps). Empty when unknown - never fabricated.
 	Digest string
+	// SizeBytes is the model's total loaded size and ContextLength the context window it
+	// is loaded at, as Ollama reports them. 0 means the backend did not report a
+	// usable value (every other runtime, and older Ollama builds) - never fabricated.
+	SizeBytes     int64
+	ContextLength int64
 }
 
 // ProbeResult is returned by every RuntimeProbe implementation.

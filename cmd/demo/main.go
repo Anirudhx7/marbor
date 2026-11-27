@@ -96,17 +96,29 @@ func (m *mockOllamaServer) handlePS(w http.ResponseWriter, r *http.Request) {
 		Details   struct{} `json:"details"`
 		ExpiresAt string   `json:"expires_at"`
 		SizeVRAM  int64    `json:"size_vram"`
+		// ContextLength is the loaded context window, as newer Ollama builds report it.
+		ContextLength int `json:"context_length"`
 	}
 	resp := struct {
 		Models []modelEntry `json:"models"`
 	}{
 		Models: []modelEntry{
 			{
-				Name:      m.warmModel,
-				Size:      4294967296,
-				Digest:    "abc123def456",
-				ExpiresAt: "2099-01-01T00:00:00Z",
-				SizeVRAM:  4294967296,
+				Name:          m.warmModel,
+				Size:          4294967296,
+				Digest:        "abc123def456",
+				ExpiresAt:     "2099-01-01T00:00:00Z",
+				SizeVRAM:      4294967296,
+				ContextLength: 4096,
+			},
+			{
+				// Partly offloaded (about 62% on GPU) so the dashboard shows the badge.
+				Name:          "llama3.1:70b",
+				Size:          42949672960,
+				Digest:        "def456abc123",
+				ExpiresAt:     "2099-01-01T00:00:00Z",
+				SizeVRAM:      26628796825,
+				ContextLength: 8192,
 			},
 		},
 	}
