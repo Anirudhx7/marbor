@@ -813,6 +813,7 @@ export function Warmup() {
   const [serverTimezone, setServerTimezone] = useState<string>('');
   const [predictiveEnabled, setPredictiveEnabled] = useState(true);
   const [prefixStats, setPrefixStats] = useState<PrefixLocalityStats | null>(null);
+  const [prefixStatsFailed, setPrefixStatsFailed] = useState(false);
   const [togglingPredictive, setTogglingPredictive] = useState(false);
   const [predictiveConfirmOpen, setPredictiveConfirmOpen] = useState(false);
   const [scheduleToDelete, setScheduleToDelete] = useState<Schedule | null>(null);
@@ -861,8 +862,9 @@ export function Warmup() {
       setPredictiveEnabled(status.predictive_engine_enabled);
 
       const pStats = await fetchPrefixLocalityStats().catch(() => null);
-      if (!active || currentAppPath() !== '/warmup') return;
+      if (!active || requestId !== loadRequestId.current || currentAppPath() !== '/warmup') return;
       setPrefixStats(pStats);
+      setPrefixStatsFailed(pStats === null);
 
       const sys = await fetchSystemInfo().catch(() => null);
       if (!active || requestId !== loadRequestId.current || currentAppPath() !== '/warmup') return;
@@ -1192,12 +1194,14 @@ export function Warmup() {
             </button>
           </div>
 
-          {prefixStats && (
+          {(prefixStats || prefixStatsFailed) && (
             <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30 mb-4">
               <div>
                 <p className="text-sm font-medium text-foreground">Prefix Locality Hit Rate</p>
                 <p className="text-xs text-muted-foreground">
-                  {prefixStats.enabled ? (
+                  {!prefixStats ? (
+                    'Prefix Locality stats unavailable - could not load them from the marbor. They will retry on the next refresh.'
+                  ) : prefixStats.enabled ? (
                     `${(prefixStats.hit_rate * 100).toFixed(1)}% (${prefixStats.hits} hits / ${prefixStats.misses} misses)`
                   ) : (
                     <>

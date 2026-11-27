@@ -154,3 +154,13 @@ test('Modal keeps its column layout for the whole exit, not only while [open]', 
   assert.ok(!src.includes('open:flex-col'));
   assert.match(src, /\bflex-col\b/);
 });
+
+test('Warmup keeps the Prefix Locality card when the stats fetch fails and says so', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../src/pages/Warmup.tsx', import.meta.url), 'utf8');
+  // A failed fetch used to null the stats and hide the whole card, which looked
+  // the same as "feature not present". The card must not be gated on the stats alone.
+  assert.ok(!src.includes('{prefixStats && ('));
+  assert.match(src, /prefixStatsFailed/);
+  assert.match(src, /Prefix Locality stats unavailable/);
+});
