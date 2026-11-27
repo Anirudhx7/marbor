@@ -368,7 +368,10 @@ func groupedFleet(tb testing.TB, n int) *Server {
 	tb.Helper()
 	cfgs := make([]config.NodeConfig, n)
 	for i := range cfgs {
-		cfgs[i] = config.NodeConfig{Name: fmt.Sprintf("n%03d", i), URL: fmt.Sprintf("http://127.0.%d.%d:8000", i/250, i%250+1), Runtime: "vllm"}
+		// An IP literal on purpose: a hostname makes every background probe go through
+		// the OS DNS resolver, which swings these timing bounds from 0.5s to 27s. The
+		// last octet starts at 2 so no node is the exact local-node address 127.0.0.1.
+		cfgs[i] = config.NodeConfig{Name: fmt.Sprintf("n%03d", i), URL: fmt.Sprintf("http://127.0.%d.%d:8000", i/250, i%250+2), Runtime: "vllm"}
 	}
 	r := router.New(config.RoutingConfig{}, cfgs, nil)
 	nodes := r.Nodes()
