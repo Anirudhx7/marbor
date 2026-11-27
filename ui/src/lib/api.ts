@@ -608,11 +608,12 @@ export async function drainNode(name: string, graceSeconds?: number, force = fal
 }
 
 export async function undrainNode(name: string) {
+  if (DEMO) return demoDelay(undefined);
   const res = await apiFetch(`${BASE}/nodes/${encodeURIComponent(name)}/drain`, {
     method: 'DELETE',
     headers: authHeaders(),
   });
-  if (!res.ok) throw new Error('Failed to undrain node');
+  if (!res.ok) throw await runtimeActionFailure(res, 'Failed to undrain node');
 }
 
 export async function setNodePrewarm(name: string, disabled: boolean) {
