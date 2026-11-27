@@ -41,6 +41,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 - **A panic while saving prefix-routing state to the database no longer crashes marbor.** The background write is now recovered and logged, and routing carries on from its in-memory state.
+- **Node names in the health poll panic and runtime auto-detect log lines are now quoted,** so odd characters in a name cannot forge or split log lines.
 - **Release builds now use an exact, pinned Go patch version.** The release workflows and the container images build with the Go version named in `go.mod` instead of the newest 1.26 patch, so a release is reproducible and a Go upgrade is a reviewed change.
 - **A restart that cannot read saved state now says so in the log.** A failed read of node drain states, saved settings (per-node warmup and pinned models), schedules or the predictive history logs a `WARNING` naming what was not applied; the drain case says the drained nodes are taking traffic again. A saved setting that is not valid JSON is skipped with a warning naming its key, and a saved schedule list that is not valid JSON is skipped with a warning saying so. An unknown timezone for the predictive history is logged once. A saved node override or drain state for a node that is no longer registered is logged as a plain `store:` line. Boot still continues in every case.
 - **Dialogs no longer rearrange for a frame while closing.** The first frame of the exit laid the title and the form out as a row instead of a column. Only opacity and scale change during the fade-out now.
